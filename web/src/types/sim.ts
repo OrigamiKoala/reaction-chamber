@@ -94,7 +94,14 @@ export type VesselEventKind =
   | 'splatter'
   | 'dry_out'
   | 'conservation_warning'
-  | 'solver_warning';
+  | 'solver_warning'
+  // Generic reaction log (derived by the engine from state differences; `detail` is a readable sentence)
+  | 'precipitate_formed'
+  | 'solid_dissolved'
+  | 'gas_evolved'
+  | 'colour_change'
+  | 'temperature_change'
+  | 'complex_formed';
 
 export interface VesselEvent {
   kind: VesselEventKind;
@@ -102,6 +109,12 @@ export interface VesselEvent {
   detail?: string;
   /** 0..1 */
   severity?: number;
+  /** Monotonic per-vessel sequence number; the engine caps the event list, so use this (not array length) as a cursor. */
+  seq?: number;
+  /** Engine species id the event is about, e.g. "AgCl(s)". */
+  species?: string;
+  /** Linear-sRGB colour of the precipitate / solution the event describes. */
+  rgb?: [number, number, number];
 }
 
 export interface SpeciesRow {
@@ -276,3 +289,28 @@ export type SimRequest =
   | { type: 'STEP_ALL'; payload: { handles: number[]; dt_s: number }; requestId: string }
   | { type: 'OPTICS_TABLES'; payload: {}; requestId: string }
   | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string };
+
+/** Request to model an imported compound as a reacting reagent (engine `import_compound`). */
+export interface CompoundRequest {
+  id: string;
+  name: string;
+  formula: string;
+  smiles?: string;
+  mw?: number;
+  density?: number;
+  state?: 'solid' | 'liquid' | 'gas';
+  molarity?: number;
+  ghs?: string[];
+}
+
+/** Engine's answer: `modelable=false` means the compound stays visual-only. */
+export interface CompoundModel {
+  modelable: boolean;
+  /** Human-readable explanation, e.g. "Modelled as salt: K+ + Cl-". */
+  reason: string;
+  kind: 'salt' | 'acid' | 'base' | 'molecule' | 'none';
+  entry: ReagentCatalogEntry | null;
+  species: Array<[string, number]>;
+  mw: number;
+  by_mass: boolean;
+}

@@ -47,7 +47,8 @@ fn test_m5_demo1_copper_ammonia_complex() {
     // Add excess 2 M NH3 (8 mL = 0.016 mol NH3, > 4 equiv relative to 0.0025 mol Cu2+)
     v.dose(DoseRequest {
         reagent_id: "nh3_2m".to_string(),
-        volume_ml: Some(8.0),
+        // Excess: with the exact solubility/complexation solver, Cu(OH)2 needs ~20 mL of 2 M NH3 here to dissolve fully
+        volume_ml: Some(20.0),
         mass_g: None,
         drops: None,
         temperature_k: None,
@@ -269,7 +270,7 @@ fn test_m5_demo5_agcl_precipitation() {
     // Dissolves in excess NH3 as [Ag(NH3)2]+
     v.dose(DoseRequest {
         reagent_id: "nh3_2m".to_string(),
-        volume_ml: Some(5.0),
+        volume_ml: Some(10.0), // Ksp/K_f give full dissolution from ~10 mL of 2 M NH3
         mass_g: None,
         drops: None,
         temperature_k: None,

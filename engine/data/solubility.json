@@ -1,0 +1,3095 @@
+{
+ "version": 1,
+ "minerals": [
+  {
+   "id": "AgCl_tbl",
+   "mineral": "Silver chloride",
+   "formula": "AgCl",
+   "solid_species": "AgCl(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": -9.75,
+   "delta_h_kj": 65.7,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.56,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgBr_tbl",
+   "mineral": "Silver bromide",
+   "formula": "AgBr",
+   "solid_species": "AgBr(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "Br-": 1.0
+   },
+   "log_ksp_298": -12.27,
+   "delta_h_kj": 84.4,
+   "solid_color": [
+    0.8632,
+    0.807,
+    0.5089
+   ],
+   "density_g_ml": 6.47,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgI_tbl",
+   "mineral": "Silver iodide",
+   "formula": "AgI",
+   "solid_species": "AgI(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "I-": 1.0
+   },
+   "log_ksp_298": -16.07,
+   "delta_h_kj": 112.0,
+   "solid_color": [
+    0.8148,
+    0.6939,
+    0.147
+   ],
+   "density_g_ml": 6.01,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuCl_tbl",
+   "mineral": "Copper(I) chloride",
+   "formula": "CuCl",
+   "solid_species": "CuCl(s)",
+   "dissolved_products": {
+    "Cu+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": -6.76,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8879,
+    0.8879,
+    0.855
+   ],
+   "density_g_ml": 4.14,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuBr_tbl",
+   "mineral": "Copper(I) bromide",
+   "formula": "CuBr",
+   "solid_species": "CuBr(s)",
+   "dissolved_products": {
+    "Cu+": 1.0,
+    "Br-": 1.0
+   },
+   "log_ksp_298": -8.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.7913,
+    0.7157
+   ],
+   "density_g_ml": 4.72,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuI_tbl",
+   "mineral": "Copper(I) iodide",
+   "formula": "CuI",
+   "solid_species": "CuI(s)",
+   "dissolved_products": {
+    "Cu+": 1.0,
+    "I-": 1.0
+   },
+   "log_ksp_298": -11.9,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.6939,
+    0.6038,
+    0.4342
+   ],
+   "density_g_ml": 5.67,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbCl2_tbl",
+   "mineral": "Lead(II) chloride",
+   "formula": "PbCl2",
+   "solid_species": "PbCl2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": -4.77,
+   "delta_h_kj": 23.4,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.85,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbBr2_tbl",
+   "mineral": "Lead(II) bromide",
+   "formula": "PbBr2",
+   "solid_species": "PbBr2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "Br-": 2.0
+   },
+   "log_ksp_298": -5.18,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8879,
+    0.8714,
+    0.7913
+   ],
+   "density_g_ml": 6.66,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbI2_tbl",
+   "mineral": "Lead(II) iodide",
+   "formula": "PbI2",
+   "solid_species": "PbI2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "I-": 2.0
+   },
+   "log_ksp_298": -8.01,
+   "delta_h_kj": 46.5,
+   "solid_color": [
+    0.8879,
+    0.6584,
+    0.013
+   ],
+   "density_g_ml": 6.16,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbF2_tbl",
+   "mineral": "Lead(II) fluoride",
+   "formula": "PbF2",
+   "solid_species": "PbF2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -7.48,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 8.45,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Hg2Cl2_tbl",
+   "mineral": "Mercury(I) chloride",
+   "formula": "Hg2Cl2",
+   "solid_species": "Hg2Cl2(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": -17.84,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 7.15,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Hg2Br2_tbl",
+   "mineral": "Mercury(I) bromide",
+   "formula": "Hg2Br2",
+   "solid_species": "Hg2Br2(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "Br-": 2.0
+   },
+   "log_ksp_298": -22.19,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8714,
+    0.855,
+    0.7454
+   ],
+   "density_g_ml": 7.3,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Hg2I2_tbl",
+   "mineral": "Mercury(I) iodide",
+   "formula": "Hg2I2",
+   "solid_species": "Hg2I2(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "I-": 2.0
+   },
+   "log_ksp_298": -28.28,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.4851,
+    0.5395,
+    0.0685
+   ],
+   "density_g_ml": 7.7,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "HgI2_tbl",
+   "mineral": "Mercury(II) iodide",
+   "formula": "HgI2",
+   "solid_species": "HgI2(s)",
+   "dissolved_products": {
+    "Hg+2": 1.0,
+    "I-": 2.0
+   },
+   "log_ksp_298": -28.54,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.6939,
+    0.0409,
+    0.0242
+   ],
+   "density_g_ml": 6.36,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "TlCl_tbl",
+   "mineral": "Thallium(I) chloride",
+   "formula": "TlCl",
+   "solid_species": "TlCl(s)",
+   "dissolved_products": {
+    "Tl+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": -3.73,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 7.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CaF2_tbl",
+   "mineral": "Calcium fluoride",
+   "formula": "CaF2",
+   "solid_species": "CaF2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -10.46,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.18,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MgF2_tbl",
+   "mineral": "Magnesium fluoride",
+   "formula": "MgF2",
+   "solid_species": "MgF2(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -10.29,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.15,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "BaF2_tbl",
+   "mineral": "Barium fluoride",
+   "formula": "BaF2",
+   "solid_species": "BaF2(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -6.74,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.89,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SrF2_tbl",
+   "mineral": "Strontium fluoride",
+   "formula": "SrF2",
+   "solid_species": "SrF2(s)",
+   "dissolved_products": {
+    "Sr+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -8.36,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.24,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "BaSO4_tbl",
+   "mineral": "Barium sulfate",
+   "formula": "BaSO4",
+   "solid_species": "BaSO4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -9.97,
+   "delta_h_kj": 26.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9047
+   ],
+   "density_g_ml": 4.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SrSO4_tbl",
+   "mineral": "Strontium sulfate",
+   "formula": "SrSO4",
+   "solid_species": "SrSO4(s)",
+   "dissolved_products": {
+    "Sr+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -6.46,
+   "delta_h_kj": -2.1,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.96,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CaSO4_tbl",
+   "mineral": "Calcium sulfate",
+   "formula": "CaSO4",
+   "solid_species": "CaSO4(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -4.31,
+   "delta_h_kj": -17.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.96,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbSO4_tbl",
+   "mineral": "Lead(II) sulfate",
+   "formula": "PbSO4",
+   "solid_species": "PbSO4(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -7.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 6.29,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2SO4_tbl",
+   "mineral": "Silver sulfate",
+   "formula": "Ag2SO4",
+   "solid_species": "Ag2SO4(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -4.92,
+   "delta_h_kj": 17.8,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.45,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Hg2SO4_tbl",
+   "mineral": "Mercury(I) sulfate",
+   "formula": "Hg2SO4",
+   "solid_species": "Hg2SO4(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -6.19,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8879,
+    0.8879,
+    0.807
+   ],
+   "density_g_ml": 7.56,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CaSO3_tbl",
+   "mineral": "Calcium sulfite",
+   "formula": "CaSO3",
+   "solid_species": "CaSO3(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "SO3-2": 1.0
+   },
+   "log_ksp_298": -7.17,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.6,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2SO3_tbl",
+   "mineral": "Silver sulfite",
+   "formula": "Ag2SO3",
+   "solid_species": "Ag2SO3(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "SO3-2": 1.0
+   },
+   "log_ksp_298": -13.8,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.1,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CaCO3_tbl",
+   "mineral": "Calcium carbonate",
+   "formula": "CaCO3",
+   "solid_species": "CaCO3(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -8.47,
+   "delta_h_kj": -12.1,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9047
+   ],
+   "density_g_ml": 2.71,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MgCO3_tbl",
+   "mineral": "Magnesium carbonate",
+   "formula": "MgCO3",
+   "solid_species": "MgCO3(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -5.17,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.05,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "BaCO3_tbl",
+   "mineral": "Barium carbonate",
+   "formula": "BaCO3",
+   "solid_species": "BaCO3(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -8.59,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.29,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SrCO3_tbl",
+   "mineral": "Strontium carbonate",
+   "formula": "SrCO3",
+   "solid_species": "SrCO3(s)",
+   "dissolved_products": {
+    "Sr+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -9.25,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbCO3_tbl",
+   "mineral": "Lead(II) carbonate",
+   "formula": "PbCO3",
+   "solid_species": "PbCO3(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -13.13,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 6.6,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "ZnCO3_tbl",
+   "mineral": "Zinc carbonate",
+   "formula": "ZnCO3",
+   "solid_species": "ZnCO3(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -9.84,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.4,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuCO3_tbl",
+   "mineral": "Copper(II) carbonate",
+   "formula": "CuCO3",
+   "solid_species": "CuCO3(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -9.85,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1144,
+    0.4793,
+    0.3231
+   ],
+   "density_g_ml": 4.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "FeCO3_tbl",
+   "mineral": "Iron(II) carbonate",
+   "formula": "FeCO3",
+   "solid_species": "FeCO3(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -10.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.5841,
+    0.5457,
+    0.3916
+   ],
+   "density_g_ml": 3.9,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MnCO3_tbl",
+   "mineral": "Manganese(II) carbonate",
+   "formula": "MnCO3",
+   "solid_species": "MnCO3(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -10.65,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7913,
+    0.6867,
+    0.6584
+   ],
+   "density_g_ml": 3.7,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "NiCO3_tbl",
+   "mineral": "Nickel(II) carbonate",
+   "formula": "NiCO3",
+   "solid_species": "NiCO3(s)",
+   "dissolved_products": {
+    "Ni+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -6.85,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.3916,
+    0.6867,
+    0.3916
+   ],
+   "density_g_ml": 4.4,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CoCO3_tbl",
+   "mineral": "Cobalt(II) carbonate",
+   "formula": "CoCO3",
+   "solid_species": "CoCO3(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -12.85,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.6939,
+    0.2542,
+    0.3916
+   ],
+   "density_g_ml": 4.1,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CdCO3_tbl",
+   "mineral": "Cadmium carbonate",
+   "formula": "CdCO3",
+   "solid_species": "CdCO3(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -12.0,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.26,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2CO3_tbl",
+   "mineral": "Silver carbonate",
+   "formula": "Ag2CO3",
+   "solid_species": "Ag2CO3(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -11.07,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.7605,
+    0.4342
+   ],
+   "density_g_ml": 6.08,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Li2CO3_tbl",
+   "mineral": "Lithium carbonate",
+   "formula": "Li2CO3",
+   "solid_species": "Li2CO3(s)",
+   "dissolved_products": {
+    "Li+": 2.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": -3.09,
+   "delta_h_kj": -18.2,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.11,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Mg(OH)2_tbl",
+   "mineral": "Magnesium hydroxide",
+   "formula": "Mg(OH)2",
+   "solid_species": "Mg(OH)2(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -11.25,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9047
+   ],
+   "density_g_ml": 2.34,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ca(OH)2_tbl",
+   "mineral": "Calcium hydroxide",
+   "formula": "Ca(OH)2",
+   "solid_species": "Ca(OH)2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -5.3,
+   "delta_h_kj": -16.7,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.21,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Al(OH)3_tbl",
+   "mineral": "Aluminium hydroxide",
+   "formula": "Al(OH)3",
+   "solid_species": "Al(OH)3(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -33.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.42,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Fe(OH)3_tbl",
+   "mineral": "Iron(III) hydroxide",
+   "formula": "Fe(OH)3",
+   "solid_species": "Fe(OH)3(s)",
+   "dissolved_products": {
+    "Fe+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -38.55,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.3231,
+    0.0685,
+    0.0116
+   ],
+   "density_g_ml": 3.4,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Fe(OH)2_tbl",
+   "mineral": "Iron(II) hydroxide",
+   "formula": "Fe(OH)2",
+   "solid_species": "Fe(OH)2(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -16.31,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.3467,
+    0.4621,
+    0.3231
+   ],
+   "density_g_ml": 3.4,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Zn(OH)2_tbl",
+   "mineral": "Zinc hydroxide",
+   "formula": "Zn(OH)2",
+   "solid_species": "Zn(OH)2(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -16.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.05,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ni(OH)2_tbl",
+   "mineral": "Nickel(II) hydroxide",
+   "formula": "Ni(OH)2",
+   "solid_species": "Ni(OH)2(s)",
+   "dissolved_products": {
+    "Ni+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -15.26,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.2122,
+    0.5711,
+    0.2542
+   ],
+   "density_g_ml": 4.1,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Co(OH)2_tbl",
+   "mineral": "Cobalt(II) hydroxide",
+   "formula": "Co(OH)2",
+   "solid_species": "Co(OH)2(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -14.23,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.6939,
+    0.1845,
+    0.3231
+   ],
+   "density_g_ml": 3.6,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Mn(OH)2_tbl",
+   "mineral": "Manganese(II) hydroxide",
+   "formula": "Mn(OH)2",
+   "solid_species": "Mn(OH)2(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -12.69,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8308,
+    0.7682,
+    0.6867
+   ],
+   "density_g_ml": 3.26,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Cr(OH)3_tbl",
+   "mineral": "Chromium(III) hydroxide",
+   "formula": "Cr(OH)3",
+   "solid_species": "Cr(OH)3(s)",
+   "dissolved_products": {
+    "Cr+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -30.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1441,
+    0.3515,
+    0.1946
+   ],
+   "density_g_ml": 3.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Pb(OH)2_tbl",
+   "mineral": "Lead(II) hydroxide",
+   "formula": "Pb(OH)2",
+   "solid_species": "Pb(OH)2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -19.84,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 7.6,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Cd(OH)2_tbl",
+   "mineral": "Cadmium hydroxide",
+   "formula": "Cd(OH)2",
+   "solid_species": "Cd(OH)2(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -14.14,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.79,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Sn(OH)2_tbl",
+   "mineral": "Tin(II) hydroxide",
+   "formula": "Sn(OH)2",
+   "solid_species": "Sn(OH)2(s)",
+   "dissolved_products": {
+    "Sn+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -27.26,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.5,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgOH_tbl",
+   "mineral": "Silver(I) oxide / hydroxide",
+   "formula": "AgOH",
+   "solid_species": "AgOH(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": -7.7,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.147,
+    0.0685,
+    0.0273
+   ],
+   "density_g_ml": 7.14,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuS_tbl",
+   "mineral": "Copper(II) sulfide",
+   "formula": "CuS",
+   "solid_species": "CuS(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -36.1,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.0116,
+    0.0116,
+    0.0144
+   ],
+   "density_g_ml": 4.76,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Cu2S_tbl",
+   "mineral": "Copper(I) sulfide",
+   "formula": "Cu2S",
+   "solid_species": "Cu2S(s)",
+   "dissolved_products": {
+    "Cu+": 2.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -46.7,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.0144,
+    0.0144,
+    0.0176
+   ],
+   "density_g_ml": 5.6,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2S_tbl",
+   "mineral": "Silver sulfide",
+   "formula": "Ag2S",
+   "solid_species": "Ag2S(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -49.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.013,
+    0.013,
+    0.016
+   ],
+   "density_g_ml": 7.23,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "ZnS_tbl",
+   "mineral": "Zinc sulfide",
+   "formula": "ZnS",
+   "solid_species": "ZnS(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -21.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8879,
+    0.8879,
+    0.855
+   ],
+   "density_g_ml": 4.09,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CdS_tbl",
+   "mineral": "Cadmium sulfide",
+   "formula": "CdS",
+   "solid_species": "CdS(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -26.1,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8879,
+    0.5395,
+    0.0
+   ],
+   "density_g_ml": 4.82,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbS_tbl",
+   "mineral": "Lead(II) sulfide",
+   "formula": "PbS",
+   "solid_species": "PbS(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -27.1,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.0103,
+    0.0103,
+    0.013
+   ],
+   "density_g_ml": 7.6,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "HgS_tbl",
+   "mineral": "Mercury(II) sulfide",
+   "formula": "HgS",
+   "solid_species": "HgS(s)",
+   "dissolved_products": {
+    "Hg+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -51.8,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.0176,
+    0.0103,
+    0.0116
+   ],
+   "density_g_ml": 8.1,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "FeS_tbl",
+   "mineral": "Iron(II) sulfide",
+   "formula": "FeS",
+   "solid_species": "FeS(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -18.1,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.016,
+    0.016,
+    0.0176
+   ],
+   "density_g_ml": 4.84,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "NiS_tbl",
+   "mineral": "Nickel(II) sulfide",
+   "formula": "NiS",
+   "solid_species": "NiS(s)",
+   "dissolved_products": {
+    "Ni+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -18.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.013,
+    0.013,
+    0.016
+   ],
+   "density_g_ml": 5.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CoS_tbl",
+   "mineral": "Cobalt(II) sulfide",
+   "formula": "CoS",
+   "solid_species": "CoS(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -20.4,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.013,
+    0.013,
+    0.016
+   ],
+   "density_g_ml": 5.45,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MnS_tbl",
+   "mineral": "Manganese(II) sulfide",
+   "formula": "MnS",
+   "solid_species": "MnS(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -12.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.4564,
+    0.3515
+   ],
+   "density_g_ml": 3.99,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SnS_tbl",
+   "mineral": "Tin(II) sulfide",
+   "formula": "SnS",
+   "solid_species": "SnS(s)",
+   "dissolved_products": {
+    "Sn+2": 1.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": -25.0,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1441,
+    0.0931,
+    0.0648
+   ],
+   "density_g_ml": 5.08,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Bi2S3_tbl",
+   "mineral": "Bismuth(III) sulfide",
+   "formula": "Bi2S3",
+   "solid_species": "Bi2S3(s)",
+   "dissolved_products": {
+    "Bi+3": 2.0,
+    "S-2": 3.0
+   },
+   "log_ksp_298": -97.0,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.0685,
+    0.0423,
+    0.0296
+   ],
+   "density_g_ml": 6.78,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ca3(PO4)2_tbl",
+   "mineral": "Calcium phosphate",
+   "formula": "Ca3(PO4)2",
+   "solid_species": "Ca3(PO4)2(s)",
+   "dissolved_products": {
+    "Ca+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -32.68,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.14,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag3PO4_tbl",
+   "mineral": "Silver phosphate",
+   "formula": "Ag3PO4",
+   "solid_species": "Ag3PO4(s)",
+   "dissolved_products": {
+    "Ag+": 3.0,
+    "PO4-3": 1.0
+   },
+   "log_ksp_298": -16.05,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.624,
+    0.0685
+   ],
+   "density_g_ml": 6.37,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Mg3(PO4)2_tbl",
+   "mineral": "Magnesium phosphate",
+   "formula": "Mg3(PO4)2",
+   "solid_species": "Mg3(PO4)2(s)",
+   "dissolved_products": {
+    "Mg+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -23.98,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ba3(PO4)2_tbl",
+   "mineral": "Barium phosphate",
+   "formula": "Ba3(PO4)2",
+   "solid_species": "Ba3(PO4)2(s)",
+   "dissolved_products": {
+    "Ba+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -38.22,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.1,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Zn3(PO4)2_tbl",
+   "mineral": "Zinc phosphate",
+   "formula": "Zn3(PO4)2",
+   "solid_species": "Zn3(PO4)2(s)",
+   "dissolved_products": {
+    "Zn+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -32.05,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.99,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Pb3(PO4)2_tbl",
+   "mineral": "Lead(II) phosphate",
+   "formula": "Pb3(PO4)2",
+   "solid_species": "Pb3(PO4)2(s)",
+   "dissolved_products": {
+    "Pb+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -42.1,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 6.9,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "FePO4_tbl",
+   "mineral": "Iron(III) phosphate",
+   "formula": "FePO4",
+   "solid_species": "FePO4(s)",
+   "dissolved_products": {
+    "Fe+3": 1.0,
+    "PO4-3": 1.0
+   },
+   "log_ksp_298": -21.89,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.7157,
+    0.4564
+   ],
+   "density_g_ml": 2.87,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AlPO4_tbl",
+   "mineral": "Aluminium phosphate",
+   "formula": "AlPO4",
+   "solid_species": "AlPO4(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "PO4-3": 1.0
+   },
+   "log_ksp_298": -20.0,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.56,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Cu3(PO4)2_tbl",
+   "mineral": "Copper(II) phosphate",
+   "formula": "Cu3(PO4)2",
+   "solid_species": "Cu3(PO4)2(s)",
+   "dissolved_products": {
+    "Cu+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -36.86,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1144,
+    0.4342,
+    0.5776
+   ],
+   "density_g_ml": 3.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2CrO4_tbl",
+   "mineral": "Silver chromate",
+   "formula": "Ag2CrO4",
+   "solid_species": "Ag2CrO4(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "CrO4-2": 1.0
+   },
+   "log_ksp_298": -11.95,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.3325,
+    0.0423,
+    0.016
+   ],
+   "density_g_ml": 5.63,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "BaCrO4_tbl",
+   "mineral": "Barium chromate",
+   "formula": "BaCrO4",
+   "solid_species": "BaCrO4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "CrO4-2": 1.0
+   },
+   "log_ksp_298": -9.93,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8388,
+    0.6584,
+    0.0685
+   ],
+   "density_g_ml": 4.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbCrO4_tbl",
+   "mineral": "Lead(II) chromate",
+   "formula": "PbCrO4",
+   "solid_species": "PbCrO4(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "CrO4-2": 1.0
+   },
+   "log_ksp_298": -12.55,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8714,
+    0.5776,
+    0.007
+   ],
+   "density_g_ml": 6.12,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SrCrO4_tbl",
+   "mineral": "Strontium chromate",
+   "formula": "SrCrO4",
+   "solid_species": "SrCrO4(s)",
+   "dissolved_products": {
+    "Sr+2": 1.0,
+    "CrO4-2": 1.0
+   },
+   "log_ksp_298": -4.66,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8388,
+    0.6584,
+    0.0685
+   ],
+   "density_g_ml": 3.9,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CaC2O4_tbl",
+   "mineral": "Calcium oxalate",
+   "formula": "CaC2O4",
+   "solid_species": "CaC2O4(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -8.63,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "BaC2O4_tbl",
+   "mineral": "Barium oxalate",
+   "formula": "BaC2O4",
+   "solid_species": "BaC2O4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -6.8,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.66,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "SrC2O4_tbl",
+   "mineral": "Strontium oxalate",
+   "formula": "SrC2O4",
+   "solid_species": "SrC2O4(s)",
+   "dissolved_products": {
+    "Sr+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -7.25,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MgC2O4_tbl",
+   "mineral": "Magnesium oxalate",
+   "formula": "MgC2O4",
+   "solid_species": "MgC2O4(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -5.32,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.45,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "PbC2O4_tbl",
+   "mineral": "Lead(II) oxalate",
+   "formula": "PbC2O4",
+   "solid_species": "PbC2O4(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -9.32,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.28,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ag2C2O4_tbl",
+   "mineral": "Silver oxalate",
+   "formula": "Ag2C2O4",
+   "solid_species": "Ag2C2O4(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -11.27,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.03,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "ZnC2O4_tbl",
+   "mineral": "Zinc oxalate",
+   "formula": "ZnC2O4",
+   "solid_species": "ZnC2O4(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -8.86,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.56,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "FeC2O4_tbl",
+   "mineral": "Iron(II) oxalate",
+   "formula": "FeC2O4",
+   "solid_species": "FeC2O4(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -6.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7913,
+    0.6308,
+    0.117
+   ],
+   "density_g_ml": 2.28,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuC2O4_tbl",
+   "mineral": "Copper(II) oxalate",
+   "formula": "CuC2O4",
+   "solid_species": "CuC2O4(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -9.35,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.3231,
+    0.5776,
+    0.6867
+   ],
+   "density_g_ml": 3.17,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "MnC2O4_tbl",
+   "mineral": "Manganese(II) oxalate",
+   "formula": "MnC2O4",
+   "solid_species": "MnC2O4(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -6.77,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8714,
+    0.7913,
+    0.7454
+   ],
+   "density_g_ml": 2.43,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "NiC2O4_tbl",
+   "mineral": "Nickel(II) oxalate",
+   "formula": "NiC2O4",
+   "solid_species": "NiC2O4(s)",
+   "dissolved_products": {
+    "Ni+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -9.4,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.4793,
+    0.6867,
+    0.4342
+   ],
+   "density_g_ml": 2.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CdC2O4_tbl",
+   "mineral": "Cadmium oxalate",
+   "formula": "CdC2O4",
+   "solid_species": "CdC2O4(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -7.85,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.32,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CoC2O4_tbl",
+   "mineral": "Cobalt(II) oxalate",
+   "formula": "CoC2O4",
+   "solid_species": "CoC2O4(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_ksp_298": -7.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.807,
+    0.4342,
+    0.552
+   ],
+   "density_g_ml": 3.02,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgCN_tbl",
+   "mineral": "Silver cyanide",
+   "formula": "AgCN",
+   "solid_species": "AgCN(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "CN-": 1.0
+   },
+   "log_ksp_298": -16.22,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.95,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgSCN_tbl",
+   "mineral": "Silver thiocyanate",
+   "formula": "AgSCN",
+   "solid_species": "AgSCN(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "SCN-": 1.0
+   },
+   "log_ksp_298": -11.99,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.7,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "CuSCN_tbl",
+   "mineral": "Copper(I) thiocyanate",
+   "formula": "CuSCN",
+   "solid_species": "CuSCN(s)",
+   "dissolved_products": {
+    "Cu+": 1.0,
+    "SCN-": 1.0
+   },
+   "log_ksp_298": -12.75,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8388,
+    0.807,
+    0.7157
+   ],
+   "density_g_ml": 2.84,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgIO3_tbl",
+   "mineral": "Silver iodate",
+   "formula": "AgIO3",
+   "solid_species": "AgIO3(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "IO3-": 1.0
+   },
+   "log_ksp_298": -7.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.53,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Pb(IO3)2_tbl",
+   "mineral": "Lead(II) iodate",
+   "formula": "Pb(IO3)2",
+   "solid_species": "Pb(IO3)2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "IO3-": 2.0
+   },
+   "log_ksp_298": -12.43,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 6.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ba(IO3)2_tbl",
+   "mineral": "Barium iodate",
+   "formula": "Ba(IO3)2",
+   "solid_species": "Ba(IO3)2(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "IO3-": 2.0
+   },
+   "log_ksp_298": -8.4,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Ca(IO3)2_tbl",
+   "mineral": "Calcium iodate",
+   "formula": "Ca(IO3)2",
+   "solid_species": "Ca(IO3)2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "IO3-": 2.0
+   },
+   "log_ksp_298": -5.19,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.5,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "Cu(IO3)2_tbl",
+   "mineral": "Copper(II) iodate",
+   "formula": "Cu(IO3)2",
+   "solid_species": "Cu(IO3)2(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "IO3-": 2.0
+   },
+   "log_ksp_298": -7.16,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1946,
+    0.4793,
+    0.5776
+   ],
+   "density_g_ml": 5.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "AgBrO3_tbl",
+   "mineral": "Silver bromate",
+   "formula": "AgBrO3",
+   "solid_species": "AgBrO3(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "BrO3-": 1.0
+   },
+   "log_ksp_298": -4.27,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 5.2,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "KClO4_tbl",
+   "mineral": "Potassium perchlorate",
+   "formula": "KClO4",
+   "solid_species": "KClO4(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "ClO4-": 1.0
+   },
+   "log_ksp_298": -1.98,
+   "delta_h_kj": 50.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.52,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook Ksp table"
+  },
+  {
+   "id": "NaCl_tbl",
+   "mineral": "Sodium chloride",
+   "formula": "NaCl",
+   "solid_species": "NaCl(s)",
+   "dissolved_products": {
+    "Na+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": 1.57,
+   "delta_h_kj": 3.9,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.16,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "KCl_tbl",
+   "mineral": "Potassium chloride",
+   "formula": "KCl",
+   "solid_species": "KCl(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": 1.33,
+   "delta_h_kj": 17.2,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 1.99,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NaBr_tbl",
+   "mineral": "Sodium bromide",
+   "formula": "NaBr",
+   "solid_species": "NaBr(s)",
+   "dissolved_products": {
+    "Na+": 1.0,
+    "Br-": 1.0
+   },
+   "log_ksp_298": 1.93,
+   "delta_h_kj": -0.6,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.21,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "KBr_tbl",
+   "mineral": "Potassium bromide",
+   "formula": "KBr",
+   "solid_species": "KBr(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "Br-": 1.0
+   },
+   "log_ksp_298": 1.5,
+   "delta_h_kj": 19.9,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.74,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NaI_tbl",
+   "mineral": "Sodium iodide",
+   "formula": "NaI",
+   "solid_species": "NaI(s)",
+   "dissolved_products": {
+    "Na+": 1.0,
+    "I-": 1.0
+   },
+   "log_ksp_298": 2.16,
+   "delta_h_kj": -7.5,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.67,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "KI_tbl",
+   "mineral": "Potassium iodide",
+   "formula": "KI",
+   "solid_species": "KI(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "I-": 1.0
+   },
+   "log_ksp_298": 1.89,
+   "delta_h_kj": 20.3,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.12,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NaNO3_tbl",
+   "mineral": "Sodium nitrate",
+   "formula": "NaNO3",
+   "solid_species": "NaNO3(s)",
+   "dissolved_products": {
+    "Na+": 1.0,
+    "NO3-": 1.0
+   },
+   "log_ksp_298": 2.07,
+   "delta_h_kj": 20.5,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.26,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "KNO3_tbl",
+   "mineral": "Potassium nitrate",
+   "formula": "KNO3",
+   "solid_species": "KNO3(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "NO3-": 1.0
+   },
+   "log_ksp_298": 1.0,
+   "delta_h_kj": 34.9,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.11,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "AgNO3_tbl",
+   "mineral": "Silver nitrate",
+   "formula": "AgNO3",
+   "solid_species": "AgNO3(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "NO3-": 1.0
+   },
+   "log_ksp_298": 2.16,
+   "delta_h_kj": 22.6,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.35,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NH4Cl_tbl",
+   "mineral": "Ammonium chloride",
+   "formula": "NH4Cl",
+   "solid_species": "NH4Cl(s)",
+   "dissolved_products": {
+    "NH4+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": 1.74,
+   "delta_h_kj": 14.8,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 1.53,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NH4NO3_tbl",
+   "mineral": "Ammonium nitrate",
+   "formula": "NH4NO3",
+   "solid_species": "NH4NO3(s)",
+   "dissolved_products": {
+    "NH4+": 1.0,
+    "NO3-": 1.0
+   },
+   "log_ksp_298": 2.83,
+   "delta_h_kj": 25.7,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 1.72,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "NaOH_tbl",
+   "mineral": "Sodium hydroxide",
+   "formula": "NaOH",
+   "solid_species": "NaOH(s)",
+   "dissolved_products": {
+    "Na+": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": 2.86,
+   "delta_h_kj": -44.5,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.13,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "KOH_tbl",
+   "mineral": "Potassium hydroxide",
+   "formula": "KOH",
+   "solid_species": "KOH(s)",
+   "dissolved_products": {
+    "K+": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": 2.56,
+   "delta_h_kj": -57.6,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.04,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "Na2SO4_tbl",
+   "mineral": "Sodium sulfate",
+   "formula": "Na2SO4",
+   "solid_species": "Na2SO4(s)",
+   "dissolved_products": {
+    "Na+": 2.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 1.44,
+   "delta_h_kj": -2.3,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.66,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "K2SO4_tbl",
+   "mineral": "Potassium sulfate",
+   "formula": "K2SO4",
+   "solid_species": "K2SO4(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 0.02,
+   "delta_h_kj": 23.8,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.66,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "Na2CO3_tbl",
+   "mineral": "Sodium carbonate",
+   "formula": "Na2CO3",
+   "solid_species": "Na2CO3(s)",
+   "dissolved_products": {
+    "Na+": 2.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": 1.57,
+   "delta_h_kj": -26.7,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.54,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "K2CO3_tbl",
+   "mineral": "Potassium carbonate",
+   "formula": "K2CO3",
+   "solid_species": "K2CO3(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "CO3-2": 1.0
+   },
+   "log_ksp_298": 3.3,
+   "delta_h_kj": -28.1,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.43,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "CaCl2_tbl",
+   "mineral": "Calcium chloride",
+   "formula": "CaCl2",
+   "solid_species": "CaCl2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": 3.08,
+   "delta_h_kj": -81.3,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.15,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "MgCl2_tbl",
+   "mineral": "Magnesium chloride",
+   "formula": "MgCl2",
+   "solid_species": "MgCl2(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": 2.87,
+   "delta_h_kj": -160.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.32,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "BaCl2_tbl",
+   "mineral": "Barium chloride",
+   "formula": "BaCl2",
+   "solid_species": "BaCl2(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": 1.29,
+   "delta_h_kj": -13.2,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.86,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "CuSO4_tbl",
+   "mineral": "Copper(II) sulfate",
+   "formula": "CuSO4",
+   "solid_species": "CuSO4(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 0.29,
+   "delta_h_kj": -66.5,
+   "solid_color": [
+    0.5776,
+    0.6867,
+    0.807
+   ],
+   "density_g_ml": 3.6,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "MgSO4_tbl",
+   "mineral": "Magnesium sulfate",
+   "formula": "MgSO4",
+   "solid_species": "MgSO4(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 0.92,
+   "delta_h_kj": -91.2,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 2.66,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "ZnSO4_tbl",
+   "mineral": "Zinc sulfate",
+   "formula": "ZnSO4",
+   "solid_species": "ZnSO4(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 1.04,
+   "delta_h_kj": -81.3,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 3.54,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  },
+  {
+   "id": "Pb(NO3)2_tbl",
+   "mineral": "Lead(II) nitrate",
+   "formula": "Pb(NO3)2",
+   "solid_species": "Pb(NO3)2(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "NO3-": 2.0
+   },
+   "log_ksp_298": 1.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9047,
+    0.9047,
+    0.8879
+   ],
+   "density_g_ml": 4.53,
+   "default_particle_um": 40.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook solubility table (solubility limit)"
+  }
+ ],
+ "equilibria": [
+  {
+   "id": "HF_dissoc",
+   "name": "Hydrofluoric acid dissociation",
+   "equation": "HF <=> H+ + F-",
+   "reactants": {
+    "HF": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "F-": 1.0
+   },
+   "log_k_298": -3.17,
+   "delta_h_kj": 13.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HCN_dissoc",
+   "name": "Hydrocyanic acid dissociation",
+   "equation": "HCN <=> H+ + CN-",
+   "reactants": {
+    "HCN": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "CN-": 1.0
+   },
+   "log_k_298": -9.21,
+   "delta_h_kj": 43.6,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HNO2_dissoc",
+   "name": "Nitrous acid dissociation",
+   "equation": "HNO2 <=> H+ + NO2-",
+   "reactants": {
+    "HNO2": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "NO2-": 1.0
+   },
+   "log_k_298": -3.25,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HClO_dissoc",
+   "name": "Hypochlorous acid dissociation",
+   "equation": "HClO <=> H+ + ClO-",
+   "reactants": {
+    "HClO": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "ClO-": 1.0
+   },
+   "log_k_298": -7.54,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HCOOH_dissoc",
+   "name": "Formic acid dissociation",
+   "equation": "HCOOH <=> H+ + HCOO-",
+   "reactants": {
+    "HCOOH": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HCOO-": 1.0
+   },
+   "log_k_298": -3.75,
+   "delta_h_kj": -0.1,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "H2S_dissoc_1",
+   "name": "Hydrogen sulfide first dissociation",
+   "equation": "H2S <=> H+ + HS-",
+   "reactants": {
+    "H2S": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HS-": 1.0
+   },
+   "log_k_298": -7.05,
+   "delta_h_kj": 22.3,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HS_dissoc_2",
+   "name": "Hydrosulfide dissociation",
+   "equation": "HS- <=> H+ + S-2",
+   "reactants": {
+    "HS-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "S-2": 1.0
+   },
+   "log_k_298": -19.0,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "H2SO3_dissoc_1",
+   "name": "Sulfurous acid first dissociation",
+   "equation": "H2SO3 <=> H+ + HSO3-",
+   "reactants": {
+    "H2SO3": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HSO3-": 1.0
+   },
+   "log_k_298": -1.85,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HSO3_dissoc_2",
+   "name": "Bisulfite dissociation",
+   "equation": "HSO3- <=> H+ + SO3-2",
+   "reactants": {
+    "HSO3-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "SO3-2": 1.0
+   },
+   "log_k_298": -7.2,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HSO4_dissoc",
+   "name": "Bisulfate dissociation",
+   "equation": "HSO4- <=> H+ + SO4-2",
+   "reactants": {
+    "HSO4-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_k_298": -1.99,
+   "delta_h_kj": -22.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "H3PO4_dissoc_1",
+   "name": "Phosphoric acid first dissociation",
+   "equation": "H3PO4 <=> H+ + H2PO4-",
+   "reactants": {
+    "H3PO4": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "H2PO4-": 1.0
+   },
+   "log_k_298": -2.15,
+   "delta_h_kj": -8.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "H2PO4_dissoc_2",
+   "name": "Dihydrogen phosphate dissociation",
+   "equation": "H2PO4- <=> H+ + HPO4-2",
+   "reactants": {
+    "H2PO4-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HPO4-2": 1.0
+   },
+   "log_k_298": -7.2,
+   "delta_h_kj": 3.6,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HPO4_dissoc_3",
+   "name": "Hydrogen phosphate dissociation",
+   "equation": "HPO4-2 <=> H+ + PO4-3",
+   "reactants": {
+    "HPO4-2": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "PO4-3": 1.0
+   },
+   "log_k_298": -12.35,
+   "delta_h_kj": 16.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "H2C2O4_dissoc_1",
+   "name": "Oxalic acid first dissociation",
+   "equation": "H2C2O4 <=> H+ + HC2O4-",
+   "reactants": {
+    "H2C2O4": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HC2O4-": 1.0
+   },
+   "log_k_298": -1.25,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HC2O4_dissoc_2",
+   "name": "Hydrogen oxalate dissociation",
+   "equation": "HC2O4- <=> H+ + C2O4-2",
+   "reactants": {
+    "HC2O4-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "C2O4-2": 1.0
+   },
+   "log_k_298": -4.27,
+   "delta_h_kj": 0.0,
+   "tier": "Tabulated",
+   "source": "IUPAC pKa dataset"
+  },
+  {
+   "id": "HCrO4_dissoc",
+   "name": "Hydrogen chromate dissociation",
+   "equation": "HCrO4- <=> H+ + CrO4-2",
+   "reactants": {
+    "HCrO4-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "CrO4-2": 1.0
+   },
+   "log_k_298": -6.49,
+   "delta_h_kj": 3.8,
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "chromate_dichromate",
+   "name": "Dichromate condensation",
+   "equation": "2HCrO4- <=> Cr2O7-2 + H2O",
+   "reactants": {
+    "HCrO4-": 2.0
+   },
+   "products": {
+    "Cr2O7-2": 1.0,
+    "H2O": 1.0
+   },
+   "log_k_298": 1.52,
+   "delta_h_kj": -18.0,
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  }
+ ]
+}

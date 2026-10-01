@@ -30,7 +30,25 @@ export const EVENT_LABELS: Record<VesselEvent['kind'], string> = {
   dry_out: 'Boiled dry',
   conservation_warning: 'Conservation warning',
   solver_warning: 'Solver warning',
+  precipitate_formed: 'Precipitate',
+  solid_dissolved: 'Solid gone',
+  gas_evolved: 'Gas',
+  colour_change: 'Colour change',
+  temperature_change: 'Temperature',
+  complex_formed: 'Complex',
 };
+
+/** Engine-written sentence kinds (reaction log): the sentence is the whole message, no label needed. */
+const LOG_KINDS = new Set<string>(['precipitate_formed', 'solid_dissolved', 'gas_evolved', 'colour_change', 'temperature_change', 'complex_formed']);
+const LOG_ROWS = 8;
+
+function linearToCss(rgb: [number, number, number]): string {
+  const g = (c: number) => {
+    const x = Math.min(1, Math.max(0, c));
+    return Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055));
+  };
+  return `rgb(${g(rgb[0])}, ${g(rgb[1])}, ${g(rgb[2])})`;
+}
 
 const CONTENT_ROWS = 6;
 
@@ -160,7 +178,7 @@ export class VesselPanel {
     // Events (generic, from snapshot.events)
     this.eventsSec = h('section', { class: 'vp-sec vp-events', hidden: true, 'aria-label': 'Events' });
     this.eventsList = h('ol', { class: 'events', 'aria-live': 'polite' });
-    this.eventsSec.append(h('h3', { class: 'eyebrow', text: 'Events' }), this.eventsList);
+    this.eventsSec.append(h('h3', { class: 'eyebrow', text: 'Reaction log' }), this.eventsList);
 
     // Controls
     const ctlSec = h('section', { class: 'vp-sec', 'aria-label': 'Controls' });
@@ -431,22 +449,32 @@ export class VesselPanel {
 
   private updateEvents(snap: VesselSnapshot) {
     const evs = snap.events ?? [];
-    if (evs.length === this.lastEventsLen) return;
-    this.lastEventsLen = evs.length;
-    // Collapse repeats of the same kind within 5 s of sim time; keep the newest 4.
+    const last = evs.length ? (evs[evs.length - 1].seq ?? evs.length) : 0;
+    if (last === this.lastEventsLen) return;
+    this.lastEventsLen = last;
+    // Collapse repeats of the same message within 5 s of sim time; keep the newest few.
     const out: VesselEvent[] = [];
     for (const e of evs) {
       const prev = out[out.length - 1];
-      if (prev && prev.kind === e.kind && e.t_sim_s - prev.t_sim_s < 5) continue;
+      if (prev && prev.kind === e.kind && prev.detail === e.detail && e.t_sim_s - prev.t_sim_s < 5) continue;
       out.push(e);
     }
-    const recent = out.slice(-4).reverse();
+    const recent = out.slice(-LOG_ROWS).reverse();
     this.eventsSec.hidden = recent.length === 0;
     this.eventsList.innerHTML = '';
     for (const e of recent) {
       const li = h('li', { class: `ev ev-${e.kind}` });
-      li.append(h('span', { class: 'ev-kind', text: EVENT_LABELS[e.kind] ?? e.kind }));
-      if (e.detail) li.append(h('span', { class: 'ev-detail', text: e.detail }));
+      if (LOG_KINDS.has(e.kind)) {
+        if (e.rgb) {
+          const dot = h('span', { class: 'ev-dot', 'aria-hidden': 'true' });
+          dot.style.background = linearToCss(e.rgb);
+          li.append(dot);
+        }
+        li.append(h('span', { class: 'ev-detail ev-sentence', text: e.detail ?? EVENT_LABELS[e.kind] }));
+      } else {
+        li.append(h('span', { class: 'ev-kind', text: EVENT_LABELS[e.kind] ?? e.kind }));
+        if (e.detail) li.append(h('span', { class: 'ev-detail', text: e.detail }));
+      }
       li.append(h('time', { class: 'ev-t', text: fmtClock(e.t_sim_s) }));
       this.eventsList.append(li);
     }

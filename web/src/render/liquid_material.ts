@@ -111,8 +111,17 @@ float lqExit( vec3 p, vec3 d ) {
       float s = sqrt( disc );
       float t1 = ( -b - s ) / ( 2.0 * a );
       float t2 = ( -b + s ) / ( 2.0 * a );
-      if ( t1 > 0.02 ) t = min( t, t1 );
-      if ( t2 > 0.02 ) t = min( t, t2 );
+      float tn = min( t1, t2 );
+      float tf = max( t1, t2 );
+      // The wall fragment sits ON the real wall, which the fitted cone only approximates (round tube bottoms, shoulders),
+      // so p can be a hair outside the cone and the near root is a spurious re-entry: always leave through the far root.
+      // (Taking the nearest positive root made most of a test tube's liquid optically clear.)
+      if ( a > 0.0 ) {
+        if ( tf > 0.02 ) t = tf;
+      } else {
+        if ( tn > 0.02 ) t = tn;
+        else if ( tf > 0.02 ) t = tf;
+      }
     }
   }
   if ( d.y < -1e-4 ) t = min( t, ( uYb - p.y ) / d.y );
@@ -157,9 +166,9 @@ vec3 lqOptics( out vec3 scatterCol, out float scatterAmt ) {
     sod += s * len;
     lo = hi;
   }
-  // Even "clear" water is not invisible: a faint blue-green absorption over the chord gives the liquid body
-  // a readable tint (and makes the level visible) without needing any per-reagent data.
-  od += vec3( 0.030, 0.016, 0.009 ) * tExit;
+  // Even "clear" water is not invisible: a blue-green absorption over the chord (plus ~1 cm of "free" path so thin
+  // films still read) gives the liquid body a readable tint at bench distance, without any per-reagent data.
+  od += vec3( 0.09, 0.05, 0.026 ) * ( 1.0 + min( tExit, 6.0 ) );
   return od + vec3( sod );
 }
 `;
@@ -297,7 +306,7 @@ function makeAbsorbMaterial(u: LiquidUniforms): THREE.ShaderMaterial {
           // refraction hint: a liquid column bends light away at its silhouette, so edges read darker
           vec3 nrm = normalize( vec3( vObj.x, 0.0, vObj.z ) + vec3( 1e-4 ) );
           float edge = 1.0 - abs( dot( nrm, normalize( vRay ) ) );
-          T *= mix( 1.0, 0.62, pow( edge, 3.0 ) );
+          T *= mix( 1.0, 0.45, pow( edge, 2.2 ) );
         }
         gl_FragColor = vec4( pow( T, vec3( 1.0 / 2.2 ) ), 1.0 );
       }`,
@@ -377,13 +386,15 @@ function makeSurfaceMaterial(u: LiquidUniforms): THREE.MeshPhysicalMaterial {
             }
           }
           // bright meniscus line just under the free surface + a faint sheen on the surface disc itself
-          float lqLine = vTop < 0.5 ? 1.0 - smoothstep( 0.0, 0.11, lqSY - vObj.y ) : 0.0;
-          vec3 lqBase = vTop > 0.5 ? vec3( 0.045, 0.05, 0.055 ) : vec3( 0.0 );
-          gl_FragColor = vec4( totalDiffuse * lqSa * 1.1 + lqSpec * specScale + vec3( 0.16 ) * iface + vec3( 0.32, 0.34, 0.36 ) * lqLine + lqBase, 1.0 );
+          float lqLine = vTop < 0.5 ? 1.0 - smoothstep( 0.0, 0.16, lqSY - vObj.y ) : 0.0;
+          // free surface: faint sheen + a bright meniscus ring where it meets the wall (outlines the level from any angle)
+          float lqRing = vTop > 0.5 ? smoothstep( 0.86, 0.995, length( vObj.xz ) / max( uR, 1e-3 ) ) : 0.0;
+          vec3 lqBase = vTop > 0.5 ? vec3( 0.03, 0.034, 0.038 ) + vec3( 0.07, 0.075, 0.08 ) * lqRing : vec3( 0.0 );
+          gl_FragColor = vec4( totalDiffuse * lqSa * 1.1 + lqSpec * specScale + vec3( 0.16 ) * iface + vec3( 0.34, 0.36, 0.38 ) * lqLine + lqBase, 1.0 );
         }`
       );
   };
-  m.customProgramCacheKey = () => 'liquid_surface_v2';
+  m.customProgramCacheKey = () => 'liquid_surface_v3';
   return m;
 }
 
@@ -487,26 +498,28 @@ export class LiquidBody {
 
   /** Engine-driven update (20 Hz). */
   public setLayers(layers: LiquidLayer[], totalMl: number, optics: OpticsTables | null) {
+    if (!(totalMl >= 0) || !isFinite(totalMl)) totalMl = 0; // NaN / negative volume must never reach the shader
     const n = Math.min(MAX_LAYERS, layers.length);
-    const sumLayers = layers.reduce((s, l) => s + Math.max(0, l.volume_ml), 0);
+    const sumLayers = layers.reduce((s, l) => s + Math.max(0, l.volume_ml || 0), 0);
     const scale = sumLayers > 0 ? totalMl / sumLayers : 1;
     let acc = 0;
     let bigChange = n !== this.targetCount;
     for (let i = 0; i < n; i++) {
       const L = layers[i];
-      acc += Math.max(0, L.volume_ml) * scale;
+      acc += Math.max(0, L.volume_ml || 0) * scale;
       const t = this.targets[i];
       t.topMl = acc;
-      const T = computeSpectralColor(optics, L.absorbance_per_cm, this.Lref);
+      const T = computeSpectralColor(optics, L.absorbance_per_cm ?? [], this.Lref);
       const kx = -Math.log(Math.max(T[0], 1e-3)) / this.Lref;
       const ky = -Math.log(Math.max(T[1], 1e-3)) / this.Lref;
       const kz = -Math.log(Math.max(T[2], 1e-3)) / this.Lref;
       if (this.kChange(t.k, kx, ky, kz)) bigChange = true;
       t.k.set(kx, ky, kz);
-      t.scat.set(L.scatter_rgb[0], L.scatter_rgb[1], L.scatter_rgb[2], Math.max(0, L.scatter_per_cm));
+      const sc = L.scatter_rgb ?? [1, 1, 1];
+      t.scat.set(sc[0], sc[1], sc[2], Math.max(0, L.scatter_per_cm || 0));
     }
     if (n === 0) {
-      this.targets[0].topMl = totalMl;
+      this.targets[0].topMl = totalMl; // volume with no layer data: render it as clear liquid
       this.targets[0].k.set(0, 0, 0);
       this.targets[0].scat.set(1, 1, 1, 0);
     }
@@ -624,6 +637,8 @@ export class LiquidBody {
     u.uTime.value = time;
 
     // volume (exponential approach so level changes flow)
+    if (!isFinite(this.totalMl)) this.totalMl = 0;
+    if (!isFinite(this.totalMlTarget)) this.totalMlTarget = 0;
     const dv = this.totalMlTarget - this.totalMl;
     this.totalMl += dv * Math.min(1, dt * 4.0);
     if (Math.abs(dv) < 0.002) this.totalMl = this.totalMlTarget;
@@ -688,6 +703,29 @@ export class LiquidBody {
         u.uSlosh.value.set(0, 0);
       }
     }
+  }
+
+  /**
+   * Dev-time self check: returns a description when there is liquid to show but something would stop it from being
+   * drawn (hidden in the hierarchy, non-finite uniforms, degenerate geometry), else null.
+   */
+  public diagnose(): string | null {
+    if (this.totalMlTarget <= 0.05) return null;
+    if (!this.sideAbsorb.visible && this.totalMl > 0.02) return 'liquid mesh hidden although volume > 0';
+    if (this.sideAbsorb.visible) {
+      let o: THREE.Object3D | null = this.sideAbsorb;
+      while (o) {
+        if (!o.visible) return `liquid ancestor "${o.name || o.type}" is hidden`;
+        o = o.parent;
+      }
+    }
+    const u = this.uniforms;
+    for (const k of ['uFill', 'uYb', 'uR', 'uConeA', 'uConeB', 'uTopClamp'] as const) {
+      if (!isFinite(u[k].value)) return `uniform ${k} is not finite`;
+    }
+    if (!(u.uR.value > 0.05)) return 'liquid surface radius is ~0';
+    if (!(u.uFill.value > u.uYb.value)) return 'fill height is not above the vessel floor';
+    return null;
   }
 
   public dispose() {

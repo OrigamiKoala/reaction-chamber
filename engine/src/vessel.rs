@@ -93,6 +93,14 @@ pub enum VesselEventKind {
     DryOut,
     ConservationWarning,
     SolverWarning,
+    /// A solid appeared that was not added by the user (precipitation / crystallisation).
+    PrecipitateFormed,
+    /// A solid disappeared (dissolved or was consumed by reaction).
+    SolidDissolved,
+    GasEvolved,
+    ColourChange,
+    TemperatureChange,
+    ComplexFormed,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -103,6 +111,15 @@ pub struct VesselEvent {
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity: Option<f64>,
+    /// Monotonic per-vessel sequence number (events are capped, so array length is not a stable cursor).
+    #[serde(default)]
+    pub seq: u64,
+    /// Engine species id the event is about (e.g. "AgCl(s)").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
+    /// Linear-sRGB colour associated with the event (precipitate / solution colour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<[f64; 3]>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -239,6 +256,8 @@ pub struct Vessel {
     pub minerals: Vec<GeneralMineral>,
     pub kinetic_reactions: Vec<GeneralKineticRxn>,
     initial_elements: HashMap<String, f64>,
+    /// State for the generic reaction log (precipitate / gas / colour / temperature events).
+    pub ev: crate::vessel_ext::EventState,
 }
 
 impl Vessel {
@@ -279,6 +298,7 @@ impl Vessel {
             minerals: chem_db::get_default_minerals(),
             kinetic_reactions: chem_db::get_default_kinetic_reactions(),
             initial_elements: HashMap::new(),
+            ev: crate::vessel_ext::EventState::default(),
         }
     }
 
@@ -351,8 +371,14 @@ impl Vessel {
             total_mass_added_g += mass_g;
             for (species, &mol_per_g) in &entry.composition {
                 let mol = mol_per_g * mass_g;
-                *self.solid_mol.entry(species.clone()).or_insert(0.0) += mol;
-                *self.initial_solids.entry(species.clone()).or_insert(0.0) += mol;
+                if species.ends_with("(s)") {
+                    *self.solid_mol.entry(species.clone()).or_insert(0.0) += mol;
+                    *self.initial_solids.entry(species.clone()).or_insert(0.0) += mol;
+                } else {
+                    // Non-solid components of a solid reagent (water of crystallisation, instantly dissolving
+                    // ions of multi-ion salts) go straight into solution.
+                    *self.species_mol.entry(species.clone()).or_insert(0.0) += mol;
+                }
             }
         } else {
             let vol_ml = if let Some(d) = dose.drops {
@@ -376,17 +402,23 @@ impl Vessel {
         }
 
         self.record_elements_added();
+        self.settle_after_addition();
 
-        // Immediately solve fast speciation equilibria upon dosing
-        for _ in 0..20 {
+        Ok(())
+    }
+
+    /// Solves fast speciation / solubility equilibria right after an addition and records what happened in the log.
+    fn settle_after_addition(&mut self) {
+        // Whatever solid is in the vessel now was put there by the user: only *new* solids count as precipitates.
+        self.sync_known_solids();
+        self.auto_minerals();
+        for _ in 0..40 {
             let q_eq = self.step_equilibria(0.001);
             let cp_tot = (4.184 * self.contents_mass_g() + self.config.glass_mass_g * 0.84 * 0.15).max(1.0);
             self.temperature_k += q_eq / cp_tot;
         }
-
         self.update_network();
-
-        Ok(())
+        self.detect_events(true);
     }
 
     pub fn add_portion(&mut self, portion: Portion) -> Result<(), String> {
@@ -410,13 +442,7 @@ impl Vessel {
         }
 
         self.record_elements_added();
-        for _ in 0..20 {
-            let q_eq = self.step_equilibria(0.001);
-            let cp_tot = (4.184 * self.contents_mass_g() + self.config.glass_mass_g * 0.84 * 0.15).max(1.0);
-            self.temperature_k += q_eq / cp_tot;
-        }
-
-        self.update_network();
+        self.settle_after_addition();
 
         Ok(())
     }
@@ -524,6 +550,11 @@ impl Vessel {
 
         // 4. Headspace pressure & gas accumulation / venting
         self.step_headspace(dt_s);
+
+        self.update_suspension(dt_s);
+
+        // 5. Generic reaction log
+        self.detect_events(false);
 
         Ok(())
     }
@@ -655,12 +686,7 @@ impl Vessel {
         if igniter_active && etoh > 1e-5 && t_k >= 286.0 {
             if !self.flame_active {
                 self.flame_active = true;
-                self.events.push(VesselEvent {
-                    kind: VesselEventKind::Ignition,
-                    t_sim_s: self.t_sim_s,
-                    detail: Some("Flammable vapour ignited".to_string()),
-                    severity: Some(0.6),
-                });
+                self.push_event(VesselEventKind::Ignition, "Flammable vapour ignited".to_string(), 0.6);
             }
         }
 
@@ -668,12 +694,7 @@ impl Vessel {
             if etoh <= 1e-6 {
                 self.flame_active = false;
                 self.flame_power_w = 0.0;
-                self.events.push(VesselEvent {
-                    kind: VesselEventKind::FlameOut,
-                    t_sim_s: self.t_sim_s,
-                    detail: Some("Combustion fuel exhausted".to_string()),
-                    severity: Some(0.2),
-                });
+                self.push_event(VesselEventKind::FlameOut, "Combustion fuel exhausted".to_string(), 0.2);
             } else {
                 let area_cm2 = std::f64::consts::PI * self.config.inner_radius_cm.powi(2);
                 let burn_ml_s = (0.04 * area_cm2).clamp(0.1, 2.0);
@@ -685,326 +706,6 @@ impl Vessel {
                 let heat_w = burn_mol_s * 1367000.0;
                 self.flame_power_w = heat_w;
                 q_joules += heat_w * 0.15 * dt_s;
-            }
-        }
-
-        q_joules
-    }
-
-    fn step_equilibria(&mut self, dt_s: f64) -> f64 {
-        let mut q_joules = 0.0;
-        let vol_l = (self.total_liquid_volume_ml() / 1000.0).max(0.001);
-        let t_k = self.temperature_k;
-        let r_ideal = 8.314;
-
-        // 1. Solve all registered aqueous equilibria using affine Newton relaxation
-        for eq in &self.equilibria {
-            let delta_h_j = eq.delta_h_kj * 1000.0;
-            let log_k_t = eq.log_k_298 + (-delta_h_j / r_ideal) * (1.0 / t_k - 1.0 / 298.15) / 2.302585;
-            let k_t = 10.0_f64.powf(log_k_t);
-
-            let mut q_num = 1.0;
-            let mut q_den = 1.0;
-            let mut deriv_denom = 0.0;
-            let mut prod_coeff_sum = 0.0;
-            let mut react_coeff_sum = 0.0;
-
-            for (p, &coeff) in &eq.products {
-                if p == "H2O" {
-                    continue; // solvent activity = 1.0
-                }
-                let mut c = (self.species_mol.get(p).copied().unwrap_or(0.0) / vol_l).max(1e-18);
-                // If a solid in self.minerals contains product p, its effective available capacity includes the solid reservoir
-                for min in &self.minerals {
-                    if let Some(&prod_coeff) = min.dissolved_products.get(p) {
-                        let solid_m = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                        if solid_m > 1e-12 {
-                            c += solid_m * prod_coeff / vol_l;
-                        }
-                    }
-                }
-                q_num *= c.powf(coeff);
-                deriv_denom += coeff * coeff / c.max(1e-6);
-                prod_coeff_sum += coeff;
-            }
-            for (r, &coeff) in &eq.reactants {
-                if r == "H2O" {
-                    continue; // solvent activity = 1.0
-                }
-                let mut c = (self.species_mol.get(r).copied().unwrap_or(0.0) / vol_l).max(1e-18);
-                // If a solid in self.minerals contains reactant r, its effective available capacity includes the solid reservoir
-                for min in &self.minerals {
-                    if let Some(&prod_coeff) = min.dissolved_products.get(r) {
-                        let solid_m = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                        if solid_m > 1e-12 {
-                            c += solid_m * prod_coeff / vol_l;
-                        }
-                    }
-                }
-                q_den *= c.powf(coeff);
-                deriv_denom += coeff * coeff / c.max(1e-6);
-                react_coeff_sum += coeff;
-            }
-
-            let q = q_num / q_den.max(1e-30);
-            let log_q_over_k = (q / k_t).log10();
-
-            // Newton step in log-space: delta_xi = ln(K/Q) / deriv
-            let ln_k_over_q = (k_t / q).ln();
-
-            let mut max_fwd_mol: f64 = 1e9;
-            let mut limiting_fwd_coeff: f64 = 1.0;
-            for (r, &coeff) in &eq.reactants {
-                let mut mol = self.species_mol.get(r).copied().unwrap_or(0.0);
-                // In aqueous solution, minerals containing reactant r can dissolve to supply r
-                for min in &self.minerals {
-                    if let Some(&prod_coeff) = min.dissolved_products.get(r) {
-                        let solid_m = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                        if solid_m > 1e-12 {
-                            mol += solid_m * prod_coeff;
-                        }
-                    }
-                }
-                let can_provide = mol / coeff;
-                if can_provide < max_fwd_mol {
-                    max_fwd_mol = can_provide;
-                    limiting_fwd_coeff = coeff;
-                }
-            }
-
-            let mut max_rev_mol: f64 = 1e9;
-            let mut limiting_rev_coeff: f64 = 1.0;
-            for (p, &coeff) in &eq.products {
-                let mut mol = self.species_mol.get(p).copied().unwrap_or(0.0);
-                // In aqueous solution, minerals containing product p can dissolve to supply p
-                for min in &self.minerals {
-                    if let Some(&prod_coeff) = min.dissolved_products.get(p) {
-                        let solid_m = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                        if solid_m > 1e-12 {
-                            mol += solid_m * prod_coeff;
-                        }
-                    }
-                }
-                let can_provide = mol / coeff;
-                if can_provide < max_rev_mol {
-                    max_rev_mol = can_provide;
-                    limiting_rev_coeff = coeff;
-                }
-            }
-
-            let raw_shift_conc = ln_k_over_q / deriv_denom.max(1e-6);
-            let fwd_damp = (0.85 / limiting_fwd_coeff).clamp(0.2, 0.85);
-            let rev_damp = (0.85 / limiting_rev_coeff).clamp(0.2, 0.85);
-
-            let target_shift_mol = if ln_k_over_q > 0.0 {
-                let c_eq_max = (k_t * q_den).powf(1.0 / prod_coeff_sum.max(1.0));
-                let shift_conc = raw_shift_conc.clamp(0.0, c_eq_max.min(1.0));
-                (shift_conc * vol_l).min(max_fwd_mol * fwd_damp)
-            } else if ln_k_over_q < 0.0 {
-                let c_eq_max = (q_num / k_t).powf(1.0 / react_coeff_sum.max(1.0));
-                let shift_conc = (-raw_shift_conc).clamp(0.0, c_eq_max.min(1.0));
-                -(shift_conc * vol_l).min(max_rev_mol * rev_damp)
-            } else {
-                0.0
-            };
-
-            if target_shift_mol > 1e-14 {
-                for (r, &coeff) in &eq.reactants {
-                    let needed = target_shift_mol * coeff;
-                    let avail = *self.species_mol.get(r).unwrap_or(&0.0);
-                    if avail >= needed {
-                        *self.species_mol.entry(r.clone()).or_default() -= needed;
-                    } else {
-                        *self.species_mol.entry(r.clone()).or_default() = 0.0;
-                        let mut deficit = needed - avail;
-                        for min in &self.minerals {
-                            if deficit <= 1e-14 {
-                                break;
-                            }
-                            if let Some(&prod_coeff) = min.dissolved_products.get(r) {
-                                if let Some(sm) = self.solid_mol.get_mut(&min.solid_species) {
-                                    if *sm > 1e-12 {
-                                        let dissolve_solid = (deficit / prod_coeff).min(*sm);
-                                        *sm -= dissolve_solid;
-                                        deficit -= dissolve_solid * prod_coeff;
-                                        for (other_prod, &other_coeff) in &min.dissolved_products {
-                                            if other_prod != r {
-                                                *self.species_mol.entry(other_prod.clone()).or_default() += dissolve_solid * other_coeff;
-                                            }
-                                        }
-                                        q_joules -= dissolve_solid * min.delta_h_kj * 1000.0;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                for (p, &coeff) in &eq.products {
-                    let m = self.species_mol.entry(p.clone()).or_default();
-                    *m = (*m + target_shift_mol * coeff).max(0.0);
-                }
-
-                q_joules -= target_shift_mol * delta_h_j;
-
-                self.active_reactions.push(ReactionRow {
-                    id: eq.id.clone(),
-                    equation: eq.equation.clone(),
-                    kind: "equilibrium".to_string(),
-                    rate: target_shift_mol.abs() / (vol_l * dt_s.max(0.001)),
-                    log_q_over_k: Some(log_q_over_k),
-                    tier: eq.tier.clone(),
-                    source: eq.source.clone(),
-                    active: true,
-                });
-            } else if target_shift_mol < -1e-14 {
-                let rev_shift = -target_shift_mol;
-                for (p, &coeff) in &eq.products {
-                    let needed = rev_shift * coeff;
-                    let avail = *self.species_mol.get(p).unwrap_or(&0.0);
-                    if avail >= needed {
-                        *self.species_mol.entry(p.clone()).or_default() -= needed;
-                    } else {
-                        *self.species_mol.entry(p.clone()).or_default() = 0.0;
-                        let mut deficit = needed - avail;
-                        for min in &self.minerals {
-                            if deficit <= 1e-14 {
-                                break;
-                            }
-                            if let Some(&prod_coeff) = min.dissolved_products.get(p) {
-                                if let Some(sm) = self.solid_mol.get_mut(&min.solid_species) {
-                                    if *sm > 1e-12 {
-                                        let dissolve_solid = (deficit / prod_coeff).min(*sm);
-                                        *sm -= dissolve_solid;
-                                        deficit -= dissolve_solid * prod_coeff;
-                                        for (other_prod, &other_coeff) in &min.dissolved_products {
-                                            if other_prod != p {
-                                                *self.species_mol.entry(other_prod.clone()).or_default() += dissolve_solid * other_coeff;
-                                            }
-                                        }
-                                        q_joules -= dissolve_solid * min.delta_h_kj * 1000.0;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                for (r, &coeff) in &eq.reactants {
-                    let m = self.species_mol.entry(r.clone()).or_default();
-                    *m = (*m + rev_shift * coeff).max(0.0);
-                }
-
-                q_joules += rev_shift * delta_h_j;
-
-                self.active_reactions.push(ReactionRow {
-                    id: eq.id.clone(),
-                    equation: eq.equation.clone(),
-                    kind: "equilibrium".to_string(),
-                    rate: rev_shift / (vol_l * dt_s.max(0.001)),
-                    log_q_over_k: Some(log_q_over_k),
-                    tier: eq.tier.clone(),
-                    source: eq.source.clone(),
-                    active: true,
-                });
-            }
-        }
-
-        // 2. Exact mineral precipitation and dissolution for general minerals
-        for min in &self.minerals {
-            if min.dissolved_products.is_empty() {
-                continue;
-            }
-
-            let delta_h_j = min.delta_h_kj * 1000.0;
-            let log_ksp_t = min.log_ksp_298 + (-delta_h_j / r_ideal) * (1.0 / t_k - 1.0 / 298.15) / 2.302585;
-            let ksp_t = 10.0_f64.powf(log_ksp_t);
-
-            // Handle 1:1 salts analytically
-            if min.dissolved_products.len() == 2 && min.dissolved_products.values().all(|&c| (c - 1.0).abs() < 1e-6) {
-                let mut keys = min.dissolved_products.keys();
-                let ion1 = keys.next().unwrap();
-                let ion2 = keys.next().unwrap();
-
-                let c1 = self.species_mol.get(ion1).copied().unwrap_or(0.0) / vol_l;
-                let c2 = self.species_mol.get(ion2).copied().unwrap_or(0.0) / vol_l;
-                let iap = c1 * c2;
-
-                if iap > ksp_t {
-                    let b = c1 + c2;
-                    let disc = (b * b - 4.0 * (iap - ksp_t)).max(0.0).sqrt();
-                    let x_ppt = ((b - disc) * 0.5).max(0.0);
-                    let ppt_mol = (x_ppt * vol_l).clamp(0.0, c1.min(c2) * vol_l);
-
-                    if ppt_mol > 1e-12 {
-                        *self.species_mol.entry(ion1.clone()).or_default() -= ppt_mol;
-                        *self.species_mol.entry(ion2.clone()).or_default() -= ppt_mol;
-                        *self.solid_mol.entry(min.solid_species.clone()).or_default() += ppt_mol;
-                        *self.initial_solids.entry(min.solid_species.clone()).or_default() += ppt_mol;
-                        q_joules += ppt_mol * delta_h_j;
-                    }
-                } else if iap < ksp_t {
-                    let solid_mol = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                    if solid_mol > 1e-12 {
-                        let b = c1 + c2;
-                        let disc = (b * b + 4.0 * (ksp_t - iap)).max(0.0).sqrt();
-                        let x_diss = ((-b + disc) * 0.5).max(0.0);
-                        let diss_mol = (x_diss * vol_l).clamp(0.0, solid_mol);
-
-                        if diss_mol > 1e-12 {
-                            *self.solid_mol.entry(min.solid_species.clone()).or_default() -= diss_mol;
-                            *self.species_mol.entry(ion1.clone()).or_default() += diss_mol;
-                            *self.species_mol.entry(ion2.clone()).or_default() += diss_mol;
-                            q_joules -= diss_mol * delta_h_j;
-                        }
-                    }
-                }
-            } else {
-                // Arbitrary stoichiometry (e.g. 1:2, 1:3, 2:3 salts)
-                let mut iap = 1.0;
-                let mut deriv_denom = 0.0;
-                let mut max_ppt_avail: f64 = 1e9;
-                for (ion, &coeff) in &min.dissolved_products {
-                    let c = (self.species_mol.get(ion).copied().unwrap_or(0.0) / vol_l).max(1e-25);
-                    iap *= c.powf(coeff);
-                    deriv_denom += coeff * coeff / c.max(1e-6);
-                    let mol = self.species_mol.get(ion).copied().unwrap_or(0.0);
-                    max_ppt_avail = max_ppt_avail.min(mol / coeff);
-                }
-
-                if iap > ksp_t {
-                    let ln_iap_over_k = (iap / ksp_t).ln();
-                    let delta_xi = (ln_iap_over_k / deriv_denom.max(1e-6)).clamp(0.0, 1.0);
-                    let ppt_mol = (delta_xi * vol_l).clamp(0.0, max_ppt_avail * 0.85);
-
-                    if ppt_mol > 1e-12 {
-                        for (ion, &coeff) in &min.dissolved_products {
-                            *self.species_mol.entry(ion.clone()).or_default() -= ppt_mol * coeff;
-                        }
-                        *self.solid_mol.entry(min.solid_species.clone()).or_default() += ppt_mol;
-                        *self.initial_solids.entry(min.solid_species.clone()).or_default() += ppt_mol;
-                        q_joules += ppt_mol * delta_h_j;
-                    }
-                } else if iap < ksp_t {
-                    let solid_mol = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                    if solid_mol > 1e-12 {
-                        let ln_k_over_iap = (ksp_t / iap.max(1e-40)).ln();
-                        let delta_xi = (ln_k_over_iap / deriv_denom.max(1e-6)).clamp(0.0, 1.0);
-                        let diss_mol = (delta_xi * vol_l).clamp(0.0, solid_mol * 0.85);
-
-                        if diss_mol > 1e-12 {
-                            *self.solid_mol.entry(min.solid_species.clone()).or_default() -= diss_mol;
-                            for (ion, &coeff) in &min.dissolved_products {
-                                *self.species_mol.entry(ion.clone()).or_default() += diss_mol * coeff;
-                            }
-                            q_joules -= diss_mol * delta_h_j;
-                        }
-                    }
-                }
-            }
-        }
-
-        for mol in self.solid_mol.values_mut() {
-            if *mol < 1e-7 {
-                *mol = 0.0;
             }
         }
 
@@ -1061,12 +762,7 @@ impl Vessel {
                 });
 
                 if boiled_mol >= water_mol - 1e-5 {
-                    self.events.push(VesselEvent {
-                        kind: VesselEventKind::DryOut,
-                        t_sim_s: self.t_sim_s,
-                        detail: Some("Vessel boiled dry".to_string()),
-                        severity: Some(0.8),
-                    });
+                    self.push_event(VesselEventKind::DryOut, "Vessel boiled dry".to_string(), 0.8);
                 }
             }
         }
@@ -1107,23 +803,13 @@ impl Vessel {
 
         if self.pressure_atm >= pop_thresh && self.sealed {
             self.sealed = false;
-            self.events.push(VesselEvent {
-                kind: VesselEventKind::StopperPop,
-                t_sim_s: self.t_sim_s,
-                detail: Some(format!("Stopper popped at {:.2} atm", self.pressure_atm)),
-                severity: Some(0.7),
-            });
+            self.push_event(VesselEventKind::StopperPop, format!("Stopper popped at {:.2} atm", self.pressure_atm), 0.7);
             self.pressure_atm = 1.0;
             self.headspace_gas_mol.clear();
         } else if self.pressure_atm >= burst_thresh {
             self.burst = true;
             self.sealed = false;
-            self.events.push(VesselEvent {
-                kind: VesselEventKind::Burst,
-                t_sim_s: self.t_sim_s,
-                detail: Some(format!("Vessel burst at {:.2} atm!", self.pressure_atm)),
-                severity: Some(1.0),
-            });
+            self.push_event(VesselEventKind::Burst, format!("Vessel burst at {:.2} atm!", self.pressure_atm), 1.0);
             self.pressure_atm = 1.0;
         }
     }
@@ -1171,19 +857,9 @@ impl Vessel {
             }
             let thermo = chem_db::get_species_thermo(sp);
             let mass_g = mol * thermo.mw;
-            let opt = spectra::solid_optics(sp);
-            let density = opt.map(|o| o.density_g_ml).unwrap_or(2.5);
-            let kind_str = opt.map(|o| o.kind).unwrap_or("powder");
-            let kind = match kind_str {
-                "powder" => SolidKind::Powder,
-                "crystal" => SolidKind::Crystal,
-                "metal" => SolidKind::Metal,
-                "gel" => SolidKind::Gel,
-                "curds" => SolidKind::Curds,
-                _ => SolidKind::Powder,
-            };
-            let rgb = opt.map(|o| o.rgb_linear).unwrap_or([0.9, 0.9, 0.9]);
-            let diameter = opt.map(|o| o.default_particle_um).unwrap_or(20.0);
+            let props = self.solid_props(sp);
+            let kind = props.kind;
+            let density = props.density_g_ml;
 
             let settled_vol = (mass_g / density) * 1.6;
             let init_mol = *self.initial_solids.get(sp).unwrap_or(&mol);
@@ -1191,12 +867,12 @@ impl Vessel {
 
             solids.push(SolidVisual {
                 species: sp.clone(),
-                name: sp.clone(),
+                name: props.name.clone(),
                 mass_g,
                 settled_volume_ml: settled_vol,
-                suspended_fraction: if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 },
-                particle_diameter_um: diameter,
-                rgb,
+                suspended_fraction: self.ev.susp.get(sp).copied().unwrap_or(if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 }),
+                particle_diameter_um: props.particle_um,
+                rgb: props.rgb,
                 kind,
                 floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
                 remaining_fraction: Some(rem_frac),
@@ -1416,18 +1092,17 @@ impl Vessel {
             if mol > 1e-9 {
                 let thermo = chem_db::get_species_thermo(sp);
                 let mass_g = mol * thermo.mw;
-                let mass_conc = (mass_g / vol_ml) * 0.8;
-                if let Some(opt) = spectra::solid_optics(sp) {
-                    let sc = optics::scatter_extinction_per_cm(
-                        mass_conc,
-                        opt.default_particle_um,
-                        opt.density_g_ml,
-                        opt.refractive_index,
-                        1.333,
-                    );
-                    total_scatter += sc;
-                    rgb = opt.rgb_linear;
-                }
+                let mass_conc = (mass_g / vol_ml) * self.ev.susp.get(sp).copied().unwrap_or(0.8).clamp(0.0, 1.0);
+                let props = self.solid_props(sp);
+                let sc = optics::scatter_extinction_per_cm(
+                    mass_conc,
+                    props.particle_um,
+                    props.density_g_ml,
+                    props.refractive_index,
+                    1.333,
+                );
+                total_scatter += sc;
+                rgb = props.rgb;
             }
         }
 

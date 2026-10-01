@@ -62,6 +62,14 @@ export interface VesselBundle extends GlasswareMeshBundle {
   dispose: () => void;
 }
 
+const warned = new Set<string>();
+/** console.warn once per key, so a per-frame failure cannot flood the console (or take the whole frame down). */
+function warnOnce(key: string, ...args: unknown[]) {
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(`[glassware] ${key}`, ...args);
+}
+
 let defaultOptics: OpticsTables | null = null;
 /** Optics tables used when applyVisual is called without them. */
 export function setDefaultOpticsTables(t: OpticsTables | null) {
@@ -318,6 +326,7 @@ export function createGlassware(state: VesselState): VesselBundle {
   let groundY = 0;
   let burst = false;
   let renderBase = 0;
+  let checkTimer = 0;
   const bundle: VesselBundle = {
     group,
     glassMesh,
@@ -343,9 +352,24 @@ export function createGlassware(state: VesselState): VesselBundle {
       state.currentVolumeMl = snap.total_liquid_ml;
       state.temperatureK = snap.temperature_k;
       if (snap.ph !== null && snap.ph !== undefined) state.ph = snap.ph;
-      liquid.setLayers(snap.layers || [], snap.total_liquid_ml, opticsTables ?? defaultOptics);
-      state.liquidColor = liquid.getApparentHex();
-      effects.applySnapshot(snap);
+      // The liquid body must render even if a secondary effect (bubbles, foam, bed...) throws, and vice versa.
+      try {
+        liquid.setLayers(snap.layers || [], snap.total_liquid_ml, opticsTables ?? defaultOptics);
+        state.liquidColor = liquid.getApparentHex();
+      } catch (e) {
+        warnOnce('liquid.setLayers failed (falling back to a clear liquid of the same volume)', e);
+        try {
+          liquid.setSimple(snap.total_liquid_ml || 0, state.liquidColor || '#e8f4fa', 0.3);
+        } catch (e2) {
+          warnOnce('liquid.setSimple failed', e2);
+        }
+      }
+      try {
+        effects.applySnapshot(snap);
+      } catch (e) {
+        warnOnce('effects.applySnapshot failed', e);
+      }
+      if (checkTimer <= 0) checkTimer = 0.6; // self check shortly after the contents changed (rate-limited)
     },
 
     setStirring: (rpm: number) => {
@@ -360,9 +384,24 @@ export function createGlassware(state: VesselState): VesselBundle {
     getLiquidColorHex: () => liquid.getApparentHex(),
 
     tick: (dt: number, time: number) => {
-      if (!bundle.lastSnapshot) effects.setSealed(state.isSealed);
-      liquid.tick(dt, time, glassRoot.matrixWorld);
-      effects.tick(dt, time);
+      try {
+        if (!bundle.lastSnapshot) effects.setSealed(state.isSealed);
+        liquid.tick(dt, time, glassRoot.matrixWorld);
+      } catch (e) {
+        warnOnce('liquid.tick failed', e);
+      }
+      try {
+        effects.tick(dt, time);
+      } catch (e) {
+        warnOnce('effects.tick failed', e);
+      }
+      if (checkTimer > 0) {
+        checkTimer -= dt;
+        if (checkTimer <= 0) {
+          const problem = liquid.diagnose();
+          if (problem) warnOnce(`vessel ${state.id}: ${problem}`, { volumeMl: liquid.volumeMl, fillY: liquid.fillY });
+        }
+      }
       const target = selected ? 0.85 : hovered ? 0.35 : 0;
       ringOpacity += (target - ringOpacity) * Math.min(1, dt * 8);
       ringMat.opacity = ringOpacity * (selected ? 0.85 + 0.15 * Math.sin(time * 2.5) : 1);

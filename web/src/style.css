@@ -1334,6 +1334,20 @@ kbd {
   white-space: nowrap;
 }
 
+.ev-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  align-self: center;
+}
+
+.ev-sentence {
+  color: var(--ink, inherit);
+  white-space: normal;
+}
+
 .ev-t {
   margin-left: auto;
   font-family: var(--mono);

@@ -1,13 +1,14 @@
 // Reagent library: the WASM catalog (reacting reagents) + PubChem imports (visual only) + recently used.
 // Fully data-driven — no per-compound tables — so it scales to thousands of entries.
-import { ReagentCatalogEntry } from '../types/sim';
+import { ReagentCatalogEntry, CompoundModel } from '../types/sim';
 import { BottleState } from '../types';
 import { loadJSON, saveJSON } from './storage';
 import { importIsSolid } from '../pubchem/parser';
 
 export type ReagentItem =
   | { kind: 'catalog'; key: string; id: string; entry: ReagentCatalogEntry }
-  | { kind: 'imported'; key: string; id: string; bottle: BottleState };
+  /** `model` is the engine's formula-driven reaction model (modelable=false -> visual only; undefined = not modelled yet). */
+  | { kind: 'imported'; key: string; id: string; bottle: BottleState; model?: CompoundModel };
 
 export type ReagentFilter = 'all' | 'solution' | 'liquid' | 'solid' | 'indicator' | 'imported';
 export type AmountMode = 'ml' | 'g' | 'drops';
@@ -32,6 +33,7 @@ export const NEUTRAL_STREAM = '#e8f4fa';
 export class ReagentLibrary {
   private catalog: ReagentCatalogEntry[] = [];
   private imported: BottleState[] = [];
+  private models = new Map<string, CompoundModel>();
   private recent: string[] = [];
   private items = new Map<string, ReagentItem>();
   private ordered: ReagentItem[] = [];
@@ -70,6 +72,16 @@ export class ReagentLibrary {
     return this.items.get(`pc:${b.id}`)!;
   }
 
+  /** Records the engine's reaction model for an imported bottle (it then becomes dosable as a reacting reagent). */
+  public setModel(bottleId: string, model: CompoundModel) {
+    this.models.set(bottleId, model);
+    this.rebuild();
+  }
+
+  public modelOf(bottleId: string): CompoundModel | undefined {
+    return this.models.get(bottleId);
+  }
+
   public persistImported() {
     saveJSON(IMPORTED_KEY, this.imported);
   }
@@ -90,7 +102,7 @@ export class ReagentLibrary {
       this.ordered.push(it);
     }
     for (const b of this.imported) {
-      const it: ReagentItem = { kind: 'imported', key: `pc:${b.id}`, id: b.id, bottle: b };
+      const it: ReagentItem = { kind: 'imported', key: `pc:${b.id}`, id: b.id, bottle: b, model: this.models.get(b.id) };
       this.items.set(it.key, it);
       this.ordered.push(it);
     }
@@ -117,9 +129,9 @@ export class ReagentLibrary {
 
   /** Catalog entry with the same formula as an imported compound (offers the reacting version). */
   public catalogMatchFor(b: BottleState): ReagentCatalogEntry | undefined {
-    const f = normFormula(b.formula);
+    const f = formulaKey(b.formula);
     if (!f) return undefined;
-    return this.catalog.find((e) => normFormula(e.formula) === f);
+    return this.catalog.find((e) => e.id !== b.id && formulaKey(e.formula) === f);
   }
 
   public matchesFilter(it: ReagentItem, f: ReagentFilter): boolean {
@@ -173,8 +185,49 @@ export class ReagentLibrary {
 }
 
 // ------------------------------------------------------------------ item presentation (generic)
-function normFormula(f: string): string {
-  return (f || '').replace(/\s+/g, '').toLowerCase();
+/**
+ * Order-independent key of a chemical formula (element multiset), so PubChem's Hill-ordered "ClNa" matches "NaCl".
+ * Hydrate suffixes ("·5H2O") are ignored; unparsable text falls back to the lower-cased string.
+ */
+export function formulaKey(formula: string): string {
+  const raw = (formula || '').replace(/\s+/g, '');
+  const body = raw.split(/[·.*•]/)[0];
+  const counts = new Map<string, number>();
+  let i = 0;
+  const group = (depth: number): boolean => {
+    while (i < body.length) {
+      const c = body[i];
+      if (c === '(' || c === '[') {
+        i++;
+        const before = new Map(counts);
+        counts.clear();
+        if (!group(depth + 1)) return false;
+        const inner = new Map(counts);
+        let n = '';
+        while (i < body.length && /[0-9]/.test(body[i])) n += body[i++];
+        const mult = n ? parseInt(n, 10) : 1;
+        counts.clear();
+        before.forEach((v, k) => counts.set(k, v));
+        inner.forEach((v, k) => counts.set(k, (counts.get(k) ?? 0) + v * mult));
+      } else if (c === ')' || c === ']') {
+        i++;
+        return depth > 0;
+      } else if (/[A-Z]/.test(c)) {
+        let sym = c;
+        i++;
+        if (i < body.length && /[a-z]/.test(body[i])) sym += body[i++];
+        let n = '';
+        while (i < body.length && /[0-9]/.test(body[i])) n += body[i++];
+        counts.set(sym, (counts.get(sym) ?? 0) + (n ? parseInt(n, 10) : 1));
+      } else return false;
+    }
+    return depth === 0;
+  };
+  if (!body || !group(0) || counts.size === 0) return raw.toLowerCase();
+  return Array.from(counts.entries())
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([k, v]) => `${k}${v}`)
+    .join('');
 }
 
 export function formulaOf(it: ReagentItem): string {
@@ -192,7 +245,10 @@ export function displayName(it: ReagentItem): string {
 }
 
 export function amountMode(it: ReagentItem): AmountMode {
-  if (it.kind === 'imported') return importIsSolid(it.bottle) ? 'g' : 'ml';
+  if (it.kind === 'imported') {
+    if (it.model?.modelable && it.model.entry) return it.model.entry.by_mass ? 'g' : 'ml';
+    return importIsSolid(it.bottle) ? 'g' : 'ml';
+  }
   if (it.entry.dropper) return 'drops';
   if (it.entry.by_mass) return 'g';
   return 'ml';
@@ -200,7 +256,16 @@ export function amountMode(it: ReagentItem): AmountMode {
 
 /** Short descriptor, e.g. "0.10 M solution", "powder", "liquid", "dropper bottle". */
 export function strengthLabel(it: ReagentItem): string {
-  if (it.kind === 'imported') return importIsSolid(it.bottle) ? 'imported solid · visual only' : 'imported · visual only';
+  if (it.kind === 'imported') {
+    const m = it.model;
+    if (m?.modelable && m.entry) {
+      if (m.entry.by_mass) return 'imported solid · reacts';
+      const c = m.entry.concentration_m;
+      return c ? `imported · ${c >= 1 ? c.toFixed(1) : c.toPrecision(2)} M solution · reacts` : 'imported · reacts';
+    }
+    if (m) return importIsSolid(it.bottle) ? 'imported solid · visual only' : 'imported · visual only';
+    return importIsSolid(it.bottle) ? 'imported solid' : 'imported';
+  }
   const e = it.entry;
   const pct = e.name.match(/(\d[\d.]*\s*%)/);
   if (e.dropper) return pct ? `${pct[1]} · drops` : 'dropper';

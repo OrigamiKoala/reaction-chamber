@@ -38,7 +38,8 @@ export class SpriteParticles {
   /** Called for each live particle before integration; return false to kill it. */
   public behaviour?: (i: number, dt: number) => boolean;
 
-  constructor(cap: number, map: THREE.Texture, opts: { additive?: boolean; renderOrder?: number } = {}) {
+  /** `minPx`: smallest on-screen sprite diameter (device px); keeps tiny world-sized grains from vanishing at bench distance. */
+  constructor(cap: number, map: THREE.Texture, opts: { additive?: boolean; renderOrder?: number; minPx?: number } = {}) {
     this.cap = cap;
     this.pos = new Float32Array(cap * 3);
     this.vel = new Float32Array(cap * 3);
@@ -62,18 +63,19 @@ export class SpriteParticles {
     this.geo.setDrawRange(0, 0);
     this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: map }, uScale: pointScale },
+      uniforms: { uMap: { value: map }, uScale: pointScale, uMinPx: { value: opts.minPx ?? 0 } },
       vertexShader: /* glsl */ `
         attribute float aSize;
         attribute float aAlpha;
         attribute vec3 aColor;
         uniform float uScale;
+        uniform float uMinPx;
         varying float vA;
         varying vec3 vC;
         void main() {
           vec4 mv = modelViewMatrix * vec4( position, 1.0 );
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = clamp( aSize * uScale / max( -mv.z, 0.1 ), 0.0, 512.0 );
+          gl_PointSize = clamp( max( aSize * uScale / max( -mv.z, 0.1 ), uMinPx ), 0.0, 512.0 );
           vA = aAlpha;
           vC = aColor;
         }`,

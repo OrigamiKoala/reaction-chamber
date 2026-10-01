@@ -24,6 +24,7 @@ import init, {
   register_reaction,
   register_equilibrium,
   register_mineral,
+  import_compound,
   m6_get_reaction_families,
   m6_calculate_mayr_rate,
   m6_sn2_e2_competition,
@@ -314,6 +315,16 @@ self.onmessage = async (e: MessageEvent) => {
         const res = register_equilibrium(JSON.stringify(payload));
         self.postMessage({
           type: 'REGISTER_EQUILIBRIUM_RESPONSE',
+          payload: JSON.parse(res),
+          requestId,
+        });
+        break;
+      }
+
+      case 'IMPORT_COMPOUND': {
+        const res = import_compound(JSON.stringify(payload));
+        self.postMessage({
+          type: 'IMPORT_COMPOUND_RESPONSE',
           payload: JSON.parse(res),
           requestId,
         });

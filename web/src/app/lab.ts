@@ -3,7 +3,7 @@
 import type { BenchScene } from '../bench/scene';
 import type { SimController } from '../sim/sim_controller';
 import { VesselState } from '../types';
-import { VesselConfig, VesselSnapshot } from '../types/sim';
+import { VesselConfig, VesselSnapshot, ReagentCatalogEntry } from '../types/sim';
 import { ReagentItem, amountMode, streamColour } from './reagent_library';
 import { VisualContents, VisualItem, hexToLinear } from './visual_contents';
 import { knownReagentColor } from './reagent_colors';
@@ -291,9 +291,16 @@ export class Lab {
     return amount;
   }
 
+  /** The engine reagent entry an item doses as, or undefined when it is visual-only (unmodelable import). */
+  private engineEntry(item: ReagentItem): ReagentCatalogEntry | undefined {
+    if (item.kind === 'catalog') return item.entry;
+    return item.model?.modelable && item.model.entry ? item.model.entry : undefined;
+  }
+
   /**
    * Plays the matching bench animation and performs the chemistry when it completes.
-   * Catalog reagents react; PubChem imports are visual only (returns 'visual').
+   * Catalog reagents and imports the engine could model (ions from the formula) react; only imports with no
+   * reaction model are visual-only (returns 'visual').
    */
   public async addReagent(item: ReagentItem, vesselId: string, amount: number): Promise<'dosed' | 'visual'> {
     if (!this.vessels.has(vesselId)) throw new Error('That vessel is no longer on the bench.');
@@ -302,8 +309,9 @@ export class Lab {
     const free = this.freeCapacityMl(vesselId);
     if (addMl > free + 1e-6) throw new Error(`Only ${free.toFixed(1)} mL of space left.`);
     const colour = streamColour(item);
+    const e = this.engineEntry(item);
 
-    if (item.kind === 'imported') {
+    if (!e && item.kind === 'imported') {
       const b = item.bottle;
       const mode = amountMode(item);
       await this.animate((done) => {
@@ -311,7 +319,7 @@ export class Lab {
         else this.bench.animatePour(item.id, vesselId, colour, done);
       });
       if (!this.vessels.has(vesselId)) throw new Error('That vessel was removed before the addition finished.');
-      // No reaction data: keep what was added as visible contents (powder bed / coloured liquid).
+      // No reaction model: keep what was added as visible contents (powder bed / coloured liquid).
       const density = b.userOverrides?.density ?? b.sourcedProperties?.density;
       const rho = typeof density === 'number' && isFinite(density) && density > 0.05 && density < 25 ? density : mode === 'g' ? 1.6 : 1.0;
       const vis: VisualItem = {
@@ -329,13 +337,13 @@ export class Lab {
       await this.sim.fetchSnapshot(vesselId);
       return 'visual';
     }
+    if (!e) throw new Error('Unknown reagent.');
 
-    const e = item.entry;
     const mode = amountMode(item);
     await this.animate((done) => {
-      if (mode === 'drops') this.bench.animateDrops(e.id, vesselId, Math.round(amount), colour, done);
-      else if (mode === 'g') this.bench.animateSolidAddition(e.id, vesselId, colour, done);
-      else this.bench.animatePour(e.id, vesselId, colour, done);
+      if (mode === 'drops') this.bench.animateDrops(item.id, vesselId, Math.round(amount), colour, done);
+      else if (mode === 'g') this.bench.animateSolidAddition(item.id, vesselId, colour, done);
+      else this.bench.animatePour(item.id, vesselId, colour, done);
     });
     if (!this.vessels.has(vesselId)) throw new Error('That vessel was removed before the addition finished.');
     if (mode === 'drops') await this.sim.dose(vesselId, { reagent_id: e.id, drops: Math.round(amount) });
@@ -343,12 +351,13 @@ export class Lab {
       // The engine may dissolve a soluble solid instantly; keep a pile that visibly dissolves away instead of
       // letting the powder vanish the moment it lands (metals are consumed by reaction, not dissolved).
       if (!looksLikeMetal(e.formula, e.name)) {
+        const own = item.kind === 'imported' && /^#[0-9a-f]{6}$/i.test(item.bottle.color) ? item.bottle.color : undefined;
         this.visual.add(vesselId, {
           key: e.id,
           name: e.name,
           formula: e.formula,
           kind: 'solid',
-          rgb: hexToLinear(knownReagentColor(e.id) ?? '#f4f3ef'),
+          rgb: hexToLinear(knownReagentColor(e.id) ?? own ?? '#f4f3ef'),
           mass_g: amount,
           volume_ml: 0,
           density_g_ml: e.density_g_ml || 1.6,

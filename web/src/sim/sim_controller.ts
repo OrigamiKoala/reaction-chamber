@@ -6,6 +6,8 @@ import {
   VesselSnapshot,
   OpticsTables,
   ReagentCatalogEntry,
+  CompoundRequest,
+  CompoundModel,
 } from '../types/sim';
 
 export class SimController {
@@ -131,6 +133,11 @@ export class SimController {
 
   public async registerCustomCompound(entry: ReagentCatalogEntry): Promise<any> {
     return this.sendRequest('REGISTER_COMPOUND', entry);
+  }
+
+  /** Models an imported compound (formula-driven) as a reacting reagent and registers it with the engine. */
+  public async importCompound(req: CompoundRequest): Promise<CompoundModel> {
+    return this.sendRequest<CompoundModel>('IMPORT_COMPOUND', req);
   }
 
   public async registerCustomReaction(rxn: any): Promise<any> {

@@ -3,6 +3,7 @@ import './style.css';
 import { BenchScene } from './bench/scene';
 import { SimController } from './sim/sim_controller';
 import { BottleState } from './types';
+import { importIsSolid } from './pubchem/parser';
 import { OpticsTables, ReagentCatalogEntry, VesselSnapshot } from './types/sim';
 import { initDataBundle, importCompound } from './pubchem/api';
 import { Lab } from './app/lab';
@@ -28,6 +29,8 @@ let sessionToken = new URLSearchParams(window.location.search).get('token') || '
 
 const SHELF_SEED = 8;
 const NOTABLE_EVENTS = new Set(['stopper_pop', 'ignition', 'flame_out', 'boil_over', 'dry_out', 'splatter']);
+/** Reaction-log events that are worth a toast the first time they happen in a vessel (engine supplies the sentence). */
+const REACTION_TOAST_EVENTS = new Set(['precipitate_formed', 'gas_evolved', 'colour_change', 'temperature_change']);
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -83,6 +86,31 @@ async function initApp() {
     catalogMatchFor: (it) => (it.kind === 'imported' ? lib.catalogMatchFor(it.bottle) : undefined),
   });
   const reagentPanel = new ReagentPanel(lib, addCard);
+
+  /**
+   * Asks the engine to model an imported compound from its formula (ions, solubility, ...). Compounds it can model
+   * become real reacting reagents; the rest stay visual-only with an explanation.
+   */
+  const modelImported = async (b: BottleState) => {
+    try {
+      const density = b.userOverrides?.density ?? b.sourcedProperties?.density;
+      const model = await sim.importCompound({
+        id: b.id,
+        name: b.name,
+        formula: b.formula,
+        smiles: b.smiles || undefined,
+        mw: b.mw || undefined,
+        density: typeof density === 'number' && isFinite(density) ? density : undefined,
+        state: importIsSolid(b) ? 'solid' : b.state === 'gas' ? 'gas' : 'liquid',
+        ghs: [],
+      });
+      lib.setModel(b.id, model);
+      return model;
+    } catch (err) {
+      console.warn('[Main] compound modelling failed', b.name, err);
+      return undefined;
+    }
+  };
 
   const readouts = (): Readouts => {
     const ins = bench.instruments;
@@ -176,7 +204,7 @@ async function initApp() {
       const result = await lab.addReagent(it, vesselId, amount);
       lib.markUsed(it.key);
       putOnShelf(it);
-      if (result === 'visual') toast(`Poured ${displayName(it)} — visual only, nothing reacts.`, 'info');
+      if (result === 'visual') toast(`Added ${displayName(it)} — visual only: the engine has no reaction chemistry for this compound.`, 'info');
     } catch (err) {
       toast(`Couldn't add ${displayName(it)}: ${errMsg(err)}`, 'error');
     }
@@ -185,7 +213,11 @@ async function initApp() {
     const it = lib.get(`pc:${b.id}`);
     if (it) openReagent(it);
   };
-  bottleCard.onBottleUpdated = () => lib.persistImported();
+  bottleCard.onBottleUpdated = (b) => {
+    lib.persistImported();
+    // Overrides (density, melting point -> solid/liquid) change how the compound is dosed: re-model it.
+    void modelImported(b);
+  };
 
   reagentPanel.onImportPubChem = async (name) => {
     try {
@@ -205,9 +237,12 @@ async function initApp() {
         remainingMl: 500,
         state: rec.physical_state,
       };
-      const it = lib.addImported(bottle);
+      const it0 = lib.addImported(bottle);
+      const model = await modelImported(it0.kind === 'imported' ? it0.bottle : bottle);
+      const it = lib.get(it0.key) ?? it0;
       openReagent(it);
-      toast(`Imported ${rec.name} from PubChem. It's visual only — no reaction data.`, 'success');
+      if (model?.modelable) toast(`Imported ${rec.name} from PubChem. ${model.reason}.`, 'success');
+      else toast(`Imported ${rec.name} from PubChem. It's visual only — ${model?.reason ?? 'no reaction model available'}.`, 'info');
     } catch (err) {
       toast(`Couldn't import “${name}” from PubChem: ${errMsg(err)}`, 'error');
     }
@@ -280,7 +315,8 @@ async function initApp() {
 
   // ------------------------------------------------------------------ snapshot loop (20 Hz)
   const lastSeen = new Map<string, number>();
-  const eventCounts = new Map<string, number>();
+  const eventCursor = new Map<string, number>();
+  let lastChemToast = 0;
   const burstHandled = new Set<string>();
   let lastAddCardRefresh = 0;
 
@@ -309,14 +345,24 @@ async function initApp() {
       toast(`${name} burst — the pressure was too high.`, 'error');
     }
 
+    // Events carry a monotonic `seq` (the engine caps the list); don't replay history on first sight.
     const evs = snap.events ?? [];
-    const seen = eventCounts.get(id) ?? evs.length; // don't replay history on first sight
-    if (evs.length > seen) {
-      const fresh = evs.slice(seen).filter((e) => NOTABLE_EVENTS.has(e.kind));
-      const kinds = Array.from(new Set(fresh.map((e) => e.kind)));
+    const lastSeq = evs.reduce((m, e) => Math.max(m, e.seq ?? 0), 0);
+    const seen = eventCursor.get(id);
+    if (seen === undefined) {
+      eventCursor.set(id, lastSeq);
+    } else if (lastSeq > seen) {
+      const fresh = evs.filter((e) => (e.seq ?? 0) > seen);
+      const kinds = Array.from(new Set(fresh.filter((e) => NOTABLE_EVENTS.has(e.kind)).map((e) => e.kind)));
       for (const k of kinds) toast(`${name}: ${EVENT_LABELS[k] ?? k}`, k === 'ignition' || k === 'boil_over' ? 'warning' : 'info');
+      // Reaction log: toast the first notable chemistry in this addition (one toast per batch, not per tick)
+      const chem = fresh.find((e) => REACTION_TOAST_EVENTS.has(e.kind) && e.detail);
+      if (chem && now - lastChemToast > 4000) {
+        lastChemToast = now;
+        toast(`${name}: ${chem.detail}`, 'info');
+      }
+      eventCursor.set(id, lastSeq);
     }
-    eventCounts.set(id, evs.length);
 
     if (id === lab.selectedId) {
       try {
@@ -402,6 +448,9 @@ async function initApp() {
   } catch (err) {
     toast(`Couldn't load reagents: ${errMsg(err)}`, 'error');
   }
+
+  // Imported compounds persist in localStorage but the engine is in-memory: re-model them (formula-driven, fast).
+  await Promise.all(lib.importedBottles().map((b) => modelImported(b)));
 
   // Shelf: recently used first; a few catalog entries for first-time visitors.
   const recent = lib.recentItems();

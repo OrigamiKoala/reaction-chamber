@@ -206,6 +206,7 @@ export class VesselEffects {
   private puddleTarget = 0;
   public burst = false;
 
+  private failed = new Set<string>();
   private seenEvents = new Set<string>();
   private spawnAcc = { bubbles: 0, boil: 0, steam: 0, fume: 0, precip: 0, spill: 0 };
   private spillTime = 0;
@@ -227,7 +228,7 @@ export class VesselEffects {
     this.smoke.fadeIn = 0.2;
     this.splash = new SpriteParticles(140, softSpriteTexture());
     this.splash.fadeIn = 0;
-    this.precip = new SpriteParticles(300, softSpriteTexture());
+    this.precip = new SpriteParticles(300, softSpriteTexture(), { minPx: 3 });
     this.precip.fadeIn = 0.3;
     this.flame = new FlameCluster(p.rimInnerRadius > 2 ? 4 : 2);
     this.group.add(this.bubbles.mesh, this.smoke.points, this.splash.points, this.precip.points, this.flame.group);
@@ -398,26 +399,30 @@ export class VesselEffects {
   // ---------------------------------------------------------------- snapshot
   public applySnapshot(snap: VesselSnapshot) {
     this.snap = snap;
-    if (snap.sealed !== this.sealed && !snap.burst) this.setSealed(snap.sealed);
-    for (const ev of snap.events || []) {
-      const key = `${ev.kind}@${ev.t_sim_s.toFixed(3)}`;
-      if (this.seenEvents.has(key)) continue;
-      this.seenEvents.add(key);
-      if (this.seenEvents.size > 300) this.seenEvents.clear();
-      if (ev.kind === 'stopper_pop') this.popStopper();
-      else if (ev.kind === 'burst') this.triggerBurst();
-      else if (ev.kind === 'boil_over') this.spillTime = 1.6;
-      else if (ev.kind === 'splatter') this.spatter(10);
-    }
-    if (snap.burst && !this.burst) this.triggerBurst();
-
-    this.foamTarget = Math.max(0, Math.min(1, snap.foam));
-    this.condLevel = Math.max(0, Math.min(1, snap.condensation));
-    this.liquid.setBoil(snap.boil_intensity);
-    let gas = 0;
-    for (const g of snap.gas_fluxes) gas += g.rate_ml_s;
-    this.liquid.setGasAgitation(Math.min(1, gas / 4));
-    this.processSolids(snap.solids, snap.total_liquid_ml);
+    // Solids first: they are the part users look for, and an unrelated failure (events, foam) must not skip them.
+    this.safe('solids', () => this.processSolids(snap.solids || [], snap.total_liquid_ml));
+    this.safe('events', () => {
+      if (snap.sealed !== this.sealed && !snap.burst) this.setSealed(snap.sealed);
+      for (const ev of snap.events || []) {
+        const key = `${ev.kind}@${ev.t_sim_s.toFixed(3)}`;
+        if (this.seenEvents.has(key)) continue;
+        this.seenEvents.add(key);
+        if (this.seenEvents.size > 300) this.seenEvents.clear();
+        if (ev.kind === 'stopper_pop') this.popStopper();
+        else if (ev.kind === 'burst') this.triggerBurst();
+        else if (ev.kind === 'boil_over') this.spillTime = 1.6;
+        else if (ev.kind === 'splatter') this.spatter(10);
+      }
+      if (snap.burst && !this.burst) this.triggerBurst();
+    });
+    this.safe('gas/foam', () => {
+      this.foamTarget = Math.max(0, Math.min(1, snap.foam || 0));
+      this.condLevel = Math.max(0, Math.min(1, snap.condensation || 0));
+      this.liquid.setBoil(snap.boil_intensity || 0);
+      let gas = 0;
+      for (const g of snap.gas_fluxes || []) gas += g.rate_ml_s;
+      this.liquid.setGasAgitation(Math.min(1, gas / 4));
+    });
   }
 
   private processSolids(solids: SolidVisual[], totalMl: number) {
@@ -817,6 +822,17 @@ export class VesselEffects {
   }
 
   // ---------------------------------------------------------------- per frame
+  /** Runs one effect. A failure is logged once and never stops the other effects (or the liquid body itself). */
+  private safe(name: string, fn: () => void) {
+    try {
+      fn();
+    } catch (e) {
+      if (this.failed.has(name)) return;
+      this.failed.add(name);
+      console.warn(`[effects] ${name} failed (the other effects keep running)`, e);
+    }
+  }
+
   public tick(dt: number, time: number) {
     this.time = time;
     const snap = this.snap;
@@ -833,161 +849,187 @@ export class VesselEffects {
     const col = this.appColor;
 
     // ---- bubbles
-    if (snap && hasLiquid) {
-      for (const g of snap.gas_fluxes) this.spawnGas(g, dt, fill);
-      if (snap.boil_intensity > 0.01) {
-        this.spawnAcc.boil += snap.boil_intensity * 55 * dt;
-        while (this.spawnAcc.boil >= 1) {
-          this.spawnAcc.boil -= 1;
-          const R = innerRadiusAt(p, p.innerBottomY + 0.3) * 0.8;
-          const a = Math.random() * Math.PI * 2;
-          const rr = Math.sqrt(Math.random()) * R;
-          const rad = rnd(0.12, 0.42) * Math.min(1.2, p.rimInnerRadius / 2.5) * (0.5 + snap.boil_intensity * 0.6);
-          this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(16, 32), 1);
+    this.safe('bubbles', () => {
+      if (snap && hasLiquid) {
+        for (const g of snap.gas_fluxes) this.spawnGas(g, dt, fill);
+        if (snap.boil_intensity > 0.01) {
+          this.spawnAcc.boil += snap.boil_intensity * 55 * dt;
+          while (this.spawnAcc.boil >= 1) {
+            this.spawnAcc.boil -= 1;
+            const R = innerRadiusAt(p, p.innerBottomY + 0.3) * 0.8;
+            const a = Math.random() * Math.PI * 2;
+            const rr = Math.sqrt(Math.random()) * R;
+            const rad = rnd(0.12, 0.42) * Math.min(1.2, p.rimInnerRadius / 2.5) * (0.5 + snap.boil_intensity * 0.6);
+            this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(16, 32), 1);
+          }
         }
       }
-    }
-    const swirl = this.stirRpm > 0 ? Math.min(4.5, (this.stirRpm / 60) * 6.283 * 0.12) : 0;
-    const pops = { n: 0 };
-    this.bubbles.material.uniforms.uTint.value.copy(col);
-    this.bubbles.update(dt, hasLiquid ? fill : -1e3, (y) => innerRadiusAt(p, Math.min(y, p.innerTopY)), swirl, (x, y, z, r) => {
-      pops.n++;
-      if (pops.n < 6) {
-        this.splash.spawn(x, y + 0.02, z, 0, r * 6, 0, 0.12, r * 1.6, r * 3.2, 0.45, 1, 1, 1, 0, 0, 1);
-        if (r > 0.12 && Math.random() < 0.5) {
-          const a = Math.random() * 6.28;
-          this.splash.spawn(x, y + 0.05, z, Math.cos(a) * 8, rnd(25, 60), Math.sin(a) * 8, 0.5, r * 0.5, r * 0.3, 0.8, col.r, col.g, col.b, 981, 0, 1);
+      const swirl = this.stirRpm > 0 ? Math.min(4.5, (this.stirRpm / 60) * 6.283 * 0.12) : 0;
+      const pops = { n: 0 };
+      this.bubbles.material.uniforms.uTint.value.copy(col);
+      this.bubbles.update(dt, hasLiquid ? fill : -1e3, (y) => innerRadiusAt(p, Math.min(y, p.innerTopY)), swirl, (x, y, z, r) => {
+        pops.n++;
+        if (pops.n < 6) {
+          this.splash.spawn(x, y + 0.02, z, 0, r * 6, 0, 0.12, r * 1.6, r * 3.2, 0.45, 1, 1, 1, 0, 0, 1);
+          if (r > 0.12 && Math.random() < 0.5) {
+            const a = Math.random() * 6.28;
+            this.splash.spawn(x, y + 0.05, z, Math.cos(a) * 8, rnd(25, 60), Math.sin(a) * 8, 0.5, r * 0.5, r * 0.3, 0.8, col.r, col.g, col.b, 981, 0, 1);
+          }
         }
-      }
+      });
     });
 
     // ---- foam head
-    this.foamLevel += (this.foamTarget - this.foamLevel) * Math.min(1, dt * 1.5);
-    this.updateFoam(time, fill, hasLiquid, col);
+    this.safe('foam', () => {
+      this.foamLevel += (this.foamTarget - this.foamLevel) * Math.min(1, dt * 1.5);
+      this.updateFoam(time, fill, hasLiquid, col);
+    });
 
     // ---- condensation
-    const condA = this.cond.visible ? (this.condMat.uniforms.uAmount.value as number) : 0;
-    const condT = this.burst ? 0 : this.condLevel;
-    const condNew = condA + (condT - condA) * Math.min(1, dt * 0.8);
-    this.condMat.uniforms.uAmount.value = condNew;
-    this.cond.visible = condNew > 0.01;
+    this.safe('condensation', () => {
+      const condA = this.cond.visible ? (this.condMat.uniforms.uAmount.value as number) : 0;
+      const condT = this.burst ? 0 : this.condLevel;
+      const condNew = condA + (condT - condA) * Math.min(1, dt * 0.8);
+      this.condMat.uniforms.uAmount.value = condNew;
+      this.cond.visible = condNew > 0.01;
+    });
 
     // ---- steam & fumes
-    if (snap && !this.burst) {
-      const vis = snap.vapour_visibility;
-      if (vis > 0.01) {
-        this.spawnAcc.steam += vis * 20 * dt;
-        while (this.spawnAcc.steam >= 1) {
-          this.spawnAcc.steam -= 1;
-          const a = Math.random() * Math.PI * 2;
-          const rr = Math.sqrt(Math.random()) * surfR * 0.8;
-          const y = hasLiquid ? fill + 0.2 : p.innerBottomY + 0.5;
-          const s0 = Math.min(2, surfR * 0.5);
-          this.smoke.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, rnd(-0.5, 0.5), rnd(3.5, 7), rnd(-0.5, 0.5), rnd(2.4, 3.6), s0, s0 * 3.5 + 2, Math.min(0.2, 0.06 + vis * 0.1), 0.94, 0.95, 0.97, -0.6, 0.35, 0);
+    this.safe('steam/fumes', () => {
+      if (snap && !this.burst) {
+        const vis = snap.vapour_visibility;
+        if (vis > 0.01) {
+          this.spawnAcc.steam += vis * 20 * dt;
+          while (this.spawnAcc.steam >= 1) {
+            this.spawnAcc.steam -= 1;
+            const a = Math.random() * Math.PI * 2;
+            const rr = Math.sqrt(Math.random()) * surfR * 0.8;
+            const y = hasLiquid ? fill + 0.2 : p.innerBottomY + 0.5;
+            const s0 = Math.min(2, surfR * 0.5);
+            this.smoke.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, rnd(-0.5, 0.5), rnd(3.5, 7), rnd(-0.5, 0.5), rnd(2.4, 3.6), s0, s0 * 3.5 + 2, Math.min(0.2, 0.06 + vis * 0.1), 0.94, 0.95, 0.97, -0.6, 0.35, 0);
+          }
         }
+        for (const f of snap.fumes) this.spawnFume(f, dt, hasLiquid ? fill : p.innerBottomY + 0.5, surfR);
       }
-      for (const f of snap.fumes) this.spawnFume(f, dt, hasLiquid ? fill : p.innerBottomY + 0.5, surfR);
-    }
+    });
 
     // ---- boil-over spill
-    if (this.spillTime > 0 && !this.burst) {
-      this.spillTime -= dt;
-      this.spawnAcc.spill += 40 * dt;
-      while (this.spawnAcc.spill >= 1) {
-        this.spawnAcc.spill -= 1;
-        const a = Math.random() * Math.PI * 2;
-        const R = p.rimOuterRadius + 0.15;
-        const foamy = this.foamLevel > 0.2 || Math.random() < 0.4;
-        const c = foamy ? new THREE.Color(0.95, 0.96, 0.97) : col;
-        this.splash.spawn(Math.cos(a) * R, p.rimY, Math.sin(a) * R, 0, rnd(-3, 0), 0, rnd(1.5, 2.5), rnd(0.35, 0.6), rnd(0.5, 0.9), 0.85, c.r, c.g, c.b, 60, 0.5, 4);
+    this.safe('spill', () => {
+      if (this.spillTime > 0 && !this.burst) {
+        this.spillTime -= dt;
+        this.spawnAcc.spill += 40 * dt;
+        while (this.spawnAcc.spill >= 1) {
+          this.spawnAcc.spill -= 1;
+          const a = Math.random() * Math.PI * 2;
+          const R = p.rimOuterRadius + 0.15;
+          const foamy = this.foamLevel > 0.2 || Math.random() < 0.4;
+          const c = foamy ? new THREE.Color(0.95, 0.96, 0.97) : col;
+          this.splash.spawn(Math.cos(a) * R, p.rimY, Math.sin(a) * R, 0, rnd(-3, 0), 0, rnd(1.5, 2.5), rnd(0.35, 0.6), rnd(0.5, 0.9), 0.85, c.r, c.g, c.b, 60, 0.5, 4);
+        }
+        this.ensurePuddle(col, p.maxOuterRadius + 2.5);
       }
-      this.ensurePuddle(col, p.maxOuterRadius + 2.5);
-    }
+    });
 
     // ---- precipitate cloud
-    const want = hasLiquid ? this.suspendedTargetCount : 0;
-    if (this.precip.live < want) {
-      this.spawnAcc.precip += Math.max(30, want) * dt * 2;
-      while (this.spawnAcc.precip >= 1 && this.precip.live < want) {
-        this.spawnAcc.precip -= 1;
-        const y = rnd(p.innerBottomY + 0.2, Math.max(p.innerBottomY + 0.3, fill - 0.1));
-        const R = innerRadiusAt(p, y) * 0.92;
-        const a = Math.random() * Math.PI * 2;
-        const rr = Math.sqrt(Math.random()) * R;
-        const shade = rnd(0.85, 1.1);
-        const sc = this.suspendedColor;
-        const sz = rnd(0.12, 0.3) * Math.min(1.2, Math.max(0.6, p.rimInnerRadius / 3)); // world-size diameter (cm); ~1 px sprites vanish at bench distance
-        this.precip.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, 0, 0, 0, rnd(5, 10), sz, sz * 1.2, 0.7, sc.r * shade, sc.g * shade, sc.b * shade, 0, 0, 0);
+    this.safe('precipitate cloud', () => {
+      const want = hasLiquid ? this.suspendedTargetCount : 0;
+      if (this.precip.live < want) {
+        this.spawnAcc.precip += Math.max(30, want) * dt * 2;
+        while (this.spawnAcc.precip >= 1 && this.precip.live < want) {
+          this.spawnAcc.precip -= 1;
+          const y = rnd(p.innerBottomY + 0.2, Math.max(p.innerBottomY + 0.3, fill - 0.1));
+          const R = innerRadiusAt(p, y) * 0.92;
+          const a = Math.random() * Math.PI * 2;
+          const rr = Math.sqrt(Math.random()) * R;
+          const shade = rnd(0.85, 1.1);
+          const sc = this.suspendedColor;
+          const sz = rnd(0.12, 0.3) * Math.min(1.2, Math.max(0.6, p.rimInnerRadius / 3)); // world-size diameter (cm); ~1 px sprites vanish at bench distance
+          this.precip.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, 0, 0, 0, rnd(5, 10), sz, sz * 1.2, 0.7, sc.r * shade, sc.g * shade, sc.b * shade, 0, 0, 0);
+        }
+      } else if (this.precip.live > want + 10) {
+        // let the extras settle out quickly by shortening their life
+        for (let i = want; i < this.precip.live; i++) this.precip.maxLife[i] = Math.min(this.precip.maxLife[i], this.precip.life[i] + 0.8);
       }
-    } else if (this.precip.live > want + 10) {
-      // let the extras settle out quickly by shortening their life
-      for (let i = want; i < this.precip.live; i++) this.precip.maxLife[i] = Math.min(this.precip.maxLife[i], this.precip.life[i] + 0.8);
-    }
+    });
 
     // ---- settled bed
-    this.bedVol += (this.bedTargetVol - this.bedVol) * Math.min(1, dt * 1.2);
-    this.bedColor.lerp(this.bedColorTarget, Math.min(1, dt * 2));
-    this.bedMat.color.copy(this.bedColor);
-    this.updateBed();
+    this.safe('settled bed', () => {
+      this.bedVol += (this.bedTargetVol - this.bedVol) * Math.min(1, dt * 1.2);
+      this.bedColor.lerp(this.bedColorTarget, Math.min(1, dt * 2));
+      this.bedMat.color.copy(this.bedColor);
+      this.updateBed();
+    });
 
     // ---- lumps (gel/curds)
-    if (this.lumpCount > 0 && !this.burst) this.updateLumps(time, fill, hasLiquid);
+    this.safe('lumps', () => {
+      if (this.lumpCount > 0 && !this.burst) this.updateLumps(time, fill, hasLiquid);
+    });
 
     // ---- metal ribbon
-    this.ribbonScale += (this.ribbonTarget - this.ribbonScale) * Math.min(1, dt * 1.5);
-    if (this.ribbonScale > 0.03 && !this.burst) {
-      this.ribbon.visible = true;
-      const bs = this.ribbon.userData.baseScale as number;
-      const s = bs * this.ribbonScale;
-      const fizz = snap ? snap.gas_fluxes.some((g) => g.nucleation === 'solid' && g.rate_ml_s > 0.01) : false;
-      this.ribbon.scale.set(s, bs * (0.6 + 0.4 * this.ribbonScale), bs);
-      const yFloat = hasLiquid ? Math.max(p.innerBottomY + 0.4, fill - 0.35) : p.innerBottomY + 0.3;
-      const yBed = this.bedLevelY() + 0.35;
-      const yT = this.ribbonFloating ? yFloat : yBed;
-      this.ribbon.position.y += (yT - this.ribbon.position.y) * Math.min(1, dt * 2);
-      const bob = fizz ? Math.sin(time * 9) * 0.04 : 0;
-      this.ribbon.position.y += bob;
-      this.ribbon.rotation.set(0.25 + Math.sin(time * 0.7) * (fizz ? 0.08 : 0), time * (fizz ? 0.25 : 0.02), 0.1);
-    } else {
-      this.ribbon.visible = false;
-    }
+    this.safe('metal ribbon', () => {
+      this.ribbonScale += (this.ribbonTarget - this.ribbonScale) * Math.min(1, dt * 1.5);
+      if (this.ribbonScale > 0.03 && !this.burst) {
+        this.ribbon.visible = true;
+        const bs = this.ribbon.userData.baseScale as number;
+        const s = bs * this.ribbonScale;
+        const fizz = snap ? snap.gas_fluxes.some((g) => g.nucleation === 'solid' && g.rate_ml_s > 0.01) : false;
+        this.ribbon.scale.set(s, bs * (0.6 + 0.4 * this.ribbonScale), bs);
+        const yFloat = hasLiquid ? Math.max(p.innerBottomY + 0.4, fill - 0.35) : p.innerBottomY + 0.3;
+        const yBed = this.bedLevelY() + 0.35;
+        const yT = this.ribbonFloating ? yFloat : yBed;
+        this.ribbon.position.y += (yT - this.ribbon.position.y) * Math.min(1, dt * 2);
+        const bob = fizz ? Math.sin(time * 9) * 0.04 : 0;
+        this.ribbon.position.y += bob;
+        this.ribbon.rotation.set(0.25 + Math.sin(time * 0.7) * (fizz ? 0.08 : 0), time * (fizz ? 0.25 : 0.02), 0.1);
+      } else {
+        this.ribbon.visible = false;
+      }
+    });
 
     // ---- stir bar
-    if (this.stirRpm > 0 && !this.burst) {
-      this.stirBar.visible = true;
-      this.stirAngle += Math.min(30, (this.stirRpm / 60) * 6.283) * dt;
-      this.stirBar.rotation.y = this.stirAngle;
-    } else {
-      this.stirBar.visible = false;
-    }
+    this.safe('stir bar', () => {
+      if (this.stirRpm > 0 && !this.burst) {
+        this.stirBar.visible = true;
+        this.stirAngle += Math.min(30, (this.stirRpm / 60) * 6.283) * dt;
+        this.stirBar.rotation.y = this.stirAngle;
+      } else {
+        this.stirBar.visible = false;
+      }
+    });
 
     // ---- flame
-    const fl = snap?.flame;
-    if (fl && fl.power_w > 0.5 && !this.burst) {
-      const h = Math.min(24, 3.5 + Math.sqrt(fl.power_w) * 1.6);
-      const w = Math.max(1.5, surfR * 1.5);
-      const em = fl.emitter_rgb ? new THREE.Color(fl.emitter_rgb[0], fl.emitter_rgb[1], fl.emitter_rgb[2]) : undefined;
-      this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), emitter: em, emitterAmount: em ? 0.75 : 0 });
-      this.flame.setTarget(Math.min(1.6, 0.6 + fl.power_w / 300));
-      this.flame.group.position.y = hasLiquid ? fill : p.innerBottomY + 0.2;
-    } else {
-      this.flame.setTarget(0);
-    }
-    this.flame.tick(dt, time);
+    this.safe('flame', () => {
+      const fl = snap?.flame;
+      if (fl && fl.power_w > 0.5 && !this.burst) {
+        const h = Math.min(24, 3.5 + Math.sqrt(fl.power_w) * 1.6);
+        const w = Math.max(1.5, surfR * 1.5);
+        const em = fl.emitter_rgb ? new THREE.Color(fl.emitter_rgb[0], fl.emitter_rgb[1], fl.emitter_rgb[2]) : undefined;
+        this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), emitter: em, emitterAmount: em ? 0.75 : 0 });
+        this.flame.setTarget(Math.min(1.6, 0.6 + fl.power_w / 300));
+        this.flame.group.position.y = hasLiquid ? fill : p.innerBottomY + 0.2;
+      } else {
+        this.flame.setTarget(0);
+      }
+      this.flame.tick(dt, time);
+    });
 
     // ---- stopper flight
-    if (this.stopperFlying) this.updateStopper(dt);
+    this.safe('stopper', () => {
+      if (this.stopperFlying) this.updateStopper(dt);
+    });
 
     // ---- shards / puddle
-    if (this.shards) this.updateShards(dt);
-    if (this.puddle) {
-      this.puddleR += (this.puddleTarget - this.puddleR) * Math.min(1, dt * 1.8);
-      this.puddle.scale.setScalar(Math.max(0.01, this.puddleR));
-    }
+    this.safe('shards/puddle', () => {
+      if (this.shards) this.updateShards(dt);
+      if (this.puddle) {
+        this.puddleR += (this.puddleTarget - this.puddleR) * Math.min(1, dt * 1.8);
+        this.puddle.scale.setScalar(Math.max(0.01, this.puddleR));
+      }
+    });
 
-    this.smoke.update(dt);
-    this.splash.update(dt);
-    this.precip.update(dt);
+    this.safe('smoke', () => this.smoke.update(dt));
+    this.safe('splash', () => this.splash.update(dt));
+    this.safe('precipitate particles', () => this.precip.update(dt));
   }
 
   private spawnGas(g: GasFlux, dt: number, fill: number) {
@@ -1141,7 +1183,8 @@ export class VesselEffects {
     const wet = this.liquid.volumeMl > 0.3;
     const k = wet ? 0.2 : 0.34; // heap height / footprint radius (wet powder is flatter)
     const rW = Math.max(0.12, innerRadiusAt(p, p.innerBottomY + 0.25) - 0.05);
-    let rp = Math.cbrt((2 * V) / (Math.PI * k));
+    // a few mg of powder would otherwise be a sub-pixel speck at bench distance: keep a minimum visible mound
+    let rp = Math.max(Math.cbrt((2 * V) / (Math.PI * k)), Math.min(0.5, rW));
     let yb = p.innerBottomY;
     let H = k * rp;
     if (rp > rW) {

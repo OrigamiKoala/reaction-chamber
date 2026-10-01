@@ -272,7 +272,7 @@ export class ReagentPanel {
       b.addEventListener('click', () => this.importName(n));
       this.pubchemSection.append(b);
     }
-    this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Imported compounds are visual only — no reaction data.' }));
+    this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Imported compounds react when the engine can derive their ions from the formula (salts, acids, bases).' }));
   }
 
   private async importName(name: string) {

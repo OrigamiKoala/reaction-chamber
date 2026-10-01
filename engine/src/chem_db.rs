@@ -242,54 +242,11 @@ pub fn get_species_thermo(species: &str) -> SpeciesThermo {
         "C2H5OH(g)" => SpeciesThermo { mw: 46.069, charge: 0, delta_h_f: -235.3, cp: 65.4 },
 
         _ => {
-            // General estimator from formula
-            let elems = parse_elements(species);
-            let mut mw = 0.0;
-            for (elem, cnt) in elems {
-                let m = match elem.as_str() {
-                    "H" => 1.008,
-                    "C" => 12.011,
-                    "N" => 14.007,
-                    "O" => 15.999,
-                    "Na" => 22.990,
-                    "Mg" => 24.305,
-                    "Al" => 26.982,
-                    "Si" => 28.085,
-                    "P" => 30.974,
-                    "S" => 32.06,
-                    "Cl" => 35.45,
-                    "K" => 39.098,
-                    "Ca" => 40.078,
-                    "Fe" => 55.845,
-                    "Cu" => 63.546,
-                    "Zn" => 65.38,
-                    "Br" => 79.904,
-                    "Ag" => 107.868,
-                    "I" => 126.904,
-                    "Ba" => 137.327,
-                    _ => 30.0,
-                };
-                mw += m * cnt;
-            }
-            if mw < 1.0 {
-                mw = 50.0;
-            }
-            let charge = if species.ends_with('+') {
-                1
-            } else if species.ends_with('-') {
-                -1
-            } else if species.ends_with("+2") {
-                2
-            } else if species.ends_with("-2") {
-                -2
-            } else if species.ends_with("+3") {
-                3
-            } else {
-                0
-            };
+            // General estimator from the formula: full periodic table for the mass, charge parsed from the id.
+            let mw = crate::ions::species_mass(species).filter(|m| *m > 0.5).unwrap_or(50.0);
             SpeciesThermo {
                 mw,
-                charge,
+                charge: crate::ions::species_charge(species),
                 delta_h_f: -100.0,
                 cp: 50.0,
             }
@@ -468,6 +425,12 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             source: "IUPAC Indicator pKa".to_string(),
         },
     ];
+    // Data-driven acid/base and speciation equilibria (engine/data/solubility.json).
+    for eq in crate::solubility::table_equilibria() {
+        if !list.iter().any(|e| e.id == eq.id) {
+            list.push(eq.clone());
+        }
+    }
     if let Ok(lock) = CUSTOM_EQUILIBRIA.lock() {
         for eq in lock.iter() {
             list.retain(|e| e.id != eq.id);
@@ -560,9 +523,15 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             source: "CRC Handbook".to_string(),
         },
     ];
+    // Data-driven solubility table: any cation/anion pair with IAP > Ksp precipitates (engine/data/solubility.json).
+    for m in crate::solubility::table_minerals() {
+        if !list.iter().any(|x| x.solid_species == m.solid_species) {
+            list.push(m.clone());
+        }
+    }
     if let Ok(lock) = CUSTOM_MINERALS.lock() {
         for min in lock.iter() {
-            list.retain(|m| m.id != min.id);
+            list.retain(|m| m.id != min.id && m.solid_species != min.solid_species);
             list.push(min.clone());
         }
     }

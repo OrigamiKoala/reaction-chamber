@@ -8,8 +8,13 @@ pub mod conservation;
 pub mod benchmark;
 pub mod optics;
 pub mod spectra;
+pub mod ions;
+pub mod solubility;
+pub mod compound_model;
 pub mod chem_db;
 pub mod vessel;
+pub mod vessel_ext;
+pub mod vessel_eq;
 pub mod templates;
 pub mod network_generator;
 
@@ -379,6 +384,32 @@ pub fn register_compound(entry_json: &str) -> Result<JsValue, JsValue> {
             v.register_reagent(entry.clone());
         }
         serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": entry.id}))
+    })
+}
+
+/// Models an imported compound (formula, state, ...) as a reacting reagent and registers it (plus its solubility
+/// limit) with the engine. Returns the CompoundModel JSON: `modelable=false` means it stays visual-only.
+#[wasm_bindgen]
+pub fn import_compound(req_json: &str) -> Result<JsValue, JsValue> {
+    let req: compound_model::CompoundRequest = serde_json::from_str(req_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid CompoundRequest: {}", e)))?;
+    let model = compound_model::model_compound(&req);
+    if let Some(entry) = &model.entry {
+        chem_db::register_custom_reagent(entry.clone());
+    }
+    if let Some(min) = &model.mineral {
+        chem_db::register_custom_mineral(min.clone());
+    }
+    with_vessels(|map| {
+        for v in map.values_mut() {
+            if let Some(entry) = &model.entry {
+                v.register_reagent(entry.clone());
+            }
+            if let Some(min) = &model.mineral {
+                v.register_mineral(min.clone());
+            }
+        }
+        serde_wasm_bindgen_to_val(&model)
     })
 }
 

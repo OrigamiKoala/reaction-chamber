@@ -89,6 +89,7 @@ export class BenchScene {
   private time = 0;
   private lastFrame = performance.now();
   private shadowTimer = 0;
+  private tickWarned = new Set<string>();
   private shadowDirty = true;
   private rafId = 0;
   private resizeObserver: ResizeObserver;
@@ -477,6 +478,16 @@ export class BenchScene {
     return asm;
   }
 
+  /**
+   * At the default bench distance a 7 cm beaker is only ~60 px wide, so a few mL of clear liquid or a spatula of
+   * powder is a speck. When something is added to a vessel that is far from the camera, glide in (never out) so the
+   * contents are actually visible; the user can still orbit/zoom freely.
+   */
+  private frameForAddition(target: VesselBundle) {
+    const d = this.camera.position.distanceTo(target.group.position);
+    if (d > 80 && !this.downPos) this.focusVessel(target.vesselState.id, 58);
+  }
+
   public animatePour(sourceGroupId: string, targetGroupId: string, colorHex: string, onComplete?: () => void) {
     const done = guarded(onComplete);
     try {
@@ -485,6 +496,7 @@ export class BenchScene {
         done();
         return;
       }
+      this.frameForAddition(target);
       const vessel = this.glasswareMap.get(sourceGroupId);
       if (vessel && !this.animator.isBusy(vessel.group) && !vessel.isBurst()) {
         const lip = vessel.lipLocal();
@@ -558,6 +570,7 @@ export class BenchScene {
         done();
         return;
       }
+      this.frameForAddition(target);
       const asm = this.shelf.get(sourceBottleId);
       let start: THREE.Vector3;
       let fromAbove = false;
@@ -597,6 +610,7 @@ export class BenchScene {
         done();
         return;
       }
+      this.frameForAddition(target);
       const meta = this.shelf.getMeta(sourceBottleId);
       const metal = meta
         ? looksLikeMetal(meta.formula, meta.name) && (meta.form === 'solid' || !!meta.by_mass)
@@ -642,14 +656,14 @@ export class BenchScene {
 
   // ---------------------------------------------------------------- camera
   /** Smoothly move the orbit camera target to a vessel. */
-  public focusVessel(id: string): void {
+  public focusVessel(id: string, distance?: number): void {
     const b = this.glasswareMap.get(id);
     if (!b) return;
     const fromT = this.controls.target.clone();
     const fromP = this.camera.position.clone();
     const toT = b.group.position.clone().add(new THREE.Vector3(0, b.height * 0.45, 0));
     const offset = fromP.clone().sub(fromT);
-    const dist = THREE.MathUtils.clamp(Math.max(32, b.height * 3.4), this.controls.minDistance, Math.min(offset.length(), 90));
+    const dist = THREE.MathUtils.clamp(distance ?? Math.max(32, b.height * 3.4), this.controls.minDistance, Math.min(offset.length(), 90));
     const toP = toT.clone().add(offset.normalize().multiplyScalar(dist));
     let t = 0;
     const task: AnimTask = {
@@ -775,13 +789,21 @@ export class BenchScene {
     const fireTmp = new THREE.Vector3();
     const firePos = this.room.fireLight.position;
     for (const b of this.glasswareMap.values()) {
-      b.setGroundY(this.groundAt(b.group.position.x, b.group.position.z));
-      b.tick(dt, time);
-      const f = b.effects.flameStrength(time);
-      if (f > fire) {
-        fire = f;
-        fireTmp.set(0, b.profile.baseOffsetY + b.effects.flameLocalY(), 0).applyMatrix4(b.group.matrixWorld);
-        firePos.copy(fireTmp);
+      try {
+        b.setGroundY(this.groundAt(b.group.position.x, b.group.position.z));
+        b.tick(dt, time);
+        const f = b.effects.flameStrength(time);
+        if (f > fire) {
+          fire = f;
+          fireTmp.set(0, b.profile.baseOffsetY + b.effects.flameLocalY(), 0).applyMatrix4(b.group.matrixWorld);
+          firePos.copy(fireTmp);
+        }
+      } catch (e) {
+        // one broken vessel must never stop the frame from rendering (everything would go blank)
+        if (!this.tickWarned.has(b.vesselState.id)) {
+          this.tickWarned.add(b.vesselState.id);
+          console.warn(`[bench] vessel ${b.vesselState.id} tick failed`, e);
+        }
       }
     }
     const { hotPlate, burner } = this.instruments;

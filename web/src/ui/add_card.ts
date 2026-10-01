@@ -127,12 +127,18 @@ export class AddCard {
 
     if (it.kind === 'imported') {
       const note = h('div', { class: 'add-note' });
-      note.innerHTML = `${icon('info', 14)}<span>Visual only — PubChem compounds have no reaction data, so nothing reacts.</span>`;
+      const model = it.model;
+      let msg: string;
+      if (model?.modelable) msg = `Reacts — ${model.reason}. Imported solids are dosed by mass, liquids as a 0.10 M aqueous solution.`;
+      else if (model) msg = `Visual only — ${model.reason}`;
+      else msg = 'Checking whether the engine can model this compound…';
+      note.innerHTML = `${icon('info', 14)}<span></span>`;
+      (note.querySelector('span') as HTMLElement).textContent = msg;
       this.el.append(note);
       const match = this.host.catalogMatchFor(it);
       const row = h('div', { class: 'add-links' });
       if (match) {
-        const use = h('button', { class: 'link-btn', text: `Use reacting version: ${match.name}` });
+        const use = h('button', { class: 'link-btn', text: `Also in stock: ${match.name}` });
         use.addEventListener('click', () => this.onUseCatalog?.(match));
         row.append(use);
       }
