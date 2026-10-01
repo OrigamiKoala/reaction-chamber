@@ -1,0 +1,638 @@
+[
+  {
+    "job_id": "barrier_42c0abdf01",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_ca586d1443",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_531217538e",
+    "reaction_smiles": "CC(I)C + [OH-] -> CC(O)C + [I-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.53,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.32,
+    "arrhenius_ea_j_mol": 267595.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 405.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_84e34d64fc",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_e21dd83100",
+    "reaction_smiles": "CC(Br)C + [OH-] -> C=CC + H2O + [Br-]",
+    "family": "e2_elimination",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 51.38,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_3f25db4bcc",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_1c310e14a1",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929643.176,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_f6e95beda4",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_daa0e51dc1",
+    "reaction_smiles": "CC(Br)C + [OH-] -> C=CC + H2O + [Br-]",
+    "family": "e2_elimination",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 51.38,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_9654e8fa7f",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_9926057d49",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_c3204a5c0b",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_7083f2ea7b",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_07a078d491",
+    "reaction_smiles": "CC(Br)C + [OH-] -> C=CC + H2O + [Br-]",
+    "family": "e2_elimination",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 51.38,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_81d01c5618",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_cfe226bf19",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_e3e1b5bd4a",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_2aaafac7b6",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_251d5cfe07",
+    "reaction_smiles": "CC(Br)C + [OH-] -> C=CC + H2O + [Br-]",
+    "family": "e2_elimination",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 51.38,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929641.88,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_0cf0e7a70c",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.36,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.1,
+    "arrhenius_ea_j_mol": 266698.2,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 409.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_06df88e917",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.918,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "job_0a7397fd10",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 424.2,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_ba7ed41146",
+    "reaction_smiles": "CCCCl + [OH-] -> CCCO + [Cl-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 53.03,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 63.28,
+    "arrhenius_ea_j_mol": 275828.4,
+    "arrhenius_a": 18284870929643.957,
+    "vibrational_imaginary_freq_cm1": 512.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_11888a4bf0",
+    "reaction_smiles": "CCBr + [OH-] -> CCO + [Br-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 49.27,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 58.69,
+    "arrhenius_ea_j_mol": 256606.8,
+    "arrhenius_a": 18284870929643.176,
+    "vibrational_imaginary_freq_cm1": 953.1,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_0b607cce65",
+    "reaction_smiles": "c1ccccc1CCl + [OH-] -> c1ccccc1CO + [Cl-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 78.7,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 94.59,
+    "arrhenius_ea_j_mol": 406809.8,
+    "arrhenius_a": 18284870929642.14,
+    "vibrational_imaginary_freq_cm1": 512.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_10976f06a2",
+    "reaction_smiles": "CCCCBr + [I-] -> CCCCI + [Br-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 52.9,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 63.12,
+    "arrhenius_ea_j_mol": 275158.5,
+    "arrhenius_a": 18284870929641.1,
+    "vibrational_imaginary_freq_cm1": 512.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_30f68a97f8",
+    "reaction_smiles": "CCCl + [SH-] -> CCS + [Cl-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 49.26,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 58.68,
+    "arrhenius_ea_j_mol": 256566.8,
+    "arrhenius_a": 18284870929642.918,
+    "vibrational_imaginary_freq_cm1": 932.4,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_7aa6e74118",
+    "reaction_smiles": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 21.22,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 24.0,
+    "arrhenius_ea_j_mol": 88771.1,
+    "arrhenius_a": 100000000000.0,
+    "vibrational_imaginary_freq_cm1": 450.0,
+    "method": "rate_rule_fallback",
+    "validation_flags": [
+      "rate_rule_fallback"
+    ]
+  },
+  {
+    "job_id": "barrier_dd4c327e8d",
+    "reaction_smiles": "CCBr + [CN-] -> CCC#N + [Br-]",
+    "family": "sn2_primary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 49.27,
+    "target_uncertainty_kcal": 1.2,
+    "electronic_delta_e_kcal": 58.69,
+    "arrhenius_ea_j_mol": 256606.8,
+    "arrhenius_a": 18284870929643.176,
+    "vibrational_imaginary_freq_cm1": 953.1,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_9fe5a69fd4",
+    "reaction_smiles": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.31,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.04,
+    "arrhenius_ea_j_mol": 266441.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 512.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_3515d7a75b",
+    "reaction_smiles": "CC(I)C + [OH-] -> CC(O)C + [I-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 50.53,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 61.32,
+    "arrhenius_ea_j_mol": 267595.9,
+    "arrhenius_a": 18284870929642.656,
+    "vibrational_imaginary_freq_cm1": 405.0,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  },
+  {
+    "job_id": "barrier_bb910a22b3",
+    "reaction_smiles": "CCC(Br)C + [OH-] -> CCC(O)C + [Br-]",
+    "family": "sn2_secondary_halide",
+    "solvent": "water",
+    "target_delta_g_barrier_kcal": 52.18,
+    "target_uncertainty_kcal": 0.2,
+    "electronic_delta_e_kcal": 63.42,
+    "arrhenius_ea_j_mol": 276381.3,
+    "arrhenius_a": 18284870929643.438,
+    "vibrational_imaginary_freq_cm1": 560.1,
+    "method": "tblite_GFN2-xTB_ALPB",
+    "validation_flags": [
+      "conformer_optimized",
+      "ts_saddle_found",
+      "imaginary_freq_1",
+      "irc_confirmed",
+      "calibrated_ok"
+    ]
+  }
+]

@@ -1,0 +1,124 @@
+{
+  "timestamp": "2026-09-30T19:20:00Z",
+  "milestone": "M2 - Data Bundle v1",
+  "total_species_in_database": 501,
+  "spot_checked_conflicts_analyzed": 10,
+  "conflicts_resolved": 10,
+  "priority_order": [
+    "1. Tabulated / Evaluated reference databases (CRC, NIST, PHREEQC, IUPAC)",
+    "2. PubChem PUG REST / PUG View experimental section (median at 25 \u00b0C, 1 atm)",
+    "3. Joback group additivity / Clausius-Clapeyron estimators (tagged 'estimated')"
+  ],
+  "conflicts": [
+    {
+      "species": "Water",
+      "property": "bp_c",
+      "evaluated_value": 100.0,
+      "alternative_value": 99.6,
+      "unit": "\u00b0C",
+      "difference_abs": 0.4,
+      "difference_percent": 0.4,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (CRC Handbook) preferred over secondary/estimate (Perry's Handbook)"
+    },
+    {
+      "species": "Ethanol",
+      "property": "bp_c",
+      "evaluated_value": 78.2,
+      "alternative_value": 78.5,
+      "unit": "\u00b0C",
+      "difference_abs": 0.3,
+      "difference_percent": 0.38,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (NIST WebBook) preferred over secondary/estimate (Joback Estimate)"
+    },
+    {
+      "species": "Ethanol",
+      "property": "density",
+      "evaluated_value": 0.789,
+      "alternative_value": 0.785,
+      "unit": "g/cm\u00b3",
+      "difference_abs": 0.004,
+      "difference_percent": 0.51,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (CRC Handbook) preferred over secondary/estimate (PUG REST Secondary)"
+    },
+    {
+      "species": "Acetic acid",
+      "property": "mp_c",
+      "evaluated_value": 16.6,
+      "alternative_value": 16.2,
+      "unit": "\u00b0C",
+      "difference_abs": 0.4,
+      "difference_percent": 2.41,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (IUPAC) preferred over secondary/estimate (Merck Index)"
+    },
+    {
+      "species": "Acetone",
+      "property": "bp_c",
+      "evaluated_value": 56.1,
+      "alternative_value": 56.5,
+      "unit": "\u00b0C",
+      "difference_abs": 0.4,
+      "difference_percent": 0.71,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (CRC Handbook) preferred over secondary/estimate (Joback Estimate)"
+    },
+    {
+      "species": "Benzene",
+      "property": "mp_c",
+      "evaluated_value": 5.5,
+      "alternative_value": 5.3,
+      "unit": "\u00b0C",
+      "difference_abs": 0.2,
+      "difference_percent": 3.64,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (NIST WebBook) preferred over secondary/estimate (Joback Estimate)"
+    },
+    {
+      "species": "Chloroform",
+      "property": "bp_c",
+      "evaluated_value": 61.2,
+      "alternative_value": 61.7,
+      "unit": "\u00b0C",
+      "difference_abs": 0.5,
+      "difference_percent": 0.82,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (CRC Handbook) preferred over secondary/estimate (Joback Estimate)"
+    },
+    {
+      "species": "Sodium chloride",
+      "property": "mp_c",
+      "evaluated_value": 801.0,
+      "alternative_value": 800.7,
+      "unit": "\u00b0C",
+      "difference_abs": 0.3,
+      "difference_percent": 0.04,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (CRC Handbook) preferred over secondary/estimate (PHREEQC llnl.dat)"
+    },
+    {
+      "species": "Copper(II) sulfate",
+      "property": "density",
+      "evaluated_value": 3.603,
+      "alternative_value": 3.58,
+      "unit": "g/cm\u00b3",
+      "difference_abs": 0.023,
+      "difference_percent": 0.64,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (PubChem Primary) preferred over secondary/estimate (Handbook of Chemistry & Physics)"
+    },
+    {
+      "species": "Methanol",
+      "property": "bp_c",
+      "evaluated_value": 64.7,
+      "alternative_value": 64.5,
+      "unit": "\u00b0C",
+      "difference_abs": 0.2,
+      "difference_percent": 0.31,
+      "status": "resolved_prefer_evaluated",
+      "resolution_rule": "Evaluated benchmark (NIST WebBook) preferred over secondary/estimate (Joback Estimate)"
+    }
+  ]
+}

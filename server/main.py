@@ -1,0 +1,197 @@
+import os
+import sys
+import argparse
+import webbrowser
+from pathlib import Path
+from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+
+from .security import (
+    CURRENT_SESSION_TOKEN,
+    verify_token,
+    verify_host_header,
+    get_session_token,
+)
+from .xtb_runner import run_trivial_xtb_test, compute_semiempirical_job
+from .storage import (
+    get_job, init_db, get_precomputed_barrier_table,
+    get_flywheel_stats, export_ml_training_data, get_barrier_record
+)
+from .job_queue import GLOBAL_JOB_QUEUE
+from .calibration import GLOBAL_CALIBRATOR
+from pipeline.templates_m6 import (
+    REACTION_FAMILIES,
+    MAYR_DATABASE,
+    generate_reaction_network_py
+)
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+app = FastAPI(title="Reaction Chamber Local Server", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class XTBRequest(BaseModel):
+    smiles: str
+    family: str = "general"
+
+class BarrierSubmitRequest(BaseModel):
+    reaction: str
+    family: str = "sn2_secondary_halide"
+    solvent: str = "water"
+    temperature_k: float = 298.15
+
+class NetworkGenerateRequest(BaseModel):
+    species_concs: dict
+    temp_k: float = 298.15
+    ph: float = 7.0
+    max_species: int = 200
+    max_rxns: int = 500
+
+@app.middleware("http")
+async def host_check_middleware(request: Request, call_next):
+    # Enforce DNS rebinding check on all requests
+    try:
+        verify_host_header(request)
+    except HTTPException as e:
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+    response = await call_next(request)
+    return response
+
+@app.get("/api/health")
+def health(request: Request):
+    return {
+        "status": "online",
+        "service": "Reaction Chamber Local Server",
+        "version": "0.1.0",
+        "token_active": True,
+        "xtb_engine": "tblite_GFN2-xTB",
+    }
+
+@app.get("/api/session-token")
+def session_token():
+    return {"token": get_session_token()}
+
+@app.post("/api/xtb/trivial-test")
+def xtb_trivial_test(_token: str = Depends(verify_token)):
+    result = run_trivial_xtb_test()
+    return result
+
+@app.post("/api/xtb/run")
+def xtb_run(req: XTBRequest, _token: str = Depends(verify_token)):
+    result = compute_semiempirical_job(req.smiles, req.family)
+    return result
+
+@app.get("/api/xtb/status/{job_id}")
+def xtb_status(job_id: str, _token: str = Depends(verify_token)):
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+# --- M6 Endpoints ---
+@app.get("/api/m6/families")
+def m6_families():
+    return {"count": len(REACTION_FAMILIES), "families": REACTION_FAMILIES}
+
+@app.get("/api/m6/mayr")
+def m6_mayr():
+    return {"database": MAYR_DATABASE}
+
+@app.post("/api/m6/network")
+def m6_network(req: NetworkGenerateRequest):
+    net = generate_reaction_network_py(
+        req.species_concs,
+        temp_k=req.temp_k,
+        ph=req.ph,
+        max_species=req.max_species,
+        max_rxns=req.max_rxns
+    )
+    return net
+
+# --- M7 Endpoints ---
+@app.post("/api/barrier/submit")
+def barrier_submit(req: BarrierSubmitRequest, _token: str = Depends(verify_token)):
+    job_id = GLOBAL_JOB_QUEUE.submit_barrier_job(
+        reaction_smiles=req.reaction,
+        family=req.family,
+        solvent=req.solvent,
+        temperature_k=req.temperature_k
+    )
+    return {"job_id": job_id, "status": "queued"}
+
+@app.get("/api/barrier/status/{job_id}")
+def barrier_status(job_id: str, _token: str = Depends(verify_token)):
+    status = GLOBAL_JOB_QUEUE.get_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Barrier job not found")
+    return status
+
+@app.get("/api/barrier/precomputed")
+def barrier_precomputed():
+    """Returns precomputed barrier table for Provider 3."""
+    table = get_precomputed_barrier_table()
+    return {"count": len(table), "barriers": table}
+
+@app.get("/api/flywheel/stats")
+def flywheel_stats():
+    return get_flywheel_stats()
+
+@app.get("/api/flywheel/export")
+def flywheel_export():
+    dataset = export_ml_training_data()
+    return {"count": len(dataset), "dataset": dataset}
+
+@app.get("/api/barrier/calibration-check")
+def barrier_calibration_check():
+    eval_res = GLOBAL_CALIBRATOR.evaluate_held_out()
+    return eval_res
+
+# Static frontend serving
+WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+WEB_SRC = Path(__file__).resolve().parent.parent / "web"
+
+if WEB_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(WEB_DIST / "assets")), name="assets")
+    if (WEB_DIST / "data").exists():
+        app.mount("/data", StaticFiles(directory=str(WEB_DIST / "data")), name="data")
+    @app.api_route("/", methods=["GET", "HEAD"])
+    def serve_index():
+        return FileResponse(str(WEB_DIST / "index.html"))
+
+def start_server(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = False):
+    import uvicorn
+    token = get_session_token()
+    print("=" * 60)
+    print("🚀 Reaction Chamber Local Server Starting")
+    print(f"🔗 URL: http://{host}:{port}/?token={token}")
+    print(f"🔑 Session Token: {token}")
+    print(f"🧪 GFN2-xTB Engine: Ready (tblite)")
+    print("=" * 60)
+    
+    if open_browser:
+        webbrowser.open(f"http://{host}:{port}/?token={token}")
+        
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Reaction Chamber Local Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
+    parser.add_argument("--open", action="store_true", help="Open browser on launch")
+    args = parser.parse_args()
+    start_server(host=args.host, port=args.port, open_browser=args.open)
