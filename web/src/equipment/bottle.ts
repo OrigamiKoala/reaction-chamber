@@ -185,8 +185,8 @@ const capMat = () => mat('cap', () => new THREE.MeshStandardMaterial({ color: 0x
 let bottleAmber: [THREE.MeshPhysicalMaterial, THREE.MeshPhysicalMaterial] | null = null;
 function bottleAmberGlass() {
   return (bottleAmber ??= [
-    makeGlassMaterial(true, { tint: 0x7a3d12, baseAlpha: 0.2, fresnelAlpha: 0.3, edgeTint: 0x9a5a1a, roughness: 0.05, envMapIntensity: 1.4 }),
-    makeGlassMaterial(false, { tint: 0x7a3d12, baseAlpha: 0.2, fresnelAlpha: 0.3, edgeTint: 0x9a5a1a, roughness: 0.05, envMapIntensity: 1.4 }),
+    makeGlassMaterial(true, { tint: 0x7a3d12, baseAlpha: 0.2, fresnelAlpha: 0.3, edgeTint: 0x9a5a1a, roughness: 0.05, envMapIntensity: 0.5 }),
+    makeGlassMaterial(false, { tint: 0x7a3d12, baseAlpha: 0.2, fresnelAlpha: 0.3, edgeTint: 0x9a5a1a, roughness: 0.05, envMapIntensity: 0.5 }),
   ]);
 }
 const whiteCapMat = () => mat('capw', () => new THREE.MeshStandardMaterial({ color: 0xe9e6dc, roughness: 0.5, metalness: 0 }));
@@ -196,7 +196,7 @@ const hdpeMat = () =>
   );
 const bulbMat = () => mat('bulb', () => new THREE.MeshStandardMaterial({ color: 0x7a1f12, roughness: 0.6, metalness: 0 }));
 const pipetteMat = () =>
-  mat('pipette', () => new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.03, transparent: true, opacity: 0.25, envMapIntensity: 2, depthWrite: false }));
+  mat('pipette', () => new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, transparent: true, opacity: 0.25, envMapIntensity: 0.5, depthWrite: false }));
 const proxyMat = () => mat('proxy', () => new THREE.MeshBasicMaterial({ visible: false }));
 
 function contentMat(hex: string, solid: boolean): THREE.Material {

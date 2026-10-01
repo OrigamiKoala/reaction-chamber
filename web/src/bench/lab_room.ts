@@ -36,15 +36,15 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
   scene.environment = envRT.texture;
-  scene.environmentIntensity = 0.62;
+  scene.environmentIntensity = 0.38;
   pmrem.dispose();
-  scene.background = new THREE.Color(0xd5dade);
+  scene.background = new THREE.Color(0x8a9299);
 
   // ---------------------------------------------------------------- lights
-  const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x5b5650, 0.35);
+  const hemi = new THREE.HemisphereLight(0xdde3eb, 0x363430, 0.22);
   scene.add(hemi);
 
-  const key = new THREE.DirectionalLight(0xfff4e6, 2.3);
+  const key = new THREE.DirectionalLight(0xfff4e6, 1.15);
   key.position.set(-55, 170, 95);
   key.target.position.set(0, 0, -6);
   key.castShadow = true;
@@ -61,11 +61,11 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   key.shadow.radius = 3;
   scene.add(key, key.target);
 
-  const fill = new THREE.DirectionalLight(0xdce7ff, 0.55);
+  const fill = new THREE.DirectionalLight(0xdce7ff, 0.28);
   fill.position.set(110, 80, 70);
   scene.add(fill);
 
-  const back = new THREE.DirectionalLight(0xffffff, 0.35);
+  const back = new THREE.DirectionalLight(0xffffff, 0.18);
   back.position.set(30, 120, -120);
   scene.add(back);
 
@@ -86,9 +86,9 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
     roughnessMap: topRough,
     roughness: 0.55,
     metalness: 0,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.35,
-    envMapIntensity: 0.8,
+    clearcoat: 0.22,
+    clearcoatRoughness: 0.4,
+    envMapIntensity: 0.45,
   });
   const W = BENCH.xMax - BENCH.xMin;
   const D = BENCH.zMax - BENCH.zMin;
@@ -201,21 +201,21 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   // window on the left wall (soft daylight source in reflections)
   const win = new THREE.Mesh(
     new THREE.PlaneGeometry(110, 90),
-    new THREE.MeshBasicMaterial({ map: windowTexture(), toneMapped: false, color: 0xffffff })
+    new THREE.MeshBasicMaterial({ map: windowTexture(), toneMapped: true, color: 0xd8e0e6 })
   );
   win.position.set(-159.5, 70, 40);
   win.rotation.y = Math.PI / 2;
   scene.add(win);
-  const sill = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 116), new THREE.MeshStandardMaterial({ color: 0xe9ebe8, roughness: 0.5 }));
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 116), new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.6 }));
   sill.position.set(-157, 24, 40);
   scene.add(sill);
   // ceiling
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(320, 400), new THREE.MeshStandardMaterial({ color: 0xf2f3f1, roughness: 0.95 }));
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(320, 400), new THREE.MeshStandardMaterial({ color: 0xdcdfdc, roughness: 0.95 }));
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.set(0, 220, 155);
   scene.add(ceiling);
   for (const lx of [-60, 60]) {
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), new THREE.MeshBasicMaterial({ color: 0xc8d0d8, toneMapped: true }));
     panel.rotation.x = Math.PI / 2;
     panel.position.set(lx, 219.5, 20);
     scene.add(panel);

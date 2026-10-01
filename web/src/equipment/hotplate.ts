@@ -26,13 +26,13 @@ export class HotPlate {
 
   constructor() {
     this.group.name = 'equipment_hotplate';
-    const body = new THREE.MeshStandardMaterial({ color: 0xe9ebe8, roughness: 0.4, metalness: 0 });
+    const body = new THREE.MeshStandardMaterial({ color: 0x32373d, roughness: 0.5, metalness: 0.1 });
     const chassis = new THREE.Mesh(roundedBox(19, 9.4, 24, 1.4), body);
     chassis.castShadow = true;
     chassis.receiveShadow = true;
     this.group.add(chassis);
     // aluminium top frame
-    const alu = new THREE.MeshStandardMaterial({ color: 0xb9bec3, metalness: 1, roughness: 0.35 });
+    const alu = new THREE.MeshStandardMaterial({ color: 0x5a6066, metalness: 0.85, roughness: 0.35 });
     const frame = new THREE.Mesh(roundedBox(19, 0.4, 19.4, 1.0), alu);
     frame.position.set(0, 9.3, -2.0);
     frame.castShadow = true;
@@ -40,8 +40,8 @@ export class HotPlate {
     // glass-ceramic plate
     this.topMat = new THREE.MeshStandardMaterial({
       map: hotplateTopTexture(),
-      roughness: 0.18,
-      metalness: 0,
+      roughness: 0.28,
+      metalness: 0.05,
       emissive: new THREE.Color(1.0, 0.28, 0.06),
       emissiveMap: hotplateGlowTexture(),
       emissiveIntensity: 0,
@@ -51,7 +51,7 @@ export class HotPlate {
     this.ceramicTop.receiveShadow = true;
     this.group.add(this.ceramicTop);
     // front control panel
-    const panel = new THREE.Mesh(roundedBox(17, 0.3, 3.6, 0.4), new THREE.MeshStandardMaterial({ color: 0x31373d, roughness: 0.55 }));
+    const panel = new THREE.Mesh(roundedBox(17, 0.3, 3.6, 0.4), new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.6 }));
     panel.position.set(0, 9.38, 9.6);
     this.group.add(panel);
     this.heaterKnob = this.makeKnob(0xd84315);

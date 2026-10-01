@@ -503,7 +503,7 @@ export function solidTask(
   spat.position.copy(startPos);
   spat.quaternion.copy(holdQ);
   scene.add(spat);
-  const powder = new SpriteParticles(160, softSpriteTexture());
+  const powder = new SpriteParticles(320, softSpriteTexture(), { minPx: 1.0 });
   powder.fadeIn = 0;
   powder.points.renderOrder = target.glassMesh.renderOrder - 1;
   scene.add(powder.points);
@@ -531,12 +531,12 @@ export function solidTask(
         spat.quaternion.copy(holdQ).multiply(qRoll);
         if (t > T1 + T2 * 0.5) {
           heap.scale.multiplyScalar(Math.max(0, 1 - dt * 3));
-          emitAcc += 220 * dt;
+          emitAcc += 420 * dt;
           while (emitAcc >= 1) {
             emitAcc -= 1;
             tmp.set(0.3 + Math.random() * 0.6, 0, (Math.random() - 0.5) * 0.8).applyQuaternion(spat.quaternion).add(spat.position);
             const sh = 0.85 + Math.random() * 0.3;
-            powder.spawn(tmp.x, tmp.y, tmp.z, (Math.random() - 0.5) * 3, -Math.random() * 5, (Math.random() - 0.5) * 3, 2.0, 0.28, 0.22, 0.95, c.r * sh, c.g * sh, c.b * sh, G * 0.5, 1.5, 0);
+            powder.spawn(tmp.x, tmp.y, tmp.z, (Math.random() - 0.5) * 2.2, -Math.random() * 5 - 2, (Math.random() - 0.5) * 2.2, 2.0, 0.055, 0.04, 0.95, c.r * sh, c.g * sh, c.b * sh, G * 0.5, 1.5, 0);
           }
         }
       } else if (t < T1 + T2 + T3 + T4) {

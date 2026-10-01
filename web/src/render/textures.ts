@@ -422,20 +422,48 @@ export function hotplateGlowTexture(): THREE.Texture {
   });
 }
 
-/** Ceramic top albedo (white glass-ceramic with faint printed circle). */
+/** Ceramic top albedo (dark glass-ceramic with subtle centering ring and safety marking). */
 export function hotplateTopTexture(): THREE.Texture {
   return cached('hottop', () => {
     const S = 256;
     const [c, g] = canvas(S, S);
-    g.fillStyle = '#eef0ee';
+    // Dark charcoal/slate glass-ceramic surface (e.g. Schott Ceran / dark Pyroceram)
+    g.fillStyle = '#1c1f22';
     g.fillRect(0, 0, S, S);
-    g.strokeStyle = 'rgba(120,120,120,0.45)';
+    // Fine subtle ceramic micro-texture
+    const rnd = mulberry32(42);
+    for (let i = 0; i < 3500; i++) {
+      const v = rnd();
+      g.fillStyle = v < 0.5 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.04)';
+      g.fillRect(rnd() * S, rnd() * S, 1, 1);
+    }
+    // Heating zone boundary ring (subtle, high-precision lab marking)
+    g.strokeStyle = 'rgba(220,225,230,0.32)';
     g.lineWidth = 2;
     g.beginPath();
-    g.arc(S / 2, S / 2, S * 0.4, 0, Math.PI * 2);
+    g.arc(S / 2, S / 2, S * 0.38, 0, Math.PI * 2);
     g.stroke();
-    g.fillStyle = 'rgba(200,40,30,0.7)';
-    g.font = 'bold 14px sans-serif';
+    // Inner vessel centering ring
+    g.strokeStyle = 'rgba(200,210,220,0.2)';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.arc(S / 2, S / 2, S * 0.2, 0, Math.PI * 2);
+    g.stroke();
+    // Subtle cross tick marks at the perimeter
+    g.strokeStyle = 'rgba(220,225,230,0.28)';
+    g.lineWidth = 1.5;
+    for (let a = 0; a < 4; a++) {
+      const angle = (a * Math.PI) / 2;
+      const r0 = S * 0.34;
+      const r1 = S * 0.42;
+      g.beginPath();
+      g.moveTo(S / 2 + Math.cos(angle) * r0, S / 2 + Math.sin(angle) * r0);
+      g.lineTo(S / 2 + Math.cos(angle) * r1, S / 2 + Math.sin(angle) * r1);
+      g.stroke();
+    }
+    // Warning marking
+    g.fillStyle = 'rgba(235,65,45,0.85)';
+    g.font = 'bold 12px system-ui, -apple-system, sans-serif';
     g.textAlign = 'center';
     g.fillText('⚠ HOT SURFACE', S / 2, S - 14);
     return tex(c, true);

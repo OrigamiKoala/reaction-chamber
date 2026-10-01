@@ -21,11 +21,11 @@ export interface GlassOptions {
 
 const DEFAULT_GLASS: GlassOptions = {
   tint: 0xf2f8f5,
-  baseAlpha: 0.035,
-  fresnelAlpha: 0.55,
+  baseAlpha: 0.022,
+  fresnelAlpha: 0.38,
   edgeTint: 0x6fa595,
-  roughness: 0.03,
-  envMapIntensity: 1.6,
+  roughness: 0.035,
+  envMapIntensity: 0.5,
 };
 
 export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): THREE.MeshPhysicalMaterial {
@@ -35,9 +35,9 @@ export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): 
     metalness: 0,
     roughness: opt.roughness,
     ior: 1.47,
-    specularIntensity: 1,
-    clearcoat: 0.6,
-    clearcoatRoughness: 0.02,
+    specularIntensity: 0.65,
+    clearcoat: 0.0,
+    clearcoatRoughness: 0.04,
     envMapIntensity: opt.envMapIntensity,
     transparent: true,
     opacity: opt.baseAlpha,
@@ -96,7 +96,12 @@ export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): 
           float glF = pow( 1.0 - glNV, 3.0 );
           float glA = clamp( diffuseColor.a + glF * uFresnelAlpha, 0.0, 1.0 );
           vec3 glSpec = max( outgoingLight - totalDiffuse, vec3( 0.0 ) );
-          vec3 col = totalDiffuse * glA + glSpec + uEdgeTint * glF * glA * 0.35;
+          #ifdef GLASS_FAR
+            float specFactor = 0.35;
+          #else
+            float specFactor = 0.6;
+          #endif
+          vec3 col = totalDiffuse * glA + glSpec * specFactor + uEdgeTint * glF * glA * 0.25;
           gl_FragColor = vec4( col, glA );
         }`
       );
@@ -120,11 +125,11 @@ export function amberGlass(): [THREE.MeshPhysicalMaterial, THREE.MeshPhysicalMat
   if (!amberPair) {
     const o: Partial<GlassOptions> = {
       tint: 0x4a2008,
-      baseAlpha: 0.62,
-      fresnelAlpha: 0.3,
+      baseAlpha: 0.55,
+      fresnelAlpha: 0.25,
       edgeTint: 0x7a3a0a,
       roughness: 0.05,
-      envMapIntensity: 1.4,
+      envMapIntensity: 0.5,
     };
     amberPair = [makeGlassMaterial(true, o), makeGlassMaterial(false, o)];
   }

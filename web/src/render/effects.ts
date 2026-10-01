@@ -107,9 +107,9 @@ const crystalMat = () =>
     color: 0xffffff,
     roughness: 0.08,
     metalness: 0,
-    clearcoat: 1,
+    clearcoat: 0.2,
     clearcoatRoughness: 0.05,
-    envMapIntensity: 2.2,
+    envMapIntensity: 0.7,
     transparent: true,
     opacity: 0.9,
     flatShading: true,
@@ -228,7 +228,7 @@ export class VesselEffects {
     this.smoke.fadeIn = 0.2;
     this.splash = new SpriteParticles(140, softSpriteTexture());
     this.splash.fadeIn = 0;
-    this.precip = new SpriteParticles(300, softSpriteTexture(), { minPx: 3 });
+    this.precip = new SpriteParticles(450, softSpriteTexture(), { minPx: 1.0 });
     this.precip.fadeIn = 0.3;
     this.flame = new FlameCluster(p.rimInnerRadius > 2 ? 4 : 2);
     this.group.add(this.bubbles.mesh, this.smoke.points, this.splash.points, this.precip.points, this.flame.group);
@@ -614,8 +614,8 @@ export class VesselEffects {
       metalness: 0,
       transparent: true,
       opacity: 0.38,
-      envMapIntensity: 2.0,
-      clearcoat: 1,
+      envMapIntensity: 0.6,
+      clearcoat: 0.1,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -656,8 +656,8 @@ export class VesselEffects {
         metalness: 0,
         transparent: true,
         opacity: 0.55,
-        clearcoat: 1,
-        envMapIntensity: 1.5,
+        clearcoat: 0.3,
+        envMapIntensity: 0.6,
         depthWrite: false,
         polygonOffset: true,
         polygonOffsetFactor: -2,
@@ -943,7 +943,7 @@ export class VesselEffects {
           const rr = Math.sqrt(Math.random()) * R;
           const shade = rnd(0.85, 1.1);
           const sc = this.suspendedColor;
-          const sz = rnd(0.12, 0.3) * Math.min(1.2, Math.max(0.6, p.rimInnerRadius / 3)); // world-size diameter (cm); ~1 px sprites vanish at bench distance
+          const sz = rnd(0.025, 0.055) * Math.min(1.0, Math.max(0.5, p.rimInnerRadius / 3)); // fine-grain world-size diameter (cm)
           this.precip.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, 0, 0, 0, rnd(5, 10), sz, sz * 1.2, 0.7, sc.r * shade, sc.g * shade, sc.b * shade, 0, 0, 0);
         }
       } else if (this.precip.live > want + 10) {
@@ -1226,7 +1226,7 @@ export class VesselEffects {
     const heightAt = (x: number, z: number, r: number) => {
       const base = this.bedSurfaceAt(r);
       const rel = rp > 1e-4 ? Math.max(0, 1 - r / rp) : 0;
-      const grain = (Math.sin(x * 5.3 + seed) * Math.cos(z * 4.1 - seed) * 0.5 + Math.sin(x * 12.1 + z * 9.7) * 0.25) * (0.012 + Math.min(0.05, H * 0.12) * Math.min(1, rel * 2));
+      const grain = (Math.sin(x * 24.0 + seed) * Math.cos(z * 20.0 - seed) * 0.5 + Math.sin(x * 52.0 + z * 44.0) * 0.25) * (0.002 + Math.min(0.006, H * 0.02) * Math.min(1, rel * 2));
       return Math.min(p.innerTopY - 0.1, base + grain);
     };
     pos[0] = 0;
