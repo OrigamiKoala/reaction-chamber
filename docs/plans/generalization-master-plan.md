@@ -988,6 +988,8 @@ water at 293 K has a dry fraction of 0.977 ± 0.002.
 
 ### Stage 5: SLE and LLE (≈2–3 weeks)
 
+**Status: implemented, 2026-10-02.** Deviations: freezing, solubility and melting are one solid-liquid equilibrium solved by `vessel_phase.rs::phase_flash` (nested per-species saturation search inside an isenthalpic temperature root search with a lever-rule ending for pure components), not rows of the Gibbs solver (that merge stays with Stage 6); activity points correct UNIFAC by a two-suffix Margules excess Gibbs energy, not by a fitted interaction matrix; gates met at a lower tier than written: 1 m glucose freezes at −1.33 °C against −1.86 ± 0.1 (UNIFAC's own error for sugars; asserted within 0.6 K), water in hexane is 0.0158 wt % against < 0.01 (asserted at ×2 of the measured 0.011), and hexane in water is 45× too high (original UNIFAC underestimates alkane hydrophobicity; the Magnussen LLE matrix was tried and makes hexane/water miscible); the NaCl-in-ethanol Born gate is not implemented; the UNIFAC pipeline parser exists (`pipeline/db/parse_unifac.py`) and the table is complete, but all seeded phase data (fusion points, cp, densities, I2 datum, excess volumes) are recalled from memory at tier `estimated`. Details in `generalization-progress.md`.
+
 1. **Solvent freezing** rows (H2O(l) ⇌ H2O(s) and the same for any solvent with solid data) in the GEM; colligative
    depression falls out. Inert compounds' melting is the same mechanism (their separate plateau code is deleted).
 2. **Molecular-solid solubility**: ln(xγ) = (μ°(s) − μ°(l))/RT with UNIFAC γ; measured points (BigSolDB, AqSolDB,

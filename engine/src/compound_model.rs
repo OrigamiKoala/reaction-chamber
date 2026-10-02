@@ -403,7 +403,15 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     let mut thermo = CompoundThermo::build(req, &inert_id, mw_total, phase_model, &elems, fallback_state);
     let state = thermo.state_at_room();
     let by_mass = state == "solid";
-    let neat_liquid = kind == "inert" && state == "liquid";
+    // A liquid whose dissolved form is one neutral molecule is dosed neat (its own phase, amount from its density);
+    // a fully dissociating acid (HCl) or a salt has no neat form and stays a solution.
+    let neat_species: Option<String> = match kind {
+        "inert" => Some(inert_id.clone()),
+        "molecule" => Some(species[0].0.clone()),
+        "acid" if species.len() == 1 && (species[0].1 - 1.0).abs() < 1e-9 && ions::species_charge(&species[0].0) == 0 => Some(species[0].0.clone()),
+        _ => None,
+    };
+    let neat_liquid = neat_species.is_some() && state == "liquid";
     // A compound that is a gas at room conditions is a gas reagent: dosed by volume of gas into the headspace (sealed) or
     // sparged through the liquid, never a 0.1 M solution made up of water. A known dissolved molecule uses the gas twin of
     // its species record (found by InChIKey); one without a gas twin keeps the solution form.
@@ -435,11 +443,13 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             composition.insert(format!("{}(s)", inert_id), per_g);
         } else if kind == "molecule" {
             let sp = &species[0].0;
-            let key = if sp.ends_with("(s)") { sp.clone() } else { format!("{}(s)", sp) };
-            if ions::species_elements(&key).map(|e| ions::element_key(&e)) == Some(ions::element_key(&elems)) && sp.ends_with("(s)") {
+            let key = if sp.ends_with("(s)") { sp.clone() } else { format!("{}(s)", sp.trim_end_matches("(aq)")) };
+            let store_has_solid = crate::db::SpeciesStore::global().read().map_or(false, |st| st.get(&key).map_or(false, |r| r.has_phase("s")));
+            if store_has_solid || (ions::species_elements(&key).map(|e| ions::element_key(&e)) == Some(ions::element_key(&elems)) && sp.ends_with("(s)")) {
+                // the solid phase: it dissolves up to its saturation (solid-liquid equilibrium), a dry vessel keeps it
                 composition.insert(key, per_g);
             } else {
-                // dissolves as the neutral species
+                // no solid record: dissolves as the neutral species
                 composition.insert(sp.clone(), per_g);
             }
         } else if single_pair {
@@ -478,9 +488,9 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             *composition.entry("H2O".to_string()).or_default() += n_water * per_g;
         }
     } else if neat_liquid {
-        // neat liquid: per mL amounts = density / molar mass; it forms its own layer unless it dissolves
+        // neat liquid: per mL amounts = density / molar mass; it forms its own phase unless it mixes with what is there
         let per_ml = thermo.rho_liquid / mw_total;
-        composition.insert(format!("{}(l)", inert_id), per_ml);
+        composition.insert(neat_species.clone().unwrap_or_else(|| inert_id.clone()), per_ml);
         if n_water > 0.0 {
             *composition.entry("H2O".to_string()).or_default() += n_water * per_ml;
         }
@@ -539,7 +549,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     };
     let desc = species.iter().map(|(s, n)| if (*n - 1.0).abs() < 1e-9 { s.clone() } else { format!("{}{}", n, s) }).collect::<Vec<_>>().join(" + ");
     let reason = if kind == "inert" {
-        format!("Modelled as an inert compound ({}): melts, boils and dissolves up to its solubility, but no reaction chemistry is known for it", desc)
+        format!("Modelled as a molecular compound ({}): solid, liquid and gas phases, its solubility and its liquid-liquid partitioning follow from its melting data and the activity model; no reaction chemistry is known for it", desc)
     } else if let Some(note) = &acid_note {
         format!("Modelled as acid: {} ({})", desc, note)
     } else {

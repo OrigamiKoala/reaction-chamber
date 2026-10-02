@@ -523,13 +523,18 @@ impl ActivityModel for PitzerActivity {
 // record field; a species without groups, or a mixture that needs a pair the table lacks, is *outside UNIFAC*:
 // `unifac_ln_gamma` returns None and callers use an ideal solution and label it.
 
-/// UNIFAC subgroup (R, Q) and the main group it belongs to.
+/// UNIFAC subgroup (R, Q), the main group it belongs to and the patterns that assign it to a molecule.
 #[derive(Clone, Debug)]
 pub struct UnifacSubgroup {
+    pub id: u32,
     pub name: String,
     pub main: usize,
     pub r: f64,
     pub q: f64,
+    /// Hydrogens the subgroup accounts for (the sum over its atoms); a match must agree with it.
+    pub h: u32,
+    /// SMARTS patterns (any one matches); empty when the table's patterns use unsupported syntax.
+    pub patterns: Vec<crate::smarts::Pattern>,
 }
 
 pub struct UnifacParams {
@@ -538,6 +543,8 @@ pub struct UnifacParams {
     name_index: HashMap<String, usize>,
     pub tier: crate::types::ProvenanceTier,
     pub source: String,
+    /// Subgroups whose published SMARTS could not be parsed (they are never assigned).
+    pub unsupported: Vec<String>,
 }
 
 impl UnifacParams {
@@ -554,6 +561,37 @@ impl UnifacParams {
     }
 }
 
+/// Removes recursive negative look-ahead clauses (`;!$(...)`) from a published SMARTS. They only disambiguate groups
+/// that overlap in the table's own matcher (CH2Cl against CH2Cl2); the exact-cover assignment in `groups.rs` resolves
+/// such overlaps by itself, so the plain pattern is what the engine matches.
+fn strip_negative_lookaheads(s: &str) -> String {
+    let mut out = String::new();
+    let b: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == ';' && b.get(i + 1) == Some(&'!') && b.get(i + 2) == Some(&'$') && b.get(i + 3) == Some(&'(') {
+            let mut depth = 0;
+            let mut j = i + 3;
+            while j < b.len() {
+                if b[j] == '(' {
+                    depth += 1;
+                } else if b[j] == ')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            i = j + 1;
+            continue;
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    out
+}
+
 static UNIFAC_PARAMS: std::sync::OnceLock<UnifacParams> = std::sync::OnceLock::new();
 
 pub fn unifac_params() -> &'static UnifacParams {
@@ -561,14 +599,31 @@ pub fn unifac_params() -> &'static UnifacParams {
         let v: serde_json::Value = serde_json::from_str(include_str!("../data/unifac_vle.json")).expect("unifac_vle.json");
         let mut subgroups = Vec::new();
         let mut name_index = HashMap::new();
+        let mut unsupported = Vec::new();
         for sg in v["subgroups"].as_array().expect("subgroups") {
             let name = sg["name"].as_str().unwrap_or("").to_string();
+            let mut patterns = Vec::new();
+            let mut all_ok = true;
+            if let Some(list) = sg["smarts"].as_array() {
+                for sm in list.iter().filter_map(|x| x.as_str()) {
+                    match crate::smarts::parse(&strip_negative_lookaheads(sm)) {
+                        Some(p) => patterns.push(p),
+                        None => all_ok = false,
+                    }
+                }
+            }
+            if !all_ok {
+                unsupported.push(name.clone());
+            }
             name_index.insert(name.clone(), subgroups.len());
             subgroups.push(UnifacSubgroup {
+                id: sg["id"].as_u64().unwrap_or(0) as u32,
                 name,
                 main: sg["main"].as_u64().unwrap_or(0) as usize,
                 r: sg["R"].as_f64().unwrap_or(0.0),
                 q: sg["Q"].as_f64().unwrap_or(0.0),
+                h: sg["h"].as_u64().unwrap_or(0) as u32,
+                patterns,
             });
         }
         let mut a_mn = HashMap::new();
@@ -580,8 +635,12 @@ pub fn unifac_params() -> &'static UnifacParams {
             subgroups,
             a_mn,
             name_index,
-            tier: crate::types::ProvenanceTier::Speculative,
+            tier: match v["tier"].as_str() {
+                Some("tabulated") => crate::types::ProvenanceTier::Tabulated,
+                _ => crate::types::ProvenanceTier::Speculative,
+            },
             source: v["source"].as_str().unwrap_or("").to_string(),
+            unsupported,
         }
     })
 }
@@ -594,6 +653,7 @@ pub type GroupCounts = Vec<(usize, f64)>;
 /// the table lacks an interaction pair between two main groups present in the mixture.
 pub fn unifac_ln_gamma(groups: &[&GroupCounts], x: &[f64], t_k: f64) -> Option<Vec<f64>> {
     let p = unifac_params();
+
     let nc = groups.len();
     let r_i: Vec<f64> = groups.iter().map(|g| g.iter().map(|&(k, v)| v * p.subgroups[k].r).sum()).collect();
     let q_i: Vec<f64> = groups.iter().map(|g| g.iter().map(|&(k, v)| v * p.subgroups[k].q).sum()).collect();
@@ -1158,13 +1218,18 @@ mod unifac_tests {
 
     #[test]
     fn a_species_outside_the_group_set_is_outside_unifac() {
-        // ethers, esters, charged species: no groups, so no UNIFAC (the caller falls back to an ideal solution, labelled)
+        // charged species, species without carbon and a molecule the table has no group for: no UNIFAC (the caller falls
+        // back to an ideal solution, labelled); ethers, esters, acids now have groups (the full original table)
         assert!(unifac_groups("C2H5OH").is_some());
         assert!(unifac_groups("H2O").is_some());
         assert!(unifac_groups("Na+").is_none());
         assert!(unifac_groups("NoSuchSpecies").is_none());
         register_unifac_smiles("test_dme", "COC");
-        assert!(unifac_groups("test_dme").is_none());
+        assert!(unifac_groups("test_dme").is_some());
+        register_unifac_smiles("test_methane", "C");
+        assert!(unifac_groups("test_methane").is_none());
+        register_unifac_smiles("test_diiodine", "II");
+        assert!(unifac_groups("test_diiodine").is_none());
         register_unifac_smiles("test_butanone", "CCC(C)=O");
         assert!(unifac_groups("test_butanone").is_some());
     }

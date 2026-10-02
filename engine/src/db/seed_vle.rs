@@ -51,7 +51,7 @@ const PSAT_POINTS: &[(&str, f64, f64)] = &[
 /// (record id, Rackett parameter Z_RA of the liquid): the Spencer-Danner estimate from the acentric factor is poor for
 /// associating liquids (ethanol), so the measured parameters are records too.
 const RACKETT_ZRA: &[(&str, f64)] = &[
-    ("C2H5OH", 0.252),
+    ("C2H5OH", 0.2502),
     ("ik:VLKZOEOYAKHREP-UHFFFAOYSA-N", 0.264),
     ("ik:YXFVVABEGXRONW-UHFFFAOYSA-N", 0.264),
     ("ik:CSCPPACGZOOCGX-UHFFFAOYSA-N", 0.233),

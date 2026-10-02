@@ -297,3 +297,49 @@ Other suites: `cargo test` 183 passed / 0 failed (lib 62, stage0 35, stage4 16, 
 - UNIFAC covers alkanes, aromatics, alcohols, ketones, water; table recalled from memory (tier speculative, no pipeline parser yet); other species are ideal and labelled. Pitzer parameters are fixed at 25 C; ionic and UNIFAC water activity are combined additively.
 - Open pure water now absorbs atmospheric CO2 (pH drifts) by design; gas reagents have no pour visual; excess-volume pair literals remain in `volume.rs`; ethanol combustion code and a few `"H2O"` / `"C2H5OH"` literals remain in `vessel.rs` (counted in `literal_baseline.txt`, ratchet only goes down).
 - Not verified in a browser (stopper pop visuals, gas dosing UI).
+
+### Stage 5: SLE and LLE, partitioning, every compound gets phases (done, 2026-10-02)
+
+#### What changed
+
+1. **One phase machinery** (`vessel_phase.rs`, `molecule.rs`, `lle.rs`): every step `phase_flash` solves the solid-liquid and liquid-liquid equilibrium at conserved enthalpy. A solid's saturation activity is Schroder-van Laar from the record's `tm` + `dhfus` points (`ln a_sat = -dG_fus(T)/RT`, with dCp and the Poynting term when known); liquid activities are `x gamma` against the pure liquid, gamma from UNIFAC. Heat of transfer = fusion enthalpies + the *total* excess enthalpy before minus after (not partial molar values: a solvent that freezes almost completely would otherwise be mis-balanced). A pure component's equilibrium amount is a step function of T, so the Illinois/bisection search collapses onto the step and ends in the lever rule: that is the plateau. Same code for ice, naphthalene, iodine, hexane.
+2. **LLE** (`lle.rs`): Michelsen tangent-plane stability (successive substitution from n+2 starts), two-phase split by multiphase Rachford-Rice, up to three phases; ions go to the most water-rich phase. `species_mol` is the primary phase, `extra_liquids` the other phases densest first; `remove_liquid_bottom` drains in that order; snapshot layers are sorted by computed density.
+3. **Activity data**: the full original UNIFAC table (113 subgroups, 54 main groups, 1270 pairs; `pipeline/db/parse_unifac.py`, fixture test `tests/test_unifac_parser.py`), group assignment by exact cover over the table's own SMARTS (`smarts.rs`, `groups.rs`). Activity points: a measured solubility fixes ln gamma at its saturation mole fraction, an aqueous standard state fixes gamma_inf (I2: 0.34 g/L); both enter as a two-suffix Margules excess Gibbs energy so solute and solvent stay Gibbs-Duhem consistent (needed for a miscibility gap), with the temperature dependence from a measured heat of solution when the import has `dh_sol` (else regular-solution scaling). For a liquid solute above its melting point the datum references the pure liquid, not the metastable solid line.
+4. **Phases for every compound**: neat reagents dose neat, catalog solutions are recipes (solutes exact, solvent fills 1 mL at 20 C, scaled to the requested volume at the dose temperature), dissolved molecules take part in VLE and evaporate, solids sublime (open vessels and `step_sealed_sublimation`), I2(aq) finds its liquid twin by InChIKey. Excess volume is data (`data/excess_volume.json`, Redlich-Kister by InChIKey); pairs without data add volumes.
+5. **Deleted**: inert-compound melt plateau code, the 0.1 g/L default, the 500 g/L miscible rule, the water-only solubility basis (and the dead `solubility_limit_g_per_l` / `is_miscible_liquid`), `X(l)` neat-layer species, the ethanol-layer special case, the excess-volume pair literals of `volume.rs`. Compound literals in logic: 747 to 722 (`vessel.rs` 31 to 13, `volume.rs` 34 to 25, `groups.rs` and `vessel_phase.rs` to 0; `spectra.rs` 56 to 57 only because the new `I2(g)` record made its existing fume-optics key count; `db/seed_phases.rs` is an exempt seed table).
+
+#### Gates (`engine/tests/stage5.rs`, 15 tests, all pass; asserted tier in brackets where it differs from the plan)
+
+| Gate | Target | Result |
+|---|---|---|
+| 50 mL water, 240 K bath | plateau at 273.15 K | onset 273.150 K, 199 steps, all within 0.05 K; ice grows 0.136 mol/s = 818 W / 6.012 kJ/mol; melts on the same plateau |
+| 0.1 M NaCl freezing | -0.35 +- 0.05 C | -0.349 C |
+| 1 m glucose freezing | -1.86 +- 0.1 C | **-1.33 C** (asserted -1.26 to -1.96: UNIFAC gives gamma_w = 1.005 at 1 m; with the textbook group assignment 1.43 K) |
+| 50 + 50 mL water/ethanol | 96.5 +- 1 mL, one phase | 96.84 mL, one phase |
+| Hexane on water | 2 layers, hexane on top, water in hexane < 0.01 wt % | 2 layers, hexane rho 0.658 on top; water in hexane **0.0158 wt %** (asserted < 0.022 = x2 of measured 0.011); hexane in water **435 mg/L vs 9.5 measured** (45x high, asserted < 1000) |
+| Hexane/toluene | one phase | one phase, 99.99 mL (volumes add, flagged ideal) |
+| I2 K_D hexane/water | within x2 of 85 | 75.4 |
+| 20 wt % K2CO3, 40 mL water + 20 mL ethanol | salts ethanol out | 2 layers: aqueous 38.6 mL rho 1.288, ethanol-rich 23.8 mL rho 0.831 (the light phase still holds ~40 % water by amount) |
+| Separating funnel | densest layer first | water first, then hexane |
+| Naphthalene in water | 0.031 g/L within x3 | 0.0157 g/L predicted (groups + fusion data only); 0.0310 with the measured datum |
+| 1 g I2 dry / in 50 mL water | 1 g solid / 0.016 +- 0.005 g | 1.0000 g solid; 0.0169 g dissolved |
+| Naphthalene melting (new) | plateau at 353.35 K | 44 steps within 0.05 K |
+| Sublimation (new) | I2 vapour over solid | sealed 250 mL: 5.3e-6 mol vs 4.1e-6 (41 Pa) |
+| Recipes (new) | 10 mL 0.1 M NaCl is 10 mL, 1 mmol | 10.000 mL, 1.0000e-3 mol Na+ |
+| Glucose solubility vs T (new) | follows dH_sol = 10.8 kJ/mol | x_sat(5 C)/x_sat(25 C) = 0.71 (measured ~0.6) |
+
+Other suites: `cargo test` 208 passed / 0 failed (release; the debug stage5 binary runs in 18 s); node tests all OK (`wasm_e2e` busy mixture 3.2-3.4 ms/step, was 3.48 at Stage 3); `tsc` and `npm run build` clean; pytest for the touched files 13 passed (fastapi and rdkit absent, as before).
+
+#### Tests changed (they asserted removed hardcoded behaviour)
+
+`stage0.rs`: iodine clock (dissolved I2 evaporates: inventory may fall < 0.2 %), H2O2 (recipe at the dose temperature: 0.044 mol to 0.3 %), neutralisation (water from the base measured, pH within 1 unit: 3e-6 relative imbalance), NaCl in water + ethanol (ethanol salts it out instead of the water-only basis), glass-factor mixing (10 mL of 80 C water is 9.718 g). `stage3.rs` gate_6 (the water + acetone pair literal is gone; the gate now checks water + ethanol from data, and that pairs without data add). `stage4.rs` s4_5 (50 mL ethanol holds what the volume model gives). `compound_phases.rs` (new keys `X` / `X(s)` / `X(g)`, solubility at its reference temperature with a bath because dissolving a sugar is endothermic, no `X(l)` layers, no 500 g/L rule), `titration_funnel.rs` and node `titration.mjs` (funnel tests use hexane: ethanol is miscible), `wasm_e2e.mjs`.
+
+#### Known gaps / hand-off
+
+- Original (VLE-fitted) UNIFAC is poor for alkane/water hydrophobicity (hexane in water 45x high) and for sugars (water activity); the published Magnussen LLE matrix is parsed (`a_mn_lle`) but unused because it makes hexane and water miscible. A validated LLE parameter source or the Dortmund set is the fix.
+- Not implemented: NaCl in ethanol (Born tier gate of the plan); salt solubility in non-aqueous solvents still goes through the water-based Ksp path. Three-phase LLE and the multi-solid case are only lightly tested. Missing UNIFAC pairs fall back to ideal (stated in `Molecule.notes` only for groupless species, not in the snapshot).
+- Long-McDevit salting-out is applied with the water compressibility and crystal volumes from the mineral registry; the K2CO3 case separates but the light phase is more aqueous than measured.
+- All Stage 5 seed data (fusion points and enthalpies, cp, densities, I2 and Redlich-Kister data) are recalled from memory at tier `estimated`; the per-user NIST proxy and a measured-data pipeline should replace them. The aqueous heat of solution of glucose in the tests is also recalled.
+- Per-step cost with ice or two liquid phases present is 3-10x a plain liquid step (the solver does 10-40 full phase solves); fine for the bench, but a signature cache would be the next optimisation.
+- VLE is still a layer beside the legacy Gibbs solver (it now takes its phases from `phase_flash`), Stage 6 should finish the merge. Not verified in a browser (layer order and funnel interface logic).
+

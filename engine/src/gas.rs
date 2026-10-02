@@ -139,7 +139,7 @@ impl Vessel {
         let mut out = HashMap::new();
         for (sp, &mol) in &self.headspace_gas_mol {
             let excess = mol - self.gas.seal_baseline_mol.get(sp).copied().unwrap_or(0.0);
-            if excess > 1e-12 && !self.volatile_for_gas(sp).map_or(false, |v| self.species_mol.contains_key(&v.id)) {
+            if excess > 1e-12 && !self.volatile_for_gas(sp).map_or(false, |v| self.liquid_total(&v.id) > 0.0) {
                 out.insert(sp.clone(), excess);
             }
         }

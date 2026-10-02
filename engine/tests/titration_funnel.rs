@@ -1,6 +1,32 @@
 //! Separatory-funnel draining (densest layer first) and the pH indicators used for titrations.
 use reaction_chamber_engine::chem_db;
+use reaction_chamber_engine::compound_model::*;
 use reaction_chamber_engine::vessel::*;
+
+/// Hexane, imported like the web layer does: the immiscible organic of the funnel tests. (Until Stage 5 the funnel tests
+/// used ethanol, which the engine wrongly kept as a second layer on water; water and ethanol are miscible, so the
+/// tests use a real immiscible pair.)
+fn import_hexane() -> &'static str {
+    let req = CompoundRequest {
+        id: "tf_hexane".into(),
+        name: "Hexane".into(),
+        formula: "C6H14".into(),
+        smiles: Some("CCCCCC".into()),
+        inchi_key: Some("VLKZOEOYAKHREP-UHFFFAOYSA-N".into()),
+        state: Some("liquid".into()),
+        density: Some(0.659),
+        t_melt_ref_k: Some(177.83),
+        vapor_pressure_points: vec![[341.88, 101_325.0]],
+        ..Default::default()
+    };
+    let m = model_compound(&req);
+    assert!(m.modelable, "{}", m.reason);
+    chem_db::register_custom_reagent(m.entry.clone().unwrap());
+    if let Some(c) = &m.compound {
+        chem_db::register_custom_compound(c.clone());
+    }
+    "tf_hexane"
+}
 
 fn flask() -> Vessel {
     Vessel::new(VesselConfig {
@@ -16,19 +42,20 @@ fn drops(v: &mut Vessel, id: &str, n: f64) {
 }
 
 #[test]
-fn bottom_drain_takes_aqueous_before_ethanol() {
+fn bottom_drain_takes_aqueous_before_the_lighter_organic_layer() {
+    let hex = import_hexane();
     let mut v = flask();
     dose_ml(&mut v, "water", 30.0);
-    dose_ml(&mut v, "ethanol", 20.0);
+    dose_ml(&mut v, hex, 20.0);
     let (aq0, org0) = (v.aqueous_volume_ml(), v.organic_volume_ml());
     assert!(org0 > 15.0 && aq0 > 25.0);
     let p = v.remove_liquid_bottom(10.0, true).unwrap();
     assert!((p.volume_ml - 10.0).abs() < 1e-6);
     // only the aqueous phase leaves first, the ethanol layer is untouched
-    assert!((v.organic_volume_ml() - org0).abs() < 1e-9, "ethanol layer must stay");
+    assert!((v.organic_volume_ml() - org0).abs() < 1e-9, "the organic layer must stay");
     assert!((v.aqueous_volume_ml() - (aq0 - 10.0)).abs() < 1e-6);
     assert!(p.organic_mol.values().all(|m| *m == 0.0));
-    // drain the rest of the aqueous phase and continue: the ethanol layer follows
+    // drain the rest of the aqueous phase and continue: the organic layer follows
     let rest = v.aqueous_volume_ml();
     let p2 = v.remove_liquid_bottom(rest + 5.0, true).unwrap();
     assert!(v.aqueous_volume_ml() < 1e-6, "aqueous layer drained: {}", v.aqueous_volume_ml());
@@ -38,9 +65,10 @@ fn bottom_drain_takes_aqueous_before_ethanol() {
 
 #[test]
 fn bottom_drain_conserves_species() {
+    let hex = import_hexane();
     let mut v = flask();
     dose_ml(&mut v, "nacl_0_1m", 40.0);
-    dose_ml(&mut v, "ethanol", 10.0);
+    dose_ml(&mut v, hex, 10.0);
     let na0 = v.species_mol.get("Na+").copied().unwrap_or(0.0);
     let p = v.remove_liquid_bottom(15.0, true).unwrap();
     let na_left = v.species_mol.get("Na+").copied().unwrap_or(0.0);
@@ -51,10 +79,12 @@ fn bottom_drain_conserves_species() {
 
 #[test]
 fn default_remove_liquid_is_still_proportional() {
+    let hex = import_hexane();
     let mut v = flask();
     dose_ml(&mut v, "water", 30.0);
-    dose_ml(&mut v, "ethanol", 20.0);
+    dose_ml(&mut v, hex, 20.0);
     let (aq0, org0) = (v.aqueous_volume_ml(), v.organic_volume_ml());
+    assert!(aq0 > 25.0 && org0 > 15.0);
     v.remove_liquid(10.0, true).unwrap();
     let k = 1.0 - 10.0 / (aq0 + org0);
     assert!((v.aqueous_volume_ml() - aq0 * k).abs() < 1e-6);

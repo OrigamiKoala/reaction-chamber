@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::ProvenanceTier;
 use crate::chem_db::{self, GeneralEquilibrium, GeneralMineral, GeneralKineticRxn, ReagentCatalogEntry};
 use crate::compound_thermo::CompoundThermo;
-use crate::optics::{self, N_BINS};
+use crate::optics::{self};
 use crate::spectra;
 use crate::ions;
 use crate::conservation::{self, ElementError, ElementLedger};
@@ -46,7 +46,7 @@ pub struct LiquidLayer {
     pub absorbance_per_cm: Vec<f64>,
     pub scatter_per_cm: f64,
     pub scatter_rgb: [f64; 3],
-    /// Species id of a neat compound layer ("C10H8(l)"); absent for the aqueous and ethanol layers.
+    /// Species id of the main component of a non-aqueous layer; absent for the water-containing layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub species: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -282,7 +282,10 @@ pub struct Vessel {
     pub sealed: bool,
     pub burst: bool,
     pub controls: VesselControls,
+    /// The primary liquid phase: the water-containing phase the solution chemistry runs in (its species and amounts).
     pub species_mol: HashMap<String, f64>,
+    /// Immiscible liquid phases beside the primary one (densest first), decided by the liquid-liquid equilibrium.
+    pub extra_liquids: Vec<HashMap<String, f64>>,
     pub solid_mol: HashMap<String, f64>,
     pub initial_solids: HashMap<String, f64>,
     /// The closed gas inventory of a sealed vessel: air captured at sealing, the vapour of its liquids (species id
@@ -292,7 +295,8 @@ pub struct Vessel {
     pub atmosphere: crate::gas_phase::Atmosphere,
     /// Memoised store lookups of the vapour-liquid-equilibrium layer.
     pub(crate) vle_cache: RefCell<crate::vle::VleCache>,
-    pub(crate) partition_cache: RefCell<crate::vessel_vle::PartitionCache>,
+    /// Memoised `Molecule` lookups of the phase models (see `vessel_phase`).
+    pub(crate) mol_cache: RefCell<crate::vessel_phase::MolCache>,
     /// Mass flow (g/s) of liquid leaving as vapour below the boiling point in the last step.
     pub evaporation_g_s: f64,
     /// Gas collection bookkeeping (collected moles / escaped moles), see `gas.rs`.
@@ -350,12 +354,13 @@ impl Vessel {
             burst: false,
             controls: VesselControls::default(),
             species_mol: HashMap::new(),
+            extra_liquids: Vec::new(),
             solid_mol: HashMap::new(),
             initial_solids: HashMap::new(),
             headspace_gas_mol: HashMap::new(),
             atmosphere: Default::default(),
             vle_cache: RefCell::new(Default::default()),
-            partition_cache: RefCell::new(Default::default()),
+            mol_cache: RefCell::new(Default::default()),
             evaporation_g_s: 0.0,
             gas: Default::default(),
             mass_lost_g: 0.0,
@@ -515,9 +520,15 @@ impl Vessel {
             } else {
                 dose.volume_ml.unwrap_or(10.0)
             };
-            total_mass_added_g += vol_ml * entry.density_g_ml;
-            for (species, &mol_per_ml) in &entry.composition {
-                let mol = mol_per_ml * vol_ml;
+            // The catalog composition is a recipe: its solutes are the labelled concentration, its solvent fills the volume at
+            // 20 C (`reagent_recipe`); the dose is `vol_ml` of the liquid at its own temperature, whose volume the volume
+            // model derives from the recipe. Density, molarity and the mass added (hence its heat) follow from that.
+            let recipe = self.reagent_recipe(&entry.composition);
+            let unit_volume_ml = self.phase_volume_ml(&recipe, temp_add);
+            let scale = if unit_volume_ml > 1e-9 { vol_ml / unit_volume_ml } else { vol_ml };
+            for (species, &mol_per_ml) in &recipe {
+                let mol = mol_per_ml * scale;
+                total_mass_added_g += mol * chem_db::get_species_thermo(species).mw;
                 *self.species_mol.entry(species.clone()).or_insert(0.0) += mol;
                 added.push((species.clone(), mol, false));
             }
@@ -569,7 +580,8 @@ impl Vessel {
     fn settle_after_addition(&mut self) {
         // Whatever solid is in the vessel now was put there by the user: only *new* solids count as precipitates.
         self.sync_known_solids();
-        self.inert_dissolution(None);
+        // solids dissolve or melt, liquids split into their phases, at conserved enthalpy
+        self.phase_flash();
         self.auto_minerals();
         for _ in 0..40 {
             let (sp0, so0) = (self.species_mol.clone(), self.solid_mol.clone());
@@ -584,6 +596,7 @@ impl Vessel {
                 break;
             }
         }
+        self.phase_flash();
         self.update_network();
         self.detect_events(true);
         self.update_phases();
@@ -635,7 +648,9 @@ impl Vessel {
     }
 
     pub fn remove_liquid(&mut self, volume_ml: f64, include_solids: bool) -> Result<Portion, String> {
-        let total_vol = self.total_liquid_volume_ml();
+        let t = self.temperature_k;
+        let vols: Vec<f64> = self.liquid_maps().map(|m| self.phase_volume_ml(m, t)).collect();
+        let total_vol: f64 = vols.iter().sum();
         if total_vol <= 1e-6 {
             return Ok(Portion {
                 volume_ml: 0.0,
@@ -645,26 +660,45 @@ impl Vessel {
                 solid_mol: HashMap::new(),
             });
         }
-
         let frac = (volume_ml / total_vol).clamp(0.0, 1.0);
-        let actual_vol = total_vol * frac;
+        let fractions = vec![frac; vols.len()];
+        Ok(self.draw_off(&fractions, if include_solids { frac } else { 0.0 }, total_vol * frac))
+    }
 
+    /// Takes `fractions[p]` of every liquid phase `p` (primary phase first) and `solid_fraction` of the solids; returns
+    /// them as a portion (water-containing phases as `aqueous_mol`, the others as `organic_mol`).
+    fn draw_off(&mut self, fractions: &[f64], solid_fraction: f64, volume_ml: f64) -> Portion {
         let mut aq_mol = HashMap::new();
-        let mut org_mol = HashMap::new();
-        for (sp, mol) in self.species_mol.iter_mut() {
-            let removed = *mol * frac;
-            *mol -= removed;
-            if sp == "C2H5OH" || sp.ends_with("(l)") {
-                org_mol.insert(sp.clone(), removed);
-            } else {
-                aq_mol.insert(sp.clone(), removed);
+        let mut org_mol: HashMap<String, f64> = HashMap::new();
+        let n_phases = 1 + self.extra_liquids.len();
+        for p in 0..n_phases {
+            let f = fractions.get(p).copied().unwrap_or(0.0);
+            if f <= 0.0 {
+                continue;
+            }
+            let aqueous = {
+                let m = if p == 0 { &self.species_mol } else { &self.extra_liquids[p - 1] };
+                self.phase_is_aqueous(m)
+            };
+            let m = if p == 0 { &mut self.species_mol } else { &mut self.extra_liquids[p - 1] };
+            for (sp, mol) in m.iter_mut() {
+                let removed = *mol * f;
+                *mol -= removed;
+                if aqueous {
+                    *aq_mol.entry(sp.clone()).or_insert(0.0) += removed;
+                } else {
+                    *org_mol.entry(sp.clone()).or_insert(0.0) += removed;
+                }
             }
         }
+        self.species_mol.retain(|_, v| *v > 0.0);
+        self.extra_liquids.iter_mut().for_each(|m| m.retain(|_, v| *v > 0.0));
+        self.extra_liquids.retain(|m| !m.is_empty());
 
         let mut s_mol = HashMap::new();
-        if include_solids {
+        if solid_fraction > 0.0 {
             for (sp, mol) in self.solid_mol.iter_mut() {
-                let removed = *mol * frac;
+                let removed = *mol * solid_fraction;
                 *mol -= removed;
                 s_mol.insert(sp.clone(), removed);
             }
@@ -672,77 +706,45 @@ impl Vessel {
         for (sp, mol) in aq_mol.iter().chain(org_mol.iter()).chain(s_mol.iter()) {
             self.ledger.book_out(sp, *mol);
         }
-
         self.update_phases();
-
-        Ok(Portion {
-            volume_ml: actual_vol,
-            temperature_k: self.temperature_k,
-            aqueous_mol: aq_mol,
-            organic_mol: org_mol,
-            solid_mol: s_mol,
-        })
+        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol }
     }
 
-    /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first (aqueous, 1.0+ g/mL, before the
-    /// ethanol layer at 0.789 g/mL), then the next one. Settled solids leave with the bottom phase. `remove_liquid`
-    /// (proportional over everything) is unchanged.
+    /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first, then the next one, in the order
+    /// of the computed phase densities. Settled solids leave with the bottom phase. `remove_liquid` (proportional over
+    /// everything) is unchanged.
     pub fn remove_liquid_bottom(&mut self, volume_ml: f64, include_solids: bool) -> Result<Portion, String> {
-        let aq_vol = self.aqueous_volume_ml();
-        let org_vol = self.organic_volume_ml() + self.neat_volume_ml();
-        let org_mass = self.species_mol.get("C2H5OH").copied().unwrap_or(0.0) * 46.069 + self.neat_mass_g();
-        let org_density = if org_vol > 1e-9 { org_mass / org_vol } else { 0.789 };
-        let total_vol = aq_vol + org_vol;
+        let t = self.temperature_k;
+        let info: Vec<(f64, f64)> = self
+            .liquid_maps()
+            .map(|m| {
+                let v = self.phase_volume_ml(m, t);
+                (if v > 1e-12 { self.phase_mass_g(m) / v } else { 0.0 }, v)
+            })
+            .collect();
+        let total_vol: f64 = info.iter().map(|x| x.1).sum();
         if total_vol <= 1e-6 || volume_ml <= 0.0 {
             return self.remove_liquid(0.0, include_solids);
         }
-        let want = volume_ml.clamp(0.0, total_vol);
-        // phases in order of decreasing density (all non-aqueous liquids count as one organic phase)
-        let aq_density = self.phases.aqueous_phase().map(|a| a.density_g_ml).unwrap_or(1.0);
-        let aq_first = aq_density >= org_density;
-        let (first_vol, second_vol) = if aq_first { (aq_vol, org_vol) } else { (org_vol, aq_vol) };
-        let take_first = want.min(first_vol);
-        let take_second = (want - take_first).min(second_vol);
-        let frac_of = |take: f64, vol: f64| if vol > 1e-9 { (take / vol).clamp(0.0, 1.0) } else { 0.0 };
-        let (f_aq, f_org) = if aq_first {
-            (frac_of(take_first, aq_vol), frac_of(take_second, org_vol))
-        } else {
-            (frac_of(take_second, aq_vol), frac_of(take_first, org_vol))
-        };
-
-        let mut aq_mol = HashMap::new();
-        let mut org_mol = HashMap::new();
-        for (sp, mol) in self.species_mol.iter_mut() {
-            if sp == "C2H5OH" || sp.ends_with("(l)") {
-                let removed = *mol * f_org;
-                *mol -= removed;
-                org_mol.insert(sp.clone(), removed);
-            } else {
-                let removed = *mol * f_aq;
-                *mol -= removed;
-                aq_mol.insert(sp.clone(), removed);
+        let mut order: Vec<usize> = (0..info.len()).collect();
+        order.sort_by(|&a, &b| info[b].0.partial_cmp(&info[a].0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut left = volume_ml.clamp(0.0, total_vol);
+        let mut fractions = vec![0.0; info.len()];
+        let mut taken = 0.0;
+        let mut solid_fraction = 0.0;
+        for (rank, &p) in order.iter().enumerate() {
+            if left <= 0.0 {
+                break;
             }
-        }
-        let mut s_mol = HashMap::new();
-        if include_solids {
-            let f_solid = if aq_first { f_aq } else { f_org };
-            for (sp, mol) in self.solid_mol.iter_mut() {
-                let removed = *mol * f_solid;
-                *mol -= removed;
-                s_mol.insert(sp.clone(), removed);
+            let take = left.min(info[p].1);
+            fractions[p] = if info[p].1 > 1e-12 { (take / info[p].1).clamp(0.0, 1.0) } else { 0.0 };
+            if rank == 0 {
+                solid_fraction = fractions[p];
             }
+            left -= take;
+            taken += take;
         }
-        for (sp, mol) in aq_mol.iter().chain(org_mol.iter()).chain(s_mol.iter()) {
-            self.ledger.book_out(sp, *mol);
-        }
-        self.update_phases();
-        Ok(Portion {
-            volume_ml: take_first + take_second,
-            temperature_k: self.temperature_k,
-            aqueous_mol: aq_mol,
-            organic_mol: org_mol,
-            solid_mol: s_mol,
-        })
+        Ok(self.draw_off(&fractions, if include_solids { solid_fraction } else { 0.0 }, taken))
     }
 
     pub fn set_controls(&mut self, controls: VesselControls) {
@@ -825,9 +827,6 @@ impl Vessel {
 
         // 3. Thermal energy balance
         self.step_thermal(dt_s, reaction_heat_joules);
-
-        // 3b. Inert compounds: dissolution equilibrium after the phase changes of the thermal step
-        self.inert_dissolution(Some(dt_s));
 
         // 4. Headspace pressure & gas accumulation / venting
         self.step_headspace(dt_s);
@@ -975,7 +974,7 @@ impl Vessel {
         }
 
         // Special physical process: ethanol combustion when igniter active
-        let etoh = *self.species_mol.get("C2H5OH").unwrap_or(&0.0);
+        let etoh = self.liquid_total("C2H5OH");
         let igniter_active = self.controls.igniter.unwrap_or(false);
         if igniter_active && etoh > 1e-5 && t_k >= 286.0 {
             if !self.flame_active {
@@ -999,7 +998,8 @@ impl Vessel {
                 let burn_mol_s = burn_g_s / 46.069;
                 let mol_burned = (burn_mol_s * dt_s).min(etoh);
 
-                *self.species_mol.entry("C2H5OH".to_string()).or_default() -= mol_burned;
+                let left = self.liquid_total("C2H5OH") - mol_burned;
+                self.set_liquid_total("C2H5OH", left);
                 self.mass_lost_g += mol_burned * 46.069;
                 // the combustion products (CO2, H2O) leave with the plume: book the fuel's atoms as gone
                 self.ledger.book_out("C2H5OH", mol_burned);
@@ -1037,11 +1037,13 @@ impl Vessel {
         let delta_t = net_energy_j / cp_total;
         self.temperature_k += delta_t;
 
-        // Melting / freezing plateaus and boil-off of inert compounds (clamps the temperature like water below)
-        self.step_inert_thermal(dt_s, cp_total);
+        // Solid-liquid and liquid-liquid equilibrium at conserved enthalpy: freezing and melting plateaus, dissolution
+        // and crystallisation with their heats, immiscible phases (`vessel_phase`).
+        self.phase_flash();
 
         // Boiling and evaporation of every volatile liquid (open vessel): the bubble point of the actual mixture at the
         // atmosphere's pressure, and evaporation toward the atmosphere's partial pressures below it (see `vessel_vle`).
+        let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
         self.step_boil_open(dt_s, cp_total);
         self.step_evaporation_open(dt_s, cp_total);
     }
@@ -1053,6 +1055,7 @@ impl Vessel {
         }
         // isochoric vapour-liquid flash of the closed gas inventory (air, vapour, evolved gas) at the headspace volume
         let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
+        self.step_sealed_sublimation(cp_total);
         let p_pa = self.step_sealed_flash(cp_total);
         self.pressure_atm = p_pa / 101325.0;
 
@@ -1075,59 +1078,38 @@ impl Vessel {
 
     pub fn snapshot(&self) -> VesselSnapshot {
         let total_liq_ml = self.total_liquid_volume_ml();
-        let aq_vol = self.aqueous_volume_ml();
         let ph = if self.has_aqueous_phase() { Some(self.current_ph()) } else { None };
         let ionic_str = if self.has_aqueous_phase() { Some(self.calc_ionic_strength()) } else { None };
 
-        let layers = if !self.phases.liquids.is_empty() {
-            let mut layers = self.phases.rebuild_layers();
-            for layer in &mut layers {
-                if layer.phase == PhaseKind::Aqueous {
-                    let a_per_cm = optics::absorbance_per_cm_from_mol(&self.species_mol, aq_vol / 1000.0);
-                    layer.absorbance_per_cm = a_per_cm.to_vec();
-                    let (scatter, sc_rgb) = self.calc_turbidity_and_scatter_rgb();
-                    layer.scatter_per_cm = scatter;
-                    layer.scatter_rgb = sc_rgb;
-                    layer.refractive_index = crate::props::lorentz_lorenz_refractive_index(&self.species_mol, aq_vol);
-                }
+        // one layer per liquid phase (the phases are the liquid-liquid equilibrium's, densest first)
+        let views = self.phase_views();
+        let mut layers: Vec<LiquidLayer> = Vec::new();
+        for (idx, v) in views.iter().enumerate() {
+            if v.volume_ml <= 0.001 {
+                continue;
             }
-            layers
-        } else {
-            let mut l = Vec::new();
-            if aq_vol > 0.01 {
-                let a_per_cm = optics::absorbance_per_cm_from_mol(&self.species_mol, aq_vol / 1000.0);
-                let (scatter, sc_rgb) = self.calc_turbidity_and_scatter_rgb();
-                l.push(LiquidLayer {
-                    phase: PhaseKind::Aqueous,
-                    volume_ml: aq_vol,
-                    density_g_ml: 1.0,
-                    refractive_index: 1.333,
-                    absorbance_per_cm: a_per_cm.to_vec(),
-                    scatter_per_cm: scatter,
-                    scatter_rgb: sc_rgb,
-                    species: None,
-                    name: None,
-                });
-            }
-            let org_vol = self.organic_volume_ml();
-            if org_vol > 0.01 {
-                let org_a = [0.0; N_BINS];
-                l.push(LiquidLayer {
-                    phase: PhaseKind::Organic,
-                    volume_ml: org_vol,
-                    density_g_ml: 0.789,
-                    refractive_index: 1.361,
-                    absorbance_per_cm: org_a.to_vec(),
-                    scatter_per_cm: 0.0,
-                    scatter_rgb: [1.0, 1.0, 1.0],
-                    species: None,
-                    name: None,
-                });
-            }
-            l.extend(self.neat_layers());
-            l.sort_by(|a, b| b.density_g_ml.partial_cmp(&a.density_g_ml).unwrap_or(std::cmp::Ordering::Equal));
-            l
-        };
+            let aqueous = self.phase_is_aqueous(&v.species_mol);
+            let (scatter, sc_rgb) = if idx == 0 { self.calc_turbidity_and_scatter_rgb() } else { (0.0, [1.0, 1.0, 1.0]) };
+            // the dominant molecule names a non-aqueous layer
+            let lead = if aqueous {
+                None
+            } else {
+                v.species_mol.iter().filter(|(k, _)| ions::species_charge(k) == 0).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(k, _)| k.clone())
+            };
+            layers.push(LiquidLayer {
+                phase: if aqueous { PhaseKind::Aqueous } else { PhaseKind::Organic },
+                volume_ml: v.volume_ml,
+                density_g_ml: if v.volume_ml > 1e-9 { v.mass_g / v.volume_ml } else { 1.0 },
+                refractive_index: crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml),
+                absorbance_per_cm: self.phase_absorbance(&v.species_mol, v.volume_ml),
+                scatter_per_cm: scatter,
+                scatter_rgb: sc_rgb,
+                name: lead.as_ref().map(|k| self.display_name(k)),
+                species: lead,
+            });
+        }
+        // densest at the bottom (first in the list for rendering order)
+        layers.sort_by(|a, b| b.density_g_ml.partial_cmp(&a.density_g_ml).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut solids = Vec::new();
         let dust = self.dust_mol();
@@ -1229,29 +1211,33 @@ impl Vessel {
         };
 
         let mut species_rows = Vec::new();
-        for (sp, &mol) in &self.species_mol {
-            if mol <= 0.0 {
-                continue;
+        for (pi, view) in views.iter().enumerate() {
+            let aqueous_phase = self.phase_is_aqueous(&view.species_mol);
+            let phase_l = (view.volume_ml / 1000.0).max(1e-9);
+            for (sp, &mol) in &view.species_mol {
+                if mol <= 0.0 {
+                    continue;
+                }
+                let thermo = chem_db::get_species_thermo(sp);
+                let c_m = if view.volume_ml > 0.01 { Some(mol / phase_l) } else { None };
+                species_rows.push(SpeciesRow {
+                    id: sp.clone(),
+                    name: self.display_name(sp),
+                    formula: sp.clone(),
+                    charge: thermo.charge,
+                    phase: if aqueous_phase { "aqueous".to_string() } else { "organic".to_string() },
+                    amount_mol: mol,
+                    conc_m: c_m,
+                    activity: if pi == 0 && self.has_aqueous_phase() {
+                        let ln_g = gamma_cache.get(sp).copied().unwrap_or(0.0);
+                        let conc = mol / solvent_vol_l;
+                        Some(conc * ln_g.exp())
+                    } else {
+                        c_m
+                    },
+                    tier: self.species_tier(sp),
+                });
             }
-            let thermo = chem_db::get_species_thermo(sp);
-            let c_m = if total_liq_ml > 0.01 { Some(mol / (total_liq_ml / 1000.0)) } else { None };
-            species_rows.push(SpeciesRow {
-                id: sp.clone(),
-                name: self.display_name(sp),
-                formula: sp.clone(),
-                charge: thermo.charge,
-                phase: if sp == "C2H5OH" || sp.ends_with("(l)") { "organic".to_string() } else { "aqueous".to_string() },
-                amount_mol: mol,
-                conc_m: c_m,
-                activity: if self.has_aqueous_phase() {
-                    let ln_g = gamma_cache.get(sp).copied().unwrap_or(0.0);
-                    let conc = mol / solvent_vol_l;
-                    Some(conc * ln_g.exp())
-                } else {
-                    c_m
-                },
-                tier: self.species_tier(sp),
-            });
         }
         for (sp, &mol) in &self.solid_mol {
             if mol <= 0.0 {
@@ -1364,19 +1350,9 @@ impl Vessel {
         }
     }
 
-    pub fn total_liquid_volume_ml(&self) -> f64 {
-        self.aqueous_volume_ml() + self.organic_volume_ml() + self.neat_volume_ml()
-    }
-
-    /// Volume the solution chemistry (equilibria, kinetics) happens in: water plus the miscible ethanol phase.
-    /// Immiscible neat liquid compounds are separate layers and do not dilute it.
-    pub fn reaction_volume_ml(&self) -> f64 {
-        self.aqueous_volume_ml() + self.organic_volume_ml()
-    }
-
     /// Volume (mL) of the aqueous solvent itself (water from IAPWS).
     pub fn solvent_volume_ml(&self) -> f64 {
-        let h2o_mol = self.species_mol.get("H2O").copied().unwrap_or(0.0);
+        let h2o_mol = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
         if h2o_mol <= MIN_AQUEOUS_H2O_MOL {
             return 0.0;
         }
@@ -1385,31 +1361,7 @@ impl Vessel {
 
     /// True when there is enough water for an aqueous phase to exist.
     pub fn has_aqueous_phase(&self) -> bool {
-        self.species_mol.get("H2O").copied().unwrap_or(0.0) > MIN_AQUEOUS_H2O_MOL
-    }
-
-    pub fn aqueous_volume_ml(&self) -> f64 {
-        if let Some(aq) = self.phases.aqueous_phase() {
-            return aq.volume_ml;
-        }
-        if !self.has_aqueous_phase() {
-            return 0.0;
-        }
-        let mut aq_mol = HashMap::new();
-        for (sp, &mol) in &self.species_mol {
-            if mol > 0.0 && sp != "C2H5OH" && !sp.ends_with("(s)") && !sp.ends_with("(l)") && !sp.ends_with("(g)") {
-                aq_mol.insert(sp.clone(), mol);
-            }
-        }
-        crate::volume::calculate_aqueous_volume_ml(&aq_mol, self.temperature_k, self.calc_ionic_strength())
-    }
-
-    pub fn organic_volume_ml(&self) -> f64 {
-        let etoh_mol = *self.species_mol.get("C2H5OH").unwrap_or(&0.0);
-        if etoh_mol <= 0.0 {
-            return 0.0;
-        }
-        etoh_mol * crate::volume::organic_molar_volume_cm3_mol("C2H5OH", self.temperature_k)
+        self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) > MIN_AQUEOUS_H2O_MOL
     }
 
     pub fn species_ln_gamma(&self, species: &str) -> f64 {
@@ -1442,11 +1394,11 @@ impl Vessel {
         crate::activity::default_activity_model().solvent_activity(aq, self.temperature_k, self.pressure_atm)
     }
 
-    /// Update generic phases from current vessel species amounts.
+    /// Update the generic phase description from the vessel's amounts: the gas, the liquid phases (as the liquid-liquid
+    /// equilibrium left them) and the solids.
     pub fn update_phases(&mut self) {
         let t_k = self.temperature_k;
         let p_atm = self.pressure_atm;
-        let i_str = self.calc_ionic_strength();
 
         // 1. Gas phase
         self.phases.gas.temperature_k = t_k;
@@ -1458,64 +1410,25 @@ impl Vessel {
             }
         }
 
-        // 2. Liquid phases: aqueous and organics
-        self.phases.liquids.clear();
-
-        // Aqueous phase
-        let h2o_mol = self.species_mol.get("H2O").copied().unwrap_or(0.0);
-        if h2o_mol > MIN_AQUEOUS_H2O_MOL {
-            let mut aq = crate::phases::LiquidPhase::new_aqueous();
-            let mut aq_mass_g = 0.0;
-            for (sp, &mol) in &self.species_mol {
-                if mol <= 0.0 || sp == "C2H5OH" || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
-                    continue;
-                }
-                aq.species_mol.insert(sp.clone(), mol);
-                let thermo = chem_db::get_species_thermo(sp);
-                aq_mass_g += mol * thermo.mw;
-            }
-            aq.volume_ml = crate::volume::calculate_aqueous_volume_ml(&aq.species_mol, t_k, i_str);
-            aq.mass_g = aq_mass_g;
-            if aq.volume_ml > 0.001 {
-                aq.density_g_ml = aq.mass_g / aq.volume_ml;
+        // 2. Liquid phases
+        let maps: Vec<HashMap<String, f64>> = self.liquid_maps().filter(|m| !m.is_empty()).cloned().collect();
+        let mut liquids: Vec<crate::phases::LiquidPhase> = Vec::new();
+        for (idx, map) in maps.iter().enumerate() {
+            let aqueous = self.phase_is_aqueous(map);
+            let lead = map.iter().filter(|(k, _)| ions::species_charge(k) == 0).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(k, _)| k.clone());
+            let mut ph = if aqueous {
+                crate::phases::LiquidPhase::new_aqueous()
             } else {
-                aq.density_g_ml = 1.0;
-            }
-            self.phases.liquids.push(aq);
+                crate::phases::LiquidPhase::new_organic(&format!("liquid_{}", idx), lead.as_deref(), lead.as_ref().map(|k| self.display_name(k)).as_deref())
+            };
+            ph.species_mol = map.clone();
+            ph.volume_ml = self.phase_volume_ml(map, t_k);
+            ph.mass_g = self.phase_mass_g(map);
+            ph.density_g_ml = if ph.volume_ml > 0.001 { ph.mass_g / ph.volume_ml } else { 1.0 };
+            ph.neat_species = if aqueous { None } else { lead };
+            liquids.push(ph);
         }
-
-        // Ethanol organic phase
-        let etoh_mol = self.species_mol.get("C2H5OH").copied().unwrap_or(0.0);
-        if etoh_mol > 1e-6 {
-            let mut org = crate::phases::LiquidPhase::new_organic("organic_etoh", Some("C2H5OH"), Some("Ethanol"));
-            org.species_mol.insert("C2H5OH".to_string(), etoh_mol);
-            org.mass_g = etoh_mol * 46.069;
-            org.volume_ml = etoh_mol * crate::volume::organic_molar_volume_cm3_mol("C2H5OH", t_k);
-            if org.volume_ml > 0.001 {
-                org.density_g_ml = org.mass_g / org.volume_ml;
-            } else {
-                org.density_g_ml = 0.789;
-            }
-            self.phases.liquids.push(org);
-        }
-
-        // Neat inert liquid phases
-        for neat in self.neat_layers() {
-            let mut p = crate::phases::LiquidPhase::new_organic(
-                &neat.species.clone().unwrap_or_else(|| "neat".to_string()),
-                neat.species.as_deref(),
-                neat.name.as_deref(),
-            );
-            p.volume_ml = neat.volume_ml;
-            p.density_g_ml = neat.density_g_ml;
-            p.refractive_index = neat.refractive_index;
-            p.absorbance_per_cm = neat.absorbance_per_cm;
-            p.scatter_per_cm = neat.scatter_per_cm;
-            p.scatter_rgb = neat.scatter_rgb;
-            p.neat_species = neat.species;
-            p.name = neat.name;
-            self.phases.liquids.push(p);
-        }
+        self.phases.liquids = liquids;
 
         // 3. Solids
         self.phases.solids.clear();
@@ -1543,9 +1456,11 @@ impl Vessel {
 
     pub fn contents_mass_g(&self) -> f64 {
         let mut m = 0.0;
-        for (sp, &mol) in &self.species_mol {
-            let thermo = chem_db::get_species_thermo(sp);
-            m += mol * thermo.mw;
+        for map in self.liquid_maps() {
+            for (sp, &mol) in map {
+                let thermo = chem_db::get_species_thermo(sp);
+                m += mol * thermo.mw;
+            }
         }
         for (sp, &mol) in &self.solid_mol {
             let thermo = chem_db::get_species_thermo(sp);
@@ -1560,7 +1475,7 @@ impl Vessel {
             return f64::NAN;
         }
         let t_k = self.temperature_k;
-        let n_h2o = self.species_mol.get("H2O").copied().unwrap_or(0.0);
+        let n_h2o = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
         let kg_w = (n_h2o * 0.01801528).max(1e-12);
         let m_h = self.species_mol.get("H+").copied().unwrap_or(0.0) / kg_w;
         let m_oh = self.species_mol.get("OH-").copied().unwrap_or(0.0) / kg_w;
@@ -1570,7 +1485,7 @@ impl Vessel {
             .iter()
             .find(|e| {
                 e.reactants.len() == 1
-                    && e.reactants.contains_key("H2O")
+                    && e.reactants.contains_key(AQUEOUS_SOLVENT)
                     && e.products.len() == 2
                     && e.products.contains_key("H+")
                     && e.products.contains_key("OH-")
@@ -1612,7 +1527,7 @@ impl Vessel {
     }
 
     fn calc_ionic_strength(&self) -> f64 {
-        let h2o_mol = self.species_mol.get("H2O").copied().unwrap_or(0.0);
+        let h2o_mol = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
         if h2o_mol <= MIN_AQUEOUS_H2O_MOL {
             return 0.0;
         }
@@ -1640,7 +1555,7 @@ impl Vessel {
         let mut total_scatter = 0.0;
         let mut rgb_weighted = [0.0_f64; 3];
         let rgb = [1.0, 1.0, 1.0];
-        let vol_ml = self.aqueous_volume_ml();
+        let vol_ml = self.reaction_volume_ml();
         if vol_ml <= 0.0 {
             return (total_scatter, rgb);
         }
@@ -1691,8 +1606,8 @@ impl Vessel {
     /// 22 microlitre droplet keeps its micromole precipitate while a litre vessel still ignores nanomole noise.
     pub(crate) fn dust_mol(&self) -> f64 {
         let mut largest = 0.0_f64;
-        for (sp, &mol) in self.species_mol.iter().chain(self.solid_mol.iter()) {
-            if sp != "H2O" && mol > largest {
+        for (sp, &mol) in self.liquid_maps().flat_map(|m| m.iter()).chain(self.solid_mol.iter()) {
+            if sp != AQUEOUS_SOLVENT && mol > largest {
                 largest = mol;
             }
         }
@@ -1703,7 +1618,7 @@ impl Vessel {
     pub(crate) fn element_inventory(&self) -> (HashMap<String, f64>, Vec<String>) {
         let mut inv: HashMap<String, f64> = HashMap::new();
         let mut unparsed: Vec<String> = Vec::new();
-        for map in [&self.species_mol, &self.solid_mol, &self.headspace_gas_mol, &self.gas.collected_mol] {
+        for map in self.liquid_maps().chain([&self.solid_mol, &self.headspace_gas_mol, &self.gas.collected_mol]) {
             for (sp, &mol) in map {
                 if mol <= 0.0 {
                     continue;

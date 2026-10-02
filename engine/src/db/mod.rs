@@ -1,6 +1,7 @@
 pub mod record;
 pub mod seed;
 pub mod seed_vle;
+pub mod seed_phases;
 pub mod store;
 
 pub use record::{

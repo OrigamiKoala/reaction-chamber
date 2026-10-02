@@ -315,5 +315,6 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
     }
 
     crate::db::seed_vle::attach_vle_data(&mut records);
+    crate::db::seed_phases::attach_phase_data(&mut records);
     records
 }

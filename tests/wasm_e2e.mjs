@@ -110,9 +110,11 @@ console.log('naphthalene:', naph.reason, JSON.stringify(naph.thermo));
   assert.ok(plateau, 'melting plateau at the melting reference with solid and liquid together');
   for (let i = 0; i < 1500 && sn.solids.length; i++) sn = J(eng.vessel_step(w, 0.05));
   assert.equal(sn.solids.length, 0, 'melted');
-  assert.equal(sn.layers[0].species, 'C10H8(l)');
+  // (Stage 5: the melt is the vessel's liquid phase, not an "X(l)" layer species; the log says the solid is gone)
+  assert.equal(sn.layers.length, 1);
+  assert.equal(sn.layers[0].phase, 'organic');
   assert.ok(sn.layers[0].density_g_ml > 0.9 && sn.layers[0].volume_ml > 4, JSON.stringify(sn.layers[0]));
-  assert.ok(sn.events.some((e) => /melted/.test(e.detail)), 'melted event: ' + JSON.stringify(sn.events.map((e) => e.detail)));
+  assert.ok(sn.events.some((e) => /Solid gone|melted/.test(e.detail)), 'melted event: ' + JSON.stringify(sn.events.map((e) => e.detail)));
 }
 
 // anything that does not parse stays unmodelable
@@ -146,23 +148,29 @@ for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   const i0 = iAtoms(snap(c));
   run(c, 300);
   const sn = snap(c);
-  assert.ok(Math.abs(iAtoms(sn) / i0 - 1) < 1e-9, `I atoms ${i0} -> ${iAtoms(sn)}`);
+  // (Stage 5: dissolved I2 is a volatile solute, so a little leaves the open beaker; the reactions create no iodine and the
+  // ledger books the evaporation out: the inventory can only fall, by < 0.2 %)
+  const rel = iAtoms(sn) / i0 - 1;
+  assert.ok(rel <= 1e-9 && rel > -2e-3, `I atoms ${i0} -> ${iAtoms(sn)}`);
   assert.ok(sn.conservation.ok, JSON.stringify(sn.conservation));
   assert.equal(sn.conservation.unverified_species.length, 0, 'indicator pseudo-species now carry formulas');
 }
 
-// 0.044 mol H2O2 -> 0.022 mol O2 within 1 %
+// 0.044 mol H2O2 -> 0.022 mol O2 within 1 % (a catalog solution is a recipe per mL at 20 C dosed to 50 mL at the dose
+// temperature, so 0.044 mol to 0.3 %)
 {
   const c = vessel();
   dose(c, { reagent_id: 'h2o2_3pct', volume_ml: 50 });
+  const h2o2_0 = amount(snap(c), 'H2O2');
+  assert.ok(Math.abs(h2o2_0 - 0.044) < 0.044 * 3e-3, `H2O2 ${h2o2_0}`);
   dose(c, { reagent_id: 'mno2_s', mass_g: 0.5 });
   const w0 = amount(snap(c), 'H2O');
   run(c, 240);
   const sn = snap(c);
   // what left is the oxygen plus a little water evaporated from the (reaction-warmed) solution
-  const waterLost = w0 + 0.044 - amount(sn, 'H2O');
+  const waterLost = w0 + h2o2_0 - amount(sn, 'H2O');
   const o2 = (sn.mass_lost_g - waterLost * 18.015) / 31.999;
-  assert.ok(Math.abs(o2 - 0.022) < 0.00022, `O2 ${o2} mol`);
+  assert.ok(Math.abs(o2 - h2o2_0 / 2) < h2o2_0 / 2 * 0.01, `O2 ${o2} mol`);
   assert.ok(sn.conservation.ok && sn.conservation.max_element_rel_err < 1e-9, JSON.stringify(sn.conservation));
 }
 
@@ -171,9 +179,12 @@ for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   const c = vessel();
   dose(c, { reagent_id: 'hcl_0_1m', volume_ml: 50 });
   const w0 = amount(snap(c), 'H2O');
-  const cat = J(eng.reagent_catalog_json()).find((e) => e.id === 'naoh_0_1m');
+  // (the water the base brings is what the recipe dosed to 50 mL gives: measured on an empty vessel)
+  const b = vessel();
+  dose(b, { reagent_id: 'naoh_0_1m', volume_ml: 50 });
+  const waterInBase = amount(snap(b), 'H2O');
   dose(c, { reagent_id: 'naoh_0_1m', volume_ml: 50 });
-  const made = amount(snap(c), 'H2O') - w0 - cat.composition.H2O * 50;
+  const made = amount(snap(c), 'H2O') - w0 - waterInBase;
   assert.ok(Math.abs(made - 0.005) < 5e-5, `water formed ${made}`);
 }
 
@@ -233,7 +244,8 @@ for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   assert.ok(sn.solids.some((x) => x.species === 'AgCl(s)'));
 }
 
-// 10 g NaCl in 25 mL water + 25 mL ethanol leaves >= 1 g undissolved
+// 10 g NaCl in 25 mL water + 25 mL ethanol leaves >= 1 g undissolved (Stage 5: and more than in water alone: ethanol salts
+// the NaCl out of the mixed solvent, it is no longer a water-only solubility basis)
 {
   imp({ id: 's0_nacl', name: 'Sodium chloride', formula: 'ClNa', smiles: '[Na+].[Cl-]', inchi_key: 'FAPWRFPIFSIZLT-UHFFFAOYSA-M', state: 'solid' });
   const c = vessel();
@@ -243,6 +255,11 @@ for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   run(c, 3);
   const left = amount(snap(c), 'NaCl(s)') * 58.443;
   assert.ok(left >= 1.0, `undissolved ${left} g`);
+  const w = vessel();
+  dose(w, { reagent_id: 'water', volume_ml: 25 });
+  dose(w, { reagent_id: 's0_nacl', mass_g: 10 });
+  run(w, 3);
+  assert.ok(left > amount(snap(w), 'NaCl(s)') * 58.443 + 1.0, `ethanol salts NaCl out: ${left} g vs water alone`);
 }
 
 // the conservation check flags a deliberately unbalanced registered reaction

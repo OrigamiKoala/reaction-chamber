@@ -170,6 +170,9 @@ fn s4_4_sealed_water_at_200_c_reads_about_17_atm() {
 fn s4_5_sealed_ethanol_above_its_critical_temperature_is_one_supercritical_fluid() {
     let mut v = vessel(295.15, false, 250.0);
     ml(&mut v, "ethanol", 50.0);
+    // (Stage 5: 50 mL of ethanol at the dose temperature holds what its volume model gives, not the 0.789 g/mL stamped before)
+    let n_dosed = v.species_mol.get("C2H5OH").copied().unwrap_or(0.0);
+    assert!((n_dosed * 46.069 / 50.0 - 0.7876).abs() < 0.01, "ethanol density at 22 C: {}", n_dosed * 46.069 / 50.0);
     seal(&mut v);
     // below Tc (514 K) there is liquid and vapour
     v.temperature_k = 480.0;
@@ -187,7 +190,7 @@ fn s4_5_sealed_ethanol_above_its_critical_temperature_is_one_supercritical_fluid
     assert!(gp.supercritical, "{:?}", gp);
     assert!(above.total_liquid_ml < 0.5 && sp(&v, "C2H5OH") < 1e-6, "liquid left: {} mL, {} mol", above.total_liquid_ml, sp(&v, "C2H5OH"));
     let n_eth = v.headspace_gas_mol.get("C2H5OH(g)").copied().unwrap_or(0.0);
-    assert!((n_eth - 50.0 * 0.789 / 46.069).abs() < 1e-3, "all ethanol is fluid: {}", n_eth);
+    assert!((n_eth - n_dosed).abs() < 1e-3, "all ethanol is fluid: {} of {}", n_eth, n_dosed);
     // PR pressure of 0.856 mol of ethanol in ~250 mL at 560 K: well above the critical pressure, below the ideal-gas value
     let ideal = n_eth * 8.314462618 * 560.0 / (250.0e-6) / ATM;
     println!("[s4_5] sealed ethanol at {:.1} K: {:.2} atm (ideal gas {:.2} atm), liquid {:.3} mL", v.temperature_k, above.pressure_atm, ideal, above.total_liquid_ml);

@@ -18,7 +18,7 @@ use reaction_chamber_engine::chem_db;
 use reaction_chamber_engine::db::SpeciesStore;
 
 /// Files that *are* data tables (the seeds): exempt.
-const EXEMPT: &[&str] = &["db/seed.rs", "db/seed_vle.rs"];
+const EXEMPT: &[&str] = &["db/seed.rs", "db/seed_vle.rs", "db/seed_phases.rs"];
 
 fn known_ids() -> HashSet<String> {
     let mut ids: HashSet<String> = HashSet::new();

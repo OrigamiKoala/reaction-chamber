@@ -24,7 +24,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
-use crate::activity::{self, GroupCounts};
+use crate::activity;
 use crate::compound_thermo::{CompoundThermo, P_ATM_PA};
 use crate::eos::{self, PrComp};
 use crate::gas_phase::{GasPhaseInfo, GasPhaseSpecies, ATM_PA};
@@ -49,6 +49,10 @@ const SPARGE_EFFICIENCY: f64 = 0.5;
 const MIN_FILM_CM: f64 = 0.05;
 
 const F_BOILING: u8 = 8;
+
+fn ions_charge_nonzero(key: &str) -> bool {
+    crate::ions::species_charge(key) != 0
+}
 const MIN_AMOUNT_MOL: f64 = 1e-15;
 
 /// One volatile liquid component of the vessel with its amount.
@@ -58,7 +62,8 @@ pub(crate) struct VleComp {
     /// `species_mol` key.
     pub key: String,
     pub mol: f64,
-    pub groups: Option<GroupCounts>,
+    /// The liquid phase the amount is in (0 = the primary phase, p = `extra_liquids[p - 1]`).
+    pub phase: usize,
 }
 
 /// A liquid phase for the vapour-liquid equilibrium: components that mix.
@@ -67,6 +72,8 @@ pub(crate) struct VlePhase {
     pub comps: Vec<VleComp>,
     /// Contains the aqueous solvent (ionic water activity applies).
     pub aqueous: bool,
+    /// Index of the liquid phase (0 = primary).
+    pub index: usize,
 }
 
 /// One volatile component of a sealed-vessel flash.
@@ -75,7 +82,6 @@ struct FlashItem {
     key: String,
     n_liq0: f64,
     n_tot: f64,
-    groups: Option<GroupCounts>,
 }
 
 /// The temperature-independent part of a flash problem.
@@ -104,37 +110,6 @@ impl FlashOut {
     }
 }
 
-/// Cache of the liquid-phase partition (keys of the components + temperature bucket -> phase index per component).
-pub(crate) type PartitionCache = HashMap<(Vec<String>, i64), Vec<usize>>;
-
-fn binary_miscible(ga: &GroupCounts, gb: &GroupCounts, t_k: f64) -> bool {
-    // second-difference test of the molar Gibbs energy of mixing along the binary composition axis
-    const N: usize = 60;
-    let mut g = [0.0f64; N + 1];
-    for (i, gi) in g.iter_mut().enumerate() {
-        let x = 0.005 + 0.99 * i as f64 / N as f64;
-        let lg = match activity::unifac_ln_gamma(&[ga, gb], &[x, 1.0 - x], t_k) {
-            Some(v) => v,
-            None => return false,
-        };
-        *gi = x * (x.ln() + lg[0]) + (1.0 - x) * ((1.0 - x).ln() + lg[1]);
-    }
-    for i in 1..N {
-        if g[i - 1] - 2.0 * g[i] + g[i + 1] < -1e-9 {
-            return false;
-        }
-    }
-    true
-}
-
-fn find(p: &mut Vec<usize>, i: usize) -> usize {
-    if p[i] != i {
-        let r = find(p, p[i]);
-        p[i] = r;
-    }
-    p[i]
-}
-
 impl Vessel {
     // ------------------------------------------------------------------------------------------------ atmosphere
     pub fn p_ext_pa(&self) -> f64 {
@@ -153,39 +128,43 @@ impl Vessel {
 
 
     // ------------------------------------------------------------------------------------------------ resolution
-    /// The volatile component a `species_mol` key is (water, ethanol, a neat compound "X(l)"), if it is one.
+    /// The volatile component a liquid-inventory key is (water, ethanol, iodine, an imported hexane), if it is one: from the
+    /// species records of its molecule (any of the records that share its InChIKey), else from the import's own data.
     pub fn volatile_for(&self, key: &str) -> Option<Arc<Volatile>> {
-        if key.ends_with("(l)") {
-            let cache_key = format!("compound:{}", key);
-            if let Some(v) = self.vle_cache.borrow_mut().cached_volatile(&cache_key) {
-                return v;
-            }
-            let v = self.inert_of(key).and_then(|c| self.volatile_from_compound(c));
-            self.vle_cache.borrow_mut().insert_volatile(&cache_key, v.clone());
-            return v;
-        }
-        if key.ends_with("(s)") || key.ends_with("(g)") || key.ends_with("(aq)") {
+        if key.ends_with("(s)") || key.ends_with("(g)") || ions_charge_nonzero(key) {
             return None;
         }
-        self.vle_cache.borrow_mut().volatile(key)
+        let cache_key = format!("liquid:{}", key);
+        if let Some(v) = self.vle_cache.borrow_mut().cached_volatile(&cache_key) {
+            return v;
+        }
+        let from_store = self.vle_cache.borrow_mut().volatile(key);
+        let v = from_store.or_else(|| self.compound_for(key).and_then(|c| self.volatile_from_compound(c, key)));
+        self.vle_cache.borrow_mut().insert_volatile(&cache_key, v.clone());
+        v
     }
 
-    /// The volatile liquid whose gas phase is `gas_id` ("H2O(g)" -> water).
+    /// The volatile liquid whose gas phase is `gas_id` ("H2O(g)" -> water): the liquid the vessel holds under that molecule's
+    /// key if there is one, else the liquid record of the same molecule.
     pub fn volatile_for_gas(&self, gas_id: &str) -> Option<Arc<Volatile>> {
-        if let Some(base) = gas_id.strip_suffix("(g)") {
-            // an imported compound's neat liquid
-            if self.compounds.get(base).map_or(false, |c| c.phase_model == "inert") {
-                return self.volatile_for(&format!("{}(l)", base));
+        let held: Option<String> = self
+            .liquid_maps()
+            .flat_map(|m| m.keys())
+            .find(|k| self.molecule(k).map_or(false, |m| m.gas_key.as_deref() == Some(gas_id)) || format!("{}(g)", k.trim_end_matches("(aq)")) == gas_id)
+            .cloned();
+        if let Some(k) = held {
+            if let Some(v) = self.volatile_for(&k) {
+                return Some(v);
             }
         }
         let liq_id = self.vle_cache.borrow_mut().liquid_twin_of_gas(gas_id)?;
         self.volatile_for(&liq_id)
     }
 
-    fn volatile_from_compound(&self, c: &CompoundThermo) -> Option<Arc<Volatile>> {
+    fn volatile_from_compound(&self, c: &CompoundThermo, key: &str) -> Option<Arc<Volatile>> {
         let curve = c.vapor_curve?;
-        let liq_id = format!("{}(l)", c.species);
-        let gas_id = format!("{}(g)", c.species);
+        let liq_id = key.to_string();
+        let gas_id = format!("{}(g)", key.trim_end_matches("(aq)"));
         let tb = curve.t_at(P_ATM_PA);
         // critical constants from the store record of the same molecule (by InChIKey), else estimated from Tb
         let store_crit: Option<Critical> = c.inchi_key.as_ref().and_then(|ik| {
@@ -245,70 +224,35 @@ impl Vessel {
         if let Some(sm) = &c.smiles {
             activity::register_unifac_smiles(&c.species, sm);
         }
-        self.vle_cache.borrow_mut().forget(&format!("compound:{}(l)", c.species));
-        self.partition_cache.borrow_mut().clear();
+        self.vle_cache.borrow_mut().forget(&format!("liquid:{}", c.species));
     }
 
     // ------------------------------------------------------------------------------------------------ liquid phases
-    /// Volatile liquid components present, with amounts, as one list.
+    /// Volatile liquid components present, with amounts and the phase each is in, as one list.
     pub(crate) fn vle_components(&self) -> Vec<VleComp> {
         let mut out: Vec<VleComp> = Vec::new();
-        for (key, &mol) in &self.species_mol {
-            if mol <= MIN_AMOUNT_MOL {
-                continue;
-            }
-            if let Some(vol) = self.volatile_for(key) {
-                let groups = activity::unifac_groups(key);
-                out.push(VleComp { vol, key: key.clone(), mol, groups });
+        for (p, map) in self.liquid_maps().enumerate() {
+            for (key, &mol) in map {
+                if mol <= MIN_AMOUNT_MOL {
+                    continue;
+                }
+                if let Some(vol) = self.volatile_for(key) {
+                    out.push(VleComp { vol, key: key.clone(), mol, phase: p });
+                }
             }
         }
-        out.sort_by(|a, b| a.key.cmp(&b.key));
+        out.sort_by(|a, b| a.phase.cmp(&b.phase).then(a.key.cmp(&b.key)));
         out
     }
 
-    /// Partitions components into mutually miscible liquid phases (union of pairs the UNIFAC binary test says mix).
-    pub(crate) fn partition_components(&self, comps: Vec<VleComp>, t_k: f64) -> Vec<VlePhase> {
-        let n = comps.len();
-        if n == 0 {
-            return Vec::new();
-        }
-        let keys: Vec<String> = comps.iter().map(|c| c.key.clone()).collect();
-        let bucket = (t_k / 2.0).round() as i64;
-        let cached = self.partition_cache.borrow().get(&(keys.clone(), bucket)).cloned();
-        let assign: Vec<usize> = match cached {
-            Some(a) => a,
-            None => {
-                let mut parent: Vec<usize> = (0..n).collect();
-                for i in 0..n {
-                    for j in (i + 1)..n {
-                        if let (Some(a), Some(b)) = (&comps[i].groups, &comps[j].groups) {
-                            if binary_miscible(a, b, t_k) {
-                                let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
-                                if ri != rj {
-                                    parent[rj] = ri;
-                                }
-                            }
-                        }
-                    }
-                }
-                let a: Vec<usize> = (0..n).map(|i| find(&mut parent, i)).collect();
-                let mut cache = self.partition_cache.borrow_mut();
-                if cache.len() > 64 {
-                    cache.clear();
-                }
-                cache.insert((keys, bucket), a.clone());
-                a
-            }
-        };
+    /// Groups components by the liquid phase they are in (the phases are the liquid-liquid equilibrium's, `phase_flash`).
+    pub(crate) fn group_by_phase(&self, comps: Vec<VleComp>) -> Vec<VlePhase> {
         let mut phases: Vec<VlePhase> = Vec::new();
-        let mut roots: Vec<usize> = Vec::new();
-        for (i, c) in comps.into_iter().enumerate() {
-            let r = assign[i];
-            let idx = match roots.iter().position(|x| *x == r) {
-                Some(p) => p,
+        for c in comps {
+            let idx = match phases.iter().position(|p| p.index == c.phase) {
+                Some(i) => i,
                 None => {
-                    roots.push(r);
-                    phases.push(VlePhase { comps: Vec::new(), aqueous: false });
+                    phases.push(VlePhase { comps: Vec::new(), aqueous: false, index: c.phase });
                     phases.len() - 1
                 }
             };
@@ -320,28 +264,75 @@ impl Vessel {
         phases
     }
 
-    pub(crate) fn vle_phases(&self, t_k: f64) -> Vec<VlePhase> {
-        self.partition_components(self.vle_components(), t_k)
+    pub(crate) fn vle_phases(&self, _t_k: f64) -> Vec<VlePhase> {
+        self.group_by_phase(self.vle_components())
     }
 
-    /// ln gamma of the components of a phase (UNIFAC when every component is covered, else an ideal solution), with the
-    /// ionic water activity added to the aqueous solvent.
-    pub(crate) fn phase_ln_gamma(&self, ph: &VlePhase, t_k: f64) -> Vec<f64> {
-        let tot: f64 = ph.comps.iter().map(|c| c.mol).sum();
-        let x: Vec<f64> = ph.comps.iter().map(|c| c.mol / tot.max(1e-300)).collect();
-        let mut out = vec![0.0; ph.comps.len()];
-        if ph.comps.len() > 1 && ph.comps.iter().all(|c| c.groups.is_some()) {
-            let g: Vec<&GroupCounts> = ph.comps.iter().map(|c| c.groups.as_ref().unwrap()).collect();
-            if let Some(lg) = activity::unifac_ln_gamma(&g, &x, t_k) {
-                out = lg;
+    /// The liquid phase that holds most of `key` (0 when none does).
+    pub(crate) fn phase_of_key(&self, key: &str) -> usize {
+        let mut best = 0;
+        let mut best_n = -1.0;
+        for (p, m) in self.liquid_maps().enumerate() {
+            let n = m.get(key).copied().unwrap_or(0.0);
+            if n > best_n {
+                best_n = n;
+                best = p;
             }
         }
-        if ph.aqueous {
-            let delta = activity::ionic_ln_water_activity(&self.species_mol, t_k);
-            for (i, c) in ph.comps.iter().enumerate() {
-                if c.key == AQUEOUS_SOLVENT {
-                    out[i] += delta;
+        best
+    }
+
+    /// The molecular composition of a vapour-liquid phase: its volatile components at their trial amounts plus the other
+    /// molecules of the same liquid phase (non-volatile solutes) at their amounts; (molecules, amounts, position of each
+    /// of `ph.comps` in that list).
+    fn phase_molecules(&self, ph: &VlePhase) -> (Vec<Arc<crate::molecule::Molecule>>, Vec<f64>, Vec<Option<usize>>) {
+        let mut mols: Vec<Arc<crate::molecule::Molecule>> = Vec::new();
+        let mut amounts: Vec<f64> = Vec::new();
+        let mut pos: Vec<Option<usize>> = Vec::new();
+        for c in &ph.comps {
+            match self.molecule(&c.key) {
+                Some(m) => {
+                    pos.push(Some(mols.len()));
+                    mols.push(m);
+                    amounts.push(c.mol);
                 }
+                None => pos.push(None),
+            }
+        }
+        let map = if ph.index == 0 { Some(&self.species_mol) } else { self.extra_liquids.get(ph.index - 1) };
+        if let Some(map) = map {
+            for (k, &v) in map {
+                if v > MIN_AMOUNT_MOL && !ph.comps.iter().any(|c| c.key == *k) {
+                    if let Some(m) = self.molecule(k).filter(|m| m.partitionable()) {
+                        mols.push(m);
+                        amounts.push(v);
+                    }
+                }
+            }
+        }
+        (mols, amounts, pos)
+    }
+
+    /// Total amount (mol) of the molecules of a phase: the mole-fraction basis of its activities.
+    pub(crate) fn phase_total_mol(&self, ph: &VlePhase) -> f64 {
+        self.phase_molecules(ph).1.iter().sum::<f64>().max(1e-300)
+    }
+
+    /// ln gamma of the volatile components of a phase (pure-liquid reference): the molecular activity model of
+    /// `molecule::Mixture` (UNIFAC over the components that have groups, ideal and labelled for the rest, measured-activity
+    /// corrections), with the ionic water activity and the salting-out added in the phase that holds the electrolytes.
+    pub(crate) fn phase_ln_gamma(&self, ph: &VlePhase, t_k: f64) -> Vec<f64> {
+        let (mols, amounts, pos) = self.phase_molecules(ph);
+        let mut out = vec![0.0; ph.comps.len()];
+        if mols.is_empty() {
+            return out;
+        }
+        let mix = crate::molecule::Mixture::new(mols, t_k);
+        let env = if ph.index == 0 { self.ion_env() } else { None };
+        let lg = mix.ln_gamma(&amounts, env.as_ref());
+        for (i, p) in pos.iter().enumerate() {
+            if let Some(k) = p {
+                out[i] = lg[*k];
             }
         }
         out
@@ -352,7 +343,7 @@ impl Vessel {
         let mut all = Vec::with_capacity(phases.len());
         let mut sum = 0.0;
         for ph in phases {
-            let tot: f64 = ph.comps.iter().map(|c| c.mol).sum();
+            let tot: f64 = self.phase_total_mol(ph);
             let lg = self.phase_ln_gamma(ph, t_k);
             let mut row = Vec::with_capacity(ph.comps.len());
             for (i, c) in ph.comps.iter().enumerate() {
@@ -505,8 +496,7 @@ impl Vessel {
                     if take <= 0.0 {
                         continue;
                     }
-                    let m = self.species_mol.entry(c.key.clone()).or_default();
-                    *m = (*m - take).max(0.0);
+                    self.take_from_phase(c.phase, &c.key, take);
                     boiled.entry(c.key.clone()).or_insert_with(|| (0.0, c.vol.clone())).0 += take;
                 }
             }
@@ -525,7 +515,7 @@ impl Vessel {
             total_mass += mol * vol.mw;
             self.gas_fluxes.push(GasFlux { species: vol.gas_id.clone(), rate_ml_s: vol_ml / dt_s, bubble_diameter_mm: 3.5, nucleation: "bulk".to_string() });
             let first = self.record_boil_flag(&key);
-            let gone = self.species_mol.get(&key).copied().unwrap_or(0.0) <= 1e-5;
+            let gone = self.liquid_total(&key) <= 1e-5;
             events.push((key, vol, first, if gone { 1.0 } else { 0.0 }));
         }
         self.boil_vapour_ml_s += total_vol_ml / dt_s;
@@ -558,18 +548,39 @@ impl Vessel {
         }
         let t = self.temperature_k;
         let phases = self.vle_phases(t);
-        if phases.is_empty() {
-            return;
-        }
         let p_ext = self.p_ext_pa();
         let (parts, sum) = self.phase_partials(&phases, t);
-        if sum > 0.9999 * p_ext {
+        if !phases.is_empty() && sum > 0.9999 * p_ext {
             return; // at the bubble point boiling handles it
         }
         let area = self.wetted_area_m2(self.total_liquid_volume_ml());
         let atm = self.atmosphere_partials();
         let mut heat = 0.0;
         let mut evap_mass = 0.0;
+        // sublimation: a solid exposes its vapour pressure `a_sat(T) P_sat(T)` to the atmosphere
+        let solids: Vec<(String, f64)> = self.solid_mol.iter().filter(|(_, v)| **v > 1e-18).map(|(k, v)| (k.clone(), *v)).collect();
+        for (sk, n_s) in solids {
+            let Some((vol, p_surface)) = self.solid_vapour_pressure_pa(&sk, t) else { continue };
+            let p_inf = atm.iter().find(|(k, _)| *k == vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
+            let props = self.solid_props(&sk);
+            let solid_ml = n_s * vol.mw / props.density_g_ml.max(0.1);
+            let a_s = self.wetted_area_m2(solid_ml);
+            let flux = K_GAS_FILM_M_S * a_s * (p_surface - p_inf) / (R_GAS * t);
+            let dn = (flux * dt_s).min(n_s);
+            if dn <= 1e-18 {
+                continue; // a solid does not take up vapour from the air here
+            }
+            if let Some(v) = self.solid_mol.get_mut(&sk) {
+                *v = (*v - dn).max(0.0);
+            }
+            self.solid_mol.retain(|_, v| *v > 0.0);
+            self.mass_lost_g += dn * vol.mw;
+            self.ledger.book_out(&vol.id, dn);
+            evap_mass += dn * vol.mw;
+            // latent heat of sublimation: fusion plus vaporisation
+            let dh_sub = vol.latent_heat_j_mol(t) + self.molecule(&vol.id).map_or(0.0, |m| m.dh_dissolve_ideal(t));
+            heat += dn * dh_sub;
+        }
         for (ph, row) in phases.iter().zip(&parts) {
             for (c, p_surface) in ph.comps.iter().zip(row) {
                 let p_inf = atm.iter().find(|(k, _)| *k == c.vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
@@ -583,8 +594,13 @@ impl Vessel {
                 if dn.abs() < 1e-18 {
                     continue;
                 }
-                let m = self.species_mol.entry(c.key.clone()).or_default();
-                *m = (*m - dn).max(0.0);
+                if dn > 0.0 {
+                    self.take_from_phase(c.phase, &c.key, dn);
+                } else {
+                    // condensation from humid air joins the phase the component is in
+                    let m = if c.phase == 0 { &mut self.species_mol } else { &mut self.extra_liquids[c.phase - 1] };
+                    *m.entry(c.key.clone()).or_default() += -dn;
+                }
                 if dn > 0.0 {
                     self.mass_lost_g += dn * c.vol.mw;
                     self.ledger.book_out(&c.vol.id, dn);
@@ -597,6 +613,38 @@ impl Vessel {
             }
         }
         self.evaporation_g_s = evap_mass / dt_s;
+        if heat != 0.0 {
+            self.temperature_k -= heat / cp_total.max(1.0);
+        }
+    }
+
+    /// Sublimation in a sealed vessel: every solid with a vapour pressure `a_sat(T) P_sat(T)` exchanges vapour with the
+    /// headspace until the partial pressure equals it (or the solid is gone), with the latent heat of sublimation.
+    pub(crate) fn step_sealed_sublimation(&mut self, cp_total: f64) {
+        if !self.sealed {
+            return;
+        }
+        let t = self.temperature_k;
+        let v_g = self.headspace_volume_m3();
+        let solids: Vec<(String, f64)> = self.solid_mol.iter().filter(|(_, v)| **v > 1e-18).map(|(k, v)| (k.clone(), *v)).collect();
+        let mut heat = 0.0;
+        for (sk, n_s) in solids {
+            let Some((vol, p_surface)) = self.solid_vapour_pressure_pa(&sk, t) else { continue };
+            let n_eq = p_surface * v_g / (R_GAS * t);
+            let n_cur = self.headspace_gas_mol.get(&vol.gas_id).copied().unwrap_or(0.0);
+            let dn = (n_eq - n_cur).clamp(-n_cur, n_s);
+            if dn.abs() <= 1e-18 {
+                continue;
+            }
+            if let Some(v) = self.solid_mol.get_mut(&sk) {
+                *v = (*v - dn).max(0.0);
+            }
+            self.solid_mol.retain(|_, v| *v > 1e-18);
+            let g = self.headspace_gas_mol.entry(vol.gas_id.clone()).or_insert(0.0);
+            *g = (*g + dn).max(0.0);
+            let dh_sub = vol.latent_heat_j_mol(t) + self.molecule(&vol.id).map_or(0.0, |m| m.dh_dissolve_ideal(t));
+            heat += dn * dh_sub;
+        }
         if heat != 0.0 {
             self.temperature_k -= heat / cp_total.max(1.0);
         }
@@ -864,11 +912,7 @@ impl Vessel {
         for (k, it) in inp.items.iter().enumerate() {
             let n_gas = out_best.n_gas[k];
             let n_liq = (it.n_tot - n_gas).max(0.0);
-            if n_liq > MIN_AMOUNT_MOL {
-                self.species_mol.insert(it.key.clone(), n_liq);
-            } else {
-                self.species_mol.remove(&it.key);
-            }
+            self.set_liquid_total(&it.key, if n_liq > MIN_AMOUNT_MOL { n_liq } else { 0.0 });
             if n_gas > MIN_AMOUNT_MOL {
                 self.headspace_gas_mol.insert(it.vol.gas_id.clone(), n_gas);
             } else {
@@ -907,7 +951,7 @@ impl Vessel {
     /// Everything the flash needs that does not depend on the temperature being solved for.
     fn flash_inputs(&self, t: f64) -> Option<FlashInputs> {
         let mut items: Vec<FlashItem> = Vec::new();
-        let mut keys: BTreeSet<String> = self.species_mol.keys().cloned().collect();
+        let mut keys: BTreeSet<String> = self.liquid_totals().keys().cloned().collect();
         for g in self.headspace_gas_mol.keys() {
             if let Some(v) = self.volatile_for_gas(g) {
                 keys.insert(v.id.clone());
@@ -916,14 +960,13 @@ impl Vessel {
         let mut n_gas0 = Vec::new();
         for key in keys {
             let Some(vol) = self.volatile_for(&key) else { continue };
-            let n_liq0 = self.species_mol.get(&key).copied().unwrap_or(0.0);
+            let n_liq0 = self.liquid_total(&key);
             let n_gas = self.headspace_gas_mol.get(&vol.gas_id).copied().unwrap_or(0.0);
             if n_liq0 + n_gas <= MIN_AMOUNT_MOL {
                 continue;
             }
-            let groups = activity::unifac_groups(&key);
             n_gas0.push(n_gas);
-            items.push(FlashItem { vol, key, n_liq0, n_tot: n_liq0 + n_gas, groups });
+            items.push(FlashItem { vol, key, n_liq0, n_tot: n_liq0 + n_gas });
         }
         if items.is_empty() {
             return None;
@@ -983,12 +1026,12 @@ impl Vessel {
             // liquid phases with the trial amounts (a tiny seed amount lets a dry component dissolve into an existing phase)
             let comps: Vec<VleComp> = (0..ni)
                 .filter(|k| !supercritical[*k])
-                .map(|k| VleComp { vol: inp.items[k].vol.clone(), key: inp.items[k].key.clone(), mol: n_liq[k].max(1e-12 * inp.items[k].n_tot), groups: inp.items[k].groups.clone() })
+                .map(|k| VleComp { vol: inp.items[k].vol.clone(), key: inp.items[k].key.clone(), mol: n_liq[k].max(1e-12 * inp.items[k].n_tot), phase: self.phase_of_key(&inp.items[k].key) })
                 .collect();
-            let phases = self.partition_components(comps, t);
+            let phases = self.group_by_phase(comps);
             let mut f_liq: HashMap<String, f64> = HashMap::new();
             for ph in &phases {
-                let tot: f64 = ph.comps.iter().map(|c| c.mol).sum();
+                let tot: f64 = self.phase_total_mol(ph);
                 let lg = self.phase_ln_gamma(ph, t);
                 for (c, l) in ph.comps.iter().zip(lg) {
                     let psat = c.vol.psat_pa(t);

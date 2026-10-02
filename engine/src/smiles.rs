@@ -237,6 +237,134 @@ impl Molecule {
         organic_valences(&atom.element).iter().find(|v| **v >= used).map_or(0, |v| v - used)
     }
 
+    /// A copy in which Kekule aromatic ring systems (as PubChem writes them: `C1=CC=CC=C1`) are marked aromatic, with
+    /// aromatic bond orders (1.5) inside them, the form the group patterns are written for. Aromaticity is a Hueckel
+    /// perception on ring systems: every atom of a candidate ring is sp2 (a double bond into the system, or a heteroatom lone
+    /// pair), and the pi-electron count of the fused system is 4n+2. A molecule that already carries aromatic atoms
+    /// (lower-case SMILES) is returned unchanged. Hydrogen counts are frozen from the Kekule form first.
+    pub fn aromatized(&self) -> Molecule {
+        let n = self.atoms.len();
+        let mut out = self.clone();
+        if n == 0 || self.atoms.iter().any(|a| a.aromatic) {
+            return out;
+        }
+        let h: Vec<u32> = (0..n).map(|i| self.hydrogens(i)).collect();
+        for (i, a) in out.atoms.iter_mut().enumerate() {
+            a.explicit_h = Some(h[i]);
+        }
+        let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+        for &(a, b, o) in &self.bonds {
+            adj[a].push((b, o));
+            adj[b].push((a, o));
+        }
+        // simple cycles of 5-7 atoms (each found from its lowest atom, deduplicated by atom set)
+        let mut cycles: Vec<Vec<usize>> = Vec::new();
+        {
+            let mut seen: std::collections::HashSet<Vec<usize>> = std::collections::HashSet::new();
+            fn dfs(start: usize, cur: usize, path: &mut Vec<usize>, adj: &[Vec<(usize, f64)>], seen: &mut std::collections::HashSet<Vec<usize>>, cycles: &mut Vec<Vec<usize>>) {
+                if path.len() > 7 {
+                    return;
+                }
+                for &(nx, _) in &adj[cur] {
+                    if nx == start && path.len() >= 5 {
+                        let mut key = path.clone();
+                        key.sort();
+                        if seen.insert(key.clone()) {
+                            cycles.push(path.clone());
+                        }
+                    } else if nx > start && !path.contains(&nx) {
+                        path.push(nx);
+                        dfs(start, nx, path, adj, seen, cycles);
+                        path.pop();
+                    }
+                }
+            }
+            for s in 0..n {
+                let mut path = vec![s];
+                dfs(s, s, &mut path, &adj, &mut seen, &mut cycles);
+            }
+        }
+        let double_partner = |i: usize| adj[i].iter().filter(|&&(_, o)| (o - 2.0).abs() < 1e-9).map(|&(j, _)| j).collect::<Vec<usize>>();
+        let lone_pair_atom = |i: usize| {
+            let a = &self.atoms[i];
+            a.charge == 0 && matches!(a.element.as_str(), "O" | "S" | "N") && adj[i].iter().all(|&(_, o)| (o - 1.0).abs() < 1e-9) && (a.element != "N" || adj[i].len() as u32 + h[i] == 3)
+        };
+        // candidate cycles: every atom sp2 with respect to the cycle's own ring system (decided after the union below)
+        // first pass: atoms that could be sp2: carbon/nitrogen with a double bond, or a lone-pair heteroatom
+        let sp2_like = |i: usize| -> bool {
+            let a = &self.atoms[i];
+            match a.element.as_str() {
+                "C" | "N" => !double_partner(i).is_empty() && double_partner(i).iter().all(|&j| matches!(self.atoms[j].element.as_str(), "C" | "N")) || (a.element == "N" && lone_pair_atom(i)),
+                "O" | "S" => lone_pair_atom(i),
+                _ => false,
+            }
+        };
+        let cand: Vec<&Vec<usize>> = cycles.iter().filter(|c| c.iter().all(|&i| sp2_like(i))).collect();
+        // union candidate cycles sharing a bond (two or more atoms) into ring systems
+        let mut system: Vec<usize> = (0..cand.len()).collect();
+        fn find(p: &mut Vec<usize>, i: usize) -> usize {
+            if p[i] != i {
+                let r = find(p, p[i]);
+                p[i] = r;
+            }
+            p[i]
+        }
+        for a in 0..cand.len() {
+            for b in (a + 1)..cand.len() {
+                let shared = cand[a].iter().filter(|x| cand[b].contains(x)).count();
+                if shared >= 2 {
+                    let (ra, rb) = (find(&mut system, a), find(&mut system, b));
+                    if ra != rb {
+                        system[rb] = ra;
+                    }
+                }
+            }
+        }
+        let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+        for a in 0..cand.len() {
+            let r = find(&mut system, a);
+            groups.entry(r).or_default().push(a);
+        }
+        for (_, members) in groups {
+            let mut atoms: Vec<usize> = Vec::new();
+            for &m in &members {
+                for &i in cand[m] {
+                    if !atoms.contains(&i) {
+                        atoms.push(i);
+                    }
+                }
+            }
+            // pi electrons: 1 for an atom double-bonded to another atom of the system, 2 for a lone-pair heteroatom
+            let mut electrons = 0u32;
+            let mut ok = true;
+            for &i in &atoms {
+                if double_partner(i).iter().any(|j| atoms.contains(j)) {
+                    electrons += 1;
+                } else if lone_pair_atom(i) {
+                    electrons += 2;
+                } else {
+                    ok = false;
+                }
+            }
+            if !ok || electrons % 4 != 2 {
+                continue;
+            }
+            for &m in &members {
+                let c = cand[m];
+                for (idx, bnd) in out.bonds.iter_mut().enumerate() {
+                    let _ = idx;
+                    if c.contains(&bnd.0) && c.contains(&bnd.1) {
+                        bnd.2 = 1.5;
+                    }
+                }
+                for &i in c {
+                    out.atoms[i].aromatic = true;
+                }
+            }
+        }
+        out
+    }
+
     /// Number of acidic hydroxyl groups on a carbonyl carbon: carboxylic acids, and the two OH of carbonic acid.
     /// Neutral oxygens only (carboxylate and ester oxygens do not count).
     pub fn carboxylic_acid_oh_count(&self) -> usize {
@@ -287,6 +415,29 @@ mod tests {
         assert_eq!(acid_oh("CC(=O)[O-].[Na+]"), 0); // sodium acetate
         assert_eq!(acid_oh("CC(=O)OCC"), 0); // ethyl acetate
         assert_eq!(acid_oh("C(C1C(C(C(C(O1)O)O)O)O)O"), 0); // glucose
+    }
+
+    #[test]
+    fn kekule_aromatic_rings_are_perceived() {
+        let benz = parse("C1=CC=CC=C1").unwrap().aromatized();
+        assert!(benz.atoms.iter().all(|a| a.aromatic));
+        assert!(benz.bonds.iter().all(|b| (b.2 - 1.5).abs() < 1e-9));
+        assert!((0..6).all(|i| benz.hydrogens(i) == 1));
+        // toluene: the methyl stays aliphatic
+        let tol = parse("CC1=CC=CC=C1").unwrap().aromatized();
+        assert!(!tol.atoms[0].aromatic && tol.atoms[1..].iter().all(|a| a.aromatic));
+        assert_eq!(tol.hydrogens(0), 3);
+        // naphthalene: one 10-electron system
+        let nap = parse("C1=CC=C2C=CC=CC2=C1").unwrap().aromatized();
+        assert!(nap.atoms.iter().all(|a| a.aromatic));
+        // furan and pyridine
+        assert!(parse("C1=CC=CO1").unwrap().aromatized().atoms.iter().all(|a| a.aromatic));
+        assert!(parse("C1=CC=NC=C1").unwrap().aromatized().atoms.iter().all(|a| a.aromatic));
+        // cyclohexene and cyclohexane are not aromatic
+        assert!(!parse("C1=CCCCC1").unwrap().aromatized().atoms.iter().any(|a| a.aromatic));
+        assert!(!parse("C1CCCCC1").unwrap().aromatized().atoms.iter().any(|a| a.aromatic));
+        // benzoquinone has exocyclic C=O: not aromatic
+        assert!(!parse("O=C1C=CC(=O)C=C1").unwrap().aromatized().atoms.iter().any(|a| a.aromatic));
     }
 
     #[test]

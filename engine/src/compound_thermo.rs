@@ -78,7 +78,8 @@ pub enum NeatPhase {
 /// The data the engine keeps per compound (registered with the chem_db compound registry, keyed by `species`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompoundThermo {
-    /// Base species id ("C10H8"): the solid is "C10H8(s)", the neat liquid "C10H8(l)", the dissolved part "C10H8".
+    /// Base species id ("C10H8"): the solid is "C10H8(s)", its liquid (neat or dissolved, whatever phase it is in) "C10H8", its
+    /// vapour "C10H8(g)".
     pub species: String,
     pub name: String,
     pub formula: String,
@@ -113,7 +114,8 @@ pub struct CompoundThermo {
     pub rho_liquid: f64,
     /// Heat capacity of the neat phases, J/(g K).
     pub cp_j_g_k: f64,
-    /// Water solubility reference at `solubility_ref_k` (g/L); `solubility_at` applies the van't Hoff slope.
+    /// Water solubility datum at `solubility_ref_k` (g/L): becomes a saturation point of the activity model (`molecule.rs`);
+    /// its temperature dependence comes from the solid-liquid equilibrium (and `dh_sol_kj_mol` when measured).
     pub solubility_g_per_l: Option<f64>,
     pub solubility_ref_k: f64,
     /// Enthalpy of solution (kJ/mol) for the temperature dependence of the solubility; None = constant.
@@ -486,21 +488,6 @@ impl CompoundThermo {
             None if self.state_at_room() == "gas" => NeatPhase::Gas,
             _ => NeatPhase::Liquid,
         }
-    }
-
-    /// Water solubility limit (g/L) at `t_k`; unknown values count as practically insoluble (0.1 g/L). With an
-    /// enthalpy of solution the reference value follows the van't Hoff equation, otherwise it is constant.
-    pub fn solubility_limit_g_per_l(&self, t_k: f64) -> f64 {
-        let s_ref = self.solubility_g_per_l.unwrap_or(0.1);
-        match self.dh_sol_kj_mol {
-            Some(dh) => s_ref * (-dh * 1000.0 / R_GAS * (1.0 / t_k.max(200.0) - 1.0 / self.solubility_ref_k)).exp().clamp(1e-3, 1e3),
-            None => s_ref,
-        }
-    }
-
-    /// A liquid this soluble mixes with water in any proportion (modelled as unlimited dissolution).
-    pub fn is_miscible_liquid(&self) -> bool {
-        self.solubility_g_per_l.map_or(false, |s| s >= 500.0)
     }
 
     pub fn summary(&self) -> ThermoSummary {

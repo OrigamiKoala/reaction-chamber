@@ -348,12 +348,13 @@ pub fn liquid_volume_of(liq: &SpeciesRecord, crit: Option<Critical>, mw: f64) ->
             return LiquidVolume::Rackett { crit: c, z_ra: zra.value };
         }
     }
+    // a measured density of the liquid beats the Spencer-Danner estimate of the Rackett parameter
+    if let Some(rho) = ph.and_then(|p| p.rho.as_ref()) {
+        return LiquidVolume::Density(rho.value);
+    }
     if let Some(c) = crit {
         // Spencer-Danner estimate of the Rackett parameter from the acentric factor
         return LiquidVolume::Rackett { crit: c, z_ra: (0.29056 - 0.08775 * c.omega).clamp(0.2, 0.32) };
-    }
-    if let Some(rho) = ph.and_then(|p| p.rho.as_ref()) {
-        return LiquidVolume::Density(rho.value);
     }
     let _ = mw;
     LiquidVolume::Density(1.0)
@@ -364,10 +365,16 @@ pub fn liquid_volume_of(liq: &SpeciesRecord, crit: Option<Critical>, mw: f64) ->
 pub fn volatile_from_store(liq_id: &str) -> Option<Arc<Volatile>> {
     let store = SpeciesStore::global();
     let guard = store.read().ok()?;
-    let liq = guard.get(liq_id)?;
-    if !liq.has_phase("l") {
-        return None; // an aqueous solute or a gas is not a liquid component (its gas twin does not make it one)
-    }
+    let own = guard.get(liq_id)?;
+    // A record without a liquid phase (an aqueous solute "I2(aq)", an inventory key) is the same molecule as the liquid
+    // record that shares its InChIKey: the volatility of the dissolved molecule is the pure liquid's (Raoult with the
+    // activity coefficient). A gas twin alone does not make a liquid (CO2(aq) stays a Henry species).
+    let liq = if own.has_phase("l") {
+        own
+    } else {
+        let ik = own.identity.inchikey.as_ref()?;
+        guard.all_by_inchikey(ik).into_iter().find(|r| r.has_phase("l") && r.identity.charge == 0)?
+    };
     let gas = guard.gas_partner(liq);
     let gas_id = gas.map(|g| g.id.clone()).unwrap_or_else(|| format!("{}(g)", liq_id));
     build_volatile(liq_id, &gas_id, liq, gas)

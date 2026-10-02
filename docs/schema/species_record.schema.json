@@ -198,7 +198,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["psat", "tm", "tb", "solubility", "density"]
+          "enum": ["psat", "tm", "tb", "dhfus", "solubility", "density"]
         },
         "T_K": { "type": "number" },
         "P_Pa": { "type": "number" },

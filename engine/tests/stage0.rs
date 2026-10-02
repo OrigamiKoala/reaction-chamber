@@ -142,7 +142,12 @@ fn s0_2_iodine_clock_conserves_iodine() {
         assert!(i0 > 1e-3);
         run(&mut v, 300.0, dt);
         let i1 = i_atoms(&v);
-        assert!(((i1 - i0) / i0).abs() < 1e-9, "dt {}: I atoms {} -> {}", dt, i0, i1);
+        // Changed in Stage 5: dissolved I2 is a volatile solute now (its liquid twin gives it a vapour pressure, the
+        // dissolved-inert-compounds-evaporate gap of Stage 4), so a little iodine leaves the open beaker over 300 s. The
+        // reactions still create no iodine: the inventory can only fall, by the evaporated I2 (< 0.2 % here), and the
+        // conservation ledger (which books the evaporation out) must stay balanced.
+        let rel = (i1 - i0) / i0;
+        assert!(rel <= 1e-9 && rel > -2e-3, "dt {}: I atoms {} -> {}", dt, i0, i1);
         let c = v.snapshot().conservation;
         assert!(c.ok, "dt {}: {:?}", dt, c);
         assert!(c.max_element_rel_err < 1e-6);
@@ -158,14 +163,16 @@ fn s0_2_h2o2_decomposition_gives_half_a_mole_of_o2_per_mole() {
     ml(&mut v, "h2o2_3pct", 50.0);
     grams(&mut v, "mno2_s", 0.5);
     let h0 = sp(&v, "H2O2");
-    assert!((h0 - 0.044).abs() < 1e-6, "H2O2 {}", h0);
+    // Changed in Stage 5: a catalog solution is a recipe per mL at the 20 C reference of volumetric glassware, dosed so that
+    // it fills the requested volume at the dose temperature (22 C here): 0.1 % fewer moles than the 0.044 mol stamped before
+    assert!((h0 - 0.044).abs() < 0.044 * 3e-3, "H2O2 {}", h0);
     let w0 = sp(&v, "H2O");
     run(&mut v, 240.0, 0.5);
     // what left the vessel is the oxygen and a little evaporated water (the reaction warms the solution): the water
     // lost is the initial water plus the 0.044 mol the reaction made minus what is left
-    let water_lost_mol = w0 + 0.044 - sp(&v, "H2O");
+    let water_lost_mol = w0 + h0 - sp(&v, "H2O");
     let o2_mol = (v.mass_lost_g - water_lost_mol * 18.015) / 31.999;
-    assert!((o2_mol - 0.022).abs() < 0.022 * 0.01, "O2 {} mol (expected 0.022 +/- 1 %)", o2_mol);
+    assert!((o2_mol - h0 / 2.0).abs() < h0 / 2.0 * 0.01, "O2 {} mol (expected {} +/- 1 %)", o2_mol, h0 / 2.0);
     assert!(sp(&v, "H2O2") < 1e-5);
     let c = v.snapshot().conservation;
     assert!(c.ok && c.max_element_rel_err < 1e-9, "{:?}", c);
@@ -297,11 +304,18 @@ fn s0_3_neutralisation_makes_one_water_per_proton() {
     let w0 = sp(&v, "H2O");
     let h0 = sp(&v, "H+");
     assert!((h0 - 0.005).abs() < 1e-4);
-    let water_in_base = v.catalog["naoh_0_1m"].composition["H2O"] * 50.0;
+    // (Stage 5: the water a catalog solution brings is the recipe's, scaled to the dosed volume at the dose temperature, so
+    // it is measured by dosing the base into an empty beaker rather than read from the per-mL catalog composition)
+    let mut b = beaker();
+    ml(&mut b, "naoh_0_1m", 50.0);
+    let water_in_base = sp(&b, "H2O");
     ml(&mut v, "naoh_0_1m", 50.0);
     let made = sp(&v, "H2O") - w0 - water_in_base;
     assert!((made - 0.005).abs() < 0.005 * 0.01, "water formed {} mol per 0.005 mol H+", made);
-    assert!((v.current_ph() - 7.0).abs() < 0.05, "pH {}", v.current_ph());
+    // (Stage 5: the acid and the base are recipes dosed to 50 mL at the dose temperature; their moles differ by ~3e-6
+    // relative through the two solutions' own volume models, and the pH of an equivalence point moves a unit per 1e-7 mol of
+    // imbalance, so the neutral pH is asserted to a unit, not to 0.05)
+    assert!((v.current_ph() - 7.0).abs() < 1.0, "pH {}", v.current_ph());
     let c = v.snapshot().conservation;
     assert!(c.ok, "{:?}", c);
 }
@@ -491,7 +505,12 @@ fn s0_8_microlitre_droplets_precipitate() {
 }
 
 #[test]
-fn s0_8_salt_solubility_uses_the_aqueous_volume_only() {
+fn s0_8_salt_solubility_is_set_by_the_solvent_mixture_not_by_the_water_volume_alone() {
+    // Changed in Stage 5. The old gate asserted that 25 mL ethanol next to 25 mL water leaves the NaCl solubility exactly as
+    // in 25 mL of water: the "water-only basis" the plan lists under Deletes. Dissolution is now a solid-liquid equilibrium
+    // in whatever liquid is there: ethanol lowers the water activity's capacity to hold the salt (Born / Long-McDevit
+    // salting-out in the mixed solvent), so LESS salt dissolves than in water alone, but the dissolved salt is never more
+    // dilute than a saturated aqueous solution (ethanol dilutes nothing by volume).
     let nacl = import("s0_nacl_s", "Sodium chloride", "ClNa", Some("[Na+].[Cl-]"), Some("FAPWRFPIFSIZLT-UHFFFAOYSA-M"), "solid");
     assert!(nacl.modelable);
     let mut v = beaker();
@@ -500,7 +519,6 @@ fn s0_8_salt_solubility_uses_the_aqueous_volume_only() {
     grams(&mut v, "s0_nacl_s", 10.0);
     run(&mut v, 3.0, 0.5);
     let undissolved_g = solid(&v, "NaCl(s)") * 58.443;
-    assert!(undissolved_g >= 1.0, "only {:.2} g of 10 g NaCl left undissolved in 25 mL water (+25 mL ethanol)", undissolved_g);
     // plain water: 25 g of water holds 9.0 g NaCl at 25 C (36 g / 100 g)
     let mut w = beaker();
     ml(&mut w, "water", 25.0);
@@ -508,8 +526,7 @@ fn s0_8_salt_solubility_uses_the_aqueous_volume_only() {
     run(&mut w, 3.0, 0.5);
     let left = solid(&w, "NaCl(s)") * 58.443;
     assert!(left > 0.5 && left < 2.5, "undissolved in water alone: {:.2} g", left);
-    // the ethanol must not make the solution more dilute: both cases leave the same solid
-    assert!((left - undissolved_g).abs() < 0.05, "{} vs {}", left, undissolved_g);
+    assert!(undissolved_g > left + 1.0 && undissolved_g < 10.0, "ethanol must salt the NaCl out: {:.2} g undissolved with ethanol vs {:.2} g in water alone", undissolved_g, left);
 }
 
 // ---- 0.9 energy hygiene --------------------------------------------------------------------------------------------
@@ -535,7 +552,9 @@ fn s0_9_one_gas_constant_and_one_glass_factor() {
     // pouring 10 mL of 80 C water into an empty beaker: the same glass fraction as every other path
     let mut v = beaker();
     v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(353.15) }).unwrap();
-    let expected = (353.15 * 41.84 + 298.15 * 110.0 * 0.84 * 0.15) / (41.84 + 110.0 * 0.84 * 0.15);
+    // (Stage 5: 10 mL of water at 80 C is 9.718 g, its density at that temperature, not the 10.0 g the stamped 1 g/mL gave)
+    let cp_water = 10.0 * 0.97179 * 4.184;
+    let expected = (353.15 * cp_water + 298.15 * 110.0 * 0.84 * 0.15) / (cp_water + 110.0 * 0.84 * 0.15);
     assert!((v.temperature_k - expected).abs() < 0.2, "{} vs {}", v.temperature_k, expected);
 }
 
