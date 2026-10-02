@@ -5,16 +5,16 @@
 //!   * `solid_mol["X(s)"]`   undissolved solid (below the melting point at the vessel pressure)
 //!   * `species_mol["X(l)"]` neat liquid, an immiscible layer of its own (above the melting point)
 //!   * `species_mol["X"]`    the part dissolved in the water of the vessel
-//!   * gas                   above its boiling point (vapour pressure >= ambient pressure) the neat liquid boils off
-//!                           (unsealed vessels, like water); undissolved excess of a compound that is a gas at the
-//!                           vessel temperature is vented
+//!   * gas                   boiling and evaporation of the neat liquid are the general vapour-liquid-equilibrium code
+//!                           (`vessel_vle`); undissolved excess of a compound that is a gas at the vessel temperature
+//!                           is vented
 //!
-//! Melting / freezing and boiling clamp the temperature like the water boiling clamp: energy above (below) the
-//! transition temperature is spent on the phase change, so heating a low-melting solid shows a plateau, then a liquid.
+//! Melting / freezing clamp the temperature: energy above (below) the transition temperature is spent on the phase
+//! change, so heating a low-melting solid shows a plateau, then a liquid. (Boiling is `vessel_vle::step_boil_open`.)
 //!
 //! Dissolution in water is instantaneous equilibrium capped by the compound's solubility (g/L of water volume, 0.1 g/L
 //! when unknown). A liquid with solubility >= 500 g/L counts as miscible (dissolves completely). Solubility is not
-//! temperature dependent and dissolution has no heat of solution. Dissolved compounds do not evaporate or boil off.
+//! temperature dependent and dissolution has no heat of solution. Dissolved compounds do not evaporate (Stage 5).
 
 use std::collections::HashMap;
 
@@ -30,7 +30,6 @@ const CP_WATER_J_G_K: f64 = 4.184;
 const F_MELTING: u8 = 1;
 const F_MOLTEN: u8 = 2;
 const F_FREEZING: u8 = 4;
-const F_BOILING: u8 = 8;
 
 fn bump(map: &mut HashMap<String, f64>, key: &str, d: f64) {
     let v = (map.get(key).copied().unwrap_or(0.0) + d).max(0.0);
@@ -76,6 +75,7 @@ fn absorbance_for_colour(target: [f64; 3]) -> Vec<f64> {
 
 impl Vessel {
     pub fn register_compound(&mut self, c: CompoundThermo) {
+        self.register_vle_compound(&c);
         self.compounds.insert(c.species.clone(), c);
     }
 
@@ -90,7 +90,7 @@ impl Vessel {
     }
 
     fn ambient_atm(&self) -> f64 {
-        if self.sealed { self.pressure_atm.max(0.05) } else { 1.0 }
+        if self.sealed { self.pressure_atm.max(0.05) } else { self.atmosphere.pressure_atm.max(1e-4) }
     }
 
     /// (solid, neat liquid, dissolved) mol of an inert compound.
@@ -275,15 +275,14 @@ impl Vessel {
         self.push_event_full(VesselEventKind::TemperatureChange, text, 0.5, Some(species.to_string()), c.color_linear_rgb);
     }
 
-    /// Melt/freeze plateaus and boil-off of the neat phases. Called from `step_thermal` right after the temperature
+    /// Melt/freeze plateaus of the neat phases. Called from `step_thermal` right after the temperature
     /// update, `cp_total` (J/K) being the heat capacity that update used.
-    pub(crate) fn step_inert_thermal(&mut self, dt_s: f64, cp_total: f64) {
+    pub(crate) fn step_inert_thermal(&mut self, _dt_s: f64, cp_total: f64) {
         let p_atm = self.ambient_atm();
         let compounds = self.present_inert();
         if compounds.is_empty() {
             return;
         }
-        let mut boiled: HashMap<String, f64> = HashMap::new();
         for _pass in 0..6 {
             let mut changed = false;
             for c in &compounds {
@@ -336,58 +335,9 @@ impl Vessel {
                         }
                     }
                 }
-                // ---- boiling (unsealed vessels only, like water)
-                if !self.sealed {
-                    let (_, n_l, _) = self.inert_amounts(c);
-                    if let Some(tb) = c.boil_k(p_atm * P_ATM_PA) {
-                        let t = self.temperature_k;
-                        if t > tb + 1e-9 && n_l > EPS_MOL {
-                            let excess_j = (t - tb) * cp_total;
-                            let dh = c.dh_vap_at(tb).max(1000.0);
-                            let boil = (excess_j / dh).min(n_l);
-                            bump(&mut self.species_mol, &lid, -boil);
-                            self.mass_lost_g += boil * c.mw;
-                            self.ledger.book_out(&c.species, boil);
-                            self.temperature_k = tb + (excess_j - boil * dh) / cp_total;
-                            *boiled.entry(c.species.clone()).or_default() += boil;
-                            changed = true;
-                            let flags = self.ev.phase.entry(c.species.clone()).or_insert(0);
-                            let first = *flags & F_BOILING == 0;
-                            *flags |= F_BOILING;
-                            if first {
-                                self.phase_event(c, &lid, format!("{} boiling at {:.1} °C", c.name, tc_c(tb)));
-                            }
-                            if n_l - boil <= EPS_MOL {
-                                self.push_event_full(VesselEventKind::DryOut, format!("{} boiled off", c.name), 0.6, Some(lid.clone()), c.color_linear_rgb);
-                                self.ev.phase.entry(c.species.clone()).and_modify(|f| *f &= !F_BOILING);
-                            }
-                        }
-                    }
-                }
             }
             if !changed {
                 break;
-            }
-        }
-        for c in &compounds {
-            if let Some(&mol) = boiled.get(&c.species) {
-                let t_boil = c.boil_k(P_ATM_PA * p_atm).unwrap_or(self.temperature_k);
-                let vol_ml = mol * R_GAS * t_boil / (p_atm * P_ATM_PA) * 1e6;
-                self.boil_vapour_ml_s += vol_ml / dt_s.max(1e-6);
-                self.boil_mass_g_s += mol * c.mw / dt_s.max(1e-6);
-                self.gas_fluxes.push(GasFlux {
-                    species: format!("{}(g)", c.species),
-                    rate_ml_s: vol_ml / dt_s.max(1e-6),
-                    bubble_diameter_mm: 3.0,
-                    nucleation: "bulk".into(),
-                });
-            }
-        }
-        // boiling stopped (cooled below the boiling point or liquid gone): allow announcing it again
-        let live: Vec<String> = self.gas_fluxes.iter().map(|g| base_id(&g.species).to_string()).collect();
-        for (sp, flags) in self.ev.phase.iter_mut() {
-            if *flags & F_BOILING != 0 && !live.contains(sp) {
-                *flags &= !F_BOILING;
             }
         }
     }

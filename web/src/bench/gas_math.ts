@@ -1,18 +1,10 @@
-// Pure maths for gas collection (ideal gas, readings of gas collectors). Mirrors engine/src/gas.rs.
+// Pure maths for gas collection (ideal gas, readings of gas collectors). Mirrors engine/src/gas.rs; vapour pressures are the engine's.
 // Run the checks with: node tests/pipetting_math.mjs (also covers this file)
 
 export const R_GAS = 8.314462618; // J / (mol K)
 export const ATM_PA = 101325;
 
 export type CollectorKind = 'syringe' | 'over_water' | 'jar';
-
-/** Saturation vapour pressure of water (atm), Antoine equation. */
-export function waterVapourAtm(tK: number): number {
-  const tC = tK - 273.15;
-  if (tC <= 0) return 0;
-  const logP = 8.07131 - 1730.63 / (tC + 233.426); // mmHg
-  return Math.min(10, Math.max(0, Math.pow(10, logP) / 760));
-}
 
 /** Volume (mL) of `nMol` of ideal gas at `tK` and `pAtm`. */
 export function gasVolumeMl(nMol: number, tK: number, pAtm: number): number {
@@ -24,14 +16,18 @@ export function gasMoles(vMl: number, tK: number, pAtm: number): number {
   return (pAtm * ATM_PA * vMl * 1e-6) / (R_GAS * Math.max(1, tK));
 }
 
-/** Pressure (atm) of the dry collected gas: over water the water vapour takes its share of the ambient pressure. */
-export function dryGasPressureAtm(kind: CollectorKind, tK: number): number {
-  return kind === 'over_water' ? 1 - waterVapourAtm(tK) : 1;
+/**
+ * Pressure (atm) of the dry collected gas: over water the vapour of the sealing liquid takes its share of the ambient
+ * pressure. The vapour pressure comes from the engine (`GasInfo.vapour_atm`, from the liquid's species record); this
+ * module has no vapour-pressure equation of its own.
+ */
+export function dryGasPressureAtm(vapourAtm: number, ambientAtm = 1): number {
+  return Math.max(0.01, ambientAtm - vapourAtm);
 }
 
 /** What the collector reads: volume (mL) of the collected gas, as measured at the collector's temperature. */
-export function collectorVolumeMl(kind: CollectorKind, nMol: number, tK: number): number {
-  return gasVolumeMl(nMol, tK, dryGasPressureAtm(kind, tK));
+export function collectorVolumeMl(nMol: number, tK: number, vapourAtm: number, ambientAtm = 1): number {
+  return gasVolumeMl(nMol, tK, dryGasPressureAtm(vapourAtm, ambientAtm));
 }
 
 /** Gas syringes read to the nearest mL; tubes / jars to half a mL (they are only rough guides). */

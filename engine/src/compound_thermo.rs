@@ -121,6 +121,15 @@ pub struct CompoundThermo {
     pub color_linear_rgb: Option<[f64; 3]>,
     /// Names of the values above that are estimates (not from the supplied data).
     pub estimated: Vec<String>,
+    /// SMILES of the compound (UNIFAC groups are decomposed from it).
+    #[serde(default)]
+    pub smiles: Option<String>,
+    /// InChIKey of the compound (links it to its store record: critical constants).
+    #[serde(default)]
+    pub inchi_key: Option<String>,
+    /// Number of distinct measured vapour-pressure points the curve was fitted through (1 = anchored, not fitted).
+    #[serde(default)]
+    pub n_psat_points: usize,
 }
 
 /// Summary shown in the UI (engine -> web). Everything is derived from the fitted data, nothing is a stored mp/bp.
@@ -401,6 +410,19 @@ impl CompoundThermo {
             dh_sol_kj_mol: req.dh_sol_kj_mol.filter(|x| x.is_finite()),
             color_linear_rgb: req.color_linear_rgb.map(|c| c.map(|x| x.clamp(0.0, 1.0))),
             estimated,
+            smiles: req.smiles.clone(),
+            inchi_key: req.inchi_key.clone(),
+            n_psat_points: {
+                let mut ts: Vec<f64> = req
+                    .vapor_pressure_points
+                    .iter()
+                    .filter(|p| p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 && p[1] <= MAX_VAPOR_POINT_PA)
+                    .map(|p| p[0])
+                    .collect();
+                ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                ts.dedup_by(|a, b| (*a - *b).abs() < 0.05);
+                ts.len()
+            },
         }
     }
 

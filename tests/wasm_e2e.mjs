@@ -129,6 +129,8 @@ const amount = (sn, id) => sn.species.find((x) => x.id === id)?.amount_mol ?? 0;
 // pure water pH(T) = pKw(T)/2 within 0.01 (Bandura & Lvov: 14.95 / 13.99 / 13.02 / 12.26)
 for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   const w = vesselAt(273.15 + tc);
+  // CO2-free air: this gate is water's autoionisation (water open to ordinary air takes up CO2, see stage 4 gates)
+  eng.vessel_control(w, JSON.stringify({ atmosphere: { composition: { 'N2(g)': 0.79, 'O2(g)': 0.21 } } }));
   dose(w, { reagent_id: 'water', volume_ml: 50 });
   run(w, 10);
   const ph = snap(w).ph;
@@ -154,9 +156,12 @@ for (const [tc, pkw] of [[0, 14.95], [25, 13.99], [60, 13.02], [100, 12.26]]) {
   const c = vessel();
   dose(c, { reagent_id: 'h2o2_3pct', volume_ml: 50 });
   dose(c, { reagent_id: 'mno2_s', mass_g: 0.5 });
+  const w0 = amount(snap(c), 'H2O');
   run(c, 240);
   const sn = snap(c);
-  const o2 = sn.mass_lost_g / 31.999;
+  // what left is the oxygen plus a little water evaporated from the (reaction-warmed) solution
+  const waterLost = w0 + 0.044 - amount(sn, 'H2O');
+  const o2 = (sn.mass_lost_g - waterLost * 18.015) / 31.999;
   assert.ok(Math.abs(o2 - 0.022) < 0.00022, `O2 ${o2} mol`);
   assert.ok(sn.conservation.ok && sn.conservation.max_element_rel_err < 1e-9, JSON.stringify(sn.conservation));
 }

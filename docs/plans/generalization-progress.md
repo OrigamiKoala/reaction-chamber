@@ -18,7 +18,7 @@ Build/test commands (all must stay green after each stage):
 | 1 | done |
 | 2 | done |
 | 3 | done |
-| 4 | pending |
+| 4 | done |
 | 5 | pending |
 | 6 | pending |
 | 7 | pending |
@@ -256,3 +256,44 @@ WASM rebuilt (`cargo build --release --target wasm32-unknown-unknown` + wasm-bin
 | wasm_e2e.mjs busy mixture step | $< 5.0$ ms/step | 3.48 ms/step | Pass |
 | Engine test suite | All 151 unit and integration tests | 151 passed, 0 failed | Pass |
 
+### Stage 4: gas phase, atmosphere, VLE, sealed vessels (done, 2026-10-02)
+
+#### What changed
+
+1. **EOS and gas phase** (`eos.rs`, `gas_phase.rs`): ideal gas and Peng-Robinson (kij = 0) in (T,V,n) and (T,P,y) form; `Atmosphere` (pressure, dry composition, relative saturation) is a vessel input, default standard air at 50 % RH. Open = infinite atmosphere; sealed = closed inventory (`headspace_gas_mol`).
+2. **VLE** (`vle.rs`, `vessel_vle.rs`, `groups.rs`, `activity.rs`): Psat from the record (IAPWS-IF97, Wagner, Antoine) or Lee-Kesler anchored on a labelled point plus critical constants (`db/seed_vle.rs`, tiers estimated/speculative) or a curve fit; latent heat by Clapeyron; bubble-point boiling with enthalpy surplus split by vapour composition; general UNIFAC (7 main groups) with SMILES group assignment; miscibility partition by convexity test; ionic water activity from Pitzer / Debye-Hückel osmotic coefficient (Debye-Hückel A, B now T-dependent).
+3. **Henry** from mu0(aq) - mu0(g) with Setschenow; first-order relaxation with documented placeholder constants (K_L_STILL 1e-6, K_L_STIRRED 5e-5 m/s, bubble release 0.15/s, gas film 3e-3 m/s, sparge efficiency 0.5) until Stage 8.
+4. **Sealed vessels**: isochoric flash with PR fugacities and Poynting, implicit-T latent heat, supercritical single fluid, hydraulic over-pressure, pop/burst vent to P_ext with ledger booking; pop/burst per glassware category.
+5. **Gas dosing** (`form: "gas"`) into headspace or sparge; `gas.rs` collectors use the same headspace inventory and the record's vapour pressure.
+6. **Deleted**: `energy.rs`, `phase_transfer.rs`, `vapour.rs`, `step_simulation_tick` and 3 legacy tests, `step_co2_degassing`, `step_sealed_vapour`, `vapour_mol`, water/ethanol boiling clamps, both water Psat copies (and the web Antoine copy in `gas_math.ts`), the 10 atm clamp, `P_air = T/T_room`; literal arms in `volume.rs` (critical properties now from the store).
+
+#### Gates (`engine/tests/stage4.rs`, all 16 pass)
+
+| Gate | Target | Result |
+|---|---|---|
+| Water Psat 25/100/150/200/300 C | within 1 % of IAPWS | pass (all five) |
+| Ethanol Tb at 1 atm | 351.4 +- 0.5 K | 351.44 K |
+| Ethanol at 0.1 atm | about 300 K (tested at +-4 K) | 303.57 K (real about 302.5) |
+| Sealed 50 mL water at 200 C | 16.8 +- 0.8 atm | 17.02 atm |
+| Sealed ethanol above Tc | single supercritical fluid | 554.8 K: no liquid, 86.9 atm (ideal gas 157) |
+| Ethanol/water x = 0.2 bubble point | 356 +- 1.5 K | 356.17 K |
+| Azeotrope | x 0.89 +- 0.03, 351.3 +- 0.5 K | x 0.895, 351.19 K |
+| Hexane/toluene 50/50 | 355 +- 2 K | 353.35 K (edge of band; UNIFAC gamma about 1.11, real about 355.6) |
+| 2 m NaCl boiling | 375.2 +- 0.3 K | 375.05 K |
+| Open carbonated water, 3 h | toward 1.4e-5 M CO2 | 1.408e-5 M |
+| 2 M NH3 at 363 K, 10 min, stirred | loses >= 50 % | keeps 31.7 % (loses 68 %) |
+| NaOH 1 mM, 2 h | absorbs atmospheric CO2 | pH 10.98 -> 10.82, 1.96e-5 mol carbonate |
+| Dry fraction over water at 293 K | 0.977 +- 0.002 | 0.9770 |
+
+Other suites: `cargo test` 183 passed / 0 failed (lib 62, stage0 35, stage4 16, literal_ban 2, others unchanged); node tests all OK (`wasm_e2e` busy mixture 4.69 ms/step, under 5.0 but noisy on this machine); `tsc` and `npm run build` clean; pytest 42 passed, 5 collection errors because fastapi and rdkit are not installed here.
+
+#### Tests changed (they asserted removed hardcoded behaviour)
+
+`stage0.rs` (pure-water pH with a CO2-free atmosphere; O2 water correction; sealed tests use the record's Psat and headspace air), `compound_phases.rs` (cyclohexane 25 C point, room-T evaporation allowed, sealed expectations), `m5_demos.rs` (boiling plateau 373.124 +- 0.05 instead of the 373.15 clamp), `gas.rs` unit tests, node `wasm_e2e`, `gas_collection`, `pipetting_math`. `flow_e2e` (NaHCO3 pH) and `pipette_e2e` (receiver volume) already failed at HEAD after Stage 3's A(T) and volume changes; their bands were corrected.
+
+#### Known gaps / hand-off
+
+- VLE is a layer beside the legacy equilibrium solver, not rows of the Gibbs solver (Stage 6 should merge them); dissolved inert compounds do not evaporate; no sublimation; collectors do not dissolve gas in trough water; transfer rates are placeholders (Stage 8).
+- UNIFAC covers alkanes, aromatics, alcohols, ketones, water; table recalled from memory (tier speculative, no pipeline parser yet); other species are ideal and labelled. Pitzer parameters are fixed at 25 C; ionic and UNIFAC water activity are combined additively.
+- Open pure water now absorbs atmospheric CO2 (pH drifts) by design; gas reagents have no pour visual; excess-volume pair literals remain in `volume.rs`; ethanol combustion code and a few `"H2O"` / `"C2H5OH"` literals remain in `vessel.rs` (counted in `literal_baseline.txt`, ratchet only goes down).
+- Not verified in a browser (stopper pop visuals, gas dosing UI).

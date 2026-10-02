@@ -6,7 +6,6 @@ import init, {
   calculate_titration,
   calculate_calorimetry_mixing,
   run_iodine_clock_sim,
-  step_simulation_tick,
   run_wasm_benchmark,
   vessel_new,
   vessel_free,
@@ -149,17 +148,6 @@ self.onmessage = async (e: MessageEvent) => {
         );
         self.postMessage({
           type: 'RUN_IODINE_CLOCK_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'STEP_SIMULATION_TICK': {
-        const { state, dt } = payload;
-        const res = step_simulation_tick(JSON.stringify(state), dt || 0.1);
-        self.postMessage({
-          type: 'STEP_SIMULATION_TICK_RESPONSE',
           payload: JSON.parse(res),
           requestId,
         });

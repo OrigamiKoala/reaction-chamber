@@ -39,6 +39,8 @@ fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, 
         phases,
         critical: None,
         points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
         acid_base: Vec::new(),
         redox: Vec::new(),
         optics: None,
@@ -82,6 +84,8 @@ fn make_liquid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: &s
         phases,
         critical: None,
         points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
         acid_base: Vec::new(),
         redox: Vec::new(),
         optics: None,
@@ -125,6 +129,8 @@ fn make_gas(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: Optio
         phases,
         critical: None,
         points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
         acid_base: Vec::new(),
         redox: Vec::new(),
         optics: None,
@@ -176,6 +182,8 @@ fn make_solid_with_params(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64
         phases,
         critical: None,
         points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
         acid_base: Vec::new(),
         redox: Vec::new(),
         optics: None,
@@ -207,7 +215,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("Ag(NH3)2+", "Ag(NH3)2+", 1, -111.0, -17.2, 180.0, None, None),
         make_aq("CO3-2", "CO3-2", -2, -677.1, -527.81, -50.0, None, Some("[O-]C(=O)[O-]")),
         make_aq("HCO3-", "HCO3-", -1, -692.0, -586.77, 112.0, None, Some("OC(=O)[O-]")),
-        make_aq("CO2(aq)", "CO2", 0, -413.8, -385.98, 243.0, Some("CURLTQBHLGFTAB-UHFFFAOYSA-N"), Some("O=C=O")),
+        make_aq("CO2(aq)", "CO2", 0, -413.8, -385.98, 243.0, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N"), Some("O=C=O")),
         make_aq("CH3COOH", "C2H4O2", 0, -484.5, -396.46, 124.0, Some("QTBSBXVTEAMEQO-UHFFFAOYSA-N"), Some("CC(=O)O")),
         make_aq("CH3COO-", "C2H3O2-", -1, -486.0, -369.31, 80.0, None, Some("CC(=O)[O-]")),
         make_aq("Fe+3", "Fe+3", 3, -48.5, -4.7, 150.0, None, Some("[Fe+3]")),
@@ -239,7 +247,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("In_mr-", "C15H14N3O2-", -1, -95.0, -80.0, 300.0, None, None),
 
         // Liquids
-        make_liquid("H2O", "H2O", -285.83, -237.13, 75.38, "GPRLSGONYQIRFK-UHFFFAOYSA-N", "O"),
+        make_liquid("H2O", "H2O", -285.83, -237.13, 75.38, "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "O"),
         make_liquid("C2H5OH", "C2H6O", -277.69, -174.78, 112.3, "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "CCO"),
 
         // Solids with PHREEQC llnl.dat analytic expressions
@@ -263,13 +271,13 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("ZnF2(s)", "ZnF2", -764.4, -713.4, 65.0, 4.95),
 
         // Gases
-        make_gas("CO2(g)", "CO2", -393.51, -394.39, 37.1, Some("CURLTQBHLGFTAB-UHFFFAOYSA-N")),
+        make_gas("CO2(g)", "CO2", -393.51, -394.39, 37.1, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N")),
         make_gas("O2(g)", "O2", 0.0, 0.0, 29.4, Some("MYMOFIZGZYHOMD-UHFFFAOYSA-N")),
         make_gas("H2(g)", "H2", 0.0, 0.0, 28.8, Some("UFHFLCQGNIYNRP-UHFFFAOYSA-N")),
         make_gas("NH3(g)", "NH3", -46.11, -16.45, 35.1, Some("QGZKDVFQNNGYKY-UHFFFAOYSA-N")),
         make_gas("HCl(g)", "HCl", -92.31, -95.30, 29.1, Some("VEXZGXHMUGYJMC-UHFFFAOYSA-N")),
         make_gas("N2(g)", "N2", 0.0, 0.0, 29.1, Some("IJGRMHOSHXDMSA-UHFFFAOYSA-N")),
-        make_gas("H2O(g)", "H2O", -241.82, -228.57, 33.6, Some("GPRLSGONYQIRFK-UHFFFAOYSA-N")),
+        make_gas("H2O(g)", "H2O", -241.82, -228.57, 33.6, Some("XLYOFNOQVPJJNP-UHFFFAOYSA-N")),
         make_gas("C2H5OH(g)", "C2H6O", -235.3, -168.49, 65.4, Some("LFQSCWFLJHTTHZ-UHFFFAOYSA-N")),
     ];
 
@@ -306,5 +314,6 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         }
     }
 
+    crate::db::seed_vle::attach_vle_data(&mut records);
     records
 }

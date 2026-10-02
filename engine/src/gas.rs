@@ -15,6 +15,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+use crate::db::seed_vle::OVER_WATER_SEAL_LIQUID;
 use crate::vessel::Vessel;
 
 /// J / (mol K)
@@ -55,6 +56,9 @@ pub fn collector_kind(vessel_type: &str) -> Option<CollectorKind> {
 pub struct GasState {
     /// Gas held by a collector (species id like "H2(g)" -> mol).
     pub collected_mol: HashMap<String, f64>,
+    /// The atmosphere's gas captured in the headspace when the vessel was closed (species id -> mol): what is *not*
+    /// evolved gas. `gas_info` reports the excess over it.
+    pub seal_baseline_mol: HashMap<String, f64>,
     /// Gas a full collector pushed out into the room (mol).
     pub escaped_mol: f64,
 }
@@ -83,16 +87,6 @@ pub struct GasInfo {
     pub vapour_atm: f64,
 }
 
-/// Saturation vapour pressure of water (atm), Antoine equation (same as the vessel headspace model).
-pub fn water_vapour_atm(t_k: f64) -> f64 {
-    let t_c = t_k - 273.15;
-    if t_c <= 0.0 {
-        return 0.0;
-    }
-    let log_p = 8.07131 - (1730.63 / (t_c + 233.426)); // mmHg
-    (10.0_f64.powf(log_p) / 760.0).clamp(0.0, 10.0)
-}
-
 /// Volume (mL) of `n_mol` of ideal gas at `t_k` and `p_atm`.
 pub fn gas_volume_ml(n_mol: f64, t_k: f64, p_atm: f64) -> f64 {
     n_mol * R_GAS * t_k / (p_atm.max(1e-6) * ATM_PA) * 1e6
@@ -113,17 +107,43 @@ impl Vessel {
         self.gas.collected_mol.values().fold(0.0, |a, b| a + b)
     }
 
-    /// Total moles of evolved gas in the headspace of a sealed vessel.
+    /// Total moles of gas in the headspace of a sealed vessel (air, vapour and evolved gas).
     pub fn headspace_total_mol(&self) -> f64 {
         self.headspace_gas_mol.values().fold(0.0, |a, b| a + b)
     }
 
-    /// Pressure (atm) that the dry collected gas exerts (ambient minus the water vapour for over-water collection).
-    fn dry_gas_pressure_atm(&self) -> f64 {
+    /// Moles of evolved gas (excess over the atmosphere captured at sealing, vapour of the liquids excluded).
+    pub fn evolved_total_mol(&self) -> f64 {
+        self.evolved_headspace().values().sum()
+    }
+
+    /// Vapour pressure (atm) of the sealing liquid in an over-water collector; 0 for the other collectors.
+    pub fn collector_vapour_atm(&self) -> f64 {
         match self.collector() {
-            Some(CollectorKind::OverWater) => 1.0 - water_vapour_atm(self.temperature_k),
-            _ => 1.0,
+            Some(CollectorKind::OverWater) => self
+                .volatile_for(OVER_WATER_SEAL_LIQUID)
+                .map(|v| v.psat_pa(self.temperature_k) / ATM_PA)
+                .unwrap_or(0.0),
+            _ => 0.0,
         }
+    }
+
+    /// Pressure (atm) that the dry collected gas exerts (ambient minus the vapour for over-water collection).
+    fn dry_gas_pressure_atm(&self) -> f64 {
+        (self.p_ext_atm() - self.collector_vapour_atm()).max(0.01)
+    }
+
+    /// Evolved gas in the headspace of a sealed vessel: what exceeds the atmosphere captured at sealing, apart from the
+    /// vapour of the vessel's own liquids (which the flash keeps in equilibrium).
+    pub(crate) fn evolved_headspace(&self) -> HashMap<String, f64> {
+        let mut out = HashMap::new();
+        for (sp, &mol) in &self.headspace_gas_mol {
+            let excess = mol - self.gas.seal_baseline_mol.get(sp).copied().unwrap_or(0.0);
+            if excess > 1e-12 && !self.volatile_for_gas(sp).map_or(false, |v| self.species_mol.contains_key(&v.id)) {
+                out.insert(sp.clone(), excess);
+            }
+        }
+        out
     }
 
     /// Volume (mL) of the collected gas, as read on the collector's scale.
@@ -139,7 +159,13 @@ impl Vessel {
     /// Gas information for the snapshot.
     pub fn gas_info(&self) -> GasInfo {
         let collector = self.collector();
-        let src: &HashMap<String, f64> = if collector.is_some() { &self.gas.collected_mol } else { &self.headspace_gas_mol };
+        let evolved;
+        let src: &HashMap<String, f64> = if collector.is_some() {
+            &self.gas.collected_mol
+        } else {
+            evolved = self.evolved_headspace();
+            &evolved
+        };
         let mut species: Vec<GasAmount> = src
             .iter()
             .filter(|(_, &m)| m > 0.0)
@@ -147,7 +173,7 @@ impl Vessel {
             .collect();
         species.sort_by(|a, b| b.mol.partial_cmp(&a.mol).unwrap_or(std::cmp::Ordering::Equal).then(a.species.cmp(&b.species)));
         let total: f64 = species.iter().fold(0.0, |a, g| a + g.mol);
-        let p = if collector.is_some() { self.dry_gas_pressure_atm() } else { 1.0 };
+        let p = if collector.is_some() { self.dry_gas_pressure_atm() } else { self.p_ext_atm() };
         GasInfo {
             collector,
             species,
@@ -155,7 +181,7 @@ impl Vessel {
             volume_ml: gas_volume_ml(total, self.temperature_k, p),
             capacity_ml: self.collector_capacity_ml(),
             escaped_mol: self.gas.escaped_mol,
-            vapour_atm: if collector == Some(CollectorKind::OverWater) { water_vapour_atm(self.temperature_k) } else { 0.0 },
+            vapour_atm: self.collector_vapour_atm(),
         }
     }
 
@@ -204,10 +230,13 @@ pub fn step_link(src: &mut Vessel, dst: &mut Vessel, dt_s: f64) -> (f64, f64) {
     if total <= 0.0 {
         return (0.0, 0.0);
     }
-    // headspace gas that would still sit above the back pressure (a few 1e-5 mol: the "dead volume" of the flask)
-    let head_ml = (src.config.capacity_ml - src.total_liquid_volume_ml()).max(10.0);
-    let keep = gas_moles(head_ml * BACK_PRESSURE_ATM, src.temperature_k, 1.0).min(total);
-    let excess = (total - keep).max(0.0);
+    // the headspace gas (air, vapour, evolved gas: everything the tube sees) flows while the vessel is above the
+    // collector's back pressure; the moles that would sit at that pressure stay
+    let p_target = src.p_ext_atm() + BACK_PRESSURE_ATM;
+    if src.pressure_atm <= p_target {
+        return (0.0, 0.0);
+    }
+    let excess = total * (1.0 - p_target / src.pressure_atm);
     if excess <= 0.0 {
         return (0.0, 0.0);
     }
@@ -340,6 +369,13 @@ mod tests {
         })
     }
 
+    /// Fit the stopper: the atmosphere's gas in the headspace is captured at this moment.
+    fn stopper(v: &mut Vessel) {
+        let mut c = VesselControls::default();
+        c.sealed = Some(true);
+        v.set_controls(c);
+    }
+
     #[test]
     fn ideal_gas_helpers_roundtrip() {
         let n = gas_moles(240.0, 293.15, 1.0);
@@ -358,9 +394,11 @@ mod tests {
 
     #[test]
     fn link_conserves_moles_nahco3() {
-        let mut src = mk("erlenmeyer-250", 250.0, true);
+        // the liquid goes in first, then the stopper (the air captured is the air that is really there)
+        let mut src = mk("erlenmeyer-250", 250.0, false);
         let mut dst = mk("gas-syringe-100", 100.0, false);
         src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        stopper(&mut src);
         src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.3), drops: None, temperature_k: None }).unwrap();
         let mut moved = 0.0;
         let mut lost_total = 0.0;
@@ -377,14 +415,21 @@ mod tests {
         assert!(lost_total.abs() < 1e-12);
         assert!((moved - dst.collected_total_mol()).abs() < 1e-12, "moved {} vs collected {}", moved, dst.collected_total_mol());
         // 0.3 g NaHCO3 = 3.57 mmol CO2 = ~86 mL at 20 C
-        // (a little stays dissolved as CO2(aq)/HCO3-/CO3-2 at the exact carbonate equilibrium; count it for conservation)
+        // (a little stays dissolved as CO2(aq)/HCO3-/CO3-2 at the exact carbonate equilibrium; count it for conservation).
+        // The tube carries whatever the headspace holds: the flask's air and vapour go over first, mixed with the CO2.
         let sp = |n: &str| src.species_mol.get(n).copied().unwrap_or(0.0);
         let dissolved = sp("CO2(aq)") + sp("HCO3-") + sp("CO3-2");
-        let total = moved + src.headspace_total_mol() + dissolved;
-        assert!((total - 3.57e-3).abs() < 0.02e-3, "CO2 total {} mol", total);
-        assert!(dissolved < 0.3e-3, "dissolved carbonate species {} mol", dissolved);
+        let co2_gas = dst.collected_mol_of("CO2(g)") + src.headspace_gas_mol.get("CO2(g)").copied().unwrap_or(0.0)
+            - src.gas.seal_baseline_mol.get("CO2(g)").copied().unwrap_or(0.0);
+        let total = co2_gas + dissolved;
+        assert!((total - 3.57e-3).abs() < 0.06e-3, "CO2 total {} mol", total);
+        // (the flask holds air too, so CO2 keeps a partial pressure of a few tenths of an atmosphere and more of it stays
+        // dissolved than when the tube drew off pure CO2)
+        assert!(dissolved < 1.3e-3, "dissolved carbonate species {} mol", dissolved);
+        // the collector reads the volume of gas the flask pushed out: close to the CO2 volume produced
         let v = dst.collector_volume_ml();
-        assert!(v > 78.0 && v < 90.0, "collected {} mL", v);
+        assert!(v > 60.0 && v < 95.0, "collected {} mL (CO2 produced 86 mL, about 18 mL of it still dissolved)", v);
+        assert!(dst.collected_mol_of("N2(g)") > 0.0, "the displaced air is in the collector too");
         // the flask did not pressurise noticeably
         assert!(max_p < 1.06 + 0.04, "pressure peaked at {} atm", max_p);
         assert!(src.sealed, "stopper must not pop while connected");
@@ -392,9 +437,11 @@ mod tests {
 
     #[test]
     fn mg_hcl_collects_hydrogen() {
-        let mut src = mk("erlenmeyer-250", 250.0, true);
-        let mut dst = mk("gas-syringe-100", 100.0, false);
+        let mut src = mk("erlenmeyer-250", 250.0, false);
+        // (a 250 mL syringe: the flask pushes out 84 mL of hydrogen plus the thermal expansion of its air)
+        let mut dst = mk("gas-syringe-250", 250.0, false);
         src.dose(DoseRequest { reagent_id: "hcl_1m".into(), volume_ml: Some(30.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        stopper(&mut src);
         // 0.0851 g Mg = 3.5 mmol -> 3.5 mmol H2 (~84 mL), HCl in excess (30 mmol)
         src.dose(DoseRequest { reagent_id: "mg_ribbon".into(), volume_ml: None, mass_g: Some(0.0851), drops: None, temperature_k: None }).unwrap();
         let mut moved = 0.0;
@@ -404,16 +451,20 @@ mod tests {
             moved += step_link(&mut src, &mut dst, 0.1).0;
         }
         assert!((moved - dst.collected_total_mol()).abs() < 1e-12);
-        let total = moved + src.headspace_total_mol();
-        assert!((total - 3.5e-3).abs() < 0.2e-3, "H2 total {} mol (expected 3.5 mmol)", total);
-        assert!(dst.collected_mol_of("H2(g)") > 3.2e-3);
+        let h2 = dst.collected_mol_of("H2(g)") + src.headspace_gas_mol.get("H2(g)").copied().unwrap_or(0.0);
+        assert!((h2 - 3.5e-3).abs() < 0.2e-3, "H2 total {} mol (expected 3.5 mmol)", h2);
+        // the gas that left the flask is the volume of hydrogen produced (84 mL), diluted by the flask's own air
+        let v = dst.collector_volume_ml();
+        assert!(v > 80.0 && v < 115.0, "collected {} mL", v);
+        assert!(dst.collected_mol_of("H2(g)") > 0.15 * 3.5e-3);
     }
 
     #[test]
     fn full_collector_escapes_and_still_conserves() {
-        let mut src = mk("erlenmeyer-250", 250.0, true);
+        let mut src = mk("erlenmeyer-250", 250.0, false);
         let mut dst = mk("gas-syringe-100", 100.0, false);
         src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        stopper(&mut src);
         let mut moved = 0.0;
         let mut lost = 0.0;
         // 5 g of NaHCO3 added in 0.25 g portions (as a manual pour would): ~1.4 L of CO2 for a 100 mL syringe
@@ -444,7 +495,7 @@ mod tests {
         let vd = dry.collector_volume_ml();
         let vw = wet.collector_volume_ml();
         let ratio = vw / vd;
-        let expect = 1.0 / (1.0 - water_vapour_atm(293.15));
+        let expect = 1.0 / (1.0 - wet.collector_vapour_atm());
         assert!((ratio - expect).abs() < 1e-9);
         assert!(ratio > 1.015 && ratio < 1.03, "vapour correction {}", ratio);
     }

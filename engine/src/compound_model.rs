@@ -404,11 +404,29 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     let state = thermo.state_at_room();
     let by_mass = state == "solid";
     let neat_liquid = kind == "inert" && state == "liquid";
+    // A compound that is a gas at room conditions is a gas reagent: dosed by volume of gas into the headspace (sealed) or
+    // sparged through the liquid, never a 0.1 M solution made up of water. A known dissolved molecule uses the gas twin of
+    // its species record (found by InChIKey); one without a gas twin keeps the solution form.
+    let gas_species: Option<String> = if state == "gas" && !by_mass {
+        match kind {
+            "inert" => Some(format!("{}(g)", inert_id)),
+            "molecule" => {
+                let aq = &species[0].0;
+                crate::vle::henry_species(aq).map(|h| h.gas_id)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     let mut composition: HashMap<String, f64> = HashMap::new();
     let mut mineral: Option<GeneralMineral> = None;
 
-    if by_mass {
+    if let Some(g) = &gas_species {
+        // mole fractions of the gas species of one dose of the reagent
+        composition.insert(g.clone(), 1.0);
+    } else if by_mass {
         let per_g = 1.0 / mw_total;
         // Solid with a single cation and anion kind and no acid: a solubility-limited solid that dissolves into water
         let single_pair = kind != "molecule" && kind != "inert" && split.as_ref().map_or(false, |s| s.cations.len() == 1 && s.anions.len() == 1) && kind != "acid";
@@ -492,20 +510,23 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         thermo.species = species[0].0.trim_end_matches("(s)").to_string();
     }
 
-    let density_g_ml = if neat_liquid {
+    let density_g_ml = if gas_species.is_some() {
+        // gas density at 298.15 K, 1 atm
+        mw_total * 101_325.0 / (crate::physics::R_GAS * 298.15) * 1e-6
+    } else if neat_liquid {
         thermo.rho_liquid
     } else if by_mass {
         if kind == "inert" { thermo.rho_solid } else { mineral.as_ref().map(|m| m.density_g_ml).or(rho_s).unwrap_or(2.0) }
     } else {
         0.997 + molarity * mw_total / 1000.0 * (1.0 - 0.997 / rho_s.unwrap_or(2.0).max(1.1))
     };
-    let label = if by_mass || neat_liquid { req.formula.clone() } else { format!("{} ({})", req.formula, mol_str(molarity)) };
+    let label = if by_mass || neat_liquid || gas_species.is_some() { req.formula.clone() } else { format!("{} ({})", req.formula, mol_str(molarity)) };
     let entry = ReagentCatalogEntry {
         id: req.id.clone(),
         name: req.name.clone(),
         formula: req.formula.clone(),
-        form: if by_mass { "solid".into() } else if neat_liquid { "liquid".into() } else { "solution".into() },
-        concentration_m: if by_mass { None } else if neat_liquid { Some(thermo.rho_liquid / mw_total * 1000.0) } else { Some(molarity) },
+        form: if gas_species.is_some() { "gas".into() } else if by_mass { "solid".into() } else if neat_liquid { "liquid".into() } else { "solution".into() },
+        concentration_m: if gas_species.is_some() || by_mass { None } else if neat_liquid { Some(thermo.rho_liquid / mw_total * 1000.0) } else { Some(molarity) },
         density_g_ml,
         ghs: req.ghs.clone(),
         signal_word: if req.ghs.is_empty() { String::new() } else { "Warning".into() },

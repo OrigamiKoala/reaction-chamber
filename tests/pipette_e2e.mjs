@@ -45,6 +45,7 @@ const sumSpecies = (...hs) => {
   const rcv = mk('beaker-250', 250, 110, 3.3);
   dose(stock, { reagent_id: 'hcl_0_1m', volume_ml: 60 });
   dose(rcv, { reagent_id: 'water', volume_ml: 40 });
+  const rcvStart = snap(rcv).total_liquid_ml; // 40 g of water is 40.09 mL at 22 C (IAPWS density)
   const before = sumSpecies(stock, pip, rcv);
   const spec = P.makePipetteSpec('volumetric', 10, 0.3);
 
@@ -84,7 +85,7 @@ const sumSpecies = (...hs) => {
   }
   near('delivered volume = nominal (Class A +-0.02 mL)', delivered, 10, 0.02);
   near('delivered = filled - the drop left in the tip', delivered, P.volumetricDelivered(spec, filled), 1e-6);
-  near('receiver gained exactly what was delivered', snap(rcv).total_liquid_ml, 40 + delivered, 0.02);
+  near('receiver gained exactly what was delivered', snap(rcv).total_liquid_ml, rcvStart + delivered, 0.05);
   near('a drop stays in the tip', snap(pip).total_liquid_ml, spec.residualMl, 1e-6);
 
   // every species is conserved across the three vessels

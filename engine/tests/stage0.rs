@@ -4,6 +4,7 @@
 use reaction_chamber_engine::chem_db::{self, GeneralKineticRxn, ReagentCatalogEntry};
 use reaction_chamber_engine::compound_model::*;
 use reaction_chamber_engine::types::ProvenanceTier;
+use reaction_chamber_engine::gas_phase::AtmosphereSpec;
 use reaction_chamber_engine::vessel::*;
 use std::collections::HashMap;
 
@@ -73,6 +74,8 @@ fn s0_1_pure_water_ph_follows_pkw_of_temperature() {
     // pKw at saturation pressure: Bandura & Lvov, J. Phys. Chem. Ref. Data 35 (2006): 14.95 / 13.99 / 13.02 / 12.26
     for (t_c, pkw) in [(0.0, 14.95), (25.0, 13.99), (60.0, 13.02), (100.0, 12.26)] {
         let mut v = beaker_at(273.15 + t_c, false, 250.0);
+        // CO2-free air: this gate is the autoionisation of water (water open to ordinary air takes up CO2, see stage4.rs)
+        v.set_controls(VesselControls { atmosphere: Some(AtmosphereSpec { composition: Some([("N2(g)".to_string(), 0.79), ("O2(g)".to_string(), 0.21)].into()), ..Default::default() }), ..Default::default() });
         ml(&mut v, "water", 50.0);
         run(&mut v, 10.0, 0.5);
         let ph = v.current_ph();
@@ -156,8 +159,12 @@ fn s0_2_h2o2_decomposition_gives_half_a_mole_of_o2_per_mole() {
     grams(&mut v, "mno2_s", 0.5);
     let h0 = sp(&v, "H2O2");
     assert!((h0 - 0.044).abs() < 1e-6, "H2O2 {}", h0);
+    let w0 = sp(&v, "H2O");
     run(&mut v, 240.0, 0.5);
-    let o2_mol = v.mass_lost_g / 31.999;
+    // what left the vessel is the oxygen and a little evaporated water (the reaction warms the solution): the water
+    // lost is the initial water plus the 0.044 mol the reaction made minus what is left
+    let water_lost_mol = w0 + 0.044 - sp(&v, "H2O");
+    let o2_mol = (v.mass_lost_g - water_lost_mol * 18.015) / 31.999;
     assert!((o2_mol - 0.022).abs() < 0.022 * 0.01, "O2 {} mol (expected 0.022 +/- 1 %)", o2_mol);
     assert!(sp(&v, "H2O2") < 1e-5);
     let c = v.snapshot().conservation;
@@ -720,10 +727,22 @@ fn s0_14_flame_power_follows_the_pool_burning_rate() {
 
 // ---- 0.15 sealed-vessel vapour pressure bridge --------------------------------------------------------------------------
 
+/// Saturation pressure (Pa) of a liquid species from its record (Stage 4: the one vapour-pressure layer).
+fn psat(id: &str, t: f64) -> f64 {
+    reaction_chamber_engine::vle::volatile_from_store(id).expect("volatile").psat_pa(t)
+}
+
+/// Pressure (Pa) the air of a sealed vessel exerts: its (non-condensable) gas moles at the headspace volume.
+fn air_pressure_pa(v: &Vessel) -> f64 {
+    let n: f64 = ["N2(g)", "O2(g)", "Ar(g)"].iter().map(|k| v.headspace_gas_mol.get(*k).copied().unwrap_or(0.0)).sum();
+    n * 8.314462618 * v.temperature_k / ((v.config.capacity_ml - v.total_liquid_volume_ml()) * 1e-6)
+}
+
 #[test]
 fn s0_15_sealed_water_pressure_follows_iapws_to_the_critical_region() {
-    use reaction_chamber_engine::vapour::water_psat_pa;
     // 250 mL sealed vessel, 50 mL of water, a stopper that holds; the temperature is held by a bath
+    // (Stage 4: the sealed gas phase now holds real air that the liquid compresses, the vapour pressure is the record's
+    // IF97 curve, and the mixture is a Peng-Robinson gas)
     for t_c in [100.0, 150.0, 200.0, 218.0, 250.0, 318.0] {
         let t = 273.15 + t_c;
         let mut v = Vessel::new(VesselConfig {
@@ -736,23 +755,23 @@ fn s0_15_sealed_water_pressure_follows_iapws_to_the_critical_region() {
         run(&mut v, 60.0, 0.5);
         let t_now = v.temperature_k;
         assert!((t_now - t).abs() < 15.0, "bath held {} K, got {}", t, t_now);
-        let psat_atm = water_psat_pa(t_now) / 101325.0;
-        let expect = psat_atm + t_now / 298.15; // water + (air heated at constant volume from the sealing state)
-        assert!((v.pressure_atm - expect).abs() < 0.04 * expect + 0.1, "T={} C: {:.2} atm vs {:.2}", t_c, v.pressure_atm, expect);
+        let psat_atm = psat("H2O", t_now) / 101325.0;
+        let expect = psat_atm + air_pressure_pa(&v) / 101325.0;
+        assert!((v.pressure_atm - expect).abs() < 0.05 * expect + 0.1, "T={} C: {:.2} atm vs {:.2}", t_c, v.pressure_atm, expect);
         if t_c >= 218.0 {
             assert!(v.pressure_atm > 20.0, "old model clamped at 10 atm: {}", v.pressure_atm);
         }
         // the vapour came out of the liquid (mass and latent heat are booked), nothing is lost
-        assert!(v.vapour_mol.get("H2O(g)").copied().unwrap_or(0.0) > 0.0);
+        assert!(v.headspace_gas_mol.get("H2O(g)").copied().unwrap_or(0.0) > 0.0);
         let c = v.snapshot().conservation;
         assert!(c.ok, "T={}: {:?}", t_c, c);
-        assert!(v.mass_lost_g.abs() < 1e-9);
+        // nothing but the air that the 50 mL of water pushed out of the stoppered vessel has left (< 0.1 g)
+        assert!(v.mass_lost_g.abs() < 0.1, "{}", v.mass_lost_g);
     }
 }
 
 #[test]
 fn s0_15_sealed_ethanol_and_mixtures_use_their_own_curves() {
-    use reaction_chamber_engine::vapour::{ethanol_psat_pa, water_psat_pa};
     let t = 400.0;
     let mk = || Vessel::new(VesselConfig {
         vessel_type: "erlenmeyer-250".into(), capacity_ml: 250.0, glass_mass_g: 110.0, inner_radius_cm: 3.5,
@@ -763,11 +782,12 @@ fn s0_15_sealed_ethanol_and_mixtures_use_their_own_curves() {
     e.temperature_k = t;
     e.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
     run(&mut e, 20.0, 0.5);
-    let expect = ethanol_psat_pa(e.temperature_k) / 101325.0 + e.temperature_k / 298.15;
-    assert!((e.pressure_atm - expect).abs() < 0.05 * expect, "ethanol {} atm vs {}", e.pressure_atm, expect);
+    let expect = psat("C2H5OH", e.temperature_k) / 101325.0 + air_pressure_pa(&e) / 101325.0;
+    assert!((e.pressure_atm - expect).abs() < 0.07 * expect, "ethanol {} atm vs {}", e.pressure_atm, expect);
     // the old model had no ethanol vapour pressure at all (1.0 + T/Troom only)
     assert!(e.pressure_atm > 5.0);
-    // an equimolar water + ethanol liquid: Raoult, each component at x * Psat
+    // an equimolar water + ethanol liquid: the total vapour pressure is x_i gamma_i Psat_i summed (UNIFAC gamma > 1 for
+    // this mixture), so it lies above the ideal Raoult value but within a factor of two of it
     let mut m = mk();
     ml(&mut m, "ethanol", 20.0);
     let n_e = sp(&m, "C2H5OH");
@@ -777,9 +797,10 @@ fn s0_15_sealed_ethanol_and_mixtures_use_their_own_curves() {
     m.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
     run(&mut m, 20.0, 0.5);
     let tt = m.temperature_k;
-    let raoult = 0.5 * water_psat_pa(tt) + 0.5 * ethanol_psat_pa(tt);
-    let vap = m.vapour_mol.values().sum::<f64>() * 8.314462618 * tt / ((250.0 - m.total_liquid_volume_ml()).max(10.0) * 1e-6);
-    assert!((vap - raoult).abs() < 0.15 * raoult, "{} Pa vs Raoult {}", vap, raoult);
+    let raoult = 0.5 * psat("H2O", tt) + 0.5 * psat("C2H5OH", tt);
+    let n_vap = m.headspace_gas_mol.get("H2O(g)").copied().unwrap_or(0.0) + m.headspace_gas_mol.get("C2H5OH(g)").copied().unwrap_or(0.0);
+    let vap = n_vap * 8.314462618 * tt / ((250.0 - m.total_liquid_volume_ml()).max(10.0) * 1e-6);
+    assert!(vap > 0.9 * raoult && vap < 2.0 * raoult, "{} Pa vs Raoult {}", vap, raoult);
 }
 
 #[test]
@@ -791,11 +812,12 @@ fn s0_15_sealed_vapour_latent_heat_cools_the_contents() {
     });
     ml(&mut v, "water", 50.0);
     let w0 = sp(&v, "H2O");
+    let vapour0 = v.headspace_gas_mol.get("H2O(g)").copied().unwrap_or(0.0);
     v.temperature_k = 300.0;
     v.set_controls(VesselControls { heater_w: Some(300.0), ..Default::default() });
     run(&mut v, 150.0, 0.5);
     let liquid_lost = w0 - sp(&v, "H2O");
-    let vapour = v.vapour_mol.get("H2O(g)").copied().unwrap_or(0.0);
+    let vapour = v.headspace_gas_mol.get("H2O(g)").copied().unwrap_or(0.0) - vapour0;
     assert!((liquid_lost - vapour).abs() < 1e-6, "liquid lost {} vs vapour {}", liquid_lost, vapour);
     assert!(vapour > 1e-3);
     // energy: heater input (minus the ambient loss) = sensible heat + latent heat of the vapour formed

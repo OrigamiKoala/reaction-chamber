@@ -2,8 +2,6 @@ pub mod types;
 pub mod equilibrium;
 pub mod kinetics;
 pub mod physics;
-pub mod energy;
-pub mod phase_transfer;
 pub mod conservation;
 pub mod benchmark;
 pub mod optics;
@@ -11,7 +9,11 @@ pub mod spectra;
 pub mod ions;
 pub mod acid_estimate;
 pub mod smiles;
-pub mod vapour;
+pub mod eos;
+pub mod vle;
+pub mod gas_phase;
+pub mod vessel_vle;
+pub mod groups;
 pub mod solubility;
 pub mod compound_model;
 pub mod compound_thermo;
@@ -41,8 +43,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use equilibrium::*;
 use kinetics::*;
 use physics::*;
-use energy::*;
-use phase_transfer::*;
 use benchmark::*;
 use chem_db::ReagentCatalogEntry;
 use vessel::*;
@@ -206,60 +206,6 @@ pub fn run_iodine_clock_sim(
         "s2o3_series": s2o3_series,
     });
     serde_wasm_bindgen_to_val(&res)
-}
-
-#[wasm_bindgen]
-pub fn step_simulation_tick(state_json: &str, dt: f64) -> Result<JsValue, JsValue> {
-    let val: serde_json::Value = serde_json::from_str(state_json)
-        .map_err(|e| JsValue::from_str(&format!("Invalid simulation JSON: {}", e)))?;
-
-    let temp_k = val.get("temperature_k").and_then(|v| v.as_f64()).unwrap_or(298.15);
-    let liquid_vol_ml = val.get("liquid_vol_ml").and_then(|v| v.as_f64()).unwrap_or(100.0);
-    let heater_watts = val.get("heater_watts").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let stirring = val.get("stirring").and_then(|v| v.as_bool()).unwrap_or(false);
-    let q_rxn = val.get("reaction_heats_joules").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let ambient_loss = val.get("ambient_loss_coeff").and_then(|v| v.as_f64()).unwrap_or(0.2);
-    let t_room = val.get("t_room_k").and_then(|v| v.as_f64()).unwrap_or(298.15);
-
-    // 1. Energy step
-    let energy_res = step_energy_balance(temp_k, liquid_vol_ml, q_rxn, heater_watts, ambient_loss, t_room, dt);
-
-    // 2. Evaporation & boiling phase transfer
-    let (_lost_moles, remaining_vol_ml) = step_evaporation_and_boiling(
-        liquid_vol_ml,
-        energy_res.new_temp_k,
-        energy_res.is_boiling,
-        energy_res.boil_off_moles,
-        dt,
-    );
-
-    // 3. Dissolved gas transfer (CO2 degas if present)
-    let c_co2 = val.get("dissolved_co2_m").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let (gas_evolved_mol, remaining_co2_m) = step_gas_evolution(
-        c_co2,
-        remaining_vol_ml / 1000.0,
-        energy_res.new_temp_k,
-        1.0,
-        stirring,
-        dt,
-    );
-
-    let mut gas_map = HashMap::new();
-    if gas_evolved_mol > 0.0 {
-        gas_map.insert("CO2(g)".to_string(), gas_evolved_mol);
-    }
-
-    let result = serde_json::json!({
-        "new_temperature_k": energy_res.new_temp_k,
-        "is_boiling": energy_res.is_boiling,
-        "liquid_volume_ml": remaining_vol_ml,
-        "boil_off_moles": energy_res.boil_off_moles,
-        "gas_evolved_mol": gas_map,
-        "remaining_co2_m": remaining_co2_m,
-        "conserved": true
-    });
-
-    serde_wasm_bindgen_to_val(&result)
 }
 
 #[wasm_bindgen]
@@ -873,33 +819,6 @@ mod tests {
     }
 
     #[test]
-    fn test_m4_gate_neutralisation_temperature_rise() {
-        // 50 mL 1.0 M HCl + 50 mL 1.0 M NaOH (0.050 mol)
-        // Q = 0.05 * 55840 = 2792 J. C = 100 g * 4.184 = 418.4 J/K.
-        // Theoretical Delta T = 6.67 K
-        let delta_t = calc_neutralisation_temperature_rise(50.0, 1.0, 50.0, 1.0);
-        let lit_val = 6.67;
-        let diff_pct = (delta_t - lit_val).abs() / lit_val * 100.0;
-        assert!(diff_pct < 10.0, "Neutralisation rise {:.2} K differs by {:.1}% (target < 10%)", delta_t, diff_pct);
-    }
-
-    #[test]
-    fn test_m4_gate_water_boils_near_100c() {
-        // Vessel with 100 mL water at 95 C (368.15 K), with 1000 W heater
-        // In 10 seconds: Q = 10000 J. Delta T to reach 100 C is 5 K (needs ~2100 J).
-        // Remaining 7900 J boils water at 100 C.
-        let dt = 5.0;
-        let energy_res = step_energy_balance(368.15, 100.0, 0.0, 1000.0, 0.2, 298.15, dt);
-        assert_eq!(energy_res.new_temp_k, 373.15, "Temperature must be clamped at boiling point 373.15 K (100 C)");
-        assert!(energy_res.is_boiling, "Boiling state must be true");
-        assert!(energy_res.boil_off_moles > 0.0, "Boil-off moles must be generated");
-
-        let (lost_moles, rem_vol) = step_evaporation_and_boiling(100.0, energy_res.new_temp_k, true, energy_res.boil_off_moles, dt);
-        assert!(lost_moles > 0.0);
-        assert!(rem_vol < 100.0);
-    }
-
-    #[test]
     fn test_m4_gate_conservation_checks() {
         // Charge conservation test
         let neutral_ions = vec![(0.05, 1), (0.05, -1)]; // 0.05 mol Na+, 0.05 mol Cl-
@@ -1021,20 +940,6 @@ mod tests {
 
         assert!((concs[0] - (1.0 / 3.0)).abs() < 1e-3, "Equilibrium [A] must be ~ 0.333, got {:.4}", concs[0]);
         assert!((concs[1] - (2.0 / 3.0)).abs() < 1e-3, "Equilibrium [B] must be ~ 0.667, got {:.4}", concs[1]);
-    }
-
-    #[test]
-    fn test_m4_edge_boiling_dryout_and_cooling() {
-        // Dry-out: 1 mL water blasted with 4000 W for 10 s
-        let res = step_energy_balance(368.15, 1.0, 0.0, 4000.0, 0.2, 298.15, 10.0);
-        let max_water_moles = (1.0 * DENSITY_WATER) / 18.015;
-        assert!(res.boil_off_moles <= max_water_moles + 1e-9);
-        assert!(res.new_temp_k > TB_WATER_K, "Dry vessel must heat above 100 C once water is gone");
-
-        // Cooling when heater is off
-        let cool_res = step_energy_balance(360.0, 100.0, 0.0, 0.0, 0.5, 298.15, 10.0);
-        assert!(cool_res.new_temp_k < 360.0);
-        assert!(cool_res.new_temp_k > 298.15);
     }
 
     #[test]

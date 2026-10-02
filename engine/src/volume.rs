@@ -56,44 +56,40 @@ pub struct LiquidCriticalProps {
     pub mw: f64,
 }
 
+/// Critical constants and the Rackett parameter of a liquid species, from its species record (found by id, by name, or
+/// by an unambiguous formula) and its gas twin; the Rackett parameter is the record's, else the Spencer-Danner
+/// estimate from the acentric factor. None when the store holds no critical data for the species.
+fn store_critical_props(species: &str) -> Option<LiquidCriticalProps> {
+    let base = species.split('#').next().unwrap_or(species);
+    let store = crate::db::SpeciesStore::global();
+    let guard = store.read().ok()?;
+    let rec = guard
+        .get(species)
+        .or_else(|| guard.get(base))
+        .or_else(|| guard.get_by_name(base))
+        .or_else(|| {
+            let cands: Vec<_> = guard.get_by_formula(base).into_iter().filter(|r| crate::vle::critical_of(r).is_some()).collect();
+            if cands.len() == 1 { Some(cands[0]) } else { None }
+        })?;
+    let (tc, pc, omega) = crate::vle::critical_of(rec).or_else(|| guard.gas_partner(rec).and_then(crate::vle::critical_of))?;
+    let z_ra = rec
+        .phases
+        .get("l")
+        .and_then(|p| p.volume.as_ref())
+        .and_then(|v| v.zra.as_ref())
+        .map(|d| d.value)
+        .unwrap_or_else(|| (0.29056 - 0.08775 * omega.unwrap_or(0.3)).clamp(0.2, 0.32));
+    Some(LiquidCriticalProps { tc_k: tc, pc_pa: pc, z_ra, mw: rec.mw() })
+}
+
 pub fn get_organic_critical_props(species: &str) -> LiquidCriticalProps {
-    match species {
-        "C2H5OH" | "ik:LFQSCWFLJHTTHZ-UHFFFAOYSA-N" => LiquidCriticalProps {
-            tc_k: 514.0,
-            pc_pa: 6.14e6,
-            z_ra: 0.252,
-            mw: 46.069,
-        },
-        "C3H6O" | "acetone" | "ik:CSCPPACGZOOCGX-UHFFFAOYSA-N" => LiquidCriticalProps {
-            tc_k: 508.2,
-            pc_pa: 4.70e6,
-            z_ra: 0.233,
-            mw: 58.08,
-        },
-        "C6H14" | "hexane" | "ik:VLKZOEOYAKHREP-UHFFFAOYSA-N" => LiquidCriticalProps {
-            tc_k: 507.6,
-            pc_pa: 3.02e6,
-            z_ra: 0.264,
-            mw: 86.18,
-        },
-        "C7H8" | "toluene" | "ik:YXFVVABEGXRONW-UHFFFAOYSA-N" => LiquidCriticalProps {
-            tc_k: 591.8,
-            pc_pa: 4.10e6,
-            z_ra: 0.264,
-            mw: 92.14,
-        },
-        _ => {
-            // General estimate from molar mass
-            let thermo = crate::chem_db::get_species_thermo(species);
-            let mw = if thermo.mw > 1.0 { thermo.mw } else { 60.0 };
-            LiquidCriticalProps {
-                tc_k: 550.0,
-                pc_pa: 4.0e6,
-                z_ra: 0.260,
-                mw,
-            }
-        }
+    if let Some(p) = store_critical_props(species) {
+        return p;
     }
+    // no data: a general estimate from the molar mass (speculative)
+    let thermo = crate::chem_db::get_species_thermo(species);
+    let mw = if thermo.mw > 1.0 { thermo.mw } else { 60.0 };
+    LiquidCriticalProps { tc_k: 550.0, pc_pa: 4.0e6, z_ra: 0.260, mw }
 }
 
 /// Organic liquid molar volume (cm^3/mol) via the Rackett equation.

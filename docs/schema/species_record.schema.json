@@ -54,6 +54,25 @@
       "type": "array",
       "items": { "$ref": "#/definitions/CurvePoint" }
     },
+    "vapor_pressure": {
+      "type": "object",
+      "description": "Reference-quality saturation-pressure curve of the liquid (a labelled curve, never a stored boiling point). `model` names an equation (iapws-if97-region4, wagner, antoine), not a compound. Without it the vapour pressure comes from `points` (kind psat/tb) plus `critical` (Lee-Kesler, acentric factor fitted to the point) or a Clausius-Clapeyron fit.",
+      "required": ["model", "tier", "source"],
+      "properties": {
+        "model": { "type": "string" },
+        "params": { "type": "object" },
+        "t_min_k": { "type": "number" },
+        "t_max_k": { "type": "number" },
+        "tier": { "type": "string", "enum": ["tabulated", "imported", "estimated", "speculative", "refined", "user-set"] },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "unifac_groups": {
+      "type": "array",
+      "description": "Explicit UNIFAC subgroup counts, e.g. [[\"CH3\", 1], [\"CH2\", 1], [\"OH\", 1]]; when absent they are derived from identity.smiles (engine/src/groups.rs).",
+      "items": { "type": "array", "minItems": 2, "maxItems": 2 }
+    },
     "acid_base": {
       "type": "array",
       "items": { "$ref": "#/definitions/AcidBaseSite" }

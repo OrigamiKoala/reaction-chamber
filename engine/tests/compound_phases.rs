@@ -45,7 +45,7 @@ fn cyclohexane(id: &str) -> CompoundRequest {
     CompoundRequest {
         id: id.into(), name: "Cyclohexane".into(), formula: "C6H12".into(), state: Some("liquid".into()), density: Some(0.774),
         t_melt_ref_k: Some(279.65),
-        vapor_pressure_points: vec![[298.15, 10_300.0], [353.85, 101_325.0]],
+        vapor_pressure_points: vec![[298.15, 13_000.0], [353.85, 101_325.0]],
         dh_vap_kj_mol: Some(29.97),
         solubility_g_per_l: Some(0.055),
         ..Default::default()
@@ -181,12 +181,16 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
     s.dose(DoseRequest { reagent_id: "cp_chx_b".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: Some(360.0) }).unwrap();
     assert!(s.temperature_k > tb + 1.0);
     for _ in 0..40 { s.step(0.05).unwrap(); }
-    assert!(s.sealed && s.mass_lost_g < 1e-9 && sp(&s, "C6H12(l)") > 0.1);
+    // (the only mass that left is the air the 20 mL of liquid pushed out of the stoppered vessel: < 0.05 g)
+    assert!(s.sealed && s.mass_lost_g < 0.05 && sp(&s, "C6H12(l)") > 0.1);
     // its vapour is in the headspace (not lost): the pressure is air + x*Psat(T) from the compound's own curve
+    // (Stage 4: the closed gas phase holds the air captured at sealing, compressed by the liquid, plus the vapour)
     let curve = s.compounds["C6H12"].vapor_curve.unwrap();
-    let expect = s.temperature_k / 295.15 + curve.p_pa(s.temperature_k) / 101325.0;
-    assert!((s.pressure_atm - expect).abs() < 0.05 * expect, "{} atm vs {}", s.pressure_atm, expect);
-    assert!(s.vapour_mol.get("C6H12(g)").copied().unwrap_or(0.0) > 1e-3);
+    let n_air: f64 = ["N2(g)", "O2(g)", "Ar(g)"].iter().map(|k| s.headspace_gas_mol.get(*k).copied().unwrap_or(0.0)).sum();
+    let p_air_atm = n_air * 8.314462618 * s.temperature_k / ((100.0 - s.total_liquid_volume_ml()) * 1e-6) / 101325.0;
+    let expect = p_air_atm + curve.p_pa(s.temperature_k) / 101325.0;
+    assert!((s.pressure_atm - expect).abs() < 0.06 * expect, "{} atm vs {}", s.pressure_atm, expect);
+    assert!(s.headspace_gas_mol.get("C6H12(g)").copied().unwrap_or(0.0) > 1e-3);
 }
 
 #[test]
@@ -339,11 +343,15 @@ fn inert_compound_is_dose_size_independent() {
     assert!((sp(&a, "C6H12(l)") - sp(&b, "C6H12(l)")).abs() < 1e-9 && (sp(&a, "C6H12") - sp(&b, "C6H12")).abs() < 1e-9);
     assert!((a.neat_volume_ml() - b.neat_volume_ml()).abs() < 1e-6);
     assert!((total_mol(&a, "C6H12", c.mw) - 10.0 * 0.774 / c.mw).abs() < 1e-9);
-    // stepping on at room temperature changes nothing
+    // stepping on at room temperature: a liquid with a vapour pressure of 10 kPa evaporates slowly into the room air
+    // (Stage 4), booking the loss and cooling the liquid a little; nothing else moves
     let mut s = pour(1);
     for _ in 0..200 { s.step(0.1).unwrap(); }
-    assert!((sp(&s, "C6H12(l)") - sp(&a, "C6H12(l)")).abs() < 1e-9);
-    assert!((s.temperature_k - 295.15).abs() < 0.01);
+    let evaporated = sp(&a, "C6H12(l)") - sp(&s, "C6H12(l)");
+    assert!(evaporated > 0.0 && evaporated < 0.02 * sp(&a, "C6H12(l)"), "evaporated {} mol", evaporated);
+    assert!(s.mass_lost_g >= evaporated * c.mw - 1e-9 && s.mass_lost_g < evaporated * c.mw + 0.05, "{} g lost (cyclohexane {} g + a little water)", s.mass_lost_g, evaporated * c.mw);
+    assert!(s.temperature_k < 295.15 && s.temperature_k > 294.5, "{}", s.temperature_k);
+    assert!(s.snapshot().conservation.ok);
 }
 
 #[test]

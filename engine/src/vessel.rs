@@ -2,6 +2,7 @@
 //! chemical kinetics, thermodynamics, phase transfer, and snapshot generation.
 //! Fully generalized to support arbitrary reactions, minerals, and compounds from PubChem.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +27,8 @@ pub(crate) const MIN_AQUEOUS_H2O_MOL: f64 = 1e-9;
 /// m-1 (Babrauskas, SFPE Handbook of Fire Protection Engineering).
 pub(crate) const POOL_BURN_ETHANOL_KG_M2_S: f64 = 0.015;
 pub(crate) const POOL_BURN_KBETA_PER_M: f64 = 100.0;
-/// Enthalpy of CO2(aq) -> CO2(g), J/mol: dHf(CO2,g) - dHf(CO2,aq) = -393.51 - (-413.8) = +20.3 kJ/mol (species table; Stage 2 derives it from mu).
-pub(crate) const DH_CO2_DEGAS_J_MOL: f64 = 20_290.0;
+/// Species id of the aqueous solvent (the species the aqueous equilibria, pH and ionic activities are written for).
+pub(crate) const AQUEOUS_SOLVENT: &str = "H2O";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -218,6 +219,8 @@ pub struct VesselSnapshot {
     pub events: Vec<VesselEvent>,
     /// Collected gas (collectors) or evolved headspace gas (stoppered vessels).
     pub gas: crate::gas::GasInfo,
+    /// The gas phase: the atmosphere an open vessel sits in, or the closed gas mixture of a sealed one.
+    pub gas_phase: Option<crate::gas_phase::GasPhaseInfo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -264,6 +267,9 @@ pub struct VesselControls {
     /// Debug: enable the substring-matched organic network generator (off by default, see `update_network`).
     #[serde(default)]
     pub debug_network_generator: Option<bool>,
+    /// Partial update of the atmosphere an open vessel exchanges with (pressure, dry composition, humidity).
+    #[serde(default)]
+    pub atmosphere: Option<crate::gas_phase::AtmosphereSpec>,
 }
 
 pub struct Vessel {
@@ -279,10 +285,16 @@ pub struct Vessel {
     pub species_mol: HashMap<String, f64>,
     pub solid_mol: HashMap<String, f64>,
     pub initial_solids: HashMap<String, f64>,
+    /// The closed gas inventory of a sealed vessel: air captured at sealing, the vapour of its liquids (species id
+    /// "X(g)") and evolved gas, all one gas phase. Empty for an open vessel, whose gas phase is the atmosphere.
     pub headspace_gas_mol: HashMap<String, f64>,
-    /// Vapour of the liquids in a sealed vessel (species id "H2O(g)", "C2H5OH(g)", "X(g)"), in equilibrium with the liquid
-    /// at x * Psat(T); kept apart from `headspace_gas_mol` (evolved gas, which delivery tubes draw off).
-    pub vapour_mol: HashMap<String, f64>,
+    /// The atmosphere an open vessel exchanges with (room input; see `gas_phase`).
+    pub atmosphere: crate::gas_phase::Atmosphere,
+    /// Memoised store lookups of the vapour-liquid-equilibrium layer.
+    pub(crate) vle_cache: RefCell<crate::vle::VleCache>,
+    pub(crate) partition_cache: RefCell<crate::vessel_vle::PartitionCache>,
+    /// Mass flow (g/s) of liquid leaving as vapour below the boiling point in the last step.
+    pub evaporation_g_s: f64,
     /// Gas collection bookkeeping (collected moles / escaped moles), see `gas.rs`.
     pub gas: crate::gas::GasState,
     pub mass_lost_g: f64,
@@ -341,7 +353,10 @@ impl Vessel {
             solid_mol: HashMap::new(),
             initial_solids: HashMap::new(),
             headspace_gas_mol: HashMap::new(),
-            vapour_mol: HashMap::new(),
+            atmosphere: Default::default(),
+            vle_cache: RefCell::new(Default::default()),
+            partition_cache: RefCell::new(Default::default()),
+            evaporation_g_s: 0.0,
             gas: Default::default(),
             mass_lost_g: 0.0,
             events: Vec::new(),
@@ -365,6 +380,15 @@ impl Vessel {
             phases: crate::phases::PhaseState::new(temp_k),
         };
         v.update_phases();
+        let compounds: Vec<CompoundThermo> = v.compounds.values().cloned().collect();
+        for c in &compounds {
+            v.register_vle_compound(c);
+        }
+        if sealed {
+            // assembled at room temperature: the headspace holds the atmosphere's gas at that temperature
+            let room = v.room_k;
+            v.seal_capture(room);
+        }
         v
     }
 
@@ -453,12 +477,24 @@ impl Vessel {
             .clone();
 
         let temp_add = dose.temperature_k.unwrap_or(self.room_k);
+        let head_before = self.headspace_volume_m3();
         let mut total_mass_added_g = 0.0;
         // heat capacity of what is already in the vessel (before this dose goes in)
         let cp_before = self.contents_heat_capacity() + self.glass_heat_capacity();
         let mut added: Vec<(String, f64, bool)> = Vec::new();
 
-        if entry.form == "solid" || entry.by_mass {
+        if entry.form == "gas" {
+            // a gas reagent is dosed by the volume of gas at room conditions (default 10 mL); its composition holds the
+            // mole fractions of its gas species, which go into the headspace (sealed) or are sparged through the liquid
+            let vol_ml = dose.volume_ml.unwrap_or(10.0);
+            let n_total = self.p_ext_pa() * vol_ml * 1e-6 / (R_GAS * self.room_k);
+            let frac_sum: f64 = entry.composition.values().sum::<f64>().max(1e-300);
+            let mut parts: Vec<(String, f64)> = entry.composition.iter().map(|(k, v)| (k.clone(), n_total * v / frac_sum)).collect();
+            parts.sort_by(|a, b| a.0.cmp(&b.0));
+            for (gas_id, mol) in parts {
+                self.dose_gas(&gas_id, mol);
+            }
+        } else if entry.form == "solid" || entry.by_mass {
             let mass_g = dose.mass_g.unwrap_or(1.0);
             total_mass_added_g += mass_g;
             for (species, &mol_per_g) in &entry.composition {
@@ -497,8 +533,36 @@ impl Vessel {
         }
 
         self.settle_after_addition();
+        self.hold_pressure_after_filling(head_before);
 
         Ok(())
+    }
+
+    /// Volume of the gas space (m^3): the vessel's capacity less its liquid.
+    pub(crate) fn headspace_volume_m3(&self) -> f64 {
+        ((self.config.capacity_ml - self.total_liquid_volume_ml()).max(10.0)) * 1e-6
+    }
+
+    /// Liquid added to a sealed vessel went in through the opening (a stopper with a port, a neck before closing): the
+    /// gas it displaced left with it, so adding liquid does not raise the pressure. The gas inventory is scaled by the
+    /// headspace volume ratio, the vented gas is booked out. (Gas *dosed* as gas, and reactions, do change the pressure.)
+    pub(crate) fn hold_pressure_after_filling(&mut self, head_before_m3: f64) {
+        if !self.sealed {
+            return;
+        }
+        let head_after = self.headspace_volume_m3();
+        if head_after >= head_before_m3 || head_before_m3 <= 0.0 {
+            return;
+        }
+        let factor = head_after / head_before_m3;
+        let ids: Vec<String> = self.headspace_gas_mol.keys().cloned().collect();
+        for id in ids {
+            let n = self.headspace_gas_mol[&id];
+            let vented = n * (1.0 - factor);
+            self.headspace_gas_mol.insert(id.clone(), n - vented);
+            self.mass_lost_g += vented * chem_db::get_species_thermo(&id).mw;
+            self.ledger.book_out(&id, vented);
+        }
     }
 
     /// Solves fast speciation / solubility equilibria right after an addition and records what happened in the log.
@@ -539,6 +603,7 @@ impl Vessel {
             }
         }
         let cp_current = self.contents_heat_capacity() + self.glass_heat_capacity();
+        let head_before = self.headspace_volume_m3();
 
         for (sp, mol) in portion.aqueous_mol {
             *self.species_mol.entry(sp).or_insert(0.0) += mol;
@@ -559,6 +624,7 @@ impl Vessel {
         }
 
         self.settle_after_addition();
+        self.hold_pressure_after_filling(head_before);
 
         Ok(())
     }
@@ -689,12 +755,22 @@ impl Vessel {
         if let Some(r) = controls.stir_rpm {
             self.controls.stir_rpm = Some(r);
         }
+        if let Some(spec) = &controls.atmosphere {
+            self.atmosphere.apply(spec);
+            if !self.sealed {
+                self.pressure_atm = self.atmosphere.pressure_atm;
+            }
+        }
         if let Some(seal) = controls.sealed {
             self.controls.sealed = Some(seal);
-            self.sealed = seal;
-            if !seal {
-                self.pressure_atm = 1.0;
-                self.vent_vapour();
+            if seal && !self.sealed {
+                self.sealed = true;
+                let t = self.temperature_k;
+                self.seal_capture(t);
+            } else if !seal && self.sealed {
+                self.sealed = false;
+                self.vent_headspace();
+                self.pressure_atm = self.atmosphere.pressure_atm;
             }
         }
         if let Some(b) = controls.bath_k {
@@ -741,9 +817,9 @@ impl Vessel {
             }
         }
 
-        // 2b. Dissolved CO2 above its Henry solubility at the current gas pressure bubbles out. Without this the
-        // (now exact) carbonate equilibrium would hold all CO2 from an acid + carbonate reaction in solution.
-        reaction_heat_joules += self.step_co2_degassing(dt_s);
+        // 2b. Dissolved gases exchange with the gas phase through Henry's constant (every gas of the species store with an
+        // aqueous twin: CO2, O2, NH3, ...), and supersaturated gas leaves as bubbles.
+        reaction_heat_joules += self.step_gas_exchange(dt_s);
 
         self.recent_reaction_heat_w = reaction_heat_joules / dt_s;
 
@@ -764,140 +840,6 @@ impl Vessel {
         self.update_phases();
 
         Ok(())
-    }
-
-    /// The vapour leaves the vessel (stopper removed or popped, vessel burst): booked out of the ledger.
-    pub(crate) fn vent_vapour(&mut self) {
-        for (sp, mol) in std::mem::take(&mut self.vapour_mol) {
-            self.ledger.book_out(&sp, mol);
-        }
-    }
-
-    /// Sealed-vessel vapour-liquid equilibrium bridge (Stage 0; Stage 4 replaces it with a general VLE flash).
-    /// Each volatile liquid (water, ethanol, neat imported liquids) holds x * Psat(T) of vapour in the headspace; the
-    /// vapour moles come out of the liquid and the latent heat (Watson-corrected) out of the contents. At and above
-    /// the critical temperature the whole inventory of that liquid is vapour. Returns the vapour pressure in atm.
-    fn step_sealed_vapour(&mut self, headspace_m3: f64) -> f64 {
-        use crate::vapour;
-        struct Comp {
-            liq: String,
-            vap: String,
-            psat_pa: f64,
-            tc_k: f64,
-            dh_j_mol: f64,
-            x: f64,
-        }
-        let t = self.temperature_k;
-        let mol = |m: &HashMap<String, f64>, k: &str| m.get(k).copied().unwrap_or(0.0);
-        let mut comps: Vec<Comp> = Vec::new();
-        let n_w = mol(&self.species_mol, "H2O");
-        let n_e = mol(&self.species_mol, "C2H5OH");
-        let mix = (n_w + n_e).max(1e-300);
-        if n_w + mol(&self.vapour_mol, "H2O(g)") > 1e-12 {
-            comps.push(Comp {
-                liq: "H2O".into(),
-                vap: "H2O(g)".into(),
-                psat_pa: vapour::water_psat_pa(t),
-                tc_k: vapour::WATER_TC_K,
-                dh_j_mol: vapour::watson_dh_j_mol(40_660.0, 373.15, vapour::WATER_TC_K, t),
-                x: n_w / mix,
-            });
-        }
-        if n_e + mol(&self.vapour_mol, "C2H5OH(g)") > 1e-12 {
-            comps.push(Comp {
-                liq: "C2H5OH".into(),
-                vap: "C2H5OH(g)".into(),
-                psat_pa: vapour::ethanol_psat_pa(t),
-                tc_k: vapour::ETHANOL_TC_K,
-                dh_j_mol: vapour::watson_dh_j_mol(38_560.0, 351.5, vapour::ETHANOL_TC_K, t),
-                x: n_e / mix,
-            });
-        }
-        for c in self.present_inert() {
-            let neat = format!("{}(l)", c.species);
-            let gas = format!("{}(g)", c.species);
-            if let Some(curve) = c.vapor_curve {
-                let tc = c.tc_k.unwrap_or(f64::INFINITY);
-                comps.push(Comp {
-                    liq: neat,
-                    vap: gas,
-                    psat_pa: curve.p_pa(t),
-                    tc_k: tc,
-                    dh_j_mol: c.dh_vap_at(t),
-                    x: 1.0,
-                });
-            }
-        }
-        let r_t = R_GAS * t;
-        let mut latent_j = 0.0;
-        for c in &comps {
-            let n_liq = mol(&self.species_mol, &c.liq);
-            let n_vap = mol(&self.vapour_mol, &c.vap);
-            let available = n_liq + n_vap;
-            let target = if t >= c.tc_k { available } else { (c.x * c.psat_pa * headspace_m3 / r_t).min(available) };
-            let delta = target - n_vap;
-            if delta.abs() < 1e-15 {
-                continue;
-            }
-            let new_liq = (n_liq - delta).max(0.0);
-            if new_liq > 0.0 {
-                self.species_mol.insert(c.liq.clone(), new_liq);
-            } else {
-                self.species_mol.remove(&c.liq);
-            }
-            if target > 0.0 {
-                self.vapour_mol.insert(c.vap.clone(), target);
-            } else {
-                self.vapour_mol.remove(&c.vap);
-            }
-            latent_j += delta * c.dh_j_mol;
-        }
-        if latent_j != 0.0 {
-            let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
-            self.temperature_k -= latent_j / cp_total;
-        }
-        let n_vap_total: f64 = self.vapour_mol.values().sum();
-        n_vap_total * R_GAS * self.temperature_k / headspace_m3 / 101325.0
-    }
-
-    /// Partial pressure (atm) of an evolved gas species in the headspace of a sealed vessel (ideal gas).
-    pub(crate) fn headspace_partial_atm(&self, gas: &str) -> f64 {
-        let mol = self.headspace_gas_mol.get(gas).copied().unwrap_or(0.0);
-        let head_ml = (self.config.capacity_ml - self.total_liquid_volume_ml()).max(10.0);
-        mol * R_GAS * self.temperature_k / (head_ml * 1e-6) / 101325.0
-    }
-
-    /// Returns the enthalpy change of the solution (J, negative: the escaping gas takes the heat of desolvation).
-    fn step_co2_degassing(&mut self, dt_s: f64) -> f64 {
-        let co2 = self.species_mol.get("CO2(aq)").copied().unwrap_or(0.0);
-        let vol_l = self.solvent_volume_ml() / 1000.0;
-        if vol_l <= 0.0 || co2 <= 1e-12 {
-            return 0.0;
-        }
-        // Henry's law needs the CO2 partial pressure: in a sealed vessel that is what the headspace holds (a delivery
-        // tube that draws the gas off lets the solution degas below 1 atm), in an open one the 1 atm bubbling threshold.
-        let p_gas = if self.sealed { self.headspace_partial_atm("CO2(g)") } else { 1.0 };
-        let stirring = self.controls.stirring.unwrap_or(false);
-        let (evolved, c_new) = crate::phase_transfer::step_gas_evolution(co2 / vol_l, vol_l, self.temperature_k, p_gas, stirring, dt_s);
-        if evolved <= 1e-12 {
-            return 0.0;
-        }
-        self.species_mol.insert("CO2(aq)".to_string(), (c_new * vol_l).max(0.0));
-        let vol_gas_ml = evolved * R_GAS * self.temperature_k / (self.pressure_atm.max(0.1) * 101325.0) * 1e6;
-        self.gas_fluxes.push(GasFlux {
-            species: "CO2(g)".to_string(),
-            rate_ml_s: vol_gas_ml / dt_s,
-            bubble_diameter_mm: 2.0,
-            nucleation: "bulk".to_string(),
-        });
-        // sealed: the gas stays in the vessel (headspace is part of the inventory); open: it leaves
-        if self.sealed {
-            *self.headspace_gas_mol.entry("CO2(g)".to_string()).or_default() += evolved;
-        } else {
-            self.mass_lost_g += evolved * chem_db::get_species_thermo("CO2(g)").mw;
-            self.ledger.book_out("CO2(g)", evolved);
-        }
-        -evolved * DH_CO2_DEGAS_J_MOL
     }
 
     fn step_kinetics(&mut self, dt_s: f64) -> f64 {
@@ -1098,96 +1040,21 @@ impl Vessel {
         // Melting / freezing plateaus and boil-off of inert compounds (clamps the temperature like water below)
         self.step_inert_thermal(dt_s, cp_total);
 
-        // Pressure-dependent boiling for volatile liquids in open/vented vessels
-        let p_atm = if self.sealed { self.pressure_atm.max(0.01) } else { 1.0 };
-
-        // 1. Water boiling
-        let dh_vap_w = 40660.0;
-        let tb_water_k = 1.0 / (1.0 / 373.15 - (R_GAS / dh_vap_w) * p_atm.ln());
-        let water_mol = *self.species_mol.get("H2O").unwrap_or(&0.0);
-
-        if !self.sealed && self.temperature_k >= tb_water_k && water_mol > 1e-4 {
-            let excess_temp = self.temperature_k - tb_water_k;
-            let excess_energy_j = excess_temp * cp_total;
-            self.temperature_k = tb_water_k;
-
-            let boiled_mol = (excess_energy_j / dh_vap_w).min(water_mol);
-            *self.species_mol.entry("H2O".to_string()).or_default() -= boiled_mol;
-            self.mass_lost_g += boiled_mol * 18.015;
-            self.ledger.book_out("H2O", boiled_mol);
-
-            let steam_vol_ml = boiled_mol * R_GAS * tb_water_k / (p_atm * 101325.0) * 1e6;
-            self.boil_vapour_ml_s += steam_vol_ml / dt_s;
-            self.boil_mass_g_s += boiled_mol * 18.015 / dt_s;
-            self.gas_fluxes.push(GasFlux {
-                species: "H2O(g)".to_string(),
-                rate_ml_s: steam_vol_ml / dt_s,
-                bubble_diameter_mm: 4.0,
-                nucleation: "bulk".to_string(),
-            });
-
-            if boiled_mol >= water_mol - 1e-5 {
-                self.push_event(VesselEventKind::DryOut, "Vessel boiled dry".to_string(), 0.8);
-            }
-        }
-
-        // 2. Ethanol boiling
-        let dh_vap_etoh = 38560.0;
-        let tb_etoh_k = 1.0 / (1.0 / 351.5 - (R_GAS / dh_vap_etoh) * p_atm.ln());
-        let etoh_mol = *self.species_mol.get("C2H5OH").unwrap_or(&0.0);
-
-        if !self.sealed && self.temperature_k >= tb_etoh_k && etoh_mol > 1e-4 {
-            let excess_temp = self.temperature_k - tb_etoh_k;
-            let excess_energy_j = excess_temp * cp_total;
-            self.temperature_k = tb_etoh_k;
-
-            let boiled_mol = (excess_energy_j / dh_vap_etoh).min(etoh_mol);
-            *self.species_mol.entry("C2H5OH".to_string()).or_default() -= boiled_mol;
-            self.mass_lost_g += boiled_mol * 46.069;
-            self.ledger.book_out("C2H5OH", boiled_mol);
-
-            let vapour_vol_ml = boiled_mol * R_GAS * tb_etoh_k / (p_atm * 101325.0) * 1e6;
-            self.boil_vapour_ml_s += vapour_vol_ml / dt_s;
-            self.boil_mass_g_s += boiled_mol * 46.069 / dt_s;
-            self.gas_fluxes.push(GasFlux {
-                species: "C2H5OH(g)".to_string(),
-                rate_ml_s: vapour_vol_ml / dt_s,
-                bubble_diameter_mm: 3.5,
-                nucleation: "bulk".to_string(),
-            });
-
-            if boiled_mol >= etoh_mol - 1e-5 {
-                self.push_event(VesselEventKind::DryOut, "Ethanol boiled off".to_string(), 0.8);
-            }
-        }
+        // Boiling and evaporation of every volatile liquid (open vessel): the bubble point of the actual mixture at the
+        // atmosphere's pressure, and evaporation toward the atmosphere's partial pressures below it (see `vessel_vle`).
+        self.step_boil_open(dt_s, cp_total);
+        self.step_evaporation_open(dt_s, cp_total);
     }
 
     fn step_headspace(&mut self, _dt_s: f64) {
         if !self.sealed {
-            self.pressure_atm = 1.0;
+            self.pressure_atm = self.atmosphere.pressure_atm;
             return;
         }
-
-        let total_vol = self.config.capacity_ml;
-        let liq_vol = self.total_liquid_volume_ml();
-        let headspace_ml = (total_vol - liq_vol).max(10.0);
-        let headspace_m3 = headspace_ml * 1e-6;
-
-        // vapour of the liquids: x * Psat(T) for water, ethanol and imported liquids, with the vapour moles taken from
-        // the liquid and the latent heat taken from the contents (cut at the critical temperature: all vapour)
-        let p_vapour_atm = self.step_sealed_vapour(headspace_m3);
-
-        let mut total_gas_mol = 0.0;
-        for &mol in self.headspace_gas_mol.values() {
-            total_gas_mol += mol;
-        }
-
-        let r_const = R_GAS;
-        let p_evolved_pa = (total_gas_mol * r_const * self.temperature_k) / headspace_m3;
-        let p_evolved_atm = p_evolved_pa / 101325.0;
-        let p_air_atm = 1.0 * (self.temperature_k / self.room_k);
-
-        self.pressure_atm = p_air_atm + p_vapour_atm + p_evolved_atm;
+        // isochoric vapour-liquid flash of the closed gas inventory (air, vapour, evolved gas) at the headspace volume
+        let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
+        let p_pa = self.step_sealed_flash(cp_total);
+        self.pressure_atm = p_pa / 101325.0;
 
         let pop_thresh = self.config.stopper_pop_atm.unwrap_or(2.2);
         let burst_thresh = self.config.burst_atm.unwrap_or(6.0);
@@ -1195,17 +1062,14 @@ impl Vessel {
         if self.pressure_atm >= pop_thresh && self.sealed {
             self.sealed = false;
             self.push_event(VesselEventKind::StopperPop, format!("Stopper popped at {:.2} atm", self.pressure_atm), 0.7);
-            self.pressure_atm = 1.0;
-            for (sp, mol) in std::mem::take(&mut self.headspace_gas_mol) {
-                self.ledger.book_out(&sp, mol);
-            }
-            self.vent_vapour();
+            self.vent_headspace();
+            self.pressure_atm = self.atmosphere.pressure_atm;
         } else if self.pressure_atm >= burst_thresh {
             self.burst = true;
             self.sealed = false;
             self.push_event(VesselEventKind::Burst, format!("Vessel burst at {:.2} atm!", self.pressure_atm), 1.0);
-            self.pressure_atm = 1.0;
-            self.vent_vapour();
+            self.vent_headspace();
+            self.pressure_atm = self.atmosphere.pressure_atm;
         }
     }
 
@@ -1296,8 +1160,10 @@ impl Vessel {
         }
 
         let mut fumes = Vec::new();
-        for (sp, &mol) in &self.headspace_gas_mol {
+        // a sealed vessel's fumes are its evolved gas (not the air it was closed on, nor the vapour of its own liquids)
+        for (sp, mol) in self.evolved_headspace() {
             if mol > 1e-5 {
+                let sp = &sp;
                 if let Some(fo) = spectra::fume_optics(sp) {
                     if fo.opacity > 0.01 {
                         fumes.push(FumeVisual {
@@ -1471,7 +1337,7 @@ impl Vessel {
             gas_fluxes: self.gas_fluxes.clone(),
             foam,
             boil_intensity,
-            evaporation_g_s: if is_boiling { self.boil_mass_g_s } else { 0.001 },
+            evaporation_g_s: if is_boiling { self.boil_mass_g_s } else { self.evaporation_g_s },
             vapour_visibility: vap_visibility,
             condensation,
             fumes,
@@ -1485,6 +1351,7 @@ impl Vessel {
             conservation,
             events: self.events.clone(),
             gas: self.gas_info(),
+            gas_phase: Some(self.gas_phase_info()),
         }
     }
 
@@ -1588,11 +1455,6 @@ impl Vessel {
         for (sp, &mol) in &self.headspace_gas_mol {
             if mol > 0.0 {
                 self.phases.gas.species_mol.insert(sp.clone(), mol);
-            }
-        }
-        for (sp, &mol) in &self.vapour_mol {
-            if mol > 0.0 {
-                *self.phases.gas.species_mol.entry(sp.clone()).or_default() += mol;
             }
         }
 
@@ -1841,7 +1703,7 @@ impl Vessel {
     pub(crate) fn element_inventory(&self) -> (HashMap<String, f64>, Vec<String>) {
         let mut inv: HashMap<String, f64> = HashMap::new();
         let mut unparsed: Vec<String> = Vec::new();
-        for map in [&self.species_mol, &self.solid_mol, &self.headspace_gas_mol, &self.vapour_mol, &self.gas.collected_mol] {
+        for map in [&self.species_mol, &self.solid_mol, &self.headspace_gas_mol, &self.gas.collected_mol] {
             for (sp, &mol) in map {
                 if mol <= 0.0 {
                     continue;

@@ -1,0 +1,53 @@
+{
+  "model": "UNIFAC (Fredenslund, Jones & Prausnitz 1975; VLE parameter table of Hansen, Rasmussen, Fredenslund, Schiller & Gmehling, Ind. Eng. Chem. Res. 30 (1991) 2352)",
+  "tier": "speculative",
+  "source": "Group volume/area parameters R, Q and main-group interaction parameters a_mn (K) written from memory of the published table (original UNIFAC-VLE). Only the main groups needed for alkanes, aromatics, alcohols, water and ketones are included; every missing pair makes UNIFAC unavailable for that mixture (the caller falls back to an ideal solution and labels it). To be verified and extended by pipeline/db/parse_unifac.py against the published tables.",
+  "main_groups": {
+    "1": "CH2",
+    "3": "ACH",
+    "4": "ACCH2",
+    "5": "OH",
+    "6": "CH3OH",
+    "7": "H2O",
+    "9": "CH2CO"
+  },
+  "subgroups": [
+    {"name": "CH3",   "main": 1, "R": 0.9011, "Q": 0.848},
+    {"name": "CH2",   "main": 1, "R": 0.6744, "Q": 0.540},
+    {"name": "CH",    "main": 1, "R": 0.4469, "Q": 0.228},
+    {"name": "C",     "main": 1, "R": 0.2195, "Q": 0.000},
+    {"name": "ACH",   "main": 3, "R": 0.5313, "Q": 0.400},
+    {"name": "AC",    "main": 3, "R": 0.3652, "Q": 0.120},
+    {"name": "ACCH3", "main": 4, "R": 1.2663, "Q": 0.968},
+    {"name": "ACCH2", "main": 4, "R": 1.0396, "Q": 0.660},
+    {"name": "ACCH",  "main": 4, "R": 0.8121, "Q": 0.348},
+    {"name": "OH",    "main": 5, "R": 1.0000, "Q": 1.200},
+    {"name": "CH3OH", "main": 6, "R": 1.4311, "Q": 1.432},
+    {"name": "H2O",   "main": 7, "R": 0.9200, "Q": 1.400},
+    {"name": "CH3CO", "main": 9, "R": 1.6724, "Q": 1.488},
+    {"name": "CH2CO", "main": 9, "R": 1.4457, "Q": 1.180}
+  ],
+  "a_mn": [
+    [1, 3, 61.13],  [3, 1, -11.12],
+    [1, 4, 76.50],  [4, 1, -69.70],
+    [1, 5, 986.5],  [5, 1, 156.4],
+    [1, 6, 697.2],  [6, 1, 16.51],
+    [1, 7, 1318.0], [7, 1, 300.0],
+    [1, 9, 476.4],  [9, 1, 26.76],
+    [3, 4, 167.0],  [4, 3, -146.8],
+    [3, 5, 636.1],  [5, 3, 89.60],
+    [3, 6, 637.35], [6, 3, -50.00],
+    [3, 7, 903.8],  [7, 3, 362.3],
+    [3, 9, 25.77],  [9, 3, 140.1],
+    [4, 5, 803.2],  [5, 4, 25.82],
+    [4, 6, 603.25], [6, 4, -44.50],
+    [4, 7, 5695.0], [7, 4, 377.6],
+    [4, 9, -52.10], [9, 4, 365.8],
+    [5, 6, -137.1], [6, 5, 249.1],
+    [5, 7, 353.5],  [7, 5, -229.1],
+    [5, 9, 84.00],  [9, 5, 164.5],
+    [6, 7, -181.0], [7, 6, 289.6],
+    [6, 9, 23.39],  [9, 6, 108.7],
+    [7, 9, -195.4], [9, 7, 472.5]
+  ]
+}

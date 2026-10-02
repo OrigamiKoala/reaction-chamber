@@ -25,14 +25,9 @@ pub trait ActivityModel: Send + Sync {
 /// Helper: computes solvent mass in kg for phase.
 #[inline]
 pub fn get_solvent_kg(phase: &LiquidPhase) -> f64 {
-    let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
+    let solvent_sp = phase.solvent_species.as_deref().unwrap_or(crate::vessel::AQUEOUS_SOLVENT);
     let n_solv = phase.species_mol.get(solvent_sp).copied().unwrap_or(0.0);
-    let mw_solv_kg = match solvent_sp {
-        "H2O" => 0.01801528,
-        "C2H5OH" => 0.046069,
-        "C3H6O" | "acetone" => 0.05808,
-        _ => 0.050,
-    };
+    let mw_solv_kg = if solvent_sp == crate::vessel::AQUEOUS_SOLVENT { crate::volume::WATER_MW } else { crate::chem_db::get_species_thermo(solvent_sp).mw } * 1e-3;
     (n_solv * mw_solv_kg).max(1e-12)
 }
 
@@ -67,18 +62,38 @@ pub fn calc_molal_ionic_strength(phase: &LiquidPhase) -> f64 {
     0.5 * sum
 }
 
-/// Debye-Hückel A_gamma parameter at temperature T (K).
-/// At 298.15 K in water, A_gamma ~ 0.5092.
-pub fn debye_huckel_a_gamma(t_k: f64) -> f64 {
-    let t = t_k.clamp(273.15, 650.0);
-    0.5092 * (298.15 / t).powf(1.5)
+/// Reference state of the Debye-Hueckel slopes (the 25 C values the activity gates are written against).
+const DH_A_GAMMA_298: f64 = 0.5092;
+const DH_B_GAMMA_298: f64 = 0.3283;
+const DH_A_PHI_298: f64 = 0.3915;
+
+/// `(eps T)^-1.5 sqrt(rho)` of liquid water relative to 298.15 K: the physical T dependence of the Debye-Hueckel limiting
+/// slope (A is proportional to sqrt(rho) / (eps T)^1.5, B to sqrt(rho) / (eps T)^0.5). The dielectric constant of water
+/// falls from 78 to 56 between 25 and 100 C, so the slope *rises* with temperature (0.509 -> 0.594 kg^0.5 mol^-0.5).
+fn debye_huckel_factors(t_k: f64) -> (f64, f64) {
+    let t = t_k.clamp(273.15, 473.15);
+    let eps = crate::thermo::water::water_dielectric_sat(t);
+    let eps_ref = crate::thermo::water::water_dielectric_sat(298.15);
+    let et_ratio = (eps_ref * 298.15) / (eps * t);
+    let rho_ratio = crate::volume::water_density_iapws(t) / crate::volume::water_density_iapws(298.15);
+    (et_ratio, rho_ratio)
 }
 
-/// Debye-Hückel B_gamma parameter in Angstrom^-1.
-/// At 298.15 K in water, B_gamma ~ 0.3283 Å^-1.
+/// Debye-Hückel A_gamma parameter at temperature T (K) (log10 base): 0.5092 at 298.15 K, 0.594 at 373 K.
+pub fn debye_huckel_a_gamma(t_k: f64) -> f64 {
+    let (et, rho) = debye_huckel_factors(t_k);
+    DH_A_GAMMA_298 * et.powf(1.5) * rho.sqrt()
+}
+
+/// Debye-Hückel B_gamma parameter in Angstrom^-1: 0.3283 at 298.15 K.
 pub fn debye_huckel_b_gamma(t_k: f64) -> f64 {
-    let t = t_k.clamp(273.15, 650.0);
-    0.3283 * (298.15 / t).powf(0.5)
+    let (et, rho) = debye_huckel_factors(t_k);
+    DH_B_GAMMA_298 * et.sqrt() * rho.sqrt()
+}
+
+/// Pitzer / Debye-Hückel osmotic slope A_phi (natural-log base): 0.3915 at 298.15 K.
+pub fn debye_huckel_a_phi(t_k: f64) -> f64 {
+    DH_A_PHI_298 * debye_huckel_a_gamma(t_k) / DH_A_GAMMA_298
 }
 
 // ----------------------------------------------------------------------------
@@ -195,11 +210,11 @@ impl ActivityModel for BDotActivity {
         log10_gamma * LN_10
     }
 
-    fn solvent_activity(&self, phase: &LiquidPhase, _t_k: f64, _p_atm: f64) -> f64 {
+    fn solvent_activity(&self, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
         let (m_map, _) = get_molalities(phase);
         let sum_m: f64 = m_map.values().sum();
         let i = calc_molal_ionic_strength(phase);
-        let phi = 1.0 - 0.3915 * (i.sqrt() / (1.0 + 1.2 * i.sqrt())) + 0.05 * i;
+        let phi = 1.0 - debye_huckel_a_phi(t_k) * (i.sqrt() / (1.0 + 1.2 * i.sqrt())) + 0.05 * i;
         (-0.01801528 * sum_m * phi).exp().clamp(0.01, 1.0)
     }
 }
@@ -324,11 +339,11 @@ impl PitzerActivity {
     }
 
     /// Single electrolyte mean activity coefficient ln(gamma_pm)
-    pub fn single_electrolyte_ln_gamma(m: f64, i_soln: f64, z_m: f64, z_x: f64, nu_m: f64, nu_x: f64, params: &PitzerBinaryParams) -> f64 {
+    pub fn single_electrolyte_ln_gamma(m: f64, i_soln: f64, z_m: f64, z_x: f64, nu_m: f64, nu_x: f64, params: &PitzerBinaryParams, t_k: f64) -> f64 {
         let nu = nu_m + nu_x;
         let i = i_soln.max(0.5 * (nu_m * z_m * z_m + nu_x * z_x * z_x) * m);
         let sqrt_i = i.max(1e-12).sqrt();
-        let a_phi = 0.3915; // at 25 °C
+        let a_phi = debye_huckel_a_phi(t_k);
         let b = 1.2;
 
         let f_gamma = -a_phi * (sqrt_i / (1.0 + b * sqrt_i) + (2.0 / b) * (1.0 + b * sqrt_i).ln());
@@ -342,6 +357,81 @@ impl PitzerActivity {
         let term3 = m * m * (2.0 * (nu_m * nu_x).powf(1.5) / nu) * c_gamma;
         term1 + term2 + term3
     }
+}
+
+impl PitzerActivity {
+    /// Osmotic coefficient of a single electrolyte (Pitzer): `phi = 1 + |zM zX| f^phi + m (2 nuM nuX / nu) B^phi
+    /// + m^2 (2 (nuM nuX)^1.5 / nu) C^phi`, `f^phi = -A_phi sqrt(I) / (1 + 1.2 sqrt(I))`, `B^phi = beta0 + beta1 exp(-alpha sqrt(I))`.
+    pub fn single_electrolyte_osmotic_coefficient(m: f64, i_soln: f64, z_m: f64, z_x: f64, nu_m: f64, nu_x: f64, params: &PitzerBinaryParams, t_k: f64) -> f64 {
+        let nu = nu_m + nu_x;
+        let i = i_soln.max(0.5 * (nu_m * z_m * z_m + nu_x * z_x * z_x) * m);
+        let sqrt_i = i.max(1e-12).sqrt();
+        let a_phi = debye_huckel_a_phi(t_k);
+        let f_phi = -a_phi * sqrt_i / (1.0 + 1.2 * sqrt_i);
+        let b_phi = params.beta0 + params.beta1 * (-params.alpha * sqrt_i).exp();
+        1.0 + z_m.abs() * z_x.abs() * f_phi + m * (2.0 * nu_m * nu_x / nu) * b_phi + m * m * (2.0 * (nu_m * nu_x).powf(1.5) / nu) * params.c_phi
+    }
+}
+
+/// ln of the water activity from the *ionic* solutes of an aqueous solution (`species_mol` holds the amounts; molality
+/// on the water in it): `ln a_w = -phi M_w sum_i m_i`. A single dominant electrolyte with Pitzer parameters uses its
+/// own osmotic coefficient; every other ionic mixture uses the generic Debye-Hueckel osmotic coefficient with the
+/// temperature-dependent slope. Neutral solutes (ethanol, dissolved gases) are not included: molecular solvents enter the
+/// vapour-liquid equilibrium through their own activity model (UNIFAC), and mixing the two is first-order additive.
+pub fn ionic_ln_water_activity(species_mol: &HashMap<String, f64>, t_k: f64) -> f64 {
+    let n_h2o = species_mol.get("H2O").copied().unwrap_or(0.0);
+    if n_h2o <= 0.0 {
+        return 0.0;
+    }
+    let kg = n_h2o * 0.01801528;
+    // (species, charge, m)
+    let mut ions: Vec<(&str, f64, f64)> = Vec::new();
+    for (sp, &mol) in species_mol {
+        if mol <= 0.0 || sp == "H2O" || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
+            continue;
+        }
+        let charge = crate::ions::species_charge(sp) as f64;
+        if charge != 0.0 {
+            ions.push((sp.as_str(), charge, mol / kg));
+        }
+    }
+    if ions.is_empty() {
+        return 0.0;
+    }
+    let two_i: f64 = ions.iter().map(|(_, z, m)| m * z * z).sum();
+    let i_tot = 0.5 * two_i;
+    let sum_m: f64 = ions.iter().map(|(_, _, m)| *m).sum();
+    if i_tot <= 1e-12 {
+        return 0.0;
+    }
+    // dominant cation and anion
+    let cat = ions.iter().filter(|(_, z, _)| *z > 0.0).max_by(|a, b| (a.2 * a.1 * a.1).partial_cmp(&(b.2 * b.1 * b.1)).unwrap());
+    let an = ions.iter().filter(|(_, z, _)| *z < 0.0).max_by(|a, b| (a.2 * a.1 * a.1).partial_cmp(&(b.2 * b.1 * b.1)).unwrap());
+    if let (Some(&(c_sp, zc, mc)), Some(&(a_sp, za, ma))) = (cat, an) {
+        if let Some(p) = PitzerActivity::get_params(c_sp, a_sp) {
+            let dominated = (mc * zc * zc + ma * za * za) >= 0.98 * two_i;
+            if dominated {
+                // formula-unit stoichiometry: nuM zM = nuX |zX|
+                let (zm, zx) = (zc, -za);
+                let g = {
+                    let (mut a, mut b) = (zm as i64, zx as i64);
+                    while b != 0 {
+                        let t = a % b;
+                        a = b;
+                        b = t;
+                    }
+                    a.max(1) as f64
+                };
+                let (nu_m, nu_x) = (zx / g, zm / g);
+                let m_salt = (mc / nu_m).max(ma / nu_x);
+                let phi = PitzerActivity::single_electrolyte_osmotic_coefficient(m_salt, i_tot, zm, zx, nu_m, nu_x, &p, t_k);
+                return -phi * 0.01801528 * (nu_m + nu_x) * m_salt;
+            }
+        }
+    }
+    let sqrt_i = i_tot.sqrt();
+    let phi = 1.0 - debye_huckel_a_phi(t_k) * sqrt_i / (1.0 + 1.2 * sqrt_i) + 0.04 * i_tot;
+    -0.01801528 * sum_m * phi
 }
 
 impl ActivityModel for PitzerActivity {
@@ -391,14 +481,14 @@ impl ActivityModel for PitzerActivity {
 
         if let Some(p) = best_param {
             let (z_m, z_x, nu_m, nu_x) = best_geom;
-            return Self::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p);
+            return Self::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p, t_k);
         }
 
         // Fallback to BDot for unparameterized ions
         BDotActivity.ln_gamma(species, phase, t_k, p_atm)
     }
 
-    fn solvent_activity(&self, phase: &LiquidPhase, _t_k: f64, _p_atm: f64) -> f64 {
+    fn solvent_activity(&self, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
         let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
         let kg_solv = get_solvent_kg(phase);
         let mut sum_m = 0.0;
@@ -411,7 +501,7 @@ impl ActivityModel for PitzerActivity {
         if i <= 1e-12 {
             return 1.0;
         }
-        let a_phi = 0.3915;
+        let a_phi = debye_huckel_a_phi(t_k);
         let phi = 1.0 - a_phi * (i.sqrt() / (1.0 + 1.2 * i.sqrt())) + 0.04 * i;
         (-0.01801528 * sum_m * phi).exp().clamp(0.01, 1.0)
     }
@@ -420,48 +510,274 @@ impl ActivityModel for PitzerActivity {
 // ----------------------------------------------------------------------------
 // 6. UNIFAC
 // ----------------------------------------------------------------------------
+//
+// Group-contribution activity coefficients for mixtures of neutral molecules (Fredenslund, Jones & Prausnitz 1975):
+//
+//   ln gamma_i = ln gamma_i^C + ln gamma_i^R
+//   ln gamma_i^C = 1 - V_i + ln V_i - 5 q_i (1 - V_i/F_i + ln(V_i/F_i)),  V_i = r_i / sum x r,  F_i = q_i / sum x q
+//   ln gamma_i^R = sum_k nu_k^(i) (ln Gamma_k - ln Gamma_k^(i))
+//   ln Gamma_k   = Q_k [1 - ln(sum_m Theta_m Psi_mk) - sum_m Theta_m Psi_km / sum_n Theta_n Psi_nm],  Psi_mn = exp(-a_mn / T)
+//
+// The group volumes R, areas Q and interaction parameters a_mn live in `data/unifac_vle.json` (written with an honest
+// tier; the pipeline replaces them). The groups of a species come from its SMILES (`groups.rs`) or from an explicit
+// record field; a species without groups, or a mixture that needs a pair the table lacks, is *outside UNIFAC*:
+// `unifac_ln_gamma` returns None and callers use an ideal solution and label it.
+
+/// UNIFAC subgroup (R, Q) and the main group it belongs to.
+#[derive(Clone, Debug)]
+pub struct UnifacSubgroup {
+    pub name: String,
+    pub main: usize,
+    pub r: f64,
+    pub q: f64,
+}
+
+pub struct UnifacParams {
+    pub subgroups: Vec<UnifacSubgroup>,
+    a_mn: HashMap<(usize, usize), f64>,
+    name_index: HashMap<String, usize>,
+    pub tier: crate::types::ProvenanceTier,
+    pub source: String,
+}
+
+impl UnifacParams {
+    pub fn subgroup_index(&self, name: &str) -> Option<usize> {
+        self.name_index.get(name).copied()
+    }
+
+    /// Interaction a_mn (K) between two main groups: 0 inside a main group, None when the table lacks the pair.
+    pub fn a(&self, m: usize, n: usize) -> Option<f64> {
+        if m == n {
+            return Some(0.0);
+        }
+        self.a_mn.get(&(m, n)).copied()
+    }
+}
+
+static UNIFAC_PARAMS: std::sync::OnceLock<UnifacParams> = std::sync::OnceLock::new();
+
+pub fn unifac_params() -> &'static UnifacParams {
+    UNIFAC_PARAMS.get_or_init(|| {
+        let v: serde_json::Value = serde_json::from_str(include_str!("../data/unifac_vle.json")).expect("unifac_vle.json");
+        let mut subgroups = Vec::new();
+        let mut name_index = HashMap::new();
+        for sg in v["subgroups"].as_array().expect("subgroups") {
+            let name = sg["name"].as_str().unwrap_or("").to_string();
+            name_index.insert(name.clone(), subgroups.len());
+            subgroups.push(UnifacSubgroup {
+                name,
+                main: sg["main"].as_u64().unwrap_or(0) as usize,
+                r: sg["R"].as_f64().unwrap_or(0.0),
+                q: sg["Q"].as_f64().unwrap_or(0.0),
+            });
+        }
+        let mut a_mn = HashMap::new();
+        for row in v["a_mn"].as_array().expect("a_mn") {
+            let (m, n, a) = (row[0].as_u64().unwrap_or(0) as usize, row[1].as_u64().unwrap_or(0) as usize, row[2].as_f64().unwrap_or(0.0));
+            a_mn.insert((m, n), a);
+        }
+        UnifacParams {
+            subgroups,
+            a_mn,
+            name_index,
+            tier: crate::types::ProvenanceTier::Speculative,
+            source: v["source"].as_str().unwrap_or("").to_string(),
+        }
+    })
+}
+
+/// Subgroup counts of one molecule: (index into `UnifacParams::subgroups`, count).
+pub type GroupCounts = Vec<(usize, f64)>;
+
+/// ln gamma_i of every component of a mixture (mole fractions `x`, subgroup counts `groups`) at `t_k`. Components with
+/// x = 0 are left out of the mixture sums and get gamma = 1 (use `ln_gamma_infinite_dilution` for them). None when
+/// the table lacks an interaction pair between two main groups present in the mixture.
+pub fn unifac_ln_gamma(groups: &[&GroupCounts], x: &[f64], t_k: f64) -> Option<Vec<f64>> {
+    let p = unifac_params();
+    let nc = groups.len();
+    let r_i: Vec<f64> = groups.iter().map(|g| g.iter().map(|&(k, v)| v * p.subgroups[k].r).sum()).collect();
+    let q_i: Vec<f64> = groups.iter().map(|g| g.iter().map(|&(k, v)| v * p.subgroups[k].q).sum()).collect();
+    let sum_r: f64 = (0..nc).map(|i| x[i] * r_i[i]).sum();
+    let sum_q: f64 = (0..nc).map(|i| x[i] * q_i[i]).sum();
+    if sum_r <= 0.0 || sum_q <= 0.0 {
+        return Some(vec![0.0; nc]);
+    }
+    // distinct subgroups present (x > 0)
+    let mut present: Vec<usize> = Vec::new();
+    for i in 0..nc {
+        if x[i] > 0.0 {
+            for &(k, _) in groups[i] {
+                if !present.contains(&k) {
+                    present.push(k);
+                }
+            }
+        }
+    }
+    let ng = present.len();
+    let pos = |k: usize| present.iter().position(|&g| g == k);
+    // Psi_mn between present subgroups (symmetric table lookup by main group)
+    let mut psi = vec![vec![1.0; ng]; ng];
+    for (a, &ka) in present.iter().enumerate() {
+        for (b, &kb) in present.iter().enumerate() {
+            let a_mn = p.a(p.subgroups[ka].main, p.subgroups[kb].main)?;
+            psi[a][b] = (-a_mn / t_k).exp(); // psi[m][n] = Psi_mn
+        }
+    }
+    let q_g: Vec<f64> = present.iter().map(|&k| p.subgroups[k].q).collect();
+    // ln Gamma_k of a group set with amounts `nu` (per present subgroup)
+    let ln_gamma_k = |nu: &[f64]| -> Vec<f64> {
+        let tot: f64 = nu.iter().sum();
+        if tot <= 0.0 {
+            return vec![0.0; ng];
+        }
+        let qx: Vec<f64> = (0..ng).map(|k| q_g[k] * nu[k] / tot).collect();
+        let sq: f64 = qx.iter().sum();
+        let theta: Vec<f64> = qx.iter().map(|v| v / sq.max(1e-300)).collect();
+        (0..ng)
+            .map(|k| {
+                let s1: f64 = (0..ng).map(|m| theta[m] * psi[m][k]).sum();
+                let mut s2 = 0.0;
+                for m in 0..ng {
+                    let den: f64 = (0..ng).map(|n| theta[n] * psi[n][m]).sum();
+                    s2 += theta[m] * psi[k][m] / den.max(1e-300);
+                }
+                q_g[k] * (1.0 - s1.max(1e-300).ln() - s2)
+            })
+            .collect()
+    };
+    // mixture group amounts
+    let mut nu_mix = vec![0.0; ng];
+    for i in 0..nc {
+        if x[i] > 0.0 {
+            for &(k, v) in groups[i] {
+                if let Some(g) = pos(k) {
+                    nu_mix[g] += x[i] * v;
+                }
+            }
+        }
+    }
+    let ln_g_mix = ln_gamma_k(&nu_mix);
+    let mut out = vec![0.0; nc];
+    for i in 0..nc {
+        if x[i] <= 0.0 {
+            continue;
+        }
+        let v = r_i[i] / sum_r;
+        let f = q_i[i] / sum_q;
+        let ln_c = if q_i[i] > 0.0 && f > 0.0 {
+            1.0 - v + v.ln() - 5.0 * q_i[i] * (1.0 - v / f + (v / f).ln())
+        } else {
+            1.0 - v + v.ln()
+        };
+        let mut nu_i = vec![0.0; ng];
+        for &(k, c) in groups[i] {
+            if let Some(g) = pos(k) {
+                nu_i[g] += c;
+            }
+        }
+        let ln_g_pure = ln_gamma_k(&nu_i);
+        let ln_r: f64 = (0..ng).map(|k| nu_i[k] * (ln_g_mix[k] - ln_g_pure[k])).sum();
+        out[i] = ln_c + ln_r;
+    }
+    Some(out)
+}
+
+static GROUP_CACHE: std::sync::Mutex<Option<(u64, HashMap<String, Option<GroupCounts>>)>> = std::sync::Mutex::new(None);
+
+fn base_species_id(sp: &str) -> &str {
+    let s = sp.strip_suffix("(l)").or_else(|| sp.strip_suffix("(aq)")).or_else(|| sp.strip_suffix("(s)")).or_else(|| sp.strip_suffix("(g)")).unwrap_or(sp);
+    s
+}
+
+/// UNIFAC subgroup counts of a species id: explicit record field, else decomposed from the SMILES of its store record,
+/// else from a SMILES registered for it (`register_unifac_smiles`, used for imported compounds). None = outside UNIFAC.
+pub fn unifac_groups(species: &str) -> Option<GroupCounts> {
+    let base = base_species_id(species).to_string();
+    let generation = crate::db::SpeciesStore::generation();
+    if let Ok(mut lock) = GROUP_CACHE.lock() {
+        let entry = lock.get_or_insert_with(|| (generation, HashMap::new()));
+        if entry.0 != generation {
+            *entry = (generation, HashMap::new());
+        }
+        if let Some(v) = entry.1.get(&base) {
+            return v.clone();
+        }
+    }
+    let p = unifac_params();
+    let resolved: Option<GroupCounts> = (|| {
+        let named: Option<Vec<(String, f64)>> = {
+            let store = crate::db::SpeciesStore::global();
+            let guard = store.read().ok()?;
+            let rec = guard.get(&base).or_else(|| guard.get(species));
+            match rec {
+                Some(r) => r.unifac_groups.clone().or_else(|| r.identity.smiles.as_deref().and_then(crate::groups::unifac_subgroups_from_smiles)),
+                None => None,
+            }
+        };
+        let named = named.or_else(|| {
+            REGISTERED_SMILES.lock().ok().and_then(|m| m.as_ref().and_then(|map| map.get(&base).cloned())).and_then(|s| crate::groups::unifac_subgroups_from_smiles(&s))
+        })?;
+        let mut out = Vec::new();
+        for (name, c) in named {
+            out.push((p.subgroup_index(&name)?, c));
+        }
+        Some(out)
+    })();
+    if let Ok(mut lock) = GROUP_CACHE.lock() {
+        if let Some(entry) = lock.as_mut() {
+            entry.1.insert(base, resolved.clone());
+        }
+    }
+    resolved
+}
+
+static REGISTERED_SMILES: std::sync::Mutex<Option<HashMap<String, String>>> = std::sync::Mutex::new(None);
+
+/// Registers the SMILES of a species that has no store record (an imported compound), so UNIFAC can decompose it.
+pub fn register_unifac_smiles(species: &str, smiles: &str) {
+    if let Ok(mut lock) = REGISTERED_SMILES.lock() {
+        lock.get_or_insert_with(HashMap::new).insert(base_species_id(species).to_string(), smiles.to_string());
+    }
+    if let Ok(mut lock) = GROUP_CACHE.lock() {
+        *lock = None;
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct UnifacActivity;
 
-impl ActivityModel for UnifacActivity {
-    fn ln_gamma(&self, species: &str, phase: &LiquidPhase, _t_k: f64, _p_atm: f64) -> f64 {
-        // Combinatorial (Staverman-Guggenheim) for neutral liquid mixtures
-        let total_mol: f64 = phase.species_mol.values().copied().filter(|&m| m > 0.0).sum();
-        if total_mol <= 0.0 {
-            return 0.0;
-        }
-        let xi = phase.species_mol.get(species).copied().unwrap_or(0.0) / total_mol;
-        if xi <= 0.0 || xi >= 1.0 {
-            return 0.0;
-        }
-        // r (volume) and q (surface area) group parameters
-        let (r_i, q_i) = match species {
-            "H2O" => (0.920, 1.400),
-            "C2H5OH" => (2.575, 2.588),
-            "C3H6O" | "acetone" => (2.573, 2.336),
-            "C6H14" | "hexane" => (4.499, 3.856),
-            "C7H8" | "toluene" => (3.922, 2.968),
-            _ => (2.0, 2.0),
-        };
-        // Combinatorial approximation ln(gamma_C) ~ (1 - r_i / r_bar) + ln(r_i / r_bar)
-        let mut r_bar = 0.0;
-        let mut q_bar = 0.0;
+impl UnifacActivity {
+    /// ln gamma of every neutral species of the phase that UNIFAC covers (mole fractions among those species), or
+    /// None when any of them is outside UNIFAC.
+    pub fn ln_gamma_map(phase: &LiquidPhase, t_k: f64) -> Option<HashMap<String, f64>> {
+        let mut names: Vec<&String> = Vec::new();
+        let mut groups: Vec<GroupCounts> = Vec::new();
+        let mut mols: Vec<f64> = Vec::new();
         for (sp, &mol) in &phase.species_mol {
-            let x = mol / total_mol;
-            let (r, q) = match sp.as_str() {
-                "H2O" => (0.920, 1.400),
-                "C2H5OH" => (2.575, 2.588),
-                "C3H6O" | "acetone" => (2.573, 2.336),
-                _ => (2.0, 2.0),
-            };
-            r_bar += x * r;
-            q_bar += x * q;
+            if mol <= 0.0 || sp.ends_with("(s)") || sp.ends_with("(g)") {
+                continue;
+            }
+            if crate::chem_db::get_species_thermo(sp).charge != 0 {
+                continue;
+            }
+            groups.push(unifac_groups(sp)?);
+            names.push(sp);
+            mols.push(mol);
         }
-        let phi_i = xi * r_i / r_bar;
-        let theta_i = xi * q_i / q_bar;
-        let z = 10.0;
-        let ln_gamma_c = (phi_i / xi).ln() + 1.0 - phi_i / xi - (z / 2.0) * q_i * ((phi_i / theta_i).ln() + 1.0 - phi_i / theta_i);
-        ln_gamma_c.clamp(-5.0, 5.0)
+        let tot: f64 = mols.iter().sum();
+        if names.is_empty() || tot <= 0.0 {
+            return None;
+        }
+        let x: Vec<f64> = mols.iter().map(|m| m / tot).collect();
+        let grefs: Vec<&GroupCounts> = groups.iter().collect();
+        let lg = unifac_ln_gamma(&grefs, &x, t_k)?;
+        Some(names.into_iter().zip(lg).map(|(n, v)| (n.clone(), v)).collect())
+    }
+}
+
+impl ActivityModel for UnifacActivity {
+    fn ln_gamma(&self, species: &str, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
+        Self::ln_gamma_map(phase, t_k).and_then(|m| m.get(species).copied()).unwrap_or(0.0)
     }
 
     fn solvent_activity(&self, phase: &LiquidPhase, t_k: f64, p_atm: f64) -> f64 {
@@ -592,7 +908,7 @@ pub fn batch_aqueous_gamma_and_aw(
     let a_w = if i_tot <= 1e-12 {
         1.0
     } else {
-        let a_phi = 0.3915;
+        let a_phi = debye_huckel_a_phi(t_k);
         let sqrt_i = i_tot.sqrt();
         let phi = 1.0 - a_phi * (sqrt_i / (1.0 + 1.2 * sqrt_i)) + 0.04 * i_tot;
         (-0.01801528 * sum_m * phi).exp().clamp(0.01, 1.0)
@@ -638,7 +954,7 @@ pub fn batch_aqueous_gamma_and_aw(
 
             if let Some(p) = best_param {
                 let (z_m, z_x, nu_m, nu_x) = best_geom;
-                PitzerActivity::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p)
+                PitzerActivity::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p, t_k)
             } else {
                 if i_tot <= 1e-12 {
                     0.0
@@ -725,7 +1041,7 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
     let a_w = if i_tot <= 1e-12 {
         1.0
     } else {
-        let a_phi = 0.3915;
+        let a_phi = debye_huckel_a_phi(t_k);
         let sqrt_i = i_tot.sqrt();
         let phi = 1.0 - a_phi * (sqrt_i / (1.0 + 1.2 * sqrt_i)) + 0.04 * i_tot;
         (-0.01801528 * sum_m * phi).exp().clamp(0.01, 1.0)
@@ -771,7 +1087,7 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
 
             if let Some(p) = best_param {
                 let (z_m, z_x, nu_m, nu_x) = best_geom;
-                PitzerActivity::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p)
+                PitzerActivity::single_electrolyte_ln_gamma(best_m_salt, i_tot, z_m, z_x, nu_m, nu_x, &p, t_k)
             } else {
                 if i_tot <= 1e-12 {
                     0.0
@@ -790,3 +1106,66 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
     (gamma_cache, a_w)
 }
 
+
+#[cfg(test)]
+mod unifac_tests {
+    use super::*;
+
+    fn gr(smiles: &str) -> GroupCounts {
+        let p = unifac_params();
+        crate::groups::unifac_subgroups_from_smiles(smiles).unwrap().into_iter().map(|(n, c)| (p.subgroup_index(&n).unwrap(), c)).collect()
+    }
+
+    #[test]
+    fn ethanol_water_activity_coefficients_and_the_azeotrope_fall_out_of_the_group_table() {
+        let (w, e) = (gr("O"), gr("CCO"));
+        // infinite dilution at the azeotrope temperature (UNIFAC): ethanol in water ~ 7, water in ethanol ~ 2.8
+        let lg_e = unifac_ln_gamma(&[&e, &w], &[0.001, 0.999], 351.3).unwrap();
+        let lg_w = unifac_ln_gamma(&[&e, &w], &[0.999, 0.001], 351.3).unwrap();
+        assert!((lg_e[0].exp() - 6.9).abs() < 1.0, "gamma_inf(EtOH in water) {}", lg_e[0].exp());
+        assert!((lg_w[1].exp() - 2.8).abs() < 0.5, "gamma_inf(water in EtOH) {}", lg_w[1].exp());
+        // the azeotrope: x = 0.894, y = x, P = 1 atm at 351.3 K: sum x gamma Psat = 101.3 kPa with the pure-component Psat
+        // of ethanol 100.8 kPa and water 44.2 kPa at that temperature
+        let x = 0.894;
+        let lg = unifac_ln_gamma(&[&e, &w], &[x, 1.0 - x], 351.3).unwrap();
+        let (pe, pw) = (x * lg[0].exp() * 100.8, (1.0 - x) * lg[1].exp() * 44.2);
+        assert!((pe + pw - 101.3).abs() < 3.0, "{} + {} kPa", pe, pw);
+        assert!((pe / (pe + pw) - x).abs() < 0.02, "vapour composition at the azeotrope {}", pe / (pe + pw));
+    }
+
+    #[test]
+    fn alkane_aromatic_mixtures_are_nearly_ideal_and_water_does_not_mix_with_them() {
+        let (h, t, w, e) = (gr("CCCCCC"), gr("Cc1ccccc1"), gr("O"), gr("CCO"));
+        let lg = unifac_ln_gamma(&[&h, &t], &[0.5, 0.5], 355.0).unwrap();
+        assert!(lg[0].exp() > 1.0 && lg[0].exp() < 1.25 && lg[1].exp() > 1.0 && lg[1].exp() < 1.25, "{:?}", lg);
+        // binary miscibility by the convexity test of the Gibbs energy of mixing
+        let miscible = |a: &GroupCounts, b: &GroupCounts, t: f64| -> bool {
+            let g = |x: f64| {
+                let lg = unifac_ln_gamma(&[a, b], &[x, 1.0 - x], t).unwrap();
+                x * (x.ln() + lg[0]) + (1.0 - x) * ((1.0 - x).ln() + lg[1])
+            };
+            (1..60).all(|i| {
+                let x = 0.005 + 0.99 * i as f64 / 60.0;
+                let h = 0.99 / 60.0;
+                g(x - h) - 2.0 * g(x) + g(x + h) > -1e-9
+            })
+        };
+        assert!(miscible(&e, &w, 298.15), "ethanol + water mix");
+        assert!(miscible(&h, &t, 298.15), "hexane + toluene mix");
+        assert!(!miscible(&h, &w, 298.15), "hexane + water do not mix");
+        assert!(!miscible(&t, &w, 298.15), "toluene + water do not mix");
+    }
+
+    #[test]
+    fn a_species_outside_the_group_set_is_outside_unifac() {
+        // ethers, esters, charged species: no groups, so no UNIFAC (the caller falls back to an ideal solution, labelled)
+        assert!(unifac_groups("C2H5OH").is_some());
+        assert!(unifac_groups("H2O").is_some());
+        assert!(unifac_groups("Na+").is_none());
+        assert!(unifac_groups("NoSuchSpecies").is_none());
+        register_unifac_smiles("test_dme", "COC");
+        assert!(unifac_groups("test_dme").is_none());
+        register_unifac_smiles("test_butanone", "CCC(C)=O");
+        assert!(unifac_groups("test_butanone").is_some());
+    }
+}

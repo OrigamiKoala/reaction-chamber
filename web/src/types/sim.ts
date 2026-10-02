@@ -188,13 +188,44 @@ export interface GasInfo {
   vapour_atm: number;
 }
 
+/** One species of a gas phase. */
+export interface GasPhaseSpecies {
+  /** Gas species id, e.g. "N2(g)". */
+  species: string;
+  /** Moles (sealed vessel inventory); 0 for the atmosphere an open vessel sits in. */
+  mol: number;
+  mole_fraction: number;
+  partial_atm: number;
+}
+
+/** The gas phase of a vessel: the atmosphere of an open vessel or the closed gas mixture of a sealed one. */
+export interface GasPhaseInfo {
+  kind: 'atmosphere' | 'sealed';
+  pressure_atm: number;
+  temperature_k: number;
+  /** A liquid component of the vessel is above its critical temperature: it is one fluid with the gas. */
+  supercritical: boolean;
+  /** Equation of state behind the pressure. */
+  eos: 'ideal' | 'peng-robinson';
+  species: GasPhaseSpecies[];
+}
+
+/** Partial update of the atmosphere an open vessel exchanges with (room input). */
+export interface AtmosphereSpec {
+  pressure_atm?: number;
+  /** Dry-gas mole fractions by gas species id ("N2(g)", "O2(g)", ...). */
+  composition?: Record<string, number>;
+  /** Relative saturation (0-1) of condensable vapours, e.g. { 'H2O(g)': 0.5 }. */
+  relative_saturation?: Record<string, number>;
+}
+
 export interface VesselSnapshot {
   t_sim_s: number;
   temperature_k: number;
   room_k: number;
   /** Liquid-phase temperature of the thermal bath if one is attached, else null. */
   bath_k: number | null;
-  /** Total headspace pressure, atm. Open vessel: 1.0 (= ambient). */
+  /** Total gas pressure, atm. Open vessel: the atmosphere's pressure (1.0 by default). Sealed: equation of state of the closed gas mixture. */
   pressure_atm: number;
   sealed: boolean;
   /** Vessel has failed (glass burst). Stopper-pop sets sealed=false and emits an event instead. */
@@ -213,7 +244,7 @@ export interface VesselSnapshot {
   foam: number;
   /** 0..1 strength of boiling (bubbles of vapour in the bulk). 0 below boiling point. */
   boil_intensity: number;
-  /** Evaporation mass flow, g/s (all volatile liquids). */
+  /** Evaporation mass flow, g/s (all volatile liquids; the boil flow while boiling, else evaporation toward the room air). */
   evaporation_g_s: number;
   /** 0..1 visible-vapour factor: steam plume above hot water, mist when cold gas dissolves, etc. */
   vapour_visibility: number;
@@ -236,6 +267,8 @@ export interface VesselSnapshot {
   events: VesselEvent[];
   /** Collected gas (collectors) or evolved gas trapped in the headspace of a stoppered vessel. */
   gas?: GasInfo;
+  /** The gas phase: the atmosphere of an open vessel or the closed gas mixture (air + vapour + evolved gas) of a sealed one. */
+  gas_phase?: GasPhaseInfo;
 }
 
 // ------------------------------------------------------------------ commands
@@ -289,13 +322,16 @@ export interface VesselControls {
   burner_w?: number;
   /** Debug: enable the substring-matched organic network generator (off by default, Stage 9 replaces it). */
   debug_network_generator?: boolean;
+  /** Atmosphere an open vessel exchanges with: pressure, dry composition, humidity (vacuum, pressurised, inert, O2-rich all possible). */
+  atmosphere?: AtmosphereSpec;
 }
 
 export interface ReagentCatalogEntry {
   id: string;
   name: string;
   formula: string;
-  form: 'solid' | 'liquid' | 'solution';
+  /** 'gas': dosed by volume of gas (headspace of a sealed vessel / sparged through the liquid of an open one). */
+  form: 'solid' | 'liquid' | 'solution' | 'gas';
   /** For solution: the solute concentration. */
   concentration_m?: number;
   density_g_ml: number;
