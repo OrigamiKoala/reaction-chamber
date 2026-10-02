@@ -40,11 +40,15 @@ export interface BottleAssembly {
   radius: number;
   /** Pour lip in group coordinates (cap removed). */
   lipLocal: THREE.Vector3;
+  /** Height of the (visual) contents above the bottle base, cm (drives the tilt at which pouring starts). */
+  fillY: number;
   contentHex: string;
   /** Recolour the visible contents (e.g. once the engine-derived colour is known). */
   setContentColor: (hex: string) => void;
   setRenderOrderBase: (base: number) => void;
   setHover: (on: boolean) => void;
+  /** Label glow pulse 0..1 (draws the eye to a shelf bottle). */
+  setGlow: (v: number) => void;
   dispose: () => void;
 }
 
@@ -603,6 +607,8 @@ export function createBottleAssembly(b: BottleInput): BottleAssembly {
   group.userData.pick = { type: 'bottle', id: b.id };
 
   const lipLocal = new THREE.Vector3(s.neckR + 0.1, s.neckTopY, 0);
+  let hovered = false;
+  let glow = 0;
 
   const asm: BottleAssembly = {
     group,
@@ -613,6 +619,7 @@ export function createBottleAssembly(b: BottleInput): BottleAssembly {
     height: s.height,
     radius: s.R,
     lipLocal,
+    fillY: s.fillY,
     contentHex,
     setContentColor: (hex: string) => {
       asm.contentHex = hex;
@@ -625,7 +632,12 @@ export function createBottleAssembly(b: BottleInput): BottleAssembly {
       label.renderOrder = base + 6;
     },
     setHover: (on: boolean) => {
-      labelMat.emissiveIntensity = on ? 0.14 : 0;
+      hovered = on;
+      labelMat.emissiveIntensity = Math.max(glow, hovered ? 0.14 : 0);
+    },
+    setGlow: (v: number) => {
+      glow = Math.max(0, Math.min(1, v)) * 0.5;
+      labelMat.emissiveIntensity = Math.max(glow, hovered ? 0.14 : 0);
     },
     dispose: () => {
       labelTex.dispose();

@@ -1,21 +1,85 @@
 import * as THREE from 'three';
 import { VesselState } from '../types';
+import { buildCatalogProfile } from './glass_catalog_profiles';
 
 /**
  * Real-world glassware profiles. 1 scene unit = 1 cm.
  * Every profile is expressed in the vessel's "glass-local" frame: y = 0 is the lowest point of the glass
  * body, the symmetry axis is the local Y axis, and the pour spout (if any) points along local +X.
+ *
+ * This file holds the profile data model, the volume <-> height tables and the construction helpers; the
+ * per-type dimensions live in `glass_catalog_profiles.ts` (`getProfile` below dispatches to it).
  */
 export type VesselType = VesselState['type'];
 
+/**
+ * One printed mark. `ml` is the liquid volume (measured from the bottom of the vessel, i.e. what `volumeAtHeight`
+ * returns) when the surface sits on the mark, so its height is always `heightForVolume(p, ml)` (never linear).
+ * `label` is the printed numeral and may differ from `ml` (burettes / graduated pipettes are graduated downward:
+ * label = volume delivered since the 0 mark).
+ * Tick conventions: minor = short half-ring tick, `mid` = medium tick, `major` = long tick (+ numeral if `label`).
+ */
 export interface Graduation {
   ml: number;
   major: boolean;
+  mid?: boolean;
   label?: string;
+}
+
+export type VesselKind =
+  | 'beaker'
+  | 'conical'
+  | 'round-bottom'
+  | 'florence'
+  | 'filter-flask'
+  | 'cylinder'
+  | 'volumetric'
+  | 'burette'
+  | 'pipette-volumetric'
+  | 'pipette-graduated'
+  | 'pipette-pasteur'
+  | 'tube'
+  | 'centrifuge'
+  | 'gas-tube'
+  | 'gas-syringe'
+  | 'gas-jar'
+  | 'sep-funnel'
+  | 'funnel'
+  | 'buchner-funnel'
+  | 'dish'
+  | 'petri'
+  | 'watch-glass'
+  | 'crucible'
+  | 'weigh-boat';
+
+/** glass = clear borosilicate, poly = translucent polypropylene, porcelain = white glaze, plastic = opaque white plastic. */
+export type VesselMaterial = 'glass' | 'poly' | 'porcelain' | 'plastic';
+
+/** What the vessel stands in / on (built in `glass_accessories.ts`, hidden together with `setRackVisible(false)`). */
+export type SupportKind = 'none' | 'rack' | 'cork-ring' | 'stand';
+
+/** Small extra meshes built next to the lathe body (see `glass_accessories.ts`). `y` is glass-local. */
+export interface Accessory {
+  kind:
+    | 'stopcock'
+    | 'sidearm'
+    | 'plunger'
+    | 'teat'
+    | 'lid'
+    | 'plate'
+    | 'joint'
+    | 'flange';
+  y: number;
+  /** Radius of the part the accessory attaches to / spans (cm). */
+  r: number;
+  /** Optional length / size (cm). */
+  len?: number;
 }
 
 export interface VesselProfile {
   type: VesselType;
+  kind: VesselKind;
+  material: VesselMaterial;
   /** Closed cross-section for the glass lathe: outer surface (bottom→rim), rim bead, inner surface (rim→bottom). */
   shell: THREE.Vector2[];
   /** Inner cavity, ascending from the axis at the inner bottom up to the inner rim. */
@@ -30,15 +94,46 @@ export interface VesselProfile {
   rimOuterRadius: number;
   rimInnerRadius: number;
   spout: number; // spout protrusion, cm (0 = none)
+  /** Printed (nominal) volume, mL. */
   nominalMl: number;
+  /** Brim-full volume of the cavity (mL). */
+  capacityMl: number;
   graduations: Graduation[];
+  /** First line of the scale title (units / nominal volume), e.g. "100 mL" or "mL". */
   gradTitle: string;
-  /** Lift of the glass above the bench in the vessel group (test tube in a rack). */
+  /** Small second title line, e.g. "TC 20 °C". */
+  gradNote: string;
+  /** Lift of the glass above the bench in the vessel group (test tube in a rack, burette on a stand). */
   baseOffsetY: number;
   /** Hexagonal foot height (graduated cylinder), 0 if none. */
   footHeight: number;
   footRadius: number;
+  /** True when the vessel stands in a wooden test-tube rack (support === 'rack'). */
   rack: boolean;
+  support: SupportKind;
+  /** Support geometry: rack hole radius / cork-ring major radius / stand clamp height + radius (glass-local y). */
+  supportR: number;
+  supportY: number;
+  /** Footprint radius of the whole assembly (glass + support), cm. */
+  footprintR: number;
+  /** Height of the support above the bench (stand rod top), cm; 0 if it is not taller than the glass. */
+  supportTopY: number;
+  /** Single calibration ring (volumetric flask / volumetric pipette), glass-local y; undefined = none. */
+  calibrationY?: number;
+  /** Graduated downward (burette, graduated pipette): label = volume delivered since the 0 mark. */
+  downward: boolean;
+  /** y of the 0 mark of a downward scale. */
+  zeroY?: number;
+  /** Total scale range (mL) of the printed scale (nominal for cylinders / burettes / pipettes). */
+  scaleMl: number;
+  /** Open delivery tip (burette, pipettes, funnel stems): glass-local position of the opening, undefined = closed vessel. */
+  tip?: THREE.Vector3;
+  openBottom: boolean;
+  /** Inner radius of the neck (at the ring for volumetric flasks / pipettes, at the rim for narrow-necked vessels). */
+  neckRadius: number;
+  accessories: Accessory[];
+  /** Title-only enamel label (volumetric flask / pipette bulb): y centre, height and text lines. */
+  label?: { y: number; h: number; lines: string[] };
   /** Cumulative inner volume (mL) sampled every `volStep` cm from innerBottomY. */
   volTable: Float32Array;
   volStep: number;
@@ -48,13 +143,65 @@ export interface VesselProfile {
 export const GROUND_EPS = 0.03;
 
 // ------------------------------------------------------------------ helpers
-function arc(cx: number, cy: number, r: number, a0: number, a1: number, n: number): THREE.Vector2[] {
+export function arc(cx: number, cy: number, r: number, a0: number, a1: number, n: number): THREE.Vector2[] {
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i <= n; i++) {
     const a = a0 + ((a1 - a0) * i) / n;
     pts.push(new THREE.Vector2(cx + Math.cos(a) * r, cy + Math.sin(a) * r));
   }
   return pts;
+}
+
+/** Polyline builder for the ascending outer wall of a lathe profile. */
+export class Wall {
+  pts: THREE.Vector2[] = [];
+  /** Without arguments the polyline starts empty (the first `arc` / `curve` call defines the start). */
+  constructor(x?: number, y?: number) {
+    if (x !== undefined && y !== undefined) this.pts.push(new THREE.Vector2(x, y));
+  }
+  get x(): number {
+    return this.pts[this.pts.length - 1].x;
+  }
+  get y(): number {
+    return this.pts[this.pts.length - 1].y;
+  }
+  /** Straight segment to (x, y). */
+  line(x: number, y: number, n = 1): this {
+    const x0 = this.x;
+    const y0 = this.y;
+    for (let i = 1; i <= n; i++) this.pts.push(new THREE.Vector2(x0 + ((x - x0) * i) / n, y0 + ((y - y0) * i) / n));
+    return this;
+  }
+  /** Smooth radius change to (x, y): vertical tangents at both ends (shoulders, neck blends). */
+  ease(x: number, y: number, n = 10): this {
+    const x0 = this.x;
+    const y0 = this.y;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      const s = t * t * (3 - 2 * t);
+      this.pts.push(new THREE.Vector2(x0 + (x - x0) * s, y0 + (y - y0) * t));
+    }
+    return this;
+  }
+  /** Arbitrary radius function r(t), t in (0..1], linearly spaced in y up to `y`. */
+  curve(y: number, r: (t: number) => number, n = 16): this {
+    const y0 = this.y;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      this.pts.push(new THREE.Vector2(Math.max(0, r(t)), y0 + (y - y0) * t));
+    }
+    return this;
+  }
+  /** Circular arc (appended, first point skipped when it coincides with the current end). */
+  arc(cx: number, cy: number, r: number, a0: number, a1: number, n: number): this {
+    const a = arc(cx, cy, r, a0, a1, n);
+    for (const p of a) {
+      const last = this.pts[this.pts.length - 1];
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 1e-4) continue;
+      this.pts.push(p);
+    }
+    return this;
+  }
 }
 
 /** Offset a polyline (ascending outer wall) inward by `d` along its 2D normals. */
@@ -83,40 +230,66 @@ function dedupe(pts: THREE.Vector2[]): THREE.Vector2[] {
   return out;
 }
 
+export interface ProfileOpts extends Partial<Omit<VesselProfile, 'type' | 'shell' | 'inner' | 'outer' | 'volTable' | 'volStep'>> {
+  nominalMl: number;
+  graduations: Graduation[];
+  gradTitle: string;
+  bottomY?: number;
+  roundBottom?: boolean;
+  /** Cavity floor (e.g. the perforated plate of a Büchner funnel); the wall below it stays solid. */
+  innerFloorY?: number;
+}
+
 /**
  * Build a profile from the outer wall polyline (ascending, starting at the first non-axis bottom point and
  * ending just below the rim bead).
  */
-function buildProfile(
-  type: VesselType,
-  outerWall: THREE.Vector2[],
-  wall: number,
-  opts: Partial<VesselProfile> & { nominalMl: number; graduations: Graduation[]; gradTitle: string; bottomY?: number; roundBottom?: boolean }
-): VesselProfile {
+export function buildProfile(type: VesselType, outerWall: THREE.Vector2[], wall: number, opts: ProfileOpts): VesselProfile {
   const bottomY = opts.bottomY ?? 0;
   const innerWall = offsetInward(outerWall, wall);
   const top = outerWall[outerWall.length - 1];
   const topIn = innerWall[innerWall.length - 1];
   // Rim bead: semicircle joining outer and inner wall tops, slightly fattened.
   const cx = (top.x + topIn.x) / 2;
-  const rr = (top.x - topIn.x) / 2;
+  const rr = Math.max(0.02, (top.x - topIn.x) / 2);
   const cy = Math.max(top.y, topIn.y);
   const bead = arc(cx, cy, rr * 1.25, 0, Math.PI, 8).map((p) => new THREE.Vector2(p.x, p.y));
   const rimY = cy + rr * 1.25;
 
   const outer = dedupe([new THREE.Vector2(0, bottomY), ...outerWall]);
-  const innerBottomY = opts.roundBottom ? innerWall[0].y : Math.max(innerWall[0].y, bottomY + wall);
-  const innerAsc = dedupe([
-    new THREE.Vector2(0, innerBottomY),
-    ...innerWall.map((p) => new THREE.Vector2(p.x, Math.max(p.y, innerBottomY))),
-  ]);
+  let innerBottomY: number;
+  let innerAsc: THREE.Vector2[];
+  if (opts.innerFloorY !== undefined) {
+    // flat cavity floor above a solid underside (perforated plate): interpolate the inner wall at the floor height
+    const fy = opts.innerFloorY;
+    innerBottomY = fy;
+    const above = innerWall.filter((p) => p.y > fy + 1e-4);
+    const k = innerWall.findIndex((p) => p.y > fy + 1e-4);
+    let x0 = innerWall[Math.max(0, k)].x;
+    if (k > 0) {
+      const a = innerWall[k - 1];
+      const b = innerWall[k];
+      x0 = a.x + ((b.x - a.x) * (fy - a.y)) / Math.max(1e-6, b.y - a.y);
+    }
+    innerAsc = dedupe([new THREE.Vector2(0, fy), new THREE.Vector2(x0, fy), ...above]);
+  } else {
+    innerBottomY = opts.roundBottom ? innerWall[0].y : Math.max(innerWall[0].y, bottomY + wall);
+    innerAsc = dedupe([
+      new THREE.Vector2(0, innerBottomY),
+      ...innerWall.map((p) => new THREE.Vector2(p.x, Math.max(p.y, innerBottomY))),
+    ]);
+  }
   const shell = dedupe([...outer, ...bead, ...[...innerAsc].reverse()]);
 
   let maxR = 0;
   for (const p of shell) maxR = Math.max(maxR, p.x);
 
+  const spout = opts.spout ?? 0;
+  const maxOuter = Math.max(maxR, opts.footRadius ?? 0);
   const profile: VesselProfile = {
     type,
+    kind: opts.kind ?? 'beaker',
+    material: opts.material ?? 'glass',
     shell,
     inner: innerAsc,
     outer,
@@ -124,23 +297,40 @@ function buildProfile(
     rimY,
     innerBottomY,
     innerTopY: topIn.y,
-    maxOuterRadius: Math.max(maxR, opts.footRadius ?? 0),
+    maxOuterRadius: maxOuter,
     rimOuterRadius: top.x + rr * 0.25,
     rimInnerRadius: topIn.x,
-    spout: opts.spout ?? 0,
+    spout,
     nominalMl: opts.nominalMl,
+    capacityMl: 0,
     graduations: opts.graduations,
     gradTitle: opts.gradTitle,
+    gradNote: opts.gradNote ?? '',
     // Lift the glass a hair above whatever it stands on so the flat outer base never ends up exactly coplanar
     // with the worktop / rack / shelf top (z-fighting at the base).
     baseOffsetY: (opts.baseOffsetY ?? 0) + GROUND_EPS,
     footHeight: opts.footHeight ?? 0,
     footRadius: opts.footRadius ?? 0,
-    rack: opts.rack ?? false,
+    rack: (opts.support ?? (opts.rack ? 'rack' : 'none')) === 'rack',
+    support: opts.support ?? (opts.rack ? 'rack' : 'none'),
+    supportR: opts.supportR ?? 0,
+    supportY: opts.supportY ?? 0,
+    footprintR: opts.footprintR ?? maxOuter + spout,
+    supportTopY: opts.supportTopY ?? 0,
+    calibrationY: opts.calibrationY,
+    downward: opts.downward ?? false,
+    zeroY: opts.zeroY,
+    scaleMl: opts.scaleMl ?? opts.nominalMl,
+    tip: opts.tip,
+    openBottom: opts.openBottom ?? false,
+    neckRadius: opts.neckRadius ?? topIn.x,
+    accessories: opts.accessories ?? [],
+    label: opts.label,
     volTable: new Float32Array(1),
     volStep: 0.02,
   };
   buildVolumeTable(profile);
+  profile.capacityMl = profile.volTable[profile.volTable.length - 1];
   return profile;
 }
 
@@ -228,133 +418,89 @@ export function heightForVolume(p: VesselProfile, ml: number): number {
   return p.innerBottomY + f * p.volStep;
 }
 
+/** Reading on the printed scale for a given liquid volume (downward scales: volume delivered since the 0 mark). */
+export function scaleReadingForVolume(p: VesselProfile, volumeMl: number): number {
+  if (p.downward && p.zeroY !== undefined) return volumeAtHeight(p, p.zeroY) - volumeMl;
+  return volumeMl;
+}
+
+/** Bisection root of an increasing function f on [lo, hi]. */
+export function solveIncreasing(f: (x: number) => number, lo: number, hi: number, iters = 36): number {
+  let a = lo;
+  let b = hi;
+  for (let i = 0; i < iters; i++) {
+    const m = (a + b) / 2;
+    if (f(m) < 0) a = m;
+    else b = m;
+  }
+  return (a + b) / 2;
+}
+
+// ------------------------------------------------------------------ graduation helpers
+export interface TickSpec {
+  /** Smallest division (mL). */
+  minor: number;
+  /** Optional medium division (mL, a multiple of `minor`). */
+  mid?: number;
+  /** Long division (mL, a multiple of `minor`); numerals are printed here (every `labelEvery`, default = major). */
+  major: number;
+  labelEvery?: number;
+  /** Smallest value that gets a mark (default = minor). */
+  from?: number;
+  /** Largest value that gets a mark (default = range). */
+  to?: number;
+}
+
+const isMultiple = (v: number, step: number) => Math.abs(v / step - Math.round(v / step)) < 1e-6;
+const fmtLabel = (v: number) => (Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : String(+v.toFixed(2)));
+
+/**
+ * Tick values for a scale 0 … `range`. Returns plain printed values (not yet mapped to heights); use `scaleGraduations`
+ * to convert them to `Graduation`s for a concrete profile.
+ */
+export function tickValues(range: number, t: TickSpec): { v: number; tier: 0 | 1 | 2; label?: string }[] {
+  const out: { v: number; tier: 0 | 1 | 2; label?: string }[] = [];
+  const from = t.from ?? t.minor;
+  const to = t.to ?? range;
+  const n = Math.round(to / t.minor);
+  for (let i = 0; i <= n; i++) {
+    const v = i * t.minor;
+    if (v < from - 1e-9 && !(i === 0 && t.from === 0)) continue;
+    const major = isMultiple(v, t.major);
+    const mid = !major && t.mid !== undefined && isMultiple(v, t.mid);
+    const lab = major && isMultiple(v, t.labelEvery ?? t.major);
+    out.push({ v, tier: major ? 2 : mid ? 1 : 0, label: lab ? fmtLabel(v) : undefined });
+  }
+  return out;
+}
+
+/**
+ * Map printed values onto a profile. Upward scales: ml = V(zeroY) + v. Downward scales (zero at the top):
+ * ml = V(zeroY) - v. `zeroY` defaults to the inner bottom.
+ */
+export function scaleGraduations(
+  p: VesselProfile,
+  ticks: { v: number; tier: 0 | 1 | 2; label?: string }[],
+  opts: { zeroY?: number; downward?: boolean } = {}
+): Graduation[] {
+  const zeroY = opts.zeroY ?? p.innerBottomY;
+  const v0 = volumeAtHeight(p, zeroY);
+  return ticks.map((t) => ({
+    ml: opts.downward ? v0 - t.v : v0 + t.v,
+    major: t.tier === 2,
+    mid: t.tier === 1,
+    label: t.label,
+  }));
+}
+
 // ------------------------------------------------------------------ catalogue
-function grads(step: number, max: number, labelEvery: number, minorStep = 0): Graduation[] {
-  const g: Graduation[] = [];
-  if (minorStep > 0) {
-    for (let v = minorStep; v <= max + 1e-6; v += minorStep) {
-      const isMajor = Math.abs(v / step - Math.round(v / step)) < 1e-6;
-      if (isMajor) continue;
-      g.push({ ml: v, major: false });
-    }
-  }
-  for (let v = step; v <= max + 1e-6; v += step) {
-    const lbl = Math.abs(v / labelEvery - Math.round(v / labelEvery)) < 1e-6;
-    g.push({ ml: v, major: true, label: lbl ? String(Math.round(v)) : undefined });
-  }
-  return g;
-}
-
-function beaker(type: VesselType, R: number, H: number, wall: number, nominal: number, g: Graduation[]): VesselProfile {
-  const c = Math.min(0.55, R * 0.18);
-  const wallPts = [
-    ...arc(R - c, c, c, -Math.PI / 2, 0, 6),
-    new THREE.Vector2(R, H * 0.5),
-    new THREE.Vector2(R, H - 0.25),
-  ];
-  return buildProfile(type, wallPts, wall, {
-    nominalMl: nominal,
-    graduations: g,
-    gradTitle: `${nominal} mL`,
-    spout: Math.max(0.35, R * 0.11),
-  });
-}
-
-function erlenmeyer(): VesselProfile {
-  const Rb = 4.25;
-  const c = 0.6;
-  const neckR = 1.7;
-  const shoulderY = 9.2;
-  const neckY = 10.2;
-  const H = 13.5;
-  const wallPts: THREE.Vector2[] = [...arc(Rb - c, c, c, -Math.PI / 2, 0.2, 7)];
-  // straight cone to the shoulder
-  const coneTop = new THREE.Vector2(neckR + 0.45, shoulderY);
-  const start = wallPts[wallPts.length - 1];
-  for (let i = 1; i <= 6; i++) {
-    const t = i / 6;
-    wallPts.push(new THREE.Vector2(start.x + (coneTop.x - start.x) * t, start.y + (coneTop.y - start.y) * t));
-  }
-  // shoulder curve into the neck
-  for (let i = 1; i <= 5; i++) {
-    const t = i / 5;
-    const e = 1 - (1 - t) * (1 - t);
-    wallPts.push(new THREE.Vector2(coneTop.x + (neckR - coneTop.x) * e, shoulderY + (neckY - shoulderY) * t));
-  }
-  wallPts.push(new THREE.Vector2(neckR, H - 0.6));
-  // slight lip flare
-  wallPts.push(new THREE.Vector2(neckR + 0.12, H - 0.3));
-  return buildProfile('erlenmeyer-250', wallPts, 0.18, {
-    nominalMl: 250,
-    graduations: grads(50, 250, 50, 25).filter((x) => x.ml <= 250),
-    gradTitle: '250 mL',
-  });
-}
-
-function gradCylinder(): VesselProfile {
-  const R = 1.62;
-  const foot = 1.0;
-  const H = 24.5;
-  const wallPts = [
-    ...arc(R - 0.3, foot + 0.3, 0.3, -Math.PI / 2, 0, 4),
-    new THREE.Vector2(R, (foot + H) * 0.5),
-    new THREE.Vector2(R, H - 0.2),
-  ];
-  return buildProfile('cylinder-100', wallPts, 0.17, {
-    nominalMl: 100,
-    graduations: grads(10, 100, 10, 1),
-    gradTitle: '100 mL',
-    spout: 0.35,
-    bottomY: foot,
-    footHeight: foot,
-    footRadius: 3.8,
-  });
-}
-
-function testTube(): VesselProfile {
-  const R = 1.25;
-  const H = 15;
-  const wallPts = [
-    ...arc(0, R, R, -Math.PI / 2 + 0.12, 0, 10),
-    new THREE.Vector2(R, H * 0.5),
-    new THREE.Vector2(R, H - 0.25),
-  ];
-  return buildProfile('test-tube', wallPts, 0.11, {
-    nominalMl: 30,
-    graduations: [],
-    gradTitle: '',
-    roundBottom: true,
-    baseOffsetY: 1.2,
-    rack: true,
-  });
-}
-
 const cache = new Map<VesselType, VesselProfile>();
 
+/** Profile for any `VesselType` (unknown / old-save types fall back to the 250 mL beaker). */
 export function getProfile(type: VesselType): VesselProfile {
   let p = cache.get(type);
   if (p) return p;
-  switch (type) {
-    case 'beaker-50':
-      p = beaker(type, 2.1, 5.5, 0.14, 50, grads(10, 50, 10));
-      break;
-    case 'beaker-1000':
-      p = beaker(type, 5.25, 14.5, 0.22, 1000, grads(100, 1000, 200, 50));
-      break;
-    case 'erlenmeyer-250':
-      p = erlenmeyer();
-      break;
-    case 'cylinder-100':
-      p = gradCylinder();
-      break;
-    case 'test-tube':
-      p = testTube();
-      break;
-    case 'beaker-250':
-    default:
-      p = beaker('beaker-250', 3.5, 9.5, 0.18, 250, grads(50, 250, 50, 25));
-      break;
-  }
+  p = buildCatalogProfile(type) ?? buildCatalogProfile('beaker-250')!;
   cache.set(type, p);
   return p;
 }
@@ -364,7 +510,7 @@ export function vesselHeight(p: VesselProfile): number {
   return p.rimY + p.baseOffsetY;
 }
 
-/** Footprint radius of the vessel assembly (rack included). */
+/** Footprint radius of the vessel assembly (rack / stand / cork ring included). */
 export function vesselFootprint(p: VesselProfile): number {
-  return p.rack ? 6.5 : p.maxOuterRadius + p.spout;
+  return p.footprintR;
 }

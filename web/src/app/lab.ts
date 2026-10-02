@@ -3,35 +3,23 @@
 import type { BenchScene } from '../bench/scene';
 import type { SimController } from '../sim/sim_controller';
 import { VesselState } from '../types';
-import { VesselConfig, VesselSnapshot, ReagentCatalogEntry } from '../types/sim';
+import { VesselConfig, VesselSnapshot, ReagentCatalogEntry, Portion } from '../types/sim';
 import { ReagentItem, amountMode, streamColour } from './reagent_library';
+import type { FlowForm } from '../bench/handling';
+import { DROP_ML, DrainSink, LabFlowSink, LabFlowSource, ReagentFlowSink, VesselFlowSink } from './flow';
+export type { LabFlowSink, LabFlowSource } from './flow';
 import { VisualContents, VisualItem, hexToLinear } from './visual_contents';
 import { knownReagentColor } from './reagent_colors';
 import { looksLikeMetal } from '../equipment/bottle';
+import { glasswareSpec } from './glassware_catalog';
+import { ReactionClock, ClockInfo } from './reaction_clock';
+import { canReceiveFiltrate, filterMode, filtrateStep, filtrationRateMlS, isFunnelType } from '../bench/filtration_math';
 
 export type VesselType = VesselState['type'];
 
-export interface GlasswareSpec {
-  type: VesselType;
-  label: string;
-  capacityMl: number;
-  icon: 'beaker' | 'erlenmeyer' | 'cylinder' | 'testTube';
-  glassMassG: number;
-  innerRadiusCm: number;
-}
-
-export const GLASSWARE: GlasswareSpec[] = [
-  { type: 'beaker-50', label: 'Beaker 50 mL', capacityMl: 50, icon: 'beaker', glassMassG: 35, innerRadiusCm: 2.0 },
-  { type: 'beaker-250', label: 'Beaker 250 mL', capacityMl: 250, icon: 'beaker', glassMassG: 110, innerRadiusCm: 3.5 },
-  { type: 'beaker-1000', label: 'Beaker 1 L', capacityMl: 1000, icon: 'beaker', glassMassG: 320, innerRadiusCm: 5.5 },
-  { type: 'erlenmeyer-250', label: 'Flask 250 mL', capacityMl: 250, icon: 'erlenmeyer', glassMassG: 130, innerRadiusCm: 4.0 },
-  { type: 'cylinder-100', label: 'Cylinder 100 mL', capacityMl: 100, icon: 'cylinder', glassMassG: 140, innerRadiusCm: 1.5 },
-  { type: 'test-tube', label: 'Test tube', capacityMl: 30, icon: 'testTube', glassMassG: 20, innerRadiusCm: 0.9 },
-];
-
-export function glasswareSpec(type: VesselType): GlasswareSpec {
-  return GLASSWARE.find((g) => g.type === type) ?? GLASSWARE[1];
-}
+// The glassware catalog lives in its own module; re-exported so existing imports keep working.
+export { GLASSWARE, glasswareSpec } from './glassware_catalog';
+export type { GlasswareSpec } from './glassware_catalog';
 
 export interface VesselControlState {
   heaterW: number;
@@ -40,7 +28,6 @@ export interface VesselControlState {
   iceBath: boolean;
 }
 
-const DROP_ML = 0.05;
 const STIR_RPM = 400;
 const ANIM_SAFETY_MS = 20000;
 
@@ -54,12 +41,27 @@ export class Lab {
   private nextId = 1;
   private typeCounters = new Map<VesselType, number>();
   private hotPlateId: string | null = null;
+  /** Heater / stirrer settings of vessels lifted off the hot plate (restored if they are set back on it). */
+  private liftedControls = new Map<string, { heaterW: number; stirring: boolean }>();
+  /** Delivery tubes: stoppered source flask id -> gas collector id (the engine moves the gas, see engine/src/gas.rs). */
+  private gasLinks = new Map<string, string>();
+  /** Funnels sitting on flasks: funnel id -> receiving flask id (liquid passes, solids stay: see runFilters). */
+  private filters = new Map<string, string>();
+  private filterTimer = 0;
+  private filterLast = new Map<string, number>();
+  private filterBusy = new Set<string>();
+  /** Per-vessel reaction timer: waits for the first real reaction (or a manual Start). See reaction_clock.ts. */
+  private clocks = new Map<string, ReactionClock>();
   public selectedId: string | null = null;
 
   public onVesselsChanged?: () => void;
   public onSelectionChanged?: (id: string | null) => void;
   /** Controls of a vessel changed from outside the vessel panel (e.g. displaced from the hot plate). */
   public onControlsChanged?: (id: string) => void;
+  /** A vessel was removed from the bench (instrument histories forget it). */
+  public onVesselRemoved?: (id: string) => void;
+  /** A vessel's reaction timer started by itself because a real reaction began (`reason` e.g. "White precipitate formed: AgCl"). */
+  public onReactionStarted?: (id: string, reason: string) => void;
 
   constructor(private bench: BenchScene, private sim: SimController) {}
 
@@ -87,6 +89,12 @@ export class Lab {
 
   public snapshot(id: string): VesselSnapshot | undefined {
     return this.latest.get(id);
+  }
+
+  /** Vessel standing on the hot plate right now (null when the plate is empty). */
+  public hotPlateVesselId(): string | null {
+    const id = this.bench.getHotPlateVesselId() ?? this.hotPlateId;
+    return id && this.vessels.has(id) ? id : null;
   }
 
   public isOnHotPlate(id: string): boolean {
@@ -126,6 +134,7 @@ export class Lab {
     if (!v) return null;
     const snap = this.visual.apply(id, engineSnap, this.ctl(id).stirring);
     this.latest.set(id, snap);
+    if (this.clock(id).observe(engineSnap)) this.onReactionStarted?.(id, this.clock(id).info(snap.t_sim_s).reason ?? 'Reaction started');
     v.currentVolumeMl = snap.total_liquid_ml;
     v.temperatureK = snap.temperature_k;
     v.ph = snap.ph !== null ? snap.ph : undefined;
@@ -140,6 +149,42 @@ export class Lab {
     // Stopper popped (or sealed from elsewhere): re-attach the gauge for the selected vessel.
     if (sealedChanged && id === this.selectedId) this.bench.setSelectedVessel(id);
     return snap;
+  }
+
+  // ------------------------------------------------------------------ mass & reaction timer
+  /** Everything a balance would read for this vessel: empty glass + contents (grams). */
+  public totalMassG(id: string): number {
+    const v = this.vessels.get(id);
+    if (!v) return 0;
+    const snap = this.latest.get(id);
+    return glasswareSpec(v.type).glassMassG + (snap && !snap.burst ? snap.contents_mass_g : 0);
+  }
+
+  private clock(id: string): ReactionClock {
+    let c = this.clocks.get(id);
+    if (!c) {
+      c = new ReactionClock();
+      this.clocks.set(id, c);
+    }
+    return c;
+  }
+
+  /** Reaction timer of `id` in engine time (waiting until the first reaction, unless started by hand). */
+  public reactionClock(id: string): ClockInfo | null {
+    if (!this.vessels.has(id)) return null;
+    return this.clock(id).info(this.latest.get(id)?.t_sim_s ?? 0);
+  }
+
+  public startReactionClock(id: string) {
+    if (this.vessels.has(id)) this.clock(id).start(this.latest.get(id)?.t_sim_s ?? 0);
+  }
+
+  public stopReactionClock(id: string) {
+    if (this.vessels.has(id)) this.clock(id).stop(this.latest.get(id)?.t_sim_s ?? 0);
+  }
+
+  public resetReactionClock(id: string) {
+    if (this.vessels.has(id)) this.clock(id).reset();
   }
 
   // ------------------------------------------------------------------ vessels
@@ -189,9 +234,14 @@ export class Lab {
       this.bench.instruments?.hotPlate?.setStir(false, 0);
     }
     this.vessels.delete(id);
+    this.onVesselRemoved?.(id);
     this.controls.delete(id);
     this.latest.delete(id);
     this.flammableAdded.delete(id);
+    this.clocks.delete(id);
+    for (const [s, d] of Array.from(this.gasLinks)) if (s === id || d === id) this.gasLinks.delete(s);
+    this.releaseFiltersOf(id);
+    this.liftedControls.delete(id);
     this.visual.clear(id);
     try {
       await this.sim.freeVessel(id);
@@ -254,7 +304,7 @@ export class Lab {
 
   public async setStir(id: string, on: boolean) {
     const c = this.ctl(id);
-    if (on) this.moveToHotPlate(id);
+    if (on && !this.bench.isOnStirrer(id)) this.moveToHotPlate(id); // the titration stirrer stirs where it stands
     c.stirring = on;
     c.stirRpm = on ? STIR_RPM : 0;
     const v = this.vessels.get(id);
@@ -270,10 +320,178 @@ export class Lab {
   }
 
   public async setSealed(id: string, on: boolean) {
+    if (!on && this.gasLinks.has(id)) await this.disconnectGas(id); // the delivery tube goes with the stopper
     const v = this.vessels.get(id);
     if (v) v.isSealed = on;
     await this.sim.control(id, { sealed: on });
     if (id === this.selectedId) this.bench.setSelectedVessel(id);
+  }
+
+  /** Slide a vessel next to another one on the bench (setups). */
+  public placeBeside(id: string, nearId: string, dx = 14) {
+    if (this.vessels.has(id) && this.vessels.has(nearId)) this.bench.placeBeside(id, nearId, dx);
+  }
+
+  // ------------------------------------------------------------------ filtration
+  public isFunnel(id: string): boolean {
+    const v = this.vessels.get(id);
+    return !!v && isFunnelType(v.type);
+  }
+
+  public canBeFilterReceiver(id: string): boolean {
+    const v = this.vessels.get(id);
+    return !!v && canReceiveFiltrate(v.type);
+  }
+
+  /** Flask that funnel `funnel` sits on, if any. */
+  public filterReceiverOf(funnel: string): string | null {
+    return this.filters.get(funnel) ?? null;
+  }
+
+  /** Funnel sitting on flask `receiver`, if any. */
+  public filterFunnelOn(receiver: string): string | null {
+    for (const [f, r] of this.filters) if (r === receiver) return f;
+    return null;
+  }
+
+  /**
+   * Sets `funnel` on the flask `receiver`: from now on liquid in the funnel runs through (slowly by gravity, fast through
+   * a Büchner funnel on a Büchner flask under vacuum), the solids stay in the funnel and the filtrate collects below.
+   */
+  public async connectFilter(funnel: string, receiver: string): Promise<void> {
+    if (!this.isFunnel(funnel)) throw new Error('Only a filter funnel or Büchner funnel can be set on a flask.');
+    if (!this.canBeFilterReceiver(receiver)) throw new Error("The filtrate can't be collected in that vessel.");
+    if (funnel === receiver) throw new Error('Pick a different vessel.');
+    const other = this.filterFunnelOn(receiver);
+    if (other && other !== funnel) this.disconnectFilter(other);
+    if (this.hotPlateId === funnel) this.hotPlateId = null;
+    if (!this.bench.stackFunnel(funnel, receiver)) throw new Error('Both vessels have to be on the bench.');
+    this.filters.set(funnel, receiver);
+    this.filterLast.set(funnel, performance.now());
+    this.startFilterLoop();
+    this.onVesselsChanged?.();
+  }
+
+  /** Lifts the funnel off its flask (it is set down beside it unless `reposition` is false, e.g. while carried). */
+  public disconnectFilter(funnel: string, reposition = true): void {
+    if (!this.filters.delete(funnel)) return;
+    this.filterLast.delete(funnel);
+    this.bench.unstackFunnel(funnel, reposition && this.vessels.has(funnel));
+    this.onVesselsChanged?.();
+  }
+
+  private releaseFiltersOf(id: string, reposition = true) {
+    for (const [f, r] of Array.from(this.filters)) {
+      if (f === id) this.disconnectFilter(f, false); // the funnel itself is being carried or removed
+      else if (r === id) this.disconnectFilter(f, reposition);
+    }
+  }
+
+  private startFilterLoop() {
+    if (this.filterTimer) return;
+    this.filterTimer = window.setInterval(() => this.runFilters(), 100);
+  }
+
+  private runFilters() {
+    if (this.filters.size === 0) {
+      window.clearInterval(this.filterTimer);
+      this.filterTimer = 0;
+      return;
+    }
+    const now = performance.now();
+    for (const [funnel, receiver] of this.filters) {
+      const last = this.filterLast.get(funnel) ?? now;
+      if (this.filterBusy.has(funnel)) continue;
+      const fv = this.vessels.get(funnel);
+      const rv = this.vessels.get(receiver);
+      if (!fv || !rv) continue;
+      const dt = Math.min(0.5, (now - last) / 1000) * (this.sim.isPaused ? 0 : this.sim.speedMultiplier);
+      this.filterLast.set(funnel, now);
+      const snap = this.latest.get(funnel);
+      const liquid = this.volumeMl(funnel);
+      const cake = snap ? snap.solids.reduce((a, s) => a + (s.mass_g || 0), 0) : 0;
+      const mode = filterMode(fv.type, rv.type);
+      const ml = filtrateStep(mode, liquid, cake, dt, this.freeCapacityMl(receiver));
+      if (!(ml > 1e-4)) {
+        this.bench.filters.setFlow(funnel, 0);
+        continue;
+      }
+      this.bench.filters.setFlow(funnel, filtrationRateMlS(mode, liquid, cake));
+      this.filterBusy.add(funnel);
+      // clear liquid only: the precipitate stays on the paper
+      this.transferChunk(funnel, receiver, ml, { solids: false })
+        .catch((err) => console.warn('[lab] filtration step failed', err))
+        .finally(() => this.filterBusy.delete(funnel));
+    }
+  }
+
+  // ------------------------------------------------------------------ gas collection
+  /** Gas syringe / gas collection tube / gas jar. */
+  public static isCollectorType(type: string): boolean {
+    return type.startsWith('gas-syringe') || type.startsWith('gas-collection-tube') || type.startsWith('gas-jar');
+  }
+
+  public isCollector(id: string): boolean {
+    const v = this.vessels.get(id);
+    return !!v && Lab.isCollectorType(v.type);
+  }
+
+  /** Vessels that can feed a delivery tube: anything that is neither a collector nor a pipette. */
+  public canBeGasSource(id: string): boolean {
+    const v = this.vessels.get(id);
+    return !!v && !Lab.isCollectorType(v.type) && !v.type.startsWith('pipette') && !isFunnelType(v.type);
+  }
+
+  public collectors(): VesselState[] {
+    return this.list().filter((v) => Lab.isCollectorType(v.type));
+  }
+
+  /** Collector that the delivery tube of flask `src` leads to, if any. */
+  public gasCollectorOf(src: string): string | null {
+    return this.gasLinks.get(src) ?? null;
+  }
+
+  /** Flask whose delivery tube feeds collector `dst`, if any. */
+  public gasSourceOf(dst: string): string | null {
+    for (const [s, d] of this.gasLinks) if (d === dst) return s;
+    return null;
+  }
+
+  /**
+   * Connects a delivery tube from flask `src` to the collector `dst`: stoppers the flask, draws the tube, and from now
+   * on the engine moves the gas evolved in the flask into the collector (moles conserved).
+   */
+  public async connectGas(src: string, dst: string): Promise<void> {
+    if (!this.vessels.has(src) || !this.vessels.has(dst)) throw new Error('Both vessels have to be on the bench.');
+    if (src === dst) throw new Error('A delivery tube needs two different vessels.');
+    if (!this.isCollector(dst)) throw new Error('The tube has to end in a gas syringe, gas collection tube or gas jar.');
+    if (!this.canBeGasSource(src)) throw new Error("That vessel can't be fitted with a stopper and delivery tube.");
+    const taken = this.gasSourceOf(dst);
+    if (taken && taken !== src) await this.disconnectGas(taken); // one tube per collector
+    const ok = await this.sim.gasLink(src, dst);
+    if (!ok) throw new Error('The engine could not connect the tube.');
+    this.gasLinks.set(src, dst);
+    const v = this.vessels.get(src);
+    if (v) v.isSealed = true;
+    this.bench.gas.link(src, dst);
+    if (src === this.selectedId) this.bench.setSelectedVessel(src);
+    this.onControlsChanged?.(src);
+    this.onVesselsChanged?.();
+  }
+
+  /** Takes the delivery tube off flask `src` (it keeps its stopper). */
+  public async disconnectGas(src: string): Promise<void> {
+    if (!this.gasLinks.has(src)) return;
+    this.gasLinks.delete(src);
+    this.bench.gas.unlink(src);
+    await this.sim.gasUnlink(src);
+    this.onVesselsChanged?.();
+  }
+
+  /** Empties a gas collector (plunger pushed home / jar flushed); resolves to the moles discarded. */
+  public async ventCollector(id: string): Promise<number> {
+    if (!this.isCollector(id)) return 0;
+    return this.sim.gasVent(id);
   }
 
   public async ignite(id: string) {
@@ -310,15 +528,33 @@ export class Lab {
     if (addMl > free + 1e-6) throw new Error(`Only ${free.toFixed(1)} mL of space left.`);
     const colour = streamColour(item);
     const e = this.engineEntry(item);
+    const mode = amountMode(item);
+    if (!e && item.kind !== 'imported') throw new Error('Unknown reagent.');
 
-    if (!e && item.kind === 'imported') {
-      const b = item.bottle;
-      const mode = amountMode(item);
-      await this.animate((done) => {
+    await this.animate((done) => {
+      if (!e) {
+        // visual-only import: no dosing animation of its own, same pour / powder visuals
         if (mode === 'g') this.bench.animateSolidAddition(item.id, vesselId, colour, done);
         else this.bench.animatePour(item.id, vesselId, colour, done);
-      });
-      if (!this.vessels.has(vesselId)) throw new Error('That vessel was removed before the addition finished.');
+      } else if (mode === 'drops') this.bench.animateDrops(item.id, vesselId, Math.round(amount), colour, done);
+      else if (mode === 'g') this.bench.animateSolidAddition(item.id, vesselId, colour, done);
+      else this.bench.animatePour(item.id, vesselId, colour, done);
+    });
+    if (!this.vessels.has(vesselId)) throw new Error('That vessel was removed before the addition finished.');
+    return this.commitAddition(item, vesselId, amount);
+  }
+
+  /**
+   * The chemistry half of an addition (shared by the assisted Add card and manual pouring): dose the engine, or keep
+   * a visual-only import as visible contents; solids that the engine dissolves instantly leave a dissolving ghost pile.
+   * `amount` is in the item's own unit (mL / g / drops).
+   */
+  public async commitAddition(item: ReagentItem, vesselId: string, amount: number): Promise<'dosed' | 'visual'> {
+    if (!this.vessels.has(vesselId)) throw new Error('That vessel is no longer on the bench.');
+    const e = this.engineEntry(item);
+    const mode = amountMode(item);
+    if (!e && item.kind === 'imported') {
+      const b = item.bottle;
       // No reaction model: keep what was added as visible contents (powder bed / coloured liquid).
       const density = b.userOverrides?.density ?? b.sourcedProperties?.density;
       const rho = typeof density === 'number' && isFinite(density) && density > 0.05 && density < 25 ? density : mode === 'g' ? 1.6 : 1.0;
@@ -339,13 +575,6 @@ export class Lab {
     }
     if (!e) throw new Error('Unknown reagent.');
 
-    const mode = amountMode(item);
-    await this.animate((done) => {
-      if (mode === 'drops') this.bench.animateDrops(item.id, vesselId, Math.round(amount), colour, done);
-      else if (mode === 'g') this.bench.animateSolidAddition(item.id, vesselId, colour, done);
-      else this.bench.animatePour(item.id, vesselId, colour, done);
-    });
-    if (!this.vessels.has(vesselId)) throw new Error('That vessel was removed before the addition finished.');
     if (mode === 'drops') await this.sim.dose(vesselId, { reagent_id: e.id, drops: Math.round(amount) });
     else if (mode === 'g') {
       // The engine may dissolve a soluble solid instantly; keep a pile that visibly dissolves away instead of
@@ -386,19 +615,157 @@ export class Lab {
     } catch {
       /* stubbed scene */
     }
-    const before = this.volumeMl(src);
-    const portion = await this.sim.removeLiquid(src, amount, true);
-    const carried = this.visual.take(src, before > 0 ? amount / before : 1);
-    if (this.flammableAdded.has(src)) this.flammableAdded.add(tgt);
+    const taken = await this.takePortion(src, tgt, amount);
     await this.animate((done) => this.bench.animatePour(src, tgt, colour, done));
     if (!this.vessels.has(tgt)) return;
-    this.visual.put(tgt, carried);
-    await this.sim.addPortion(tgt, portion);
+    await this.insertPortion(tgt, taken);
+  }
+
+  /** Removes `ml` of liquid (with proportional solids / visual contents) from `src`, species conserved. */
+  private async takePortion(src: string, tgt: string, ml: number, solids = true) {
+    const before = this.volumeMl(src);
+    const portion = await this.sim.removeLiquid(src, ml, solids);
+    const carried = this.visual.take(src, before > 0 ? ml / before : 1);
+    if (this.flammableAdded.has(src)) this.flammableAdded.add(tgt);
+    return { portion, carried };
+  }
+
+  private async insertPortion(tgt: string, taken: { portion: Portion; carried: VisualItem[] }) {
+    this.visual.put(tgt, taken.carried);
+    await this.sim.addPortion(tgt, taken.portion);
+  }
+
+  // ------------------------------------------------------------------ stopcocks (burette / separatory funnel) + stirrer plate
+  /** A drain through a stopcock: `tgt` null = onto the bench (discarded); `bottom`: densest layer first (separatory funnel). */
+  public openDrain(srcId: string, targetId: string | null, bottom: boolean): LabFlowSink | null {
+    if (!this.vessels.has(srcId) || (targetId !== null && (!this.vessels.has(targetId) || targetId === srcId))) return null;
+    return new DrainSink(this, srcId, targetId, bottom);
+  }
+
+  /** One increment of a stopcock drain (species conserved; the target gets exactly what left the source). */
+  public async drainChunk(src: string, tgt: string | null, ml: number, bottom: boolean): Promise<void> {
+    if (!this.vessels.has(src) || !(ml > 0)) return;
+    const before = this.volumeMl(src);
+    const portion = bottom ? await this.sim.removeLiquidBottom(src, ml, true) : await this.sim.removeLiquid(src, ml, true);
+    const carried = this.visual.take(src, before > 0 ? ml / before : 1);
+    if (tgt === null || !this.vessels.has(tgt)) return; // spilled onto the bench
+    if (this.flammableAdded.has(src)) this.flammableAdded.add(tgt);
+    await this.insertPortion(tgt, { portion, carried });
+  }
+
+  /** A vessel left the titration stirrer: stirring stops (like lifting a flask off the hot plate). */
+  public stirrerVacated(id: string) {
+    if (!this.vessels.has(id)) return;
+    const c = this.ctl(id);
+    if (!c.stirring) return;
+    c.stirring = false;
+    c.stirRpm = 0;
+    const v = this.vessels.get(id);
+    if (v) v.stirring = false;
+    this.bench.getGlassware(id)?.setStirring(0);
+    this.sim.control(id, { stirring: false, stir_rpm: 0 }).catch(() => {});
+    this.onControlsChanged?.(id);
+  }
+
+  /** Stand a vessel on the titration stirrer's tile (the burette clamp rises / drops to seat its tip in the neck). */
+  public seatOnTitrationStirrer(id: string): boolean {
+    return this.vessels.has(id) && this.bench.seatTitrationFlask(id);
+  }
+
+  /** Stand `flaskId` under the stopcock of the separatory funnel `funnelId`. */
+  public seatBelowFunnel(flaskId: string, funnelId: string): boolean {
+    return this.vessels.has(flaskId) && this.vessels.has(funnelId) && this.bench.seatBelowFunnel(flaskId, funnelId);
+  }
+
+  /** Camera over the titration station (B key): tip + flask, the whole stand, the burette reading. */
+  public frameTitration(restart = false): boolean {
+    return this.bench.focusTitration(restart);
+  }
+
+  /** Which vessels stand in the titration station right now (burette in the clamp, flask on the tile). */
+  public stationState(): { burette: string | null; flask: string | null } {
+    return { burette: this.bench.titration.mountedBuretteId(), flask: this.bench.titration.stirrerVesselId() };
+  }
+
+  /** One increment of a manual vessel→vessel pour (called ~10 Hz while the user keeps tilting). */
+  public async transferChunk(src: string, tgt: string, ml: number, opts?: { solids?: boolean }): Promise<void> {
+    if (!this.vessels.has(src) || !this.vessels.has(tgt) || !(ml > 0)) return;
+    const taken = await this.takePortion(src, tgt, ml, opts?.solids ?? true);
+    if (!this.vessels.has(tgt)) return;
+    await this.insertPortion(tgt, taken);
+  }
+
+  /**
+   * Chemistry side of manual pipetting: liquid moves between real engine vessels in small portions (species
+   * conserved). Suction takes clear liquid only: settled / suspended solids stay behind in the source.
+   */
+  public pipetteLab() {
+    return {
+      volumeMl: (id: string) => this.volumeMl(id),
+      freeMl: (id: string) => this.freeCapacityMl(id),
+      transfer: (src: string, dst: string, ml: number) => this.transferChunk(src, dst, ml, { solids: false }),
+      name: (id: string) => this.vessels.get(id)?.name ?? 'vessel',
+    };
+  }
+
+  // ------------------------------------------------------------------ manual handling (hot plate / balance / flows)
+  /** A vessel was picked up off the hot plate: it stops being heated (its settings come back if it is put back). */
+  public vesselLifted(id: string, from: 'hotplate' | 'balance' | 'bench') {
+    this.releaseFiltersOf(id); // lifting a funnel or the flask under it breaks the filtration setup
+    if (from !== 'hotplate' || !this.vessels.has(id)) return;
+    if (this.hotPlateId === id) this.hotPlateId = null;
+    const c = this.ctl(id);
+    if (c.heaterW > 0 || c.stirring) this.liftedControls.set(id, { heaterW: c.heaterW, stirring: c.stirring });
+    c.heaterW = 0;
+    c.stirring = false;
+    c.stirRpm = 0;
+    const hp = this.bench.instruments?.hotPlate;
+    hp?.setPower(0);
+    hp?.setStir(false, 0);
+    this.sim.control(id, { heater_w: 0, stirring: false, stir_rpm: 0 }).catch(() => {});
+    this.bench.getGlassware(id)?.setStirring(0);
+    const v = this.vessels.get(id);
+    if (v) v.stirring = false;
+    this.onControlsChanged?.(id);
+  }
+
+  /** A carried vessel came to rest on the bench / hot plate / balance. */
+  public vesselPlaced(id: string, place: 'hotplate' | 'balance' | 'bench') {
+    if (!this.vessels.has(id)) return;
+    const saved = this.liftedControls.get(id);
+    if (place !== 'hotplate') {
+      this.liftedControls.delete(id);
+      return;
+    }
+    this.moveToHotPlate(id);
+    this.liftedControls.delete(id);
+    if (saved) {
+      if (saved.heaterW > 0) void this.setHeat(id, saved.heaterW).catch(() => {});
+      if (saved.stirring) void this.setStir(id, true).catch(() => {});
+      this.onControlsChanged?.(id);
+    }
+  }
+
+  /**
+   * Opens a continuous flow of `source` into `targetId` (manual pouring). Amounts pushed into the returned sink are
+   * batched to the engine at <= ~10 Hz; `end()` flushes the rest. Reagent bottles are unlimited reservoirs; a vessel
+   * source drains. `form` is the unit the pourer works in (mL / g / drops) and is converted to the item's own unit.
+   */
+  public openFlow(source: LabFlowSource, targetId: string, form: FlowForm): LabFlowSink | null {
+    if (!this.vessels.has(targetId)) return null;
+    if ('vesselId' in source) {
+      if (!this.vessels.has(source.vesselId) || source.vesselId === targetId) return null;
+      return new VesselFlowSink(this, source.vesselId, targetId);
+    }
+    if (!this.engineEntry(source.item) && source.item.kind !== 'imported') return null;
+    const e = this.engineEntry(source.item);
+    return new ReagentFlowSink(this, source.item, targetId, form, e?.density_g_ml || 1);
   }
 
   /** Discard all contents (liquid and solids) to waste. */
   public async empty(id: string): Promise<void> {
     if (!this.vessels.has(id)) return;
+    if (this.isCollector(id)) await this.sim.gasVent(id); // a gas collector holds gas: flush it
     await this.sim.removeLiquid(id, 1e5, true);
     this.visual.clear(id);
     this.flammableAdded.delete(id);

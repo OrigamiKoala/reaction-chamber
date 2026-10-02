@@ -43,6 +43,8 @@ export class AddCard {
   private targetId: string | null = null;
   private busy = false;
   private mode: AmountMode = 'ml';
+  /** The exact-amount disclosure stays open once the user has opened it. */
+  private assistOpen = false;
 
   private amountInput!: HTMLInputElement;
   private presetBtns: HTMLButtonElement[] = [];
@@ -148,6 +150,26 @@ export class AddCard {
       this.el.append(row);
     }
 
+    // Manual handling is the primary way to add chemicals; the amount form is an assisted fallback.
+    const guide = h('div', { class: 'manual-guide', role: 'note' });
+    const guideText: Record<AmountMode, string> = {
+      ml: 'Drag the bottle off the shelf, bring it over a vessel and drag up to tilt. Release to stop.',
+      g: 'Drag the jar off the shelf, hold it over a vessel (or the balance pan) and drag up to tilt. A slight tilt gives a trickle.',
+      drops: 'Drag the dropper bottle off the shelf, hold it over a vessel and drag up to squeeze drops. Release to stop.',
+    };
+    guide.innerHTML = `${icon('pour', 18)}<div><strong>Pour it by hand</strong><span class="mg-keys"></span></div>`;
+    (guide.querySelector('.mg-keys') as HTMLElement).textContent = guideText[this.mode];
+    this.el.append(guide);
+
+    const assist = h('details', { class: 'assist' });
+    assist.open = this.assistOpen;
+    assist.addEventListener('toggle', () => {
+      this.assistOpen = assist.open;
+    });
+    assist.append(h('summary', { text: 'Assisted add (exact amount)' }));
+    const body = h('div', { class: 'assist-body' });
+    assist.append(body);
+
     // Amount
     const amountId = `add-amount-${Math.random().toString(36).slice(2, 7)}`;
     const amountRow = h('div', { class: 'field' });
@@ -187,18 +209,18 @@ export class AddCard {
     });
     inputWrap.append(this.amountInput, h('span', { class: 'num-unit', text: p.unit }));
     amountRow.append(h('div', { class: 'amount-line' }, presets, inputWrap));
-    this.el.append(amountRow);
+    body.append(amountRow);
 
     // Target vessel
     const target = h('div', { class: 'field' });
     target.append(h('div', { class: 'field-label', id: `${amountId}-into`, text: 'Into' }));
     this.vesselChips = h('div', { class: 'chip-row', role: 'radiogroup', 'aria-labelledby': `${amountId}-into` });
     target.append(this.vesselChips);
-    this.el.append(target);
+    body.append(target);
     this.renderVesselChips();
 
     this.warnEl = h('div', { class: 'add-warn', role: 'status', 'aria-live': 'polite' });
-    this.el.append(this.warnEl);
+    body.append(this.warnEl);
 
     this.addBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button' });
     const verb = this.mode === 'drops' ? icon('drop', 16) : this.mode === 'g' ? icon('scoop', 16) : icon('pour', 16);
@@ -206,7 +228,8 @@ export class AddCard {
     this.addLabel = h('span');
     this.addBtn.append(this.addLabel);
     this.addBtn.addEventListener('click', () => this.submit());
-    this.el.append(this.addBtn);
+    body.append(this.addBtn);
+    this.el.append(assist);
   }
 
   private renderVesselChips() {
@@ -214,7 +237,7 @@ export class AddCard {
     this.vesselChips.innerHTML = '';
     const vessels = this.host.vessels();
     if (vessels.length === 0) {
-      this.vesselChips.append(h('span', { class: 'muted', text: 'No glassware on the bench — add some below.' }));
+      this.vesselChips.append(h('span', { class: 'muted', text: 'No glassware on the bench — open the Glassware tab to add some.' }));
       return;
     }
     for (const v of vessels) {

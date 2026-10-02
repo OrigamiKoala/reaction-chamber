@@ -125,6 +125,10 @@ impl Vessel {
         }
         if has_water {
             q_joules += self.saturate_minerals(vol_l, t_k);
+            // The sweeps above relax one equilibrium at a time, which converges very slowly (and to a path-dependent
+            // point after a finite number of sweeps) when equilibria share species, e.g. the carbonate system.
+            // Finish with a coupled solve of all of them at once so the end state depends only on the contents.
+            q_joules += self.solve_coupled_equilibria(vol_l, t_k, dt_s);
         }
 
         for mol in self.solid_mol.values_mut() {
@@ -350,6 +354,294 @@ impl Vessel {
                 source: eq.source.clone(),
                 active: true,
             });
+        }
+        q
+    }
+
+    /// Solves every aqueous equilibrium and every mineral solubility equilibrium simultaneously.
+    ///
+    /// The equilibrium state of an ideal solution minimises F(xi) = sum_i [n_i ln(n_i/V) - n_i] - sum_r xi_r ln K_r over
+    /// the reaction extents xi (n = n0 + N^T xi), a convex function with gradient f_r = ln Q_r - ln K_r and Hessian
+    /// H = N^T diag(1/n) N. Dissolving solids add the bound xi_m <= solid_m (solid activity is 1, so a mineral
+    /// reaction is f = ln IAP - ln Ksp). Damped projected Newton from the current (interior) state converges to the unique
+    /// minimum regardless of how the contents were assembled. The result is only committed if it reduces the residual,
+    /// so on any numerical trouble the state from the preceding sweeps is kept. Returns heat released (J).
+    fn solve_coupled_equilibria(&mut self, vol_l: f64, t_k: f64, dt_s: f64) -> f64 {
+        struct Rxn {
+            eq: Option<usize>,
+            min: Option<usize>,
+            nu: Vec<(usize, f64)>,
+            ln_k: f64,
+            dh_j: f64,
+            upper: f64,
+        }
+        let mut names: Vec<String> = Vec::new();
+        let mut idx_of: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut get_idx = |name: &str, names: &mut Vec<String>| -> usize {
+            if let Some(&i) = idx_of.get(name) {
+                return i;
+            }
+            names.push(name.to_string());
+            idx_of.insert(name.to_string(), names.len() - 1);
+            names.len() - 1
+        };
+        let amount = |m: &Vessel, n: &str| m.species_mol.get(n).copied().unwrap_or(0.0).max(0.0);
+        const TINY: f64 = 1e-30;
+
+        let mut rxns: Vec<Rxn> = Vec::new();
+        for (e, eq) in self.equilibria.iter().enumerate() {
+            let mut nu: Vec<(usize, f64)> = Vec::new();
+            let mut ok = true;
+            for (r, &c) in &eq.reactants {
+                if r != "H2O" {
+                    ok &= amount(self, r) > TINY;
+                    nu.push((get_idx(r, &mut names), -c));
+                }
+            }
+            for (p, &c) in &eq.products {
+                if p != "H2O" {
+                    ok &= amount(self, p) > TINY;
+                    nu.push((get_idx(p, &mut names), c));
+                }
+            }
+            if !ok || nu.is_empty() {
+                continue;
+            }
+            let dh_j = eq.delta_h_kj * 1000.0;
+            let log_k_t = eq.log_k_298 + (-dh_j / R_GAS) * (1.0 / t_k - 1.0 / 298.15) / 2.302585;
+            rxns.push(Rxn { eq: Some(e), min: None, nu, ln_k: log_k_t * LN10, dh_j, upper: f64::INFINITY });
+        }
+        for (mi, m) in self.minerals.iter().enumerate() {
+            if m.dissolved_products.is_empty() {
+                continue;
+            }
+            let solid0 = self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0).max(0.0);
+            let all_present = m.dissolved_products.keys().all(|i| amount(self, i) > 1e-12);
+            if solid0 <= 1e-12 && !all_present {
+                continue;
+            }
+            if !m.dissolved_products.keys().all(|i| amount(self, i) > TINY) {
+                continue;
+            }
+            let mut nu: Vec<(usize, f64)> = Vec::new();
+            for (ion, &c) in &m.dissolved_products {
+                nu.push((get_idx(ion, &mut names), c));
+            }
+            let (ln_ksp, dh_j) = Self::mineral_ln_ksp(m, t_k);
+            rxns.push(Rxn { eq: None, min: Some(mi), nu, ln_k: ln_ksp, dh_j, upper: solid0 });
+        }
+        let nr = rxns.len();
+        if nr == 0 {
+            return 0.0;
+        }
+        let n0: Vec<f64> = names.iter().map(|n| amount(self, n)).collect();
+        let ns = names.len();
+
+        let amounts_at = |x: &[f64]| -> Vec<f64> {
+            let mut n = n0.clone();
+            for (r, rx) in rxns.iter().enumerate() {
+                for (i, c) in &rx.nu {
+                    n[*i] += c * x[r];
+                }
+            }
+            n
+        };
+        let residual = |n: &[f64]| -> Vec<f64> {
+            rxns.iter()
+                .map(|rx| rx.nu.iter().map(|(i, c)| c * ln_c(n[*i], vol_l)).sum::<f64>() - rx.ln_k)
+                .collect()
+        };
+        // Bound-aware merit: a dissolving solid already fully consumed whose residual still wants more is satisfied.
+        let free_mask = |x: &[f64], f: &[f64]| -> Vec<bool> {
+            (0..nr).map(|r| !(rxns[r].upper.is_finite() && x[r] >= rxns[r].upper - 1e-18 && f[r] < 0.0)).collect()
+        };
+        let merit = |f: &[f64], free: &[bool]| -> f64 {
+            (0..nr).filter(|r| free[*r]).map(|r| f[r].abs()).fold(0.0, f64::max)
+        };
+
+        let mut x = vec![0.0; nr];
+        let mut n = n0.clone();
+        let mut f = residual(&n);
+        let f_start = f.clone();
+        let mut free = free_mask(&x, &f);
+        let merit_start = merit(&f, &free);
+        if merit_start < 1e-9 {
+            return 0.0;
+        }
+        let mut cur = merit_start;
+
+        for _iter in 0..200 {
+            if cur < 1e-11 {
+                break;
+            }
+            let fidx: Vec<usize> = (0..nr).filter(|r| free[*r]).collect();
+            let m = fidx.len();
+            if m == 0 {
+                break;
+            }
+            // Newton system  H d = -f  on the free reactions, Jacobi-scaled, lightly regularised
+            let mut h = vec![vec![0.0; m]; m];
+            for (a, &ra) in fidx.iter().enumerate() {
+                for (b, &rb) in fidx.iter().enumerate() {
+                    let mut s = 0.0;
+                    for (i, ca) in &rxns[ra].nu {
+                        for (j, cb) in &rxns[rb].nu {
+                            if i == j {
+                                s += ca * cb / n[*i].max(1e-300);
+                            }
+                        }
+                    }
+                    h[a][b] = s;
+                }
+            }
+            let scale: Vec<f64> = (0..m).map(|a| 1.0 / h[a][a].max(1e-300).sqrt()).collect();
+            let mut aug = vec![vec![0.0; m + 1]; m];
+            for a in 0..m {
+                for b in 0..m {
+                    aug[a][b] = h[a][b] * scale[a] * scale[b];
+                }
+                aug[a][a] *= 1.0 + 1e-12;
+                aug[a][m] = -f[fidx[a]] * scale[a];
+            }
+            let mut singular = false;
+            for col in 0..m {
+                let mut piv = col;
+                for r in col + 1..m {
+                    if aug[r][col].abs() > aug[piv][col].abs() {
+                        piv = r;
+                    }
+                }
+                if aug[piv][col].abs() < 1e-14 {
+                    singular = true;
+                    break;
+                }
+                aug.swap(col, piv);
+                for r in col + 1..m {
+                    let fct = aug[r][col] / aug[col][col];
+                    for c in col..=m {
+                        aug[r][c] -= fct * aug[col][c];
+                    }
+                }
+            }
+            if singular {
+                break;
+            }
+            let mut d = vec![0.0; nr];
+            let mut y = vec![0.0; m];
+            for a in (0..m).rev() {
+                let mut s = aug[a][m];
+                for b in a + 1..m {
+                    s -= aug[a][b] * y[b];
+                }
+                y[a] = s / aug[a][a];
+            }
+            for a in 0..m {
+                d[fidx[a]] = y[a] * scale[a];
+            }
+
+            // largest step that keeps every amount positive and every dissolving solid within what is present
+            let mut dn = vec![0.0; ns];
+            for (r, rx) in rxns.iter().enumerate() {
+                for (i, c) in &rx.nu {
+                    dn[*i] += c * d[r];
+                }
+            }
+            let mut alpha: f64 = 1.0;
+            let mut bound_hit: Option<usize> = None;
+            for i in 0..ns {
+                if dn[i] < 0.0 {
+                    alpha = alpha.min(0.9 * n[i] / -dn[i]);
+                }
+            }
+            for r in 0..nr {
+                if rxns[r].upper.is_finite() && d[r] > 0.0 {
+                    let a_max = (rxns[r].upper - x[r]) / d[r];
+                    if a_max <= alpha {
+                        alpha = a_max;
+                        bound_hit = Some(r);
+                    }
+                }
+            }
+            if !(alpha > 0.0) {
+                break;
+            }
+
+            // backtrack until the residual does not grow
+            let mut accepted = false;
+            for _ in 0..40 {
+                let mut x_try: Vec<f64> = (0..nr).map(|r| x[r] + alpha * d[r]).collect();
+                if let Some(r) = bound_hit {
+                    if alpha == (rxns[r].upper - x[r]) / d[r] {
+                        x_try[r] = rxns[r].upper;
+                    }
+                }
+                let n_try = amounts_at(&x_try);
+                if n_try.iter().any(|v| *v < 0.0) {
+                    alpha *= 0.5;
+                    bound_hit = None;
+                    continue;
+                }
+                let f_try = residual(&n_try);
+                let free_try = free_mask(&x_try, &f_try);
+                let mer = merit(&f_try, &free_try);
+                if mer < cur || mer < 1e-11 {
+                    x = x_try;
+                    n = n_try;
+                    f = f_try;
+                    free = free_try;
+                    cur = mer;
+                    accepted = true;
+                    break;
+                }
+                alpha *= 0.5;
+                bound_hit = None;
+            }
+            if !accepted {
+                break;
+            }
+        }
+
+        if !(cur < merit_start) {
+            return 0.0;
+        }
+
+        // Commit
+        let mut q = 0.0;
+        for (i, name) in names.iter().enumerate() {
+            self.species_mol.insert(name.clone(), n[i].max(0.0));
+        }
+        for (r, rx) in rxns.iter().enumerate() {
+            let xi = x[r];
+            if xi == 0.0 {
+                continue;
+            }
+            q -= xi * rx.dh_j;
+            if let Some(mi) = rx.min {
+                let sp = self.minerals[mi].solid_species.clone();
+                let sm = self.solid_mol.entry(sp.clone()).or_default();
+                *sm = (*sm - xi).max(0.0);
+                if xi < 0.0 {
+                    *self.initial_solids.entry(sp).or_default() += -xi;
+                }
+            }
+            if let (Some(e), true) = (rx.eq, xi.abs() > 1e-14) {
+                let rate = xi / (vol_l * dt_s.max(0.001));
+                if let Some(row) = self.active_reactions.iter_mut().find(|row| row.id == self.equilibria[e].id) {
+                    row.rate += rate;
+                } else {
+                    let eq = &self.equilibria[e];
+                    self.active_reactions.push(ReactionRow {
+                        id: eq.id.clone(),
+                        equation: eq.equation.clone(),
+                        kind: "equilibrium".to_string(),
+                        rate,
+                        log_q_over_k: Some(f_start[r] / LN10),
+                        tier: eq.tier.clone(),
+                        source: eq.source.clone(),
+                        active: true,
+                    });
+                }
+            }
         }
         q
     }

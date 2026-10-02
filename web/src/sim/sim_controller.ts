@@ -21,6 +21,10 @@ export class SimController {
   public isPaused: boolean = false;
   private simIntervalId: any = null;
   public onSnapshotUpdated?: (id: string, snap: VesselSnapshot) => void;
+  /** Total simulated seconds stepped so far (does not advance while paused; scales with speed). */
+  public simTime = 0;
+  /** Fired after every stepped batch (after the per-vessel snapshot callbacks) with the new `simTime`. */
+  public onTick?: (simTime: number) => void;
 
   constructor(worker: Worker) {
     this.worker = worker;
@@ -89,6 +93,42 @@ export class SimController {
     const portion = await this.sendRequest<Portion>('VESSEL_REMOVE_LIQUID', { handle, volume_ml, include_solids });
     await this.fetchSnapshot(id);
     return portion;
+  }
+
+  /** Like `removeLiquid`, but takes the densest layer first (separatory funnel stopcock). */
+  public async removeLiquidBottom(id: string, volume_ml: number, include_solids: boolean = false): Promise<Portion> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    const portion = await this.sendRequest<Portion>('VESSEL_REMOVE_LIQUID_BOTTOM', { handle, volume_ml, include_solids });
+    await this.fetchSnapshot(id);
+    return portion;
+  }
+
+  /** Connect a delivery tube from the stoppered flask `srcId` to the gas collector `dstId` (seals the source). */
+  public async gasLink(srcId: string, dstId: string): Promise<boolean> {
+    const src = this.vesselHandles.get(srcId);
+    const dst = this.vesselHandles.get(dstId);
+    if (src === undefined || dst === undefined) return false;
+    const res = await this.sendRequest<{ ok: boolean }>('GAS_LINK', { src, dst });
+    await this.fetchSnapshot(srcId);
+    return res.ok;
+  }
+
+  /** Remove the delivery tube of `srcId` (it stays stoppered). */
+  public async gasUnlink(srcId: string): Promise<boolean> {
+    const src = this.vesselHandles.get(srcId);
+    if (src === undefined) return false;
+    const res = await this.sendRequest<{ ok: boolean }>('GAS_UNLINK', { src });
+    return res.ok;
+  }
+
+  /** Empty a gas collector (plunger pushed home / jar flushed). Resolves to the moles discarded. */
+  public async gasVent(id: string): Promise<number> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) return 0;
+    const res = await this.sendRequest<{ mol: number }>('GAS_VENT', { handle });
+    await this.fetchSnapshot(id);
+    return res.mol;
   }
 
   public async addPortion(id: string, portion: Portion): Promise<any> {
@@ -171,6 +211,12 @@ export class SimController {
                 this.onSnapshotUpdated(id, snaps[String(h)]);
               }
             }
+          }
+          this.simTime += Math.min(simDt, 1.0);
+          try {
+            this.onTick?.(this.simTime);
+          } catch (err) {
+            console.warn('[sim] onTick failed', err);
           }
         } catch {
           // Ignore clock tick errors while transitioning

@@ -185,6 +185,8 @@ pub struct VesselSnapshot {
     pub reactions: Vec<ReactionRow>,
     pub conservation: ConservationInfo,
     pub events: Vec<VesselEvent>,
+    /// Collected gas (collectors) or evolved headspace gas (stoppered vessels).
+    pub gas: crate::gas::GasInfo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -244,6 +246,8 @@ pub struct Vessel {
     pub solid_mol: HashMap<String, f64>,
     pub initial_solids: HashMap<String, f64>,
     pub headspace_gas_mol: HashMap<String, f64>,
+    /// Gas collection bookkeeping (collected moles / escaped moles), see `gas.rs`.
+    pub gas: crate::gas::GasState,
     pub mass_lost_g: f64,
     pub events: Vec<VesselEvent>,
     pub flame_active: bool,
@@ -286,6 +290,7 @@ impl Vessel {
             solid_mol: HashMap::new(),
             initial_solids: HashMap::new(),
             headspace_gas_mol: HashMap::new(),
+            gas: Default::default(),
             mass_lost_g: 0.0,
             events: Vec::new(),
             flame_active: false,
@@ -413,9 +418,17 @@ impl Vessel {
         self.sync_known_solids();
         self.auto_minerals();
         for _ in 0..40 {
+            let (sp0, so0) = (self.species_mol.clone(), self.solid_mol.clone());
             let q_eq = self.step_equilibria(0.001);
             let cp_tot = (4.184 * self.contents_mass_g() + self.config.glass_mass_g * 0.84 * 0.15).max(1.0);
             self.temperature_k += q_eq / cp_tot;
+            // stop as soon as a sweep no longer moves anything (the coupled solve normally gets there in one pass)
+            let moved = |a: &HashMap<String, f64>, b: &HashMap<String, f64>| {
+                a.len() != b.len() || a.iter().any(|(k, v)| (b.get(k).copied().unwrap_or(f64::NAN) - v).abs() > 1e-14 * v.abs().max(1e-6))
+            };
+            if !moved(&sp0, &self.species_mol) && !moved(&so0, &self.solid_mol) {
+                break;
+            }
         }
         self.update_network();
         self.detect_events(true);
@@ -492,6 +505,61 @@ impl Vessel {
         })
     }
 
+    /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first (aqueous, 1.0+ g/mL, before the
+    /// ethanol layer at 0.789 g/mL), then the next one. Settled solids leave with the bottom phase. `remove_liquid`
+    /// (proportional over everything) is unchanged.
+    pub fn remove_liquid_bottom(&mut self, volume_ml: f64, include_solids: bool) -> Result<Portion, String> {
+        let aq_vol = self.aqueous_volume_ml();
+        let org_vol = self.organic_volume_ml();
+        let total_vol = aq_vol + org_vol;
+        if total_vol <= 1e-6 || volume_ml <= 0.0 {
+            return self.remove_liquid(0.0, include_solids);
+        }
+        let want = volume_ml.clamp(0.0, total_vol);
+        // phases in order of decreasing density (aqueous is always denser than the ethanol phase here)
+        let aq_density = 1.0 + (self.calc_ionic_strength() * 0.03).min(0.2);
+        let aq_first = aq_density >= 0.789;
+        let (first_vol, second_vol) = if aq_first { (aq_vol, org_vol) } else { (org_vol, aq_vol) };
+        let take_first = want.min(first_vol);
+        let take_second = (want - take_first).min(second_vol);
+        let frac_of = |take: f64, vol: f64| if vol > 1e-9 { (take / vol).clamp(0.0, 1.0) } else { 0.0 };
+        let (f_aq, f_org) = if aq_first {
+            (frac_of(take_first, aq_vol), frac_of(take_second, org_vol))
+        } else {
+            (frac_of(take_second, aq_vol), frac_of(take_first, org_vol))
+        };
+
+        let mut aq_mol = HashMap::new();
+        let mut org_mol = HashMap::new();
+        for (sp, mol) in self.species_mol.iter_mut() {
+            if sp == "C2H5OH" {
+                let removed = *mol * f_org;
+                *mol -= removed;
+                org_mol.insert(sp.clone(), removed);
+            } else {
+                let removed = *mol * f_aq;
+                *mol -= removed;
+                aq_mol.insert(sp.clone(), removed);
+            }
+        }
+        let mut s_mol = HashMap::new();
+        if include_solids {
+            let f_solid = if aq_first { f_aq } else { f_org };
+            for (sp, mol) in self.solid_mol.iter_mut() {
+                let removed = *mol * f_solid;
+                *mol -= removed;
+                s_mol.insert(sp.clone(), removed);
+            }
+        }
+        Ok(Portion {
+            volume_ml: take_first + take_second,
+            temperature_k: self.temperature_k,
+            aqueous_mol: aq_mol,
+            organic_mol: org_mol,
+            solid_mol: s_mol,
+        })
+    }
+
     pub fn set_controls(&mut self, controls: VesselControls) {
         if let Some(h) = controls.heater_w {
             self.controls.heater_w = Some(h);
@@ -543,6 +611,10 @@ impl Vessel {
             reaction_heat_joules += q_eq;
         }
 
+        // 2b. Dissolved CO2 above its Henry solubility at the current gas pressure bubbles out. Without this the
+        // (now exact) carbonate equilibrium would hold all CO2 from an acid + carbonate reaction in solution.
+        self.step_co2_degassing(dt_s);
+
         self.recent_reaction_heat_w = reaction_heat_joules / dt_s;
 
         // 3. Thermal energy balance
@@ -557,6 +629,33 @@ impl Vessel {
         self.detect_events(false);
 
         Ok(())
+    }
+
+    fn step_co2_degassing(&mut self, dt_s: f64) {
+        let co2 = self.species_mol.get("CO2(aq)").copied().unwrap_or(0.0);
+        let vol_l = self.aqueous_volume_ml() / 1000.0;
+        if co2 <= 1e-12 || vol_l < 1e-5 {
+            return;
+        }
+        let p_gas = if self.sealed { self.pressure_atm.max(1.0) } else { 1.0 };
+        let stirring = self.controls.stirring.unwrap_or(false);
+        let (evolved, c_new) = crate::phase_transfer::step_gas_evolution(co2 / vol_l, vol_l, self.temperature_k, p_gas, stirring, dt_s);
+        if evolved <= 1e-12 {
+            return;
+        }
+        self.species_mol.insert("CO2(aq)".to_string(), (c_new * vol_l).max(0.0));
+        let vol_gas_ml = evolved * 8.314 * self.temperature_k / (self.pressure_atm.max(0.1) * 101325.0) * 1e6;
+        self.gas_fluxes.push(GasFlux {
+            species: "CO2(g)".to_string(),
+            rate_ml_s: vol_gas_ml / dt_s,
+            bubble_diameter_mm: 2.0,
+            nucleation: "bulk".to_string(),
+        });
+        if self.sealed {
+            *self.headspace_gas_mol.entry("CO2(g)".to_string()).or_default() += evolved;
+        } else {
+            self.mass_lost_g += evolved * chem_db::get_species_thermo("CO2(g)").mw;
+        }
     }
 
     fn step_kinetics(&mut self, dt_s: f64) -> f64 {
@@ -994,6 +1093,7 @@ impl Vessel {
             reactions: self.active_reactions.clone(),
             conservation,
             events: self.events.clone(),
+            gas: self.gas_info(),
         }
     }
 
@@ -1013,7 +1113,8 @@ impl Vessel {
     pub fn aqueous_volume_ml(&self) -> f64 {
         let h2o_mol = *self.species_mol.get("H2O").unwrap_or(&0.0);
         let base_vol = h2o_mol * 18.015;
-        if base_vol <= 0.01 && self.species_mol.len() > 1 {
+        // a vessel with solutes but no water is treated as a small aqueous volume, unless it holds a (drained-funnel) ethanol phase
+        if base_vol <= 0.01 && self.species_mol.len() > 1 && self.organic_volume_ml() <= 0.01 {
             10.0
         } else {
             base_vol

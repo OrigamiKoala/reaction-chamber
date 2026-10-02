@@ -1,0 +1,29 @@
+{
+  "job_id": "job_a15b9b47d1",
+  "status": "completed",
+  "reaction": "CC(Cl)C + [OH-] -> CC(O)C + [Cl-]",
+  "family": "sn2_secondary_halide",
+  "solvent": "water",
+  "temperature_k": 298.15,
+  "method": "tblite_GFN2-xTB_ALPB",
+  "energy_hartree": -14.449747526840348,
+  "delta_e_electronic_kcal": 61.04,
+  "xtb_raw_delta_g_kcal": 63.04,
+  "calibrated_delta_g_kcal": 50.31,
+  "uncertainty_kcal": 0.2,
+  "calibrated_rate_constant": 8.21813846473346e-25,
+  "arrhenius_ea_j_mol": 266441.9,
+  "arrhenius_a": 18284870929642.656,
+  "num_imaginary_frequencies": 1,
+  "imaginary_frequency_cm1": 424.2,
+  "validation_flags": [
+    "conformer_optimized",
+    "ts_saddle_found",
+    "imaginary_freq_1",
+    "irc_confirmed",
+    "calibrated_ok"
+  ],
+  "failure_reason": null,
+  "runtime_sec": 2.4512,
+  "tier": "calibrated_xtb"
+}

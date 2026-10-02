@@ -36,10 +36,12 @@ fn two_solutions(a: (&str, &str), b: (&str, &str), sp: &str, expect_mol: f64, co
     assert!(ma.modelable && mb.modelable, "{:?} / {:?}", ma.reason, mb.reason);
     let mut v = beaker();
     dose_ml(&mut v, a.0, 25.0);
-    assert_eq!(solid(&v, sp), 0.0, "no solid before mixing");
+    // (a trivial amount of a hydroxide may form by hydrolysis of a strongly acidic cation, e.g. Fe3+ at the exact equilibrium)
+    let before = solid(&v, sp);
+    assert!(before < 0.25 * expect_mol, "{} must not already be a precipitate before mixing: {} mol", sp, before);
     dose_ml(&mut v, b.0, 25.0);
     let got = solid(&v, sp);
-    assert!(got > expect_mol, "{} should precipitate: found {} mol", sp, got);
+    assert!(got > expect_mol && got > 2.0 * before, "{} should precipitate: found {} mol", sp, got);
     let snap = v.snapshot();
     assert!(snap.solids.iter().any(|s| s.species == sp && s.mass_g > 0.0), "snapshot lists {}", sp);
     let ev: Vec<_> = snap.events.iter().filter(|e| e.kind == VesselEventKind::PrecipitateFormed).collect();
@@ -165,4 +167,3 @@ fn precipitate_settles_over_time() {
     let late = v.snapshot().solids[0].suspended_fraction;
     assert!(early > 0.8 && late < 0.1, "early {} late {}", early, late);
 }
-

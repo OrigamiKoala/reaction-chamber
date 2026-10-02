@@ -1,0 +1,11 @@
+target/
+engine/target/
+node_modules/
+web/node_modules/
+dist/
+web/dist/
+.venv/
+.pytest_cache/
+*.pyc
+__pycache__/
+.DS_Store

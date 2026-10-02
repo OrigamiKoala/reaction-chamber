@@ -1,4 +1,5 @@
-// Left panel: search-first reagent browser (catalog + PubChem in one box), inline Add card, glassware.
+// Left panel: tabs 'Reagents | Glassware'. Reagents = search-first browser (catalog + PubChem in one box) with the inline Add
+// card; Glassware = the catalog menu (ui/glassware_panel.ts).
 import {
   ReagentLibrary,
   ReagentItem,
@@ -9,20 +10,27 @@ import {
   strengthLabel,
   signalWord,
 } from '../app/reagent_library';
-import { GLASSWARE, VesselType } from '../app/lab';
+import type { VesselType } from '../app/lab';
+import type { VesselState } from '../types';
 import { searchPubChemAutocomplete } from '../pubchem/api';
 import { h, prettyFormula, setText } from './dom';
 import { icon } from './icons';
 import { swatchHTML } from './reagent_swatch';
 import { AddCard } from './add_card';
+import { GlasswarePanel } from './glassware_panel';
 
 const RESULT_CAP = 50;
+
+export type LibraryTab = 'reagents' | 'glassware';
 
 export class ReagentPanel {
   public readonly el: HTMLElement;
   public onSelect?: (item: ReagentItem) => void;
   public onImportPubChem?: (name: string) => Promise<void>;
   public onSpawnGlassware?: (type: VesselType) => void;
+  public onSelectGlassware?: (id: string) => void;
+  public onRemoveGlassware?: (id: string) => void;
+  public readonly glassware = new GlasswarePanel();
 
   private search!: HTMLInputElement;
   private clearBtn!: HTMLButtonElement;
@@ -31,6 +39,10 @@ export class ReagentPanel {
   private pubchemSection!: HTMLElement;
   private countEl!: HTMLElement;
   private filter: ReagentFilter = 'all';
+  private tab: LibraryTab = 'reagents';
+  private tabBtns: Record<LibraryTab, HTMLButtonElement> | null = null;
+  private reagentView!: HTMLElement;
+  private glassCount = '';
   private selectedKey: string | null = null;
   private renderQueued = false;
   private pcTimer = 0;
@@ -40,7 +52,7 @@ export class ReagentPanel {
   private pcState: 'idle' | 'loading' | 'done' = 'idle';
 
   constructor(private lib: ReagentLibrary, public readonly addCard: AddCard) {
-    this.el = h('aside', { class: 'panel panel-left', id: 'reagent-panel', 'aria-label': 'Reagents' });
+    this.el = h('aside', { class: 'panel panel-left', id: 'reagent-panel', 'aria-label': 'Reagents and glassware' });
     this.build();
     this.lib.onChange = () => this.queueRender();
   }
@@ -48,6 +60,10 @@ export class ReagentPanel {
   // ------------------------------------------------------------------ public
   public focusSearch(prefill?: string) {
     this.setCollapsed(false);
+    if (this.tab === 'glassware') {
+      this.glassware.focusSearch(prefill);
+      return;
+    }
     if (prefill !== undefined) {
       this.search.value = prefill;
       this.onQueryChanged();
@@ -61,6 +77,34 @@ export class ReagentPanel {
     this.results.querySelectorAll<HTMLElement>('.r-row').forEach((r) => {
       r.setAttribute('aria-current', String(r.dataset.key === key));
     });
+  }
+
+  public get activeTab(): LibraryTab {
+    return this.tab;
+  }
+
+  /** Switch between the Reagents and Glassware views (focus stays where it is unless `focus` is set). */
+  public showTab(tab: LibraryTab, focus = false) {
+    this.tab = tab;
+    this.el.dataset.tab = tab;
+    this.reagentView.hidden = tab !== 'reagents';
+    this.glassware.el.hidden = tab !== 'glassware';
+    for (const t of ['reagents', 'glassware'] as const) {
+      const on = t === tab;
+      this.tabBtns?.[t].setAttribute('aria-selected', String(on));
+      this.tabBtns?.[t].setAttribute('tabindex', on ? '0' : '-1');
+    }
+    this.updateCount();
+    if (focus) this.tabBtns?.[tab].focus();
+  }
+
+  /** Vessels on the bench for the Glassware tab's "On the bench" list. */
+  public setBench(vessels: VesselState[], selectedId: string | null) {
+    this.glassware.setBench(vessels, selectedId);
+  }
+
+  private updateCount() {
+    setText(this.countEl, this.tab === 'glassware' ? this.glassCount : this.lib.size ? String(this.lib.size) : '');
   }
 
   public setCollapsed(collapsed: boolean) {
@@ -86,17 +130,40 @@ export class ReagentPanel {
   // ------------------------------------------------------------------ build
   private build() {
     const head = h('header', { class: 'panel-head' });
-    head.innerHTML = `<h2 class="panel-title">Reagents</h2>`;
+    const tabs = h('div', { class: 'seg panel-tabs', role: 'tablist', 'aria-label': 'Library' });
+    const mkTab = (id: LibraryTab, label: string) => {
+      const b = h('button', {
+        class: 'seg-btn',
+        type: 'button',
+        role: 'tab',
+        id: `lib-tab-${id}`,
+        'aria-selected': String(id === this.tab),
+        'aria-controls': id === 'reagents' ? 'reagents-view' : 'glassware-view',
+        tabindex: id === this.tab ? '0' : '-1',
+        text: label,
+      });
+      b.addEventListener('click', () => this.showTab(id));
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          this.showTab(id === 'reagents' ? 'glassware' : 'reagents', true);
+        }
+      });
+      tabs.append(b);
+      return b;
+    };
+    this.tabBtns = { reagents: mkTab('reagents', 'Reagents'), glassware: mkTab('glassware', 'Glassware') };
+    head.append(tabs);
     this.countEl = h('span', { class: 'panel-count' });
     const collapse = h('button', {
       class: 'icon-btn panel-collapse',
-      'aria-label': 'Show or hide reagents',
+      'aria-label': 'Show or hide the library',
       'aria-expanded': 'true',
       'aria-controls': 'reagent-panel-body',
       html: icon('chevronUp', 16),
     });
     collapse.addEventListener('click', () => this.setCollapsed(!this.collapsed));
-    head.append(this.countEl, collapse);
+    head.append(h('span', { class: 'panel-spacer' }), this.countEl, collapse);
 
     const body = h('div', { class: 'panel-body', id: 'reagent-panel-body' });
 
@@ -139,20 +206,22 @@ export class ReagentPanel {
     const scroller = h('div', { class: 'panel-scroll' }, this.results, this.pubchemSection);
     scroller.addEventListener('keydown', (e) => this.onResultsKey(e));
 
-    // Glassware
-    const glass = h('footer', { class: 'glass-row' });
-    glass.append(h('div', { class: 'eyebrow', text: 'Add glassware' }));
-    const grid = h('div', { class: 'glass-grid' });
-    for (const g of GLASSWARE) {
-      const b = h('button', { class: 'glass-btn', type: 'button', 'aria-label': `Add ${g.label}`, title: `Add ${g.label}` });
-      b.innerHTML = `${icon(g.icon, 22)}<span>${g.label}</span>`;
-      b.addEventListener('click', () => this.onSpawnGlassware?.(g.type));
-      grid.append(b);
-    }
-    glass.append(grid);
+    // Glassware tab (own search, categories, "On the bench" list)
+    this.glassware.onSpawn = (type) => this.onSpawnGlassware?.(type);
+    this.glassware.onSelectVessel = (id) => this.onSelectGlassware?.(id);
+    this.glassware.onRemoveVessel = (id) => this.onRemoveGlassware?.(id);
+    this.glassware.onCount = (n) => {
+      this.glassCount = String(n);
+      if (this.tab === 'glassware') this.updateCount();
+    };
+    this.glassCount = String(this.glassware.total);
+    this.glassware.el.setAttribute('aria-labelledby', 'lib-tab-glassware');
+    this.glassware.el.hidden = true;
 
-    body.append(searchWrap, this.filterRow, scroller, this.addCard.el, glass);
+    this.reagentView = h('div', { class: 'panel-view', id: 'reagents-view', role: 'tabpanel', 'aria-labelledby': 'lib-tab-reagents' }, searchWrap, this.filterRow, scroller, this.addCard.el);
+    body.append(this.reagentView, this.glassware.el);
     this.el.append(head, body);
+    this.el.dataset.tab = this.tab;
     this.renderResults();
   }
 
@@ -165,7 +234,7 @@ export class ReagentPanel {
 
   private renderResults() {
     const q = this.search.value.trim();
-    setText(this.countEl, this.lib.size ? String(this.lib.size) : '');
+    this.updateCount();
     this.results.innerHTML = '';
 
     const recent = q === '' && this.filter === 'all' ? this.lib.recentItems().slice(0, 8) : [];
@@ -291,7 +360,7 @@ export class ReagentPanel {
 
   // ------------------------------------------------------------------ keyboard
   private rows(): HTMLElement[] {
-    return Array.from(this.el.querySelectorAll<HTMLElement>('.r-row, .pc-row:not([disabled])'));
+    return Array.from(this.reagentView.querySelectorAll<HTMLElement>('.r-row, .pc-row:not([disabled])'));
   }
 
   private onSearchKey(e: KeyboardEvent) {

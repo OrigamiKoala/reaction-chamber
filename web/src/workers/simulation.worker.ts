@@ -13,6 +13,10 @@ import init, {
   vessel_dose,
   vessel_add_portion,
   vessel_remove_liquid,
+  vessel_gas_link,
+  vessel_gas_unlink,
+  vessel_gas_vent,
+  vessel_remove_liquid_bottom,
   vessel_control,
   vessel_step,
   vessel_snapshot,
@@ -218,6 +222,36 @@ self.onmessage = async (e: MessageEvent) => {
           payload: JSON.parse(res),
           requestId,
         });
+        break;
+      }
+
+      case 'VESSEL_REMOVE_LIQUID_BOTTOM': {
+        // separatory-funnel stopcock: the densest layer leaves first
+        const res = vessel_remove_liquid_bottom(payload.handle, payload.volume_ml, payload.include_solids ?? false);
+        self.postMessage({
+          type: 'VESSEL_REMOVE_LIQUID_BOTTOM_RESPONSE',
+          payload: JSON.parse(res),
+          requestId,
+        });
+        break;
+      }
+
+      case 'GAS_LINK': {
+        // delivery tube: stoppers `src` and routes its evolved gas into the collector `dst`
+        const ok = vessel_gas_link(payload.src, payload.dst);
+        self.postMessage({ type: 'GAS_LINK_RESPONSE', payload: { ok }, requestId });
+        break;
+      }
+
+      case 'GAS_UNLINK': {
+        const ok = vessel_gas_unlink(payload.src);
+        self.postMessage({ type: 'GAS_UNLINK_RESPONSE', payload: { ok }, requestId });
+        break;
+      }
+
+      case 'GAS_VENT': {
+        const mol = vessel_gas_vent(payload.handle);
+        self.postMessage({ type: 'GAS_VENT_RESPONSE', payload: { mol }, requestId });
         break;
       }
 

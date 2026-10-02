@@ -1,0 +1,140 @@
+// Gas collection against the *built* WASM engine: node tests/gas_collection.mjs
+// A stoppered flask with a delivery tube feeds a gas syringe / gas tube / gas jar. Checks mole conservation
+// (removed from the source headspace == added to the collector, + what a full collector let escape), the volume
+// reading (ideal gas at lab T / P, water-vapour correction over water) and that the flask does not pressurise.
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import * as G from '../web/src/bench/gas_math.ts';
+
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'src', 'wasm', 'engine');
+const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
+eng.initSync({ module: readFileSync(path.join(dir, 'reaction_chamber_engine_bg.wasm')) });
+eng.init_engine();
+
+const J = (x) => (typeof x === 'string' ? JSON.parse(x) : x);
+const mk = (type, cap, glass, r, sealed = false) =>
+  eng.vessel_new(JSON.stringify({ type, capacity_ml: cap, glass_mass_g: glass, inner_radius_cm: r, temperature_k: 293.15, room_k: 293.15, sealed, stopper_pop_atm: 2.2, burst_atm: 6.0 }));
+const flask = () => mk('erlenmeyer-250', 250, 105, 3.6);
+const dose = (h, d) => eng.vessel_dose(h, JSON.stringify(d));
+const snap = (h) => J(eng.vessel_snapshot(h));
+const carbonInSolution = (sn) => sn.species.filter((x) => ['CO2(aq)', 'HCO3-', 'CO3-2', 'H2CO3'].includes(x.id)).reduce((a, x) => a + x.amount_mol, 0);
+const near = (what, a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b} (tol ${tol})`);
+
+/** step all handles for `secs` of sim time in 50 ms ticks like the app's 20 Hz loop; returns the last snapshots. */
+function run(handles, secs, each) {
+  let last = {};
+  for (let t = 0; t < secs; t += 0.05) {
+    last = J(eng.step_all(JSON.stringify(handles), 0.05));
+    each?.(last, t);
+  }
+  return last;
+}
+
+// 1. Mg + excess HCl -> H2 into a 100 mL gas syringe
+{
+  const src = flask();
+  const syr = mk('gas-syringe-100', 100, 140, 1.5);
+  assert.equal(eng.vessel_gas_link(src, syr), true, 'link');
+  assert.equal(snap(src).sealed, true, 'linking stoppers the flask');
+  dose(src, { reagent_id: 'hcl_1m', volume_ml: 30 });
+  const mgMol = 0.0035; // 0.085 g
+  dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305 });
+  let maxP = 0;
+  const s = run([src, syr], 60, (all) => (maxP = Math.max(maxP, all[src].pressure_atm)));
+  const gs = s[syr].gas;
+  assert.equal(gs.collector, 'syringe');
+  const molH2 = gs.species.find((x) => x.species === 'H2(g)')?.mol ?? 0;
+  const headMol = s[src].gas.total_mol;
+  near('H2 collected + left in the flask = Mg consumed', molH2 + headMol, mgMol, 0.0002);
+  assert.ok(molH2 > mgMol * 0.93, `H2 in the syringe ${molH2}`);
+  near('syringe volume = ideal gas at 20 C, 1 atm', gs.volume_ml, G.collectorVolumeMl('syringe', gs.total_mol, 293.15), 1e-6);
+  near('volume reading ~ 84 mL', gs.volume_ml, 84, 5);
+  assert.ok(maxP < 1.1, `the connected flask must not pressurise (peak ${maxP} atm)`);
+  assert.equal(s[src].sealed, true);
+  assert.equal(gs.escaped_mol, 0);
+  console.log(`  ok Mg+HCl -> ${gs.volume_ml.toFixed(1)} mL H2 in the syringe (peak flask pressure ${maxP.toFixed(3)} atm)`);
+  eng.vessel_free(src);
+  eng.vessel_free(syr);
+}
+
+// 2. NaHCO3 + acetic acid -> CO2 over water in a 50 mL gas tube (reading includes the water vapour)
+{
+  const src = flask();
+  const tube = mk('gas-collection-tube-50', 50, 45, 1.0);
+  eng.vessel_gas_link(src, tube);
+  dose(src, { reagent_id: 'ch3cooh_5pct', volume_ml: 20 });
+  for (let i = 0; i < 4; i++) dose(src, { reagent_id: 'nahco3_s', mass_g: 0.05 }); // 2.38 mmol CO2 = 57 mL dry > 50 mL tube
+  const s = run([src, tube], 90);
+  const g = s[tube].gas;
+  assert.equal(g.collector, 'over_water');
+  assert.ok(g.vapour_atm > 0.02 && g.vapour_atm < 0.026);
+  assert.ok(g.volume_ml <= 50 + 1e-6, `capped by the tube: ${g.volume_ml}`);
+  const produced = 0.2 / 84.007; // mol HCO3-
+  near('carbon conserved: gas collected + escaped + in flask + dissolved', g.total_mol + g.escaped_mol + s[src].gas.total_mol + carbonInSolution(s[src]), produced, 0.00012);
+  near('tube volume (water-vapour corrected)', g.volume_ml, G.collectorVolumeMl('over_water', g.total_mol, 293.15), 1e-6);
+  console.log(`  ok NaHCO3 + vinegar over water: ${g.volume_ml.toFixed(1)} mL in a 50 mL tube, ${(g.escaped_mol * 1000).toFixed(3)} mmol escaped`);
+  eng.vessel_free(src);
+  eng.vessel_free(tube);
+}
+
+// 3. Overfilling a syringe: the excess escapes, books balance
+{
+  const src = flask();
+  const syr = mk('gas-syringe-100', 100, 140, 1.5);
+  eng.vessel_gas_link(src, syr);
+  dose(src, { reagent_id: 'ch3cooh_5pct', volume_ml: 100 });
+  let total = 0;
+  for (let i = 0; i < 20; i++) {
+    dose(src, { reagent_id: 'nahco3_s', mass_g: 0.25 }); // 2.98 mmol each, ~60 mmol altogether
+    total += 0.25 / 84.007;
+    run([src, syr], 3);
+  }
+  const s = run([src, syr], 20);
+  const g = s[syr].gas;
+  near('syringe is full', g.volume_ml, 100, 0.5);
+  assert.ok(g.escaped_mol > 0.0005, 'excess escaped');
+  near('carbon conserved: collected + escaped + flask + dissolved', g.total_mol + g.escaped_mol + s[src].gas.total_mol + carbonInSolution(s[src]), total, 0.0002);
+  assert.equal(s[src].sealed, true, 'connected flask keeps its stopper');
+  console.log(`  ok overfilled syringe: ${g.volume_ml.toFixed(1)} mL, ${(g.escaped_mol * 1000).toFixed(1)} mmol escaped`);
+  eng.vessel_free(src);
+  eng.vessel_free(syr);
+}
+
+// 4. Unlink: the stopper stays, gas builds pressure again; a freed collector drops its link; venting empties it
+{
+  const src = flask();
+  const syr = mk('gas-syringe-100', 100, 140, 1.5);
+  eng.vessel_gas_link(src, syr);
+  assert.equal(eng.vessel_gas_unlink(src), true);
+  assert.equal(eng.vessel_gas_unlink(src), false);
+  dose(src, { reagent_id: 'ch3cooh_5pct', volume_ml: 20 });
+  dose(src, { reagent_id: 'nahco3_s', mass_g: 0.3 });
+  const s = run([src, syr], 10);
+  assert.ok(s[syr].gas.total_mol < 1e-12, 'nothing is collected without a tube');
+  assert.ok(s[src].pressure_atm > 1.1 || s[src].gas.total_mol > 1e-3, 'gas stays in the stoppered flask');
+  eng.vessel_gas_link(src, syr);
+  const s2 = run([src, syr], 20);
+  assert.ok(s2[syr].gas.volume_ml > 50, 're-linked: the trapped gas flows into the syringe');
+  const vented = eng.vessel_gas_vent(syr);
+  assert.ok(vented > 0.002);
+  assert.equal(snap(syr).gas.total_mol, 0);
+  eng.vessel_free(syr); // freeing an end drops the link without breaking the flask
+  run([src], 1);
+  eng.vessel_free(src);
+  console.log('  ok unlink / re-link / vent / free');
+}
+
+// 5. A plain vessel reports its trapped headspace gas, no collector
+{
+  const v = mk('erlenmeyer-250', 250, 105, 3.6, true);
+  dose(v, { reagent_id: 'ch3cooh_5pct', volume_ml: 20 });
+  dose(v, { reagent_id: 'nahco3_s', mass_g: 0.1 });
+  const s = run([v], 5)[v];
+  assert.equal(s.gas.collector, null);
+  assert.ok(s.gas.total_mol > 2e-4 && s.gas.species[0].species === 'CO2(g)');
+  eng.vessel_free(v);
+  console.log('  ok stoppered flask reports its headspace gas');
+}
+console.log('gas collection OK');

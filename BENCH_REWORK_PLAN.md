@@ -79,7 +79,7 @@ vessel_panel, time_controls, top_bar, toast, modal, icons, dom, hint, self_test}
 `ui/custom_reaction_modal.ts`, `ui/bottle_card.ts` (native `<dialog>` via `ui/modal.ts`). Removed: `ui/controls.ts`,
 `ui/dosing_dialog.ts`, `ui/shelf.ts`, `ui/status.ts`. No observation feed (per spec change).
 
-**UX.** Full-bleed bench; floating porcelain panels. Top bar: brand · engine status dot · Details (A) · More (⋯: Import from
+**UX.** Full-bleed bench; floating porcelain panels. Top bar: brand · engine status dot · Details (I) · More (⋯: Import from
 PubChem → focuses search, Custom chemistry, Run self-test, engine/server status). Left "Reagents": one search box over catalog
 (name/formula/id, ranked, capped at 50 + "N more") with generic filter chips (Solutions/Liquids/Solids/Indicators from
 `form`/`dropper`; Imported), Recently used (localStorage, cap 24), and a PubChem section in the same results (autocomplete +
@@ -92,7 +92,7 @@ Events log from `snap.events` (kind label + sim time), Controls (heat slider 0�
 toggles, Ignite only when an organic phase or a GHS02 reagent is present), Contents (top 6 species, formula-prettified, M or
 mol), Pour into (target chips, slider + number + presets 10/25/Half/All bounded by source volume & target free space, Empty
 into waste with confirm). Bottom-centre time bar (pause/play, 1×/5×/20×, sim clock). Toasts replace alert(); one-time
-dismissible hint. Keys: A details, Space pause (when not on a control), F focus vessel, / search, Esc closes menu → add card →
+dismissible hint. Keys: I details, WASD/arrows walk, Space pause (when not on a control), F focus vessel, / search, Esc closes menu → add card →
 details → deselects. ≤760 px: panels become one bottom sheet at a time with a Reagents/Vessel switch.
 
 **Contract usage / assumptions for the integrator.**

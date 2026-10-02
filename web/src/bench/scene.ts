@@ -14,6 +14,25 @@ import { ReagentShelf } from './shelf';
 import { Animator, AnimTask, PourSource, dropsTask, ease, moveTask, once, pourTask, solidTask } from './animations';
 import { setParticleViewport } from '../render/particles';
 import { importIsSolid } from '../pubchem/parser';
+import {
+  DropPlace,
+  DropSpot,
+  FlowForm,
+  FlowSink,
+  FlowSourceRef,
+  HandlingController,
+  HandlingHost,
+  PourState,
+  nearestFreeSpot,
+} from './handling';
+import { GasTubes, GasHost } from './gas_collection';
+import { FilterRigs } from './filtration';
+import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
+
+/** Bench instruments the user can click (right panel shows their controls). */
+export type InstrumentId = 'hotplate' | 'balance' | 'phmeter' | 'thermometer' | 'gauge' | 'burner';
+
+type PickHit = { type: 'vessel' | 'bottle' | 'balance-tare' | 'stopcock' | 'stirknob' | 'instrument'; id: string };
 
 /** Bench instruments owned by the scene. UI reads `readout()` values; never decides chemistry. */
 export interface BenchInstruments {
@@ -39,6 +58,15 @@ interface ProbeMotion {
   fromQuat: THREE.Quaternion;
 }
 
+/** Walk keys -> [forward, right]. Shift is a speed modifier (no movement of its own). */
+const WALK_KEYS: Record<string, [number, number]> = {
+  KeyW: [1, 0], ArrowUp: [1, 0],
+  KeyS: [-1, 0], ArrowDown: [-1, 0],
+  KeyA: [0, -1], ArrowLeft: [0, -1],
+  KeyD: [0, 1], ArrowRight: [0, 1],
+  ShiftLeft: [0, 0], ShiftRight: [0, 0],
+};
+const WALK_SPEED = 55; // cm/s
 const HOTPLATE_POS = new THREE.Vector3(0, 0, 6);
 const PH_METER_POS = new THREE.Vector3(46, 0, -14);
 const BALANCE_POS = new THREE.Vector3(80, 0, -4);
@@ -54,11 +82,37 @@ export class BenchScene {
   public renderer: THREE.WebGLRenderer;
   public controls: OrbitControls;
   /** 'bottle' ids are catalog reagent ids (addReagentBottle) or PubChem BottleState ids (addBottle). */
-  public onSelectObject?: (type: 'vessel' | 'bottle', id: string) => void;
+  public onSelectObject?: (type: 'vessel' | 'bottle' | 'instrument', id: string) => void;
   /** Click on empty bench / background (not a drag). */
   public onDeselect?: () => void;
   public instruments: BenchInstruments;
   public onPourRequested?: (sourceId: string, targetId: string) => void;
+  /** Contextual one-line hint ('Drag to pick up', 'Drag up to tilt · release to stop pouring') or null to clear. */
+  public onHint?: (text: string | null) => void;
+  /** Live readout while a carried container is locked over a vessel (null when not). */
+  public onPourState?: (s: PourState | null) => void;
+  /** Short toast-worthy messages from manual handling ('Beaker is full'). */
+  public onNotify?: (message: string, kind?: 'info' | 'warning') => void;
+  /** Opens the chemistry side of a manual pour (Lab.openFlow). Return null to refuse (nothing is poured). */
+  public flowProvider?: (src: FlowSourceRef, targetId: string, form: FlowForm) => FlowSink | null;
+  /** A vessel was picked up from the hot plate / balance pan (it is no longer heated / weighed). */
+  public onVesselLifted?: (id: string, from: DropPlace) => void;
+  /** A carried vessel came to rest. For 'hotplate' the handler must call `placeVesselOnHotPlate(id)` (Lab.moveToHotPlate). */
+  public onVesselPlaced?: (id: string, place: DropPlace) => void;
+  /** Total mass (glass + contents, g) of a vessel for the balance. Falls back to the snapshot's contents mass. */
+  public massProvider?: (id: string) => number;
+  /** Opens a drain of a burette / separatory funnel into a vessel (null target = onto the bench). Lab.openDrain; null refuses. */
+  public drainProvider?: (srcId: string, targetId: string | null, bottom: boolean) => FlowSink | null;
+  /** Engine volume (mL) of a vessel (Lab.volumeMl). */
+  public volumeProvider?: (id: string) => number;
+  /** The stirrer knob on the titration station was clicked (Lab.setStir). */
+  public onStirrerToggle?: (id: string, on: boolean) => void;
+  /** A vessel left the stirrer plate (Lab stops its stirring). */
+  public onStirrerVacated?: (id: string) => void;
+  /** Titration station: burette clamp, stirrer + tile, stopcock levers, separatory funnel stand. */
+  public titration!: TitrationRig;
+  /** Chemistry side of pipetting (draw / dispense between vessels), wired by main.ts to the Lab. */
+  public pipetteLab?: import('./pipetting').PipetteLab | null;
 
   private container: HTMLElement;
   private room: LabRoom;
@@ -73,6 +127,15 @@ export class BenchScene {
   private slotOwner: (string | null)[] = [];
   private vesselSlot = new Map<string, number>();
   private hotPlateVessel: string | null = null;
+  private instrumentProxies: THREE.Mesh[] = [];
+  private panVessel: string | null = null;
+  private pan: { center: THREE.Vector3; radius: number; topY: number } | null = null;
+  private handling!: HandlingController;
+  /** Delivery tubes + gas collector visuals (see gas_collection.ts). */
+  public gas!: GasTubes;
+  /** Funnels sitting on flasks + filtrate drips (see filtration.ts). */
+  public filters!: FilterRigs;
+  private pulse: { id: string; t: number } | null = null;
   private selectedId: string | null = null;
   private hoverKey: string | null = null;
   private hoverDirty = false;
@@ -86,6 +149,7 @@ export class BenchScene {
 
   private transient = new Set<{ object: THREE.Object3D; setRenderOrderBase: (b: number) => void }>();
   private cameraTween: AnimTask | null = null;
+  private moveKeys = new Set<string>();
   private time = 0;
   private lastFrame = performance.now();
   private shadowTimer = 0;
@@ -152,6 +216,15 @@ export class BenchScene {
     burner.group.position.copy(BURNER_POS);
     burner.group.rotation.y = 0.4;
     this.scene.add(thermometer.group, phMeter.group, balance.group, pressureGauge.group, hotPlate.group, burner.group);
+    this.instrumentProxies = [
+      this.addInstrumentProxy('hotplate', hotPlate.group, null),
+      this.addInstrumentProxy('balance', balance.group, null),
+      this.addInstrumentProxy('phmeter', phMeter.group, phMeter.probe),
+      this.addInstrumentProxy('phmeter', phMeter.probe, null),
+      this.addInstrumentProxy('thermometer', thermometer.group, null),
+      this.addInstrumentProxy('gauge', pressureGauge.group, null),
+      this.addInstrumentProxy('burner', burner.group, null, new THREE.Box3(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, BURNER_TOP_Y, 5))),
+    ];
     this.instruments = { thermometer, phMeter, balance, pressureGauge, hotPlate, burner };
     this.thermoMotion = { bundle: null, t: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion() };
     this.phMotion = { bundle: null, t: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion() };
@@ -162,6 +235,7 @@ export class BenchScene {
       { x0: 36, x1: 57, z0: -26, z1: -2 },
       { x0: 67, x1: 93, z0: -19, z1: 11 },
       { x0: -97, x1: -73, z0: -18, z1: 10 },
+      STATION_FOOTPRINT,
     ];
     this.buildSlots();
 
@@ -173,6 +247,13 @@ export class BenchScene {
     el.addEventListener('pointerup', this.onPointerUp);
     el.addEventListener('pointermove', this.onPointerMove);
     el.addEventListener('pointerleave', this.onPointerLeave);
+    // capture phase on the parent: runs before OrbitControls so a press on a bottle / vessel can keep the camera still
+    container.addEventListener('pointerdown', this.onPointerDownCapture, true);
+    this.refreshPan();
+    this.handling = new HandlingController(this.makeHandlingHost());
+    this.gas = new GasTubes(this.makeGasHost());
+    this.filters = new FilterRigs({ scene: this.scene, vessels: () => this.glasswareMap, markDirty: () => (this.shadowDirty = true) });
+    this.titration = new TitrationRig(this.makeTitrationHost());
 
     this.animate();
   }
@@ -191,8 +272,25 @@ export class BenchScene {
     this.slotOwner = this.slots.map(() => null);
   }
 
-  private allocSlot(id: string): number {
-    let idx = this.slotOwner.indexOf(null);
+  /** A bench slot is usable when nobody stands on it (vessels may have been dropped anywhere by hand). */
+  private slotFree(i: number, id: string, r: number): boolean {
+    if (this.slotOwner[i] !== null) return false;
+    const s = this.slots[i];
+    for (const [vid, b] of this.glasswareMap) {
+      if (vid === id) continue;
+      if (Math.hypot(b.group.position.x - s.x, b.group.position.z - s.z) < r + Math.max(b.footprint, b.profile.maxOuterRadius) + 1) return false;
+    }
+    return true;
+  }
+
+  private allocSlot(id: string, r = 5): number {
+    let idx = -1;
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slotFree(i, id, r)) {
+        idx = i;
+        break;
+      }
+    }
     if (idx < 0) {
       // overflow: add an extra slot further along the back
       const n = this.slots.length;
@@ -218,9 +316,21 @@ export class BenchScene {
   }
 
   private groundAt(x: number, z: number): number {
+    const rig = this.titration?.groundAt(x, z);
+    if (rig !== null && rig !== undefined) return rig;
     const top = this.hotPlateTopWorld();
     if (Math.abs(x - top.x) < 9 && Math.abs(z - top.z) < 9) return HOTPLATE_TOP_Y;
+    const p = this.pan;
+    if (p && Math.hypot(x - p.center.x, z - p.center.z) < p.radius + 0.3) return p.topY;
     return 0;
+  }
+
+  private refreshPan() {
+    try {
+      this.pan = this.instruments.balance.panWorld();
+    } catch (e) {
+      this.pan = null;
+    }
   }
 
   // ---------------------------------------------------------------- vessels
@@ -230,8 +340,17 @@ export class BenchScene {
     const existing = this.glasswareMap.get(state.id);
     if (existing) return existing;
     const bundle = createGlassware(state);
-    const idx = this.allocSlot(state.id);
-    bundle.group.position.copy(this.slots[idx]);
+    let mount: THREE.Vector3 | null = null;
+    try {
+      mount = this.titration.onVesselAdded(bundle); // a burette goes straight into the station clamp
+    } catch (e) {
+      console.warn('[bench] titration.onVesselAdded failed', e);
+    }
+    if (mount) bundle.group.position.copy(mount);
+    else {
+      const idx = this.allocSlot(state.id, Math.max(bundle.footprint, bundle.profile.maxOuterRadius));
+      bundle.group.position.copy(this.slots[idx]);
+    }
     bundle.group.rotation.y = 0;
     this.scene.add(bundle.group);
     this.glasswareMap.set(state.id, bundle);
@@ -242,8 +361,13 @@ export class BenchScene {
   public removeVessel(id: string) {
     const bundle = this.glasswareMap.get(id);
     if (!bundle) return;
+    this.handling.onVesselRemoved(id);
+    this.gas.removeVessel(id);
+    this.filters.removeVessel(id);
+    this.titration.onVesselRemoved(id);
     if (this.selectedId === id) this.setSelectedVessel(null);
     if (this.hotPlateVessel === id) this.hotPlateVessel = null;
+    if (this.panVessel === id) this.panVessel = null;
     this.freeSlotOf(id);
     this.glasswareMap.delete(id);
     bundle.dispose();
@@ -306,7 +430,7 @@ export class BenchScene {
     const bundle = id ? this.glasswareMap.get(id) ?? null : null;
     const newId = bundle ? id : null;
     for (const [vid, b] of this.glasswareMap) b.setSelected(vid === newId);
-    const { thermometer, phMeter, balance, pressureGauge } = this.instruments;
+    const { thermometer, phMeter, pressureGauge } = this.instruments;
     // re-selecting the same vessel refreshes the seal-dependent gauge (UI calls this after sealing)
     const sealed = !!bundle && (bundle.vesselState.isSealed || this.isSealed(bundle));
     pressureGauge.attachTo(sealed ? bundle : null);
@@ -315,7 +439,6 @@ export class BenchScene {
     this.selectedId = newId;
     thermometer.attachTo(bundle);
     phMeter.attachTo(bundle);
-    balance.attachTo(bundle);
     this.startProbeMotion(this.thermoMotion, thermometer.group, bundle);
     this.startProbeMotion(this.phMotion, phMeter.probe, bundle);
   }
@@ -334,7 +457,7 @@ export class BenchScene {
 
   /** Feed the selected vessel's snapshot to the instruments (lagged readouts). */
   public updateInstruments(snap: VesselSnapshot, dtSeconds: number): void {
-    const { thermometer, phMeter, balance, pressureGauge, hotPlate, burner } = this.instruments;
+    const { thermometer, phMeter, pressureGauge, hotPlate, burner } = this.instruments;
     const b = this.selectedId ? this.glasswareMap.get(this.selectedId) : undefined;
     // pH bulb must be under the surface (and the probe must have arrived)
     if (b) {
@@ -347,7 +470,6 @@ export class BenchScene {
     }
     thermometer.update(snap, dtSeconds);
     phMeter.update(snap, dtSeconds);
-    balance.update(snap, dtSeconds);
     pressureGauge.update(snap, dtSeconds);
     hotPlate.update(snap, dtSeconds);
     burner.update(snap, dtSeconds);
@@ -429,6 +551,8 @@ export class BenchScene {
     const prev = this.hotPlateVessel;
     if (id !== null && !this.glasswareMap.has(id)) return null;
     if (id !== null && prev === id) return null;
+    if (id !== null && this.panVessel === id) this.panVessel = null;
+    if (id !== null) this.titration.vesselMoved(id);
     let displaced: string | null = null;
     if (prev && this.glasswareMap.has(prev)) {
       const pb = this.glasswareMap.get(prev)!;
@@ -441,7 +565,10 @@ export class BenchScene {
       const b = this.glasswareMap.get(id)!;
       this.freeSlotOf(id);
       this.hotPlateVessel = id;
-      this.animator.add(moveTask(b.group, this.hotPlateTopWorld(), () => b.liquid.slosh(0.05), HOTPLATE_TOP_Y));
+      const to = this.hotPlateTopWorld();
+      // already set down on the plate by hand: just snap, no lift-and-slide hop
+      if (b.group.position.distanceTo(to) < 0.6) b.group.position.copy(to);
+      else this.animator.add(moveTask(b.group, to, () => b.liquid.slosh(0.05), HOTPLATE_TOP_Y));
     }
     this.shadowDirty = true;
     return displaced;
@@ -520,7 +647,7 @@ export class BenchScene {
       }
       let asm = this.shelf.get(sourceGroupId);
       let temporary = false;
-      if (asm && this.animator.isBusy(asm.group)) asm = undefined;
+      if (asm && (this.animator.isBusy(asm.group) || this.handling.isHeld(sourceGroupId))) asm = undefined; // in someone's hand
       if (asm && asm.kind !== 'liquid') asm = undefined; // pour from a jar/dropper: use a pouring bottle
       if (!asm) {
         asm = this.tempBottle(sourceGroupId, target, colorHex, 'liquid');
@@ -654,7 +781,412 @@ export class BenchScene {
     }
   }
 
+  // ---------------------------------------------------------------- manual handling
+  /** True while a bottle / vessel is being carried (keyboard shortcuts should be ignored). */
+  public isHolding(): boolean {
+    return this.handling.holding;
+  }
+
+  /** Drop whatever is carried back where it came from (same as Esc). */
+  public cancelHandling(): void {
+    this.handling.cancel();
+  }
+
+  /** Vessel currently standing on the balance pan, if any. */
+  public getPanVesselId(): string | null {
+    return this.panVessel;
+  }
+
+  /** Make a shelf bottle glow for a few seconds ("this is the one to pick up"). */
+  public pulseBottle(id: string): void {
+    this.pulse = { id, t: 0 };
+  }
+
+  /** Vessels whose level tag should be shown: hovered, selected, carried, or being poured into. */
+  public getFocusVesselIds(): string[] {
+    const out = new Set<string>();
+    if (this.hoverKey?.startsWith('vessel:')) out.add(this.hoverKey.slice(7));
+    if (this.selectedId) out.add(this.selectedId);
+    for (const id of this.handling.focusIds()) out.add(id);
+    for (const id of this.titration.focusIds()) out.add(id);
+    return Array.from(out).filter((id) => this.glasswareMap.has(id));
+  }
+
+  /**
+   * Screen position (CSS px, relative to the bench container) of a vessel's level tag: beside the liquid surface, or
+   * the glass profile's own reading anchor when it provides one. `visible` is false behind the camera / off-screen.
+   */
+  public getVesselScreenAnchor(id: string): { x: number; y: number; visible: boolean } | null {
+    const b = this.glasswareMap.get(id);
+    if (!b) return null;
+    b.group.updateWorldMatrix(true, false);
+    const ext = b as unknown as { readingAnchorLocal?: (side?: 1 | -1) => THREE.Vector3 | undefined };
+    let world: THREE.Vector3;
+    let a: THREE.Vector3 | undefined;
+    try {
+      a = ext.readingAnchorLocal?.(b.profile.kind === 'burette' ? -1 : undefined); // burette: tag on the side away from the stopcock lever
+    } catch {
+      a = undefined;
+    }
+    if (a && a.isVector3) world = a.clone().applyMatrix4(b.group.matrixWorld);
+    else {
+      world = new THREE.Vector3(0, b.surfaceLocalY(), 0).applyMatrix4(b.group.matrixWorld);
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      world.addScaledVector(right, b.profile.maxOuterRadius + 0.8);
+    }
+    const ndc = world.clone().project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const x = (ndc.x * 0.5 + 0.5) * rect.width;
+    const y = (-ndc.y * 0.5 + 0.5) * rect.height;
+    const visible = ndc.z > -1 && ndc.z < 1 && x > -20 && x < rect.width + 20 && y > -20 && y < rect.height + 20;
+    return { x, y, visible };
+  }
+
+  /** Sit a filter funnel on a flask (stem into the neck, funnel stand put away). */
+  public stackFunnel(funnelId: string, receiverId: string): boolean {
+    this.freeSlotOf(funnelId);
+    if (this.panVessel === funnelId) this.panVessel = null;
+    if (this.hotPlateVessel === funnelId) this.hotPlateVessel = null;
+    return this.filters.stack(funnelId, receiverId);
+  }
+
+  /** Take a funnel off its flask; `reposition` also sets it down on the nearest free bench spot (not while it is carried). */
+  public unstackFunnel(funnelId: string, reposition: boolean): void {
+    this.filters.unstack(funnelId);
+    const b = this.glasswareMap.get(funnelId);
+    if (!b || !reposition) return;
+    const spot = this.resolveDrop(funnelId, b.group.position.x, b.group.position.z, 'bench');
+    this.commitDrop(funnelId, spot);
+  }
+
+  /** Slide `id` next to `nearId` (setups: a flask and its collector side by side), onto the nearest free spot. */
+  public placeBeside(id: string, nearId: string, dx = 14): void {
+    const b = this.glasswareMap.get(id);
+    const n = this.glasswareMap.get(nearId);
+    if (!b || !n) return;
+    const r = Math.max(b.footprint, b.profile.maxOuterRadius);
+    const free = nearestFreeSpot(n.group.position.x + dx, n.group.position.z, r, (x, z, cr) => this.spotBlocked(id, x, z, cr));
+    if (!free) return;
+    this.freeSlotOf(id);
+    b.group.position.set(free[0], 0, free[1]);
+    this.shadowDirty = true;
+  }
+
+  /** Gas collectors draw their collected gas (plunger / gas column); true when `id` was handled that way. */
+  public drawGasCollector(id: string, snap: VesselSnapshot): boolean {
+    const b = this.glasswareMap.get(id);
+    return !!b && this.gas.applyCollector(b, snap);
+  }
+
+  /** The glass profile's own graduation reading of the current level, if it provides one (mL). */
+  public getVesselLevelReading(id: string): number | null {
+    const b = this.glasswareMap.get(id) as unknown as { levelReadingMl?: () => number | null; scaleReadingMl?: () => number | null } | undefined;
+    try {
+      // the printed scale reading (burettes / graduated pipettes are graduated downward), else the true level
+      const v = b?.scaleReadingMl?.() ?? b?.levelReadingMl?.();
+      return typeof v === 'number' && isFinite(v) ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The user dropped a delivery-tube end on a collector / pulled it off (wired to the Lab by main.ts). */
+  public onGasLink?: (srcId: string, dstId: string) => void;
+  public onGasUnlink?: (srcId: string) => void;
+
+  private makeGasHost(): GasHost {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      dom: this.renderer.domElement,
+      controls: this.controls,
+      vessels: () => this.glasswareMap,
+      busy: () => this.handling.holding || this.handling.pressing,
+      link: (s, d) => this.onGasLink?.(s, d),
+      unlink: (s) => this.onGasUnlink?.(s),
+      notify: (m, k) => this.onNotify?.(m, k),
+      setHint: (t) => this.onHint?.(t),
+    };
+  }
+
+  private makeHandlingHost(): HandlingHost {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      dom: this.renderer.domElement,
+      controls: this.controls,
+      animator: this.animator,
+      shelf: this.shelf,
+      vessels: () => this.glasswareMap,
+      pickables: () => {
+        const out: THREE.Object3D[] = [];
+        for (const b of this.glasswareMap.values()) if (!b.isBurst()) out.push(b.pickProxy);
+        for (const a of this.shelf.assemblies()) out.push(a.pickProxy);
+        return out;
+      },
+      groundAt: (x, z) => this.groundAt(x, z),
+      bounds: (bottle) => (bottle ? { x0: -108, x1: 108, z0: -42, z1: 28 } : { x0: -108, x1: 108, z0: -27, z1: 27 }),
+      liftVessel: (id) => this.liftVessel(id),
+      resolveDrop: (id, x, z, prefer) => this.resolveDrop(id, x, z, prefer),
+      commitDrop: (id, spot) => this.commitDrop(id, spot),
+      openFlow: (src, targetId, form) => {
+        try {
+          return this.flowProvider?.(src, targetId, form) ?? null;
+        } catch (e) {
+          console.warn('[bench] flowProvider failed', e);
+          return null;
+        }
+      },
+      markDirty: () => {
+        this.shadowDirty = true;
+      },
+      onSelectVessel: (id) => this.onSelectObject?.('vessel', id),
+      notify: (m, k) => this.onNotify?.(m, k),
+      setHint: (t) => this.onHint?.(t),
+      setPourState: (st) => this.onPourState?.(st),
+      pipetteLab: () => this.pipetteLab ?? null,
+    };
+  }
+
+  private makeTitrationHost(): TitrationHost {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      dom: this.renderer.domElement,
+      controls: this.controls,
+      vessels: () => this.glasswareMap,
+      heldVesselId: () => this.handling.heldVesselId(),
+      isHolding: () => this.handling.holding,
+      openDrain: (src, target, bottom) => {
+        try {
+          return this.drainProvider?.(src, target, bottom) ?? null;
+        } catch (e) {
+          console.warn('[bench] drainProvider failed', e);
+          return null;
+        }
+      },
+      volumeMl: (id) => {
+        try {
+          return this.volumeProvider?.(id) ?? this.glasswareMap.get(id)?.lastSnapshot?.total_liquid_ml ?? 0;
+        } catch {
+          return 0;
+        }
+      },
+      notify: (m, k) => this.onNotify?.(m, k),
+      setHint: (t) => this.onHint?.(t),
+      markDirty: () => {
+        this.shadowDirty = true;
+      },
+      setStirring: (id, on) => this.onStirrerToggle?.(id, on),
+      stirrerVacated: (id) => this.onStirrerVacated?.(id),
+    };
+  }
+
+  // ---------------------------------------------------------------- titration station / stopcocks (see titration.ts)
+  /** The vessel standing on the station's magnetic stirrer (stirring does not move it to the hot plate). */
+  public isOnStirrer(id: string): boolean {
+    return this.titration.isOnStirrer(id);
+  }
+
+  /** Stand `flaskId` on the station tile (kit spawn). False when it cannot stand there / the tile is taken. */
+  public seatTitrationFlask(flaskId: string): boolean {
+    const b = this.glasswareMap.get(flaskId);
+    const spot = this.titration.flaskSpot(flaskId);
+    if (!b || !spot) return false;
+    this.freeSlotOf(flaskId);
+    this.commitDrop(flaskId, spot);
+    return true;
+  }
+
+  /** Stand `flaskId` under the stopcock of the separatory funnel `funnelId` (kit spawn). */
+  public seatBelowFunnel(flaskId: string, funnelId: string): boolean {
+    const b = this.glasswareMap.get(flaskId);
+    const spot = this.titration.funnelFlaskSpot(flaskId, funnelId);
+    if (!b || !spot) return false;
+    this.freeSlotOf(flaskId);
+    this.commitDrop(flaskId, spot);
+    return true;
+  }
+
+  /** Close every open stopcock (Esc). True when one was open. */
+  public closeStopcocks(): boolean {
+    return this.titration.closeAll();
+  }
+
+  /** Open stopcocks for the HUD ('Burette: dropwise 0.06 mL/s'). */
+  public getStopcockStates() {
+    return this.titration.states();
+  }
+
+  /** Level tag texts of a burette ('Burette reads 12.35 mL' / '(delivered)'), null for other vessels. */
+  public getVesselTagText(id: string): { main: string; sub: string } | null {
+    return this.titration.tagFor(id);
+  }
+
+  /** B key: cycle the camera over the station (tip + flask, the whole stand, the burette reading). `restart` begins at the tip. */
+  public focusTitration(restart = false): boolean {
+    if (restart) this.titration.resetView();
+    const plan: ViewPlan | null = this.titration.nextView();
+    if (!plan) return false;
+    this.focusPoint(plan.target, plan.distance, plan.front);
+    return true;
+  }
+
+  /** Take a vessel off the bench / hot plate / balance (it is about to be carried). */
+  private liftVessel(id: string): { place: DropPlace; pos: THREE.Vector3 } {
+    const b = this.glasswareMap.get(id);
+    let place: DropPlace = 'bench';
+    if (this.hotPlateVessel === id) {
+      place = 'hotplate';
+      this.hotPlateVessel = null;
+      this.onVesselLifted?.(id, 'hotplate');
+    } else if (this.panVessel === id) {
+      place = 'balance';
+      this.panVessel = null;
+      this.onVesselLifted?.(id, 'balance');
+    } else this.onVesselLifted?.(id, 'bench'); // (a funnel sitting on a flask comes off it)
+    this.freeSlotOf(id);
+    this.titration.onLift(id);
+    this.shadowDirty = true;
+    return { place, pos: b ? b.group.position.clone() : new THREE.Vector3() };
+  }
+
+  /** A vessel of radius `r` centred at (x, z) would collide with another vessel, an instrument or the bench edge. */
+  private spotBlocked(id: string, x: number, z: number, r: number): boolean {
+    if (x - r < BENCH.xMin + 6 || x + r > BENCH.xMax - 6 || z - r < -30 || z + r > BENCH.zMax - 4) return true;
+    for (const [vid, o] of this.glasswareMap) {
+      if (vid === id) continue;
+      const rr = r + Math.max(o.footprint, o.profile.maxOuterRadius) + 0.6;
+      if (Math.hypot(o.group.position.x - x, o.group.position.z - z) < rr) return true;
+    }
+    for (const f of this.footprints) {
+      if (x > f.x0 - r && x < f.x1 + r && z > f.z0 - r && z < f.z1 + r) return true;
+    }
+    return false;
+  }
+
+  /** Where a vessel released at (x, z) comes to rest: hot plate, balance pan, or the nearest free bench spot. */
+  private resolveDrop(id: string, x: number, z: number, prefer?: DropPlace): DropSpot {
+    const b = this.glasswareMap.get(id);
+    if (b && (prefer === undefined || prefer === 'bench')) {
+      const snap = this.titration.resolveDrop(id, x, z, b); // burette -> clamp, flask -> tile / under a funnel
+      if (snap) return snap;
+    }
+    const r = b ? Math.max(b.footprint, b.profile.maxOuterRadius) : 4;
+    const hp = this.hotPlateTopWorld();
+    const pan = this.pan;
+    const inPlate = Math.abs(x - hp.x) < 9 && Math.abs(z - hp.z) < 9;
+    const inPan = !!pan && Math.hypot(x - pan.center.x, z - pan.center.z) < Math.max(4.5, pan.radius);
+    if (prefer === 'hotplate' || (prefer === undefined && inPlate)) return { place: 'hotplate', pos: hp.clone() };
+    if ((prefer === 'balance' || (prefer === undefined && inPan)) && pan && (this.panVessel === null || this.panVessel === id)) {
+      return { place: 'balance', pos: new THREE.Vector3(pan.center.x, pan.topY, pan.center.z) };
+    }
+    const free = nearestFreeSpot(x, z, r, (cx, cz, cr) => this.spotBlocked(id, cx, cz, cr));
+    const pos = new THREE.Vector3(free ? free[0] : x, 0, free ? free[1] : z);
+    // tidy up: settle exactly onto a nearby free bench slot
+    for (let i = 0; i < this.slots.length; i++) {
+      const sl = this.slots[i];
+      if (this.slotOwner[i] === null && Math.hypot(sl.x - pos.x, sl.z - pos.z) < 3.5 && !this.spotBlocked(id, sl.x, sl.z, r)) {
+        pos.set(sl.x, 0, sl.z);
+        break;
+      }
+    }
+    return { place: 'bench', pos };
+  }
+
+  /** The vessel has come to rest at `spot`. */
+  private commitDrop(id: string, spot: DropSpot) {
+    const b = this.glasswareMap.get(id);
+    if (!b) return;
+    b.group.position.copy(spot.pos);
+    b.group.quaternion.identity();
+    this.titration.onCommit(id, spot);
+    if (spot.place === 'bench') {
+      for (let i = 0; i < this.slots.length; i++) {
+        const sl = this.slots[i];
+        if (this.slotOwner[i] === null && Math.hypot(sl.x - spot.pos.x, sl.z - spot.pos.z) < 0.05) {
+          this.slotOwner[i] = id;
+          this.vesselSlot.set(id, i);
+          break;
+        }
+      }
+    } else if (spot.place === 'balance') {
+      this.panVessel = id;
+    } else if (!this.onVesselPlaced) {
+      this.placeVesselOnHotPlate(id);
+      return;
+    }
+    this.onVesselPlaced?.(id, spot.place);
+    this.shadowDirty = true;
+  }
+
+  private updateBalance(dt: number) {
+    const bal = this.instruments.balance;
+    let load: number | null = null;
+    const id = this.panVessel;
+    if (id) {
+      const b = this.glasswareMap.get(id);
+      if (b) {
+        try {
+          load = this.massProvider ? this.massProvider(id) : b.lastSnapshot?.contents_mass_g ?? 0;
+        } catch {
+          load = b.lastSnapshot?.contents_mass_g ?? 0;
+        }
+      } else this.panVessel = null;
+    }
+    try {
+      bal.setLoad(load);
+      bal.update(null, dt);
+    } catch (e) {
+      if (!this.tickWarned.has('balance')) {
+        this.tickWarned.add('balance');
+        console.warn('[bench] balance update failed', e);
+      }
+    }
+  }
+
+  private updatePulse(dt: number) {
+    const p = this.pulse;
+    if (!p) return;
+    p.t += dt;
+    const a = this.shelf.get(p.id);
+    if (!a || p.t > 3.6) {
+      a?.setGlow(0);
+      this.pulse = null;
+      return;
+    }
+    const k = Math.min(1, (3.6 - p.t) / 0.6);
+    a.setGlow((0.5 + 0.5 * Math.sin(p.t * 7)) * k);
+  }
+
   // ---------------------------------------------------------------- camera
+  /** Smoothly orbit the camera target to a world point. `front` also swings the camera to look straight at the bench front. */
+  public focusPoint(target: THREE.Vector3, distance: number, front = false): void {
+    const fromT = this.controls.target.clone();
+    const fromP = this.camera.position.clone();
+    const toT = target.clone();
+    const offset = front ? new THREE.Vector3(-0.12, 0.08, 1) : fromP.clone().sub(fromT);
+    const dist = THREE.MathUtils.clamp(distance, this.controls.minDistance, this.controls.maxDistance);
+    const toP = toT.clone().add(offset.normalize().multiplyScalar(dist));
+    let t = 0;
+    const task: AnimTask = {
+      update: (dt: number) => {
+        if (this.cameraTween !== task) return true;
+        t = Math.min(1, t + dt / 0.9);
+        const k = ease.inOut(t);
+        this.controls.target.lerpVectors(fromT, toT, k);
+        this.camera.position.lerpVectors(fromP, toP, k);
+        if (t >= 1) {
+          this.cameraTween = null;
+          return true;
+        }
+        return false;
+      },
+    };
+    this.cameraTween = task;
+    this.animator.add(task);
+  }
+
   /** Smoothly move the orbit camera target to a vessel. */
   public focusVessel(id: string, distance?: number): void {
     const b = this.glasswareMap.get(id);
@@ -684,6 +1216,47 @@ export class BenchScene {
     this.animator.add(task);
   }
 
+  // ---------------------------------------------------------------- walking (WASD / arrows)
+  /** Track a held movement key (KeyW/A/S/D, Arrow*). Returns true when the key is a movement key. */
+  public setMoveKey(code: string, down: boolean): boolean {
+    const dir = WALK_KEYS[code];
+    if (!dir) return false;
+    if (down) this.moveKeys.add(code);
+    else this.moveKeys.delete(code);
+    return true;
+  }
+
+  public clearMoveKeys(): void {
+    this.moveKeys.clear();
+  }
+
+  /** Slide camera + orbit target together over the bench plane (forward = where the camera looks, flattened). */
+  private updateWalk(dt: number): void {
+    if (this.moveKeys.size === 0) return;
+    let fwd = 0;
+    let right = 0;
+    for (const c of this.moveKeys) {
+      fwd += WALK_KEYS[c][0];
+      right += WALK_KEYS[c][1];
+    }
+    if (fwd === 0 && right === 0) return;
+    const f = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+    f.y = 0;
+    if (f.lengthSq() < 1e-6) return;
+    f.normalize();
+    const r = new THREE.Vector3(-f.z, 0, f.x); // right-hand side of the view direction
+    const step = WALK_SPEED * dt * (this.moveKeys.has('ShiftLeft') || this.moveKeys.has('ShiftRight') ? 2.5 : 1);
+    const d = f.multiplyScalar(fwd).addScaledVector(r, right);
+    d.normalize().multiplyScalar(step);
+    const t = this.controls.target;
+    const nx = THREE.MathUtils.clamp(t.x + d.x, BENCH.xMin + 10, BENCH.xMax - 10);
+    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, BENCH.zMax);
+    d.set(nx - t.x, 0, nz - t.z);
+    t.add(d);
+    this.camera.position.add(d);
+    this.cameraTween = null; // walking takes over from any glide
+  }
+
   // ---------------------------------------------------------------- input
   private setPointer(e: PointerEvent) {
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -691,19 +1264,68 @@ export class BenchScene {
     this.pointer.y = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
   }
 
-  private pick(): { type: 'vessel' | 'bottle'; id: string } | null {
+  /**
+   * Invisible click target for an instrument (they are not draggable and their meshes have raycasting disabled).
+   * Boxed from the group's own geometry at construction (before it is posed), optionally ignoring a child group.
+   */
+  private addInstrumentProxy(id: InstrumentId, group: THREE.Group, exclude: THREE.Object3D | null, box?: THREE.Box3): THREE.Mesh {
+    // measure in the group's own frame: detach it, drop its pose, optionally set a child group aside
+    const gParent = group.parent;
+    const savedPos = group.position.clone();
+    const savedQuat = group.quaternion.clone();
+    const exParent = exclude?.parent ?? null;
+    gParent?.remove(group);
+    group.position.set(0, 0, 0);
+    group.quaternion.identity();
+    if (exclude && exParent) exParent.remove(exclude);
+    group.updateWorldMatrix(false, true);
+    const b = box ? box.clone() : new THREE.Box3().setFromObject(group);
+    if (exclude && exParent) exParent.add(exclude);
+    group.position.copy(savedPos);
+    group.quaternion.copy(savedQuat);
+    gParent?.add(group);
+    b.expandByScalar(id === 'thermometer' || id === 'phmeter' ? 0.7 : 0.2);
+    const size = b.getSize(new THREE.Vector3());
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), new THREE.MeshBasicMaterial({ visible: false }));
+    mesh.position.copy(b.getCenter(new THREE.Vector3()));
+    mesh.visible = false;
+    mesh.name = `pick_${id}`;
+    mesh.userData.pick = { type: 'instrument', id };
+    group.add(mesh);
+    return mesh;
+  }
+
+  private pick(): PickHit | null {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const proxies: THREE.Object3D[] = [];
     for (const b of this.glasswareMap.values()) if (!b.isBurst()) proxies.push(b.pickProxy);
     for (const a of this.shelf.assemblies()) proxies.push(a.pickProxy);
+    const key = this.instruments.balance.tareKey;
+    if (key) proxies.push(key);
+    proxies.push(...this.titration.pickMeshes()); // stopcock levers + stirrer knob
+    for (const o of this.instrumentProxies) if (o.parent?.visible) proxies.push(o); // gauge only while sealed
     for (const o of proxies) o.updateWorldMatrix(true, false);
     const hits = this.raycaster.intersectObjects(proxies, false);
+    const picks: PickHit[] = [];
     for (const h of hits) {
-      const p = h.object.userData.pick as { type: 'vessel' | 'bottle'; id: string } | undefined;
-      if (p) return p;
+      const p = h.object.userData.pick as PickHit | undefined;
+      if (p) picks.push(p);
     }
-    return null;
+    const first = picks[0];
+    // the TARE key sits inside the balance's box: it wins over the balance body
+    if (first?.type === 'instrument' && first.id === 'balance') return picks.find((p) => p.type === 'balance-tare') ?? first;
+    return first ?? null;
   }
+
+  /** Capture-phase press: arm a grab when the press lands on a bottle / vessel (keeps OrbitControls from starting). */
+  private onPointerDownCapture = (e: PointerEvent) => {
+    try {
+      if (this.titration.pointerDown(e)) return; // a stopcock lever / stirrer knob press: no grab, no orbit
+      this.handling.pointerDown(e);
+    } catch (err) {
+      console.warn('[bench] handling.pointerDown failed', err);
+    }
+  };
 
   private onPointerDown = (e: PointerEvent) => {
     this.downPos = { x: e.clientX, y: e.clientY, t: performance.now(), button: e.button };
@@ -713,10 +1335,16 @@ export class BenchScene {
     const d = this.downPos;
     this.downPos = null;
     if (!d || d.button !== 0 || e.button !== 0) return;
+    if (this.handling.holding) return; // a carried object is being released, not clicked
     const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
     if (moved > 5 || performance.now() - d.t > 800) return;
     this.setPointer(e);
     const hit = this.pick();
+    if (hit?.type === 'balance-tare') {
+      this.instruments.balance.tare();
+      return;
+    }
+    if (hit?.type === 'stopcock' || hit?.type === 'stirknob') return; // handled by the titration rig
     if (hit) {
       if (hit.type === 'bottle') this.shelf.touch(hit.id);
       this.onSelectObject?.(hit.type, hit.id);
@@ -739,14 +1367,22 @@ export class BenchScene {
   private updateHover() {
     if (!this.hoverDirty) return;
     this.hoverDirty = false;
-    const dragging = !!this.downPos;
+    const dragging = !!this.downPos || this.handling.holding;
     const hit = this.pointerInside && !dragging ? this.pick() : null;
     const key = hit ? `${hit.type}:${hit.id}` : null;
     if (key === this.hoverKey) return;
     this.hoverKey = key;
     for (const [id, b] of this.glasswareMap) b.setHover(hit?.type === 'vessel' && hit.id === id);
     for (const a of this.shelf.assemblies()) a.setHover(hit?.type === 'bottle' && a.group.userData.pick?.id === hit.id);
-    this.renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
+    const rigHit = hit && (hit.type === 'stopcock' || hit.type === 'stirknob') ? hit : null;
+    if (this.handling.holding) {
+      this.titration.hover(null);
+      return;
+    }
+    const grabbable = hit && hit.type !== 'balance-tare' && hit.type !== 'instrument' && !rigHit ? { type: hit.type as 'vessel' | 'bottle', id: hit.id } : null;
+    this.handling.hoverHint(grabbable);
+    this.titration.hover(rigHit); // after the handling hint: a lever's own hint wins
+    this.renderer.domElement.style.cursor = !hit ? '' : rigHit?.type === 'stopcock' ? 'ns-resize' : hit.type === 'balance-tare' || hit.type === 'instrument' || rigHit ? 'pointer' : 'grab';
   }
 
   private onResize = () => {
@@ -781,16 +1417,45 @@ export class BenchScene {
     const time = this.time;
 
     if (this.downPos) this.cameraTween = null; // user takes over the camera
+    this.updateWalk(dt);
     this.controls.update();
     const animBusy = this.animator.active;
     this.animator.tick(dt, time);
+    this.refreshPan();
+    try {
+      this.handling.update(dt, time);
+    } catch (e) {
+      if (!this.tickWarned.has('handling')) {
+        this.tickWarned.add('handling');
+        console.warn('[bench] handling.update failed', e);
+      }
+    }
+    try {
+      this.gas.update(dt, time);
+      this.filters.update(dt, time);
+    } catch (e) {
+      if (!this.tickWarned.has('gas')) {
+        this.tickWarned.add('gas');
+        console.warn('[bench] gas tubes / filter drips update failed', e);
+      }
+    }
+    this.updateBalance(dt);
+    this.updatePulse(dt);
+    try {
+      this.titration.update(dt, time);
+    } catch (e) {
+      if (!this.tickWarned.has('titration')) {
+        this.tickWarned.add('titration');
+        console.warn('[bench] titration.update failed', e);
+      }
+    }
 
     let fire = 0;
     const fireTmp = new THREE.Vector3();
     const firePos = this.room.fireLight.position;
     for (const b of this.glasswareMap.values()) {
       try {
-        b.setGroundY(this.groundAt(b.group.position.x, b.group.position.z));
+        b.setGroundY(this.titration.groundFor(b.vesselState.id, b.group.position.x, b.group.position.z));
         b.tick(dt, time);
         const f = b.effects.flameStrength(time);
         if (f > fire) {
@@ -834,6 +1499,11 @@ export class BenchScene {
     cancelAnimationFrame(this.rafId);
     this.resizeObserver.disconnect();
     window.removeEventListener('resize', this.onResize);
+    this.container.removeEventListener('pointerdown', this.onPointerDownCapture, true);
+    this.handling.dispose();
+    this.titration.dispose();
+    this.gas.dispose();
+    this.filters.dispose();
     this.controls.dispose();
     for (const id of Array.from(this.glasswareMap.keys())) this.removeVessel(id);
     this.room.dispose();

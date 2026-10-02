@@ -2,9 +2,11 @@
 // updates text nodes / attributes so sliders, inputs and keyboard focus are never disturbed.
 import { VesselSnapshot, VesselEvent } from '../types/sim';
 import { Lab, glasswareSpec } from '../app/lab';
+import { formatCapacity } from '../app/glassware_catalog';
 import { h, setText, prettyFormula, fmtConc, fmtAmountMol, fmtClock } from './dom';
 import { icon } from './icons';
 import { toast } from './toast';
+import { GasSection } from './gas_section';
 
 export interface Readouts {
   temperature: string;
@@ -67,10 +69,7 @@ export class VesselPanel {
 
   // live refs (rebuilt per selection)
   private r: Record<string, HTMLElement> = {};
-  private heat!: HTMLInputElement;
-  private heatVal!: HTMLElement;
-  private heatNote!: HTMLElement;
-  private toggles: Record<'stir' | 'ice' | 'stopper', HTMLButtonElement> = {} as never;
+  private toggles: Record<'ice' | 'stopper', HTMLButtonElement> = {} as never;
   private igniteBtn!: HTMLButtonElement;
   private contentRows: Array<{ li: HTMLElement; f: HTMLElement; n: HTMLElement; a: HTMLElement }> = [];
   private contentEmpty!: HTMLElement;
@@ -90,12 +89,12 @@ export class VesselPanel {
   private pourBusy = false;
   private pourSec!: HTMLElement;
   private brokenBanner!: HTMLElement;
-  private heatTimer = 0;
+  private gasSec?: GasSection;
 
   constructor(private deps: VesselPanelDeps) {
     this.el = h('aside', { class: 'panel panel-right', id: 'vessel-panel', 'aria-label': 'Selected vessel' });
     this.empty = h('div', { class: 'panel-empty' });
-    this.empty.innerHTML = `${icon('beaker', 36)}<p class="empty-title">Click a beaker on the bench</p><p class="muted">Its temperature, pH, contents and controls appear here.</p>`;
+    this.empty.innerHTML = `${icon('beaker', 36)}<p class="empty-title">Click a vessel or instrument on the bench</p><p class="muted">Its readings, contents and controls appear here.</p>`;
     this.content = h('div', { class: 'vp' });
     this.el.append(this.empty, this.content);
     this.show(null);
@@ -131,6 +130,7 @@ export class VesselPanel {
       return;
     }
     this.renderPourTargets();
+    this.gasSec?.refresh();
   }
 
   private build() {
@@ -143,7 +143,7 @@ export class VesselPanel {
     // Header
     const head = h('header', { class: 'vp-head' });
     const titles = h('div', { class: 'vp-titles' }, h('h2', { class: 'vp-name', text: v.name }));
-    this.r.sub = h('div', { class: 'vp-sub', text: `${spec.capacityMl} mL` });
+    this.r.sub = h('div', { class: 'vp-sub', text: formatCapacity(spec.capacityMl), title: spec.description });
     titles.append(this.r.sub);
     const focusBtn = h('button', { class: 'icon-btn', 'aria-label': 'Focus camera on this vessel (F)', title: 'Focus camera (F)', html: icon('focus', 18) });
     focusBtn.addEventListener('click', () => this.deps.focusVessel(v.id));
@@ -172,7 +172,7 @@ export class VesselPanel {
     const gauge = h('div', { class: 'ro-gauge', 'aria-hidden': 'true' }, h('div', { class: 'ro-gauge-fill' }));
     this.r.gaugeFill = gauge.firstElementChild as HTMLElement;
     volCell.append(gauge);
-    cell('mass', 'Mass');
+    cell('mass', 'Balance');
     cell('press', 'Pressure');
 
     // Events (generic, from snapshot.events)
@@ -183,27 +183,8 @@ export class VesselPanel {
     // Controls
     const ctlSec = h('section', { class: 'vp-sec', 'aria-label': 'Controls' });
     ctlSec.append(h('h3', { class: 'eyebrow', text: 'Controls' }));
-    const heatId = `heat-${v.id}`;
-    const heatRow = h('div', { class: 'heat' });
-    const heatLabel = h('label', { class: 'heat-label', for: heatId });
-    heatLabel.innerHTML = `${icon('heat', 18)}<span>Heat</span>`;
-    this.heatVal = h('span', { class: 'heat-val', text: 'Off' });
-    this.heat = h('input', { id: heatId, class: 'range', type: 'range', min: '0', max: '1000', step: '50', value: '0' });
-    this.heat.addEventListener('input', () => {
-      const w = Number(this.heat.value);
-      this.paintHeat(w);
-      window.clearTimeout(this.heatTimer);
-      this.heatTimer = window.setTimeout(() => {
-        if (!this.id) return;
-        const id = this.id;
-        run(lab.setHeat(id, w).then(() => this.updateSub()), 'set the heat');
-      }, 120);
-    });
-    heatRow.append(heatLabel, this.heat, this.heatVal);
-    this.heatNote = h('p', { class: 'hint-line', text: 'Turning on heat or stirring moves this vessel onto the hot plate.' });
-
-    const tg = h('div', { class: 'toggle-row' });
-    const mkToggle = (key: 'stir' | 'ice' | 'stopper', ic: 'stir' | 'ice' | 'stopper', label: string, onToggle: (on: boolean) => Promise<unknown>) => {
+    const tg = h('div', { class: 'toggle-row toggle-row-auto' });
+    const mkToggle = (key: 'ice' | 'stopper', ic: 'ice' | 'stopper', label: string, onToggle: (on: boolean) => Promise<unknown>) => {
       const b = h('button', { class: 'toggle', type: 'button', 'aria-pressed': 'false' });
       b.innerHTML = `${icon(ic, 18)}<span>${label}</span>`;
       b.addEventListener('click', () => {
@@ -219,14 +200,13 @@ export class VesselPanel {
       this.toggles[key] = b;
       tg.append(b);
     };
-    mkToggle('stir', 'stir', 'Stir', (on) => lab.setStir(v.id, on));
     mkToggle('ice', 'ice', 'Ice bath', (on) => lab.setIceBath(v.id, on));
     mkToggle('stopper', 'stopper', 'Stopper', (on) => lab.setSealed(v.id, on));
 
     this.igniteBtn = h('button', { class: 'btn btn-warm btn-block', type: 'button', hidden: true });
     this.igniteBtn.innerHTML = `${icon('flame', 16)}<span>Ignite with lighter</span>`;
     this.igniteBtn.addEventListener('click', () => run(lab.ignite(v.id), 'ignite'));
-    ctlSec.append(heatRow, this.heatNote, tg, this.igniteBtn);
+    ctlSec.append(tg, this.igniteBtn);
 
     // Contents
     const conSec = h('section', { class: 'vp-sec', 'aria-label': 'Contents' });
@@ -249,7 +229,15 @@ export class VesselPanel {
 
     // Pour
     this.pourSec = h('section', { class: 'vp-sec', 'aria-label': 'Pour into another vessel' });
-    this.pourSec.append(h('h3', { class: 'eyebrow', text: 'Pour into' }));
+    this.pourSec.append(
+      h('h3', { class: 'eyebrow', text: 'Pour' }),
+      h('p', {
+        class: 'hint-line',
+        text: v.type.startsWith('pipette')
+          ? 'Carry the tip into a liquid. Drag up to draw, drag down to dispense; hold Shift for fine control (set the meniscus on the mark).'
+          : 'Drag this vessel over another and drag up to tilt it. Release to stop.',
+      }),
+    );
     this.pourTargets = h('div', { class: 'chip-row', role: 'radiogroup', 'aria-label': 'Pour target' });
     const pourAmt = h('div', { class: 'pour-amt' });
     const pourId = `pour-${v.id}`;
@@ -286,10 +274,13 @@ export class VesselPanel {
     this.confirmable(emptyBtn, 'Tap again to empty', () =>
       run(lab.empty(v.id).then(() => toast(`Emptied ${v.name}.`, 'success')), 'empty the vessel'),
     );
-    this.pourSec.append(this.pourTargets, pourAmt, quick, this.pourBtn, emptyBtn);
+    const assistPour = h('details', { class: 'assist' }, h('summary', { text: 'Assisted pour' }));
+    assistPour.append(h('div', { class: 'assist-body' }, this.pourTargets, pourAmt, quick, this.pourBtn));
+    this.pourSec.append(assistPour, emptyBtn);
     this.r.pourEmptyBtn = emptyBtn;
 
-    this.content.append(head, this.brokenBanner, ro, this.eventsSec, ctlSec, conSec, this.pourSec);
+    this.gasSec = new GasSection(lab, v.id);
+    this.content.append(head, this.brokenBanner, ro, this.eventsSec, ctlSec, conSec, this.pourSec, this.gasSec.el);
     this.renderPourTargets();
     this.updateSub();
   }
@@ -323,26 +314,14 @@ export class VesselPanel {
   }
 
   // ------------------------------------------------------------------ controls state
-  /** Pull control state from the lab (selection change, or displaced from the hot plate). */
+  /** Pull control state from the lab (selection change, or the ice bath / stopper changed elsewhere). */
   public syncControls() {
-    if (!this.id || !this.heat) return;
+    if (!this.id || !this.toggles.ice) return;
     const c = this.deps.lab.ctl(this.id);
     const v = this.deps.lab.get(this.id);
-    if (document.activeElement !== this.heat) {
-      this.heat.value = String(c.heaterW);
-      this.paintHeat(c.heaterW);
-    }
-    this.toggles.stir.setAttribute('aria-pressed', String(c.stirring));
     this.toggles.ice.setAttribute('aria-pressed', String(c.iceBath));
     this.toggles.stopper.setAttribute('aria-pressed', String(!!v?.isSealed));
     this.updateSub();
-  }
-
-  private paintHeat(w: number) {
-    setText(this.heatVal, w <= 0 ? 'Off' : `${w} W`);
-    this.heat.setAttribute('aria-valuetext', w <= 0 ? 'Off' : `${w} watts`);
-    this.heat.style.setProperty('--fill', `${(w / 1000) * 100}%`);
-    this.heat.classList.toggle('is-hot', w > 0);
   }
 
   private updateSub() {
@@ -350,13 +329,12 @@ export class VesselPanel {
     const lab = this.deps.lab;
     const v = lab.get(this.id);
     if (!v) return;
-    const parts = [`${v.capacityMl} mL`];
+    const parts = [formatCapacity(v.capacityMl)];
     const onPlate = lab.isOnHotPlate(this.id);
     if (onPlate) parts.push('on hot plate');
     if (v.isSealed) parts.push('stoppered');
     if (lab.ctl(this.id).iceBath) parts.push('in ice bath');
     setText(this.r.sub, parts.join(' · '));
-    this.heatNote.hidden = onPlate;
   }
 
   // ------------------------------------------------------------------ live update (20 Hz)
@@ -365,6 +343,7 @@ export class VesselPanel {
     const lab = this.deps.lab;
     const v = lab.get(this.id);
     if (!v) return;
+    this.gasSec?.update(snap);
     const ro = this.deps.readouts();
 
     setText(this.r.temp, ro.temperature);

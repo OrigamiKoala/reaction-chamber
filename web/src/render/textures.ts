@@ -494,46 +494,126 @@ export function foamTexture(): THREE.Texture {
   });
 }
 
+// ------------------------------------------------------------------ graduation / label decals
+const INK = 'rgba(8,12,20,0.97)';
+const HALO = 'rgba(255,255,255,0.62)';
+const FONT = '"Helvetica Neue", Arial, sans-serif';
+
+export interface GradMark {
+  /** Height of the mark in cm above the bottom of the decal. */
+  y: number;
+  /** 0 = minor (short), 1 = mid, 2 = major (long, numeral). */
+  tier: 0 | 1 | 2;
+  label?: string;
+}
+
+export interface GradTextureSpec {
+  key: string;
+  /** Physical size of the decal patch (cm): arc width x height. */
+  widthCm: number;
+  heightCm: number;
+  marks: GradMark[];
+  /** Numeral height (cm). */
+  fontCm: number;
+  /** Smallest vertical distance between two marks (cm): keeps the strokes thin enough to stay separate. */
+  minSpacingCm: number;
+  /** Text lines in the title block: y = centre in cm above the decal bottom. */
+  title: { text: string; y: number; sizeCm: number }[];
+}
+
+/** Pixels per cm for a decal of this height (the canvas stays <= 4096 px tall). */
+function decalScale(heightCm: number): number {
+  return Math.max(24, Math.min(110, 4096 / Math.max(1, heightCm)));
+}
+
 /**
- * White-enamel graduation decal for a vessel. `marks` positions are in v (0 = decal bottom, 1 = top).
+ * Dark-ink graduation decal with a faint light halo (reads on dark and light backgrounds): minor ticks are short
+ * half-ring ticks, mid ticks longer, major ticks long with a numeral beside them. All sizes are physical (cm).
  */
-export function graduationTexture(
-  key: string,
-  marks: { v: number; major: boolean; label?: string }[],
-  title: string,
-  tall: boolean
-): THREE.Texture {
-  return cached('grad_' + key, () => {
-    const W = 256;
-    const H = tall ? 2048 : 1024;
+export function graduationTexture(spec: GradTextureSpec): THREE.Texture {
+  return cached('grad_' + spec.key, () => {
+    const s = decalScale(spec.heightCm);
+    const W = Math.max(64, Math.min(1024, Math.round(spec.widthCm * s)));
+    const H = Math.max(64, Math.min(4096, Math.round(spec.heightCm * s)));
     const [c, g] = canvas(W, H);
     g.clearRect(0, 0, W, H);
-    g.fillStyle = 'rgba(250,250,248,0.96)';
-    g.strokeStyle = 'rgba(250,250,248,0.96)';
-    const font = tall ? 30 : 34;
-    for (const m of marks) {
-      const y = (1 - m.v) * H;
-      const len = m.major ? (tall ? 90 : 80) : tall ? 45 : 45;
-      g.fillRect(W * 0.5 - len, y - (m.major ? 2.5 : 1.6), len, m.major ? 5 : 3.2);
-      if (m.label) {
-        g.font = `600 ${font}px "Helvetica Neue", Arial, sans-serif`;
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.fillText(m.label, W * 0.5 + 10, y);
+    const px = (cm: number) => cm * s;
+    const x0 = W * 0.06;
+    const len = [W * 0.2, W * 0.34, W * 0.52];
+    const thick = [0.036, 0.05, 0.068].map((t) => Math.min(t, spec.minSpacingCm * 0.34));
+    const halo = Math.min(0.026, spec.minSpacingCm * 0.14);
+    const fontPx = px(spec.fontCm);
+    // halo pass first so ink is always on top
+    for (const pass of [0, 1]) {
+      g.fillStyle = pass === 0 ? HALO : INK;
+      for (const m of spec.marks) {
+        const y = H - px(m.y);
+        const t = px(thick[m.tier] + (pass === 0 ? halo * 2 : 0));
+        const pad = pass === 0 ? px(halo) : 0;
+        g.fillRect(x0 - pad, y - t / 2, len[m.tier] + pad * 2, t);
       }
     }
-    if (title) {
-      g.font = `600 ${font}px "Helvetica Neue", Arial, sans-serif`;
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      const top = marks.length ? (1 - Math.max(...marks.map((m) => m.v))) * H : H * 0.2;
-      const ty = Math.max(font, top - font * 1.6);
-      g.fillText(title, W * 0.5, ty);
-      g.font = `500 ${Math.round(font * 0.6)}px Arial, sans-serif`;
-      g.fillText('BORO 3.3', W * 0.5, ty + font * 0.95);
+    // numerals
+    g.font = `700 ${fontPx}px ${FONT}`;
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    for (const m of spec.marks) {
+      if (!m.label) continue;
+      const y = H - px(m.y);
+      const x = x0 + len[2] + W * 0.04;
+      g.lineWidth = Math.max(2, fontPx * 0.2);
+      g.strokeStyle = HALO;
+      g.strokeText(m.label, x, y);
+      g.fillStyle = INK;
+      g.fillText(m.label, x, y);
+    }
+    // title block (units / nominal volume)
+    g.textAlign = 'center';
+    for (const t of spec.title) {
+      const size = px(t.sizeCm);
+      g.font = `700 ${size}px ${FONT}`;
+      g.lineWidth = Math.max(2, size * 0.2);
+      g.strokeStyle = HALO;
+      g.strokeText(t.text, W * 0.5, H - px(t.y));
+      g.fillStyle = INK;
+      g.fillText(t.text, W * 0.5, H - px(t.y));
     }
     const t = tex(c, true);
-    t.anisotropy = 4;
+    t.anisotropy = 8;
+    return t;
+  });
+}
+
+/** Title-only enamel label (volumetric flask / pipette bulb). */
+export function labelTexture(key: string, lines: string[], widthCm: number, heightCm: number): THREE.Texture {
+  return cached('label_' + key, () => {
+    const s = Math.min(90, 1024 / Math.max(widthCm, heightCm));
+    const W = Math.max(64, Math.round(widthCm * s));
+    const H = Math.max(64, Math.round(heightCm * s));
+    const [c, g] = canvas(W, H);
+    g.clearRect(0, 0, W, H);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    const n = lines.length;
+    // largest font that fits every line in the width and all lines in the height
+    const base = (H / (n + 0.6)) * 0.78;
+    let size = base;
+    g.font = `700 ${base}px ${FONT}`;
+    for (const l of lines) size = Math.min(size, base * ((W * 0.9) / Math.max(1, g.measureText(l).width)));
+    lines.forEach((l, i) => {
+      const sz = i === 0 ? size : size * 0.78;
+      g.font = `700 ${sz}px ${FONT}`;
+      const y = (H * (i + 0.7)) / (n + 0.4);
+      g.lineWidth = Math.max(2, sz * 0.2);
+      g.strokeStyle = HALO;
+      g.strokeText(l, W / 2, y);
+      g.fillStyle = i === n - 1 && n > 2 ? 'rgba(20,60,150,0.97)' : INK;
+      g.fillText(l, W / 2, y);
+    });
+    const t = tex(c, true);
+    t.anisotropy = 8;
     return t;
   });
 }

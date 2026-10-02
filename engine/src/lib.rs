@@ -14,6 +14,7 @@ pub mod compound_model;
 pub mod chem_db;
 pub mod vessel;
 pub mod vessel_ext;
+pub mod gas;
 pub mod vessel_eq;
 pub mod templates;
 pub mod network_generator;
@@ -269,6 +270,7 @@ pub fn vessel_new(config_json: &str) -> Result<u32, JsValue> {
 #[wasm_bindgen]
 pub fn vessel_free(handle: u32) -> bool {
     with_vessels(|map| {
+        gas::drop_links_of(handle);
         Ok(map.remove(&handle).is_some())
     }).unwrap_or(false)
 }
@@ -307,6 +309,17 @@ pub fn vessel_remove_liquid(handle: u32, vol_ml: f64, include_solids: bool) -> R
     })
 }
 
+/// Like `vessel_remove_liquid`, but drains the densest layer first (separatory funnel stopcock).
+#[wasm_bindgen]
+pub fn vessel_remove_liquid_bottom(handle: u32, vol_ml: f64, include_solids: bool) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get_mut(&handle)
+            .ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        let portion = v.remove_liquid_bottom(vol_ml, include_solids).map_err(|e| JsValue::from_str(&e))?;
+        serde_wasm_bindgen_to_val(&portion)
+    })
+}
+
 #[wasm_bindgen]
 pub fn vessel_control(handle: u32, controls_json: &str) -> Result<JsValue, JsValue> {
     let controls: VesselControls = serde_json::from_str(controls_json)
@@ -325,6 +338,9 @@ pub fn vessel_step(handle: u32, dt: f64) -> Result<JsValue, JsValue> {
         let v = map.get_mut(&handle)
             .ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
         v.step(dt).map_err(|e| JsValue::from_str(&e))?;
+        gas::step_links(map, dt, Some(&[handle]));
+        let v = map.get(&handle)
+            .ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
         serde_wasm_bindgen_to_val(&v.snapshot())
     })
 }
@@ -354,9 +370,15 @@ pub fn step_all(handles_json: &str, dt: f64) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("Invalid handles array: {}", e)))?;
     with_vessels(|map| {
         let mut snapshots = HashMap::new();
-        for h in handles {
-            if let Some(v) = map.get_mut(&h) {
+        for h in &handles {
+            if let Some(v) = map.get_mut(h) {
                 let _ = v.step(dt);
+            }
+        }
+        // delivery tubes move evolved gas into collectors after every vessel has advanced
+        gas::step_links(map, dt, Some(&handles));
+        for h in handles {
+            if let Some(v) = map.get(&h) {
                 snapshots.insert(h, v.snapshot());
             }
         }

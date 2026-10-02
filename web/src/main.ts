@@ -13,15 +13,26 @@ import { TopBar } from './ui/top_bar';
 import { ReagentPanel } from './ui/reagent_panel';
 import { AddCard } from './ui/add_card';
 import { VesselPanel, Readouts, EVENT_LABELS } from './ui/vessel_panel';
+import { InstrumentPanel } from './ui/instrument_panel';
+import { InstrumentLog, ChannelId, ChannelReading } from './app/instrument_log';
+import type { InstrumentId } from './bench/scene';
 import { TimeControls } from './ui/time_controls';
 import { AdvancedView } from './ui/advanced_view';
 import { CustomReactionModal } from './ui/custom_reaction_modal';
 import { BottleCard } from './ui/bottle_card';
-import { createHint } from './ui/hint';
 import { toast } from './ui/toast';
 import { anyModalOpen } from './ui/modal';
 import { runSelfTest } from './ui/self_test';
 import { h, isTypingTarget } from './ui/dom';
+import { icon } from './ui/icons';
+import { LevelTags } from './ui/level_tags';
+import { gasTagText, dominantGas } from './bench/gas_math';
+import { SETUPS } from './app/setups';
+import { registerGasKits } from './app/gas_kit';
+import { registerFilterKits } from './app/filter_kit';
+import { registerTitrationKits } from './app/titration_kit';
+import { TitrationHud } from './ui/titration_hud';
+import type { PourState } from './bench/handling';
 
 const simWorker = new Worker(new URL('./workers/simulation.worker.ts', import.meta.url), { type: 'module' });
 
@@ -64,6 +75,9 @@ async function initApp() {
   const sim = new SimController(simWorker);
   const lib = new ReagentLibrary();
   const lab = new Lab(bench, sim);
+  registerGasKits(); // 'Setups' at the top of the Glassware menu
+  registerFilterKits();
+  registerTitrationKits(); // titration station + separatory funnel stand
   let optics: OpticsTables | null = null;
 
   // ------------------------------------------------------------------ UI
@@ -72,7 +86,7 @@ async function initApp() {
   const bottleCard = new BottleCard();
 
   const topBar = new TopBar([
-    { label: 'Import from PubChem', hint: 'Search box', icon: 'cloud', action: () => reagentPanel.focusSearch() },
+    { label: 'Import from PubChem', hint: 'Search box', icon: 'cloud', action: () => { reagentPanel.showTab('reagents'); reagentPanel.focusSearch(); } },
     { label: 'Custom chemistry…', icon: 'plus', action: () => customModal.show() },
     { label: 'Run self-test', icon: 'test', action: () => runSelfTest(simWorker, sim, sessionToken) },
   ]);
@@ -136,7 +150,37 @@ async function initApp() {
     focusVessel: (id) => bench.focusVessel(id),
     openDetails: () => advanced.show(),
   });
+  // Instruments: continuous history (sim time) + the right-hand panel shown when one is clicked.
+  const instLog = new InstrumentLog();
+  const instrumentPanel = new InstrumentPanel({
+    lab,
+    instruments: () => bench.instruments,
+    panVesselId: () => bench.getPanVesselId(),
+    log: instLog,
+    simTime: () => sim.simTime,
+    onClose: () => setInstrument(null),
+  });
+  /** Instrument mode of the right panel: shows the instrument instead of the vessel panel (null = vessel mode). */
+  const setInstrument = (id: InstrumentId | null) => {
+    if (id === instrumentPanel.instrumentId) return;
+    instrumentPanel.show(id);
+    vesselPanel.el.hidden = !!id;
+  };
   const time = new TimeControls(sim);
+  // Reaction timer of the selected vessel: waits for a real reaction; Start/Stop/Reset are a manual stopwatch.
+  const refreshClock = () => time.setClock(lab.selectedId ? lab.reactionClock(lab.selectedId) : null);
+  time.onStart = () => {
+    if (lab.selectedId) lab.startReactionClock(lab.selectedId);
+    refreshClock();
+  };
+  time.onStop = () => {
+    if (lab.selectedId) lab.stopReactionClock(lab.selectedId);
+    refreshClock();
+  };
+  time.onReset = () => {
+    if (lab.selectedId) lab.resetReactionClock(lab.selectedId);
+    refreshClock();
+  };
 
   // Mobile: one bottom sheet at a time.
   const sheetSwitch = h('div', { class: 'sheet-switch', role: 'tablist', 'aria-label': 'Panels' });
@@ -155,11 +199,9 @@ async function initApp() {
   reagentPanel.el.addEventListener('panel-expanded', () => setSheet('reagents'));
 
   const bottom = h('div', { class: 'bottom-dock' });
-  const hint = createHint('Search for a reagent on the left or click a bottle on the shelf · drag the bench to look around');
-  if (hint) bottom.append(hint);
   bottom.append(time.el);
 
-  app.append(topBar.el, reagentPanel.el, vesselPanel.el, bottom, sheetSwitch);
+  app.append(topBar.el, reagentPanel.el, vesselPanel.el, instrumentPanel.el, bottom, sheetSwitch);
 
   // ------------------------------------------------------------------ reagents
   const shelvedImports = new Set<string>();
@@ -185,7 +227,9 @@ async function initApp() {
 
   const openReagent = (it: ReagentItem) => {
     putOnShelf(it);
+    bench.pulseBottle(it.id); // highlight the bottle on the shelf: this is the one to pick up
     reagentPanel.setCollapsed(false);
+    reagentPanel.showTab('reagents');
     reagentPanel.setSelected(it.key);
     setSheet('reagents');
     addCard.show(it, lab.selectedId);
@@ -248,6 +292,18 @@ async function initApp() {
     }
   };
 
+  reagentPanel.onSelectGlassware = (id) => lab.select(id);
+  reagentPanel.onRemoveGlassware = (id) => {
+    lab.remove(id).catch((err) => toast(`Couldn't remove the vessel: ${errMsg(err)}`, 'error'));
+  };
+  reagentPanel.glassware.onSetup = (id) => {
+    const setup = SETUPS.find((s) => s.id === id);
+    if (!setup) return;
+    setup
+      .build(lab)
+      .then(() => toast(`${setup.label} is set out. Add a reagent to the flask.`, 'info'))
+      .catch((err) => toast(`Couldn't set out ${setup.label}: ${errMsg(err)}`, 'error'));
+  };
   reagentPanel.onSpawnGlassware = (type) => {
     lab
       .spawn(type)
@@ -283,6 +339,8 @@ async function initApp() {
 
   // ------------------------------------------------------------------ selection
   lab.onSelectionChanged = (id) => {
+    if (id) setInstrument(null); // picking a vessel leaves instrument mode
+    reagentPanel.setBench(lab.list(), id);
     vesselPanel.show(id);
     addCard.setDefaultVessel(id);
     const v = id ? lab.get(id) : undefined;
@@ -290,20 +348,29 @@ async function initApp() {
     const snap = id ? lab.snapshot(id) : undefined;
     if (snap) {
       advanced.updateSnapshot(snap);
-      time.setClock(snap.t_sim_s);
     }
+    refreshClock();
     if (id && !addCard.isOpen) setSheet('vessel');
   };
   lab.onVesselsChanged = () => {
+    reagentPanel.setBench(lab.list(), lab.selectedId);
     vesselPanel.vesselsChanged();
+    instrumentPanel.vesselsChanged();
     addCard.vesselsChanged();
   };
   lab.onControlsChanged = (id) => {
     if (id === lab.selectedId) vesselPanel.syncControls();
+    instrumentPanel.syncControls(); // hot plate heat / stir follows lifted, displaced or re-placed vessels
   };
-
+  lab.onVesselRemoved = (id) => instLog.forgetSource(id);
   bench.onSelectObject = (type, id) => {
-    if (type === 'vessel') {
+    if (type === 'instrument') {
+      // Probes (thermometer, pH meter, gauge) keep reading the selected vessel; the bench-side instruments stand alone.
+      const probe = id === 'thermometer' || id === 'phmeter' || id === 'gauge';
+      if (!probe && lab.selectedId) lab.select(null);
+      setInstrument(id as InstrumentId);
+      setSheet('vessel');
+    } else if (type === 'vessel') {
       lab.select(id);
       setSheet('vessel');
     } else {
@@ -311,7 +378,98 @@ async function initApp() {
       if (it) openReagent(it);
     }
   };
-  bench.onDeselect = () => addCard.hide();
+  bench.onDeselect = () => {
+    addCard.hide();
+    setInstrument(null);
+  };
+
+  // ------------------------------------------------------------------ manual handling (carry / tilt-to-pour)
+  const handHint = h('div', { class: 'hint hand-hint', role: 'status', 'aria-live': 'polite' });
+  handHint.innerHTML = `${icon('info', 16)}<span class="hint-text"></span>`;
+  const handHintText = handHint.querySelector('.hint-text') as HTMLElement;
+  bottom.prepend(handHint);
+  bench.onHint = (text) => {
+    handHint.classList.toggle('is-on', !!text);
+    if (text) handHintText.textContent = text;
+  };
+
+  const pourReadout = h('div', { class: 'pour-readout', role: 'status', 'aria-live': 'off' });
+  const prRate = h('span', { class: 'pr-rate' });
+  const prTotal = h('span', { class: 'pr-total' });
+  const prTo = h('span', { class: 'pr-to' });
+  pourReadout.append(prRate, prTotal, prTo);
+  app.append(pourReadout);
+  const fmtPour = (v: number, unit: PourState['unit']) =>
+    unit === 'drops' ? v.toFixed(v < 10 && v % 1 !== 0 ? 1 : 0) : unit === 'g' ? v.toFixed(v < 1 ? 3 : 2) : v.toFixed(v < 10 ? 2 : 1);
+  bench.onPourState = (st) => {
+    pourReadout.classList.toggle('is-on', !!st);
+    if (!st) return;
+    if (st.readout) {
+      // pipetting supplies its own wording (draw / dispense, meniscus vs the mark)
+      pourReadout.classList.toggle('is-idle', !st.flowing);
+      pourReadout.classList.toggle('is-blocked', !!st.blocked);
+      prRate.textContent = st.readout.rate;
+      prTotal.textContent = st.readout.total;
+      prTo.textContent = st.readout.to;
+      return;
+    }
+    const per = st.unit === 'drops' ? 'drops/s' : `${st.unit}/s`;
+    pourReadout.classList.toggle('is-idle', !st.flowing && !st.blocked);
+    pourReadout.classList.toggle('is-blocked', !!st.blocked);
+    prRate.textContent = st.blocked === 'full' ? 'Target full' : st.blocked === 'empty' ? 'Nothing left' : st.flowing ? `Pouring ${fmtPour(st.rate, st.unit)} ${per}` : 'Tilt further to pour';
+    prTotal.textContent = `${fmtPour(st.total, st.unit)} ${st.unit} total`;
+    prTo.textContent = `into ${st.targetName}`;
+  };
+  bench.onNotify = (message, kind) => toast(message, kind === 'warning' ? 'warning' : 'info');
+  bench.flowProvider = (src, targetId, form) => {
+    if (src.type === 'vessel') return lab.openFlow({ vesselId: src.id }, targetId, form);
+    const it = lib.findByShelfId(src.id);
+    if (!it) return null;
+    const sink = lab.openFlow({ item: it }, targetId, form);
+    if (!sink) return null;
+    void sink.finished.then(() => {
+      if (sink.total <= 0) return;
+      lib.markUsed(it.key);
+      putOnShelf(it);
+      if (sink.visualOnly) toast(`Added ${displayName(it)} — visual only: the engine has no reaction chemistry for this compound.`, 'info');
+    });
+    return sink;
+  };
+  bench.onVesselLifted = (id, from) => lab.vesselLifted(id, from);
+  bench.onVesselPlaced = (id, place) => lab.vesselPlaced(id, place);
+  bench.massProvider = (id) => lab.totalMassG(id);
+  // stopcocks (burette, separatory funnel) drain real engine liquid; the stirrer plate stirs the flask standing on it
+  bench.drainProvider = (src, target, bottom) => lab.openDrain(src, target, bottom);
+  bench.volumeProvider = (id) => lab.volumeMl(id);
+  bench.onStirrerToggle = (id, on) => {
+    lab.setStir(id, on).then(() => lab.onControlsChanged?.(id)).catch((err) => toast(`Couldn't change the stirrer: ${errMsg(err)}`, 'error'));
+  };
+  bench.onStirrerVacated = (id) => lab.stirrerVacated(id);
+  const stopcockHud = new TitrationHud({ states: () => bench.getStopcockStates(), close: () => bench.closeStopcocks() });
+  app.append(stopcockHud.el);
+  stopcockHud.start();
+  bench.pipetteLab = lab.pipetteLab();
+  bench.onGasLink = (src, dst) =>
+    void lab
+      .connectGas(src, dst)
+      .then(() => toast(`Delivery tube connected: ${lab.get(src)?.name ?? 'flask'} → ${lab.get(dst)?.name ?? 'collector'}.`, 'info'))
+      .catch((err) => toast(errMsg(err), 'warning'));
+  bench.onGasUnlink = (src) => void lab.disconnectGas(src).catch((err) => toast(errMsg(err), 'warning'));
+
+  const levelTags = new LevelTags({
+    focusIds: () => bench.getFocusVesselIds(),
+    anchor: (id) => bench.getVesselScreenAnchor(id),
+    label: (id) => {
+      const burette = bench.getVesselTagText(id); // 'Burette reads 12.35 mL' / '(delivered)'
+      if (burette) return { text: burette.main, sub: burette.sub };
+      // gas collectors: the collected gas, read like the real instrument
+      const g = lab.snapshot(id)?.gas;
+      if (!g || !g.collector) return null;
+      return gasTagText(g.collector, g.volume_ml, lab.snapshot(id)!.temperature_k, dominantGas(g.species));
+    },
+  });
+  benchContainer.append(levelTags.el);
+  levelTags.start();
 
   // ------------------------------------------------------------------ snapshot loop (20 Hz)
   const lastSeen = new Map<string, number>();
@@ -332,7 +490,8 @@ async function initApp() {
     const g = bench.getGlassware(id);
     if (g) {
       try {
-        g.applyVisual(snap, dt, optics);
+        // gas collectors draw their gas (plunger / gas column) instead of liquid layers
+        if (!bench.drawGasCollector(id, snap)) g.applyVisual(snap, dt, optics);
       } catch (err) {
         console.warn('[Main] applyVisual failed', err);
       }
@@ -372,7 +531,7 @@ async function initApp() {
       }
       vesselPanel.update(snap);
       advanced.updateSnapshot(snap);
-      time.setClock(snap.t_sim_s);
+      refreshClock();
     }
     if (addCard.isOpen && now - lastAddCardRefresh > 250) {
       lastAddCardRefresh = now;
@@ -380,26 +539,84 @@ async function initApp() {
     }
   };
 
+  // ------------------------------------------------------------------ instrument history (sim time, 20 Hz, decimated in the log)
+  sim.onTick = (t) => {
+    try {
+      const ins = bench.instruments;
+      const sel = lab.selectedId && lab.has(lab.selectedId) ? lab.selectedId : null;
+      const selName = sel ? lab.get(sel)?.name ?? null : null;
+      const snap = sel ? lab.snapshot(sel) : undefined;
+      const sealed = !!snap?.sealed && !snap.burst;
+      const occ = lab.hotPlateVesselId();
+      const occName = occ ? lab.get(occ)?.name ?? null : null;
+      const occSnap = occ ? lab.snapshot(occ) : undefined;
+      const pan = bench.getPanVesselId();
+      const panName = pan ? lab.get(pan)?.name ?? null : null;
+      const watts = Math.round(ins.hotPlate.heaterWatts);
+      const readings: Partial<Record<ChannelId, ChannelReading>> = {
+        thermometer: { v: sel ? ins.thermometer.readout().temperature_c : null, src: sel, srcLabel: selName },
+        ph: { v: sel ? ins.phMeter.readout().ph : null, src: sel, srcLabel: selName },
+        pressure: { v: sealed ? ins.pressureGauge.readout().gauge_atm : null, src: sealed ? sel : null, srcLabel: selName },
+        balance: { v: ins.balance.readout().mass_g, src: pan, srcLabel: panName },
+        plate_w: { v: watts, src: occ, srcLabel: occName },
+        plate_temp: { v: occSnap ? occSnap.temperature_k - 273.15 : null, src: occ, srcLabel: occName },
+        flame: { v: ins.burner.isActive ? 1 : 0 },
+      };
+      instLog.record(t, readings);
+      instLog.watch('hotplate', 'watts', watts, t, (w) => (w > 0 ? `${w} W` : 'heat off'));
+      instLog.watch('hotplate', 'stir', ins.hotPlate.isStirring, t, (on) => (on ? 'stirring' : 'stir off'));
+      instLog.watch('hotplate', 'occupant', occ, t, (id) => (id ? `${occName ?? 'vessel'} on the plate` : 'plate cleared'));
+      instLog.watch('balance', 'tare', ins.balance.tareCount, t, () => 'tared');
+      instLog.watch('balance', 'pan', pan, t, (id) => (id ? `${panName ?? 'vessel'} on the pan` : 'pan cleared'));
+      instLog.watch('burner', 'flame', ins.burner.isActive, t, (on) => (on ? 'flame on' : 'flame off'));
+    } catch (err) {
+      console.warn('[Main] instrument log failed', err);
+    }
+  };
+
   // ------------------------------------------------------------------ keyboard
+  // WASD / arrow keys walk the camera around the bench (hold Shift to hurry)
+  window.addEventListener('keyup', (e) => {
+    bench.setMoveKey(e.code, false);
+  });
+  window.addEventListener('blur', () => bench.clearMoveKeys());
   window.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || anyModalOpen()) return;
+    if (e.defaultPrevented || anyModalOpen() || bench.isHolding()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(e.code)) {
+      const el = e.target as HTMLElement;
+      const isArrow = e.code.startsWith('Arrow');
+      const blocked = isTypingTarget(e.target) || (isArrow && !!el.closest?.('button, a, select, [role="menuitem"], [role="tab"], [role="slider"]'));
+      if (!blocked && bench.setMoveKey(e.code, true)) {
+        if (!e.code.startsWith('Shift')) e.preventDefault();
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       if (topBar.menuOpen) topBar.closeMenu(true);
       else if (addCard.isOpen) addCard.hide();
       else if (advanced.isVisible) advanced.hide();
-      else if (!isTypingTarget(e.target)) lab.select(null);
+      else if (!isTypingTarget(e.target)) {
+        if (instrumentPanel.instrumentId) setInstrument(null);
+        else lab.select(null);
+      }
       return;
     }
     if (isTypingTarget(e.target)) return;
     const t = e.target as HTMLElement;
     const onControl = !!t.closest?.('button, a, input, select, textarea, [role="menuitem"], [role="tab"]');
-    if (e.key === 'a' || e.key === 'A') {
+    if ((e.key === 'i' || e.key === 'I') && !onControl) {
       e.preventDefault();
       advanced.toggle();
     } else if (e.key === ' ' && !onControl) {
       e.preventDefault();
       time.togglePause();
+    } else if ((e.key === 't' || e.key === 'T') && !onControl) {
+      e.preventDefault();
+      bench.instruments?.balance?.tare(); // zero the balance (the TARE key on the 3D balance does the same)
+    } else if ((e.key === 'b' || e.key === 'B') && !onControl) {
+      e.preventDefault();
+      if (!bench.focusTitration()) toast('No burette in the station clamp. Set out the Titration setup first.', 'info');
     } else if ((e.key === 'f' || e.key === 'F') && lab.selectedId) {
       e.preventDefault();
       bench.focusVessel(lab.selectedId);

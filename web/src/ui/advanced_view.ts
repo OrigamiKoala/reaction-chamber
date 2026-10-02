@@ -38,7 +38,7 @@ export class AdvancedView {
           <h2 class="drawer-title">Details</h2>
           <p class="drawer-sub"></p>
         </div>
-        <button class="icon-btn drawer-close" aria-label="Close details (A)">${icon('close', 18)}</button>
+        <button class="icon-btn drawer-close" aria-label="Close details (I)">${icon('close', 18)}</button>
       </header>
       <div class="drawer-body">
         <section class="d-sec">

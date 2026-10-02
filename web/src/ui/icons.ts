@@ -33,6 +33,15 @@ const P: Record<string, string> = {
   erlenmeyer: '<path d="M9.5 3h5M10 3v6l-5.5 10a1 1 0 00.9 1.5h13.2a1 1 0 00.9-1.5L14 9V3"/><path d="M7 15h10" opacity=".45"/>',
   cylinder: '<path d="M8 3h8M9 3v16M15 3v16M6 21h12M9 19h6"/><path d="M9 7h2M9 10h3M9 13h2M9 16h3" opacity=".6"/>',
   testTube: '<path d="M9 3h6M10 3v14a2 2 0 004 0V3"/><path d="M10 12h4" opacity=".45"/>',
+  roundFlask: '<path d="M9.5 3h5M10 3v5.2a7 7 0 104 0V3"/><path d="M6 15h12" opacity=".45"/>',
+  volumetric: '<path d="M10.5 3h3M10.8 3v8.2a6.5 6.5 0 102.4 0V3"/><path d="M9.8 7h4.4" opacity=".7"/><path d="M6.5 17h11" opacity=".45"/>',
+  burette: '<path d="M10 2.5h4M10.5 2.5V17M13.5 2.5V17M10.5 17l1.5 3 1.5-3"/><path d="M8 11h5M14 12h2.5" opacity=".8"/><path d="M10.5 5h1.5M10.5 8h1.5M10.5 11h1.5M10.5 14h1.5" opacity=".6"/>',
+  pipette: '<path d="M10 3h4M12 3v3M10.6 6h2.8v7a1.4 1.4 0 01-2.8 0z"/><path d="M12 14.4V21" /><path d="M9 9h2" opacity=".6"/>',
+  centrifuge: '<path d="M7.5 3h9M8 3v11l4 7 4-7V3"/><path d="M8 8h3M8 11h2" opacity=".6"/>',
+  gasTube: '<path d="M8.5 5a3.5 3.5 0 017 0v14M8.5 5v14M6 19h12"/><path d="M8.5 9h2.5M8.5 12h1.5M8.5 15h2.5" opacity=".6"/>',
+  syringe: '<path d="M5 8h10v8H5zM15 10.5h5M15 13.5h5M5 12H2.5M2.5 8.5v7"/><path d="M8 8v3M11 8v3" opacity=".6"/>',
+  funnel: '<path d="M4 4h16l-6.2 8v4.5M10.2 12L4 4M10.2 12v4.5"/><path d="M10.2 16.5l1.8 4 1.8-4" opacity=".8"/>',
+  dish: '<path d="M3.5 9h17M4.5 9c.4 4.2 3.5 7 7.5 7s7.1-2.8 7.5-7"/><path d="M8 19.5h8" opacity=".45"/>',
 };
 
 export type IconName = keyof typeof P;

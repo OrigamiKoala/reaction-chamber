@@ -151,3 +151,49 @@ export function createGlassMesh(
   near.add(far);
   return { near, far };
 }
+
+let polyPair: [THREE.MeshPhysicalMaterial, THREE.MeshPhysicalMaterial] | null = null;
+/** Shared translucent polypropylene [far, near] (centrifuge tubes): milky, soft reflections. */
+export function polyGlass(): [THREE.MeshPhysicalMaterial, THREE.MeshPhysicalMaterial] {
+  if (!polyPair) {
+    const o: Partial<GlassOptions> = {
+      tint: 0xf3f5f7,
+      baseAlpha: 0.1,
+      fresnelAlpha: 0.3,
+      edgeTint: 0xc7d2dc,
+      roughness: 0.38,
+      envMapIntensity: 0.45,
+    };
+    polyPair = [makeGlassMaterial(true, o), makeGlassMaterial(false, o)];
+  }
+  return polyPair;
+}
+
+const solidMats = new Map<string, THREE.MeshStandardMaterial>();
+/** Shared opaque glaze / plastic for porcelain dishes, Büchner funnels, weigh boats. */
+export function solidShellMaterial(kind: 'porcelain' | 'plastic'): THREE.MeshStandardMaterial {
+  let m = solidMats.get(kind);
+  if (!m) {
+    m =
+      kind === 'porcelain'
+        ? new THREE.MeshStandardMaterial({ color: 0xf1efe8, roughness: 0.22, metalness: 0, envMapIntensity: 0.7, side: THREE.DoubleSide })
+        : new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide });
+    solidMats.set(kind, m);
+  }
+  return m;
+}
+
+/**
+ * Same shape as `createGlassMesh` for opaque shells: the returned "far" half is an invisible child so that code that
+ * toggles / re-orders `near` and `near.children[0]` keeps working.
+ */
+export function createSolidMesh(geo: THREE.BufferGeometry, kind: 'porcelain' | 'plastic'): { near: THREE.Mesh; far: THREE.Mesh } {
+  const near = new THREE.Mesh(geo, solidShellMaterial(kind));
+  near.castShadow = true;
+  near.receiveShadow = true;
+  const far = new THREE.Mesh(geo, solidShellMaterial(kind));
+  far.visible = false;
+  far.raycast = () => {};
+  near.add(far);
+  return { near, far };
+}

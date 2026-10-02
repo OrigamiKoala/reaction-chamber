@@ -2,7 +2,7 @@
 // The renderer and instruments never decide chemistry; they only read a VesselSnapshot.
 // Rust mirror lives in engine/src/vessel.rs (serde field names are identical, snake_case).
 
-import type { ProvenanceTier } from './index';
+import type { ProvenanceTier, VesselType } from './index';
 
 /** Number of wavelength bins in every spectrum: 400..710 nm in 10 nm steps (bin i centre = 400 + 10*i). */
 export const N_BINS = 32;
@@ -155,6 +155,23 @@ export interface ConservationInfo {
   energy_rel_err: number;
 }
 
+export type CollectorKind = 'syringe' | 'over_water' | 'jar';
+
+export interface GasInfo {
+  /** Set for gas syringes / gas collection tubes / gas jars. */
+  collector: CollectorKind | null;
+  species: { species: string; mol: number }[];
+  total_mol: number;
+  /** Volume the gas occupies at the vessel temperature and ambient pressure, mL. */
+  volume_ml: number;
+  /** Collector capacity, mL (0 for ordinary vessels). */
+  capacity_ml: number;
+  /** Gas that did not fit and escaped into the room, mol. */
+  escaped_mol: number;
+  /** Water-vapour partial pressure in the collected gas (collection over water), atm. */
+  vapour_atm: number;
+}
+
 export interface VesselSnapshot {
   t_sim_s: number;
   temperature_k: number;
@@ -201,11 +218,13 @@ export interface VesselSnapshot {
   reactions: ReactionRow[];
   conservation: ConservationInfo;
   events: VesselEvent[];
+  /** Collected gas (collectors) or evolved gas trapped in the headspace of a stoppered vessel. */
+  gas?: GasInfo;
 }
 
 // ------------------------------------------------------------------ commands
 export interface VesselConfig {
-  type: 'beaker-50' | 'beaker-250' | 'beaker-1000' | 'erlenmeyer-250' | 'test-tube' | 'cylinder-100' | 'round-bottom-250' | 'evaporating-dish' | 'burette-50';
+  type: VesselType;
   capacity_ml: number;
   /** Empty glass mass, g. */
   glass_mass_g: number;
@@ -282,6 +301,10 @@ export type SimRequest =
   | { type: 'VESSEL_DOSE'; payload: { handle: number; dose: DoseRequest }; requestId: string }
   | { type: 'VESSEL_ADD_PORTION'; payload: { handle: number; portion: Portion }; requestId: string }
   | { type: 'VESSEL_REMOVE_LIQUID'; payload: { handle: number; volume_ml: number; include_solids?: boolean }; requestId: string }
+  | { type: 'GAS_LINK'; payload: { src: number; dst: number }; requestId: string }
+  | { type: 'GAS_UNLINK'; payload: { src: number }; requestId: string }
+  | { type: 'GAS_VENT'; payload: { handle: number }; requestId: string }
+  | { type: 'VESSEL_REMOVE_LIQUID_BOTTOM'; payload: { handle: number; volume_ml: number; include_solids?: boolean }; requestId: string }
   | { type: 'VESSEL_CONTROL'; payload: { handle: number; controls: VesselControls }; requestId: string }
   | { type: 'VESSEL_STEP'; payload: { handle: number; dt_s: number }; requestId: string }
   | { type: 'VESSEL_SNAPSHOT'; payload: { handle: number }; requestId: string }

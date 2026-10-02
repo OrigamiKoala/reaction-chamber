@@ -33,6 +33,8 @@ static BANDS_HIN_BTB: [Band; 1] = [Band { centre_nm: 430.0, fwhm_nm: 65.0, eps: 
 static BANDS_IN_BTB: [Band; 1] = [Band { centre_nm: 615.0, fwhm_nm: 65.0, eps: 35000.0 }];
 static BANDS_HIN_MO: [Band; 1] = [Band { centre_nm: 505.0, fwhm_nm: 75.0, eps: 56000.0 }];
 static BANDS_IN_MO: [Band; 1] = [Band { centre_nm: 460.0, fwhm_nm: 65.0, eps: 25000.0 }];
+static BANDS_HIN_MR: [Band; 1] = [Band { centre_nm: 520.0, fwhm_nm: 80.0, eps: 37000.0 }];
+static BANDS_IN_MR: [Band; 1] = [Band { centre_nm: 430.0, fwhm_nm: 70.0, eps: 24000.0 }];
 static BANDS_CO2: [Band; 1] = [Band { centre_nm: 510.0, fwhm_nm: 80.0, eps: 5.0 }];
 static BANDS_COCL4: [Band; 3] = [
     Band { centre_nm: 625.0, fwhm_nm: 45.0, eps: 420.0 },
@@ -64,6 +66,8 @@ pub fn bands(species_id: &str) -> Option<&'static [Band]> {
         "In_btb-" => Some(&BANDS_IN_BTB),
         "HIn_mo" => Some(&BANDS_HIN_MO),
         "In_mo-" => Some(&BANDS_IN_MO),
+        "HIn_mr" => Some(&BANDS_HIN_MR),
+        "In_mr-" => Some(&BANDS_IN_MR),
         "Co+2" | "Co(H2O)6+2" => Some(&BANDS_CO2),
         "CoCl4-2" => Some(&BANDS_COCL4),
         "I2(aq)" => Some(&BANDS_I2_AQ),
@@ -203,6 +207,8 @@ pub fn species_with_spectra() -> Vec<&'static str> {
         "In_btb-",
         "HIn_mo",
         "In_mo-",
+        "HIn_mr",
+        "In_mr-",
         "Co+2",
         "Co(H2O)6+2",
         "CoCl4-2",

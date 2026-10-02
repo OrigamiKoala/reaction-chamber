@@ -215,6 +215,8 @@ pub fn get_species_thermo(species: &str) -> SpeciesThermo {
         "In_btb-" => SpeciesThermo { mw: 623.37, charge: -1, delta_h_f: -560.0, cp: 400.0 },
         "HIn_mo" => SpeciesThermo { mw: 327.33, charge: 0, delta_h_f: -200.0, cp: 300.0 },
         "In_mo-" => SpeciesThermo { mw: 326.32, charge: -1, delta_h_f: -170.0, cp: 300.0 },
+        "HIn_mr" => SpeciesThermo { mw: 269.30, charge: 0, delta_h_f: -120.0, cp: 300.0 },
+        "In_mr-" => SpeciesThermo { mw: 268.29, charge: -1, delta_h_f: -95.0, cp: 300.0 },
         "C2H5OH" => SpeciesThermo { mw: 46.069, charge: 0, delta_h_f: -277.69, cp: 112.3 },
 
         // Solids
@@ -420,6 +422,18 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             reactants: [("HIn_mo".to_string(), 1.0)].into(),
             products: [("In_mo-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
             log_k_298: -3.70,
+            delta_h_kj: 8.0,
+            tier: ProvenanceTier::Tabulated,
+            source: "IUPAC Indicator pKa".to_string(),
+        },
+        // 15. Methyl red indicator equilibrium (red acid form, yellow base form)
+        GeneralEquilibrium {
+            id: "mr_indicator".to_string(),
+            name: "Methyl red dissociation".to_string(),
+            equation: "HIn_mr <=> In_mr- + H+".to_string(),
+            reactants: [("HIn_mr".to_string(), 1.0)].into(),
+            products: [("In_mr-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
+            log_k_298: -5.00,
             delta_h_kj: 8.0,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Indicator pKa".to_string(),
@@ -1185,6 +1199,26 @@ pub fn get_reagent_catalog() -> Vec<ReagentCatalogEntry> {
         bottle_colour: "amber".to_string(),
         composition: comp,
         label: "Methyl Orange".to_string(),
+        by_mass: false,
+        dropper: Some(true),
+    });
+
+    // 26b. Methyl Red Indicator (0.1 % w/v = 3.7 mM; red below pH 4.4, yellow above 6.2)
+    let mut comp = HashMap::new();
+    comp.insert("HIn_mr".to_string(), 0.0000037);
+    comp.insert("H2O".to_string(), 0.0555);
+    catalog.push(ReagentCatalogEntry {
+        id: "methyl_red_drop".to_string(),
+        name: "Methyl Red (Dropper)".to_string(),
+        formula: "C15H15N3O2".to_string(),
+        form: "solution".to_string(),
+        concentration_m: Some(0.0037),
+        density_g_ml: 1.000,
+        ghs: vec!["GHS07".to_string()],
+        signal_word: "Warning".to_string(),
+        bottle_colour: "amber".to_string(),
+        composition: comp,
+        label: "Methyl Red".to_string(),
         by_mass: false,
         dropper: Some(true),
     });

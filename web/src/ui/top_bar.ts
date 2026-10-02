@@ -31,8 +31,8 @@ export class TopBar {
     const right = h('div', { class: 'topbar-right' });
     this.statusDot = h('span', { class: 'status-dot', role: 'img' });
 
-    this.detailsBtn = h('button', { class: 'btn btn-bar', type: 'button', 'aria-pressed': 'false', title: 'Details (A)' });
-    this.detailsBtn.innerHTML = `${icon('details', 16)}<span>Details</span><kbd>A</kbd>`;
+    this.detailsBtn = h('button', { class: 'btn btn-bar', type: 'button', 'aria-pressed': 'false', title: 'Details (I)' });
+    this.detailsBtn.innerHTML = `${icon('details', 16)}<span>Details</span><kbd>I</kbd>`;
     this.detailsBtn.addEventListener('click', () => this.onToggleDetails?.());
 
     this.moreBtn = h('button', { class: 'icon-btn btn-bar-icon', type: 'button', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': 'more-menu', html: icon('more', 18) });

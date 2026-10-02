@@ -610,3 +610,439 @@ export function moveTask(obj: THREE.Object3D, to: THREE.Vector3, onArrive?: () =
     },
   };
 }
+
+// ------------------------------------------------------------------ pose task (arc back to the shelf / set down)
+/** Glide an object to a pose (position + rotation) along an arc; `arc` is the extra lift (cm) at mid-flight. */
+export function poseTask(
+  obj: THREE.Object3D,
+  toPos: THREE.Vector3,
+  toQuat: THREE.Quaternion,
+  opts: { arc?: number; duration?: number; rotFrac?: number; onArrive?: () => void; owns?: THREE.Object3D[] } = {}
+): AnimTask {
+  const from = obj.position.clone();
+  const fromQ = obj.quaternion.clone();
+  const dist = from.distanceTo(toPos);
+  const dur = opts.duration ?? Math.min(0.9, 0.28 + dist / 140);
+  const arc = opts.arc ?? 0;
+  // rotation finishes earlier than the translation (a tipped container straightens up straight away)
+  const rotDur = Math.max(0.05, dur * (opts.rotFrac ?? 1));
+  let t = 0;
+  const arrive = once(opts.onArrive);
+  return {
+    owns: opts.owns ?? [obj],
+    update: (dt: number) => {
+      t += dt;
+      const k = ease.inOut(Math.min(1, t / dur));
+      obj.position.lerpVectors(from, toPos, k);
+      obj.position.y += Math.sin(k * Math.PI) * arc;
+      obj.quaternion.slerpQuaternions(fromQ, toQuat, ease.out(Math.min(1, t / rotDur)));
+      if (t >= dur) {
+        obj.position.copy(toPos);
+        obj.quaternion.copy(toQuat);
+        arrive();
+        return true;
+      }
+      return false;
+    },
+  };
+}
+
+// ------------------------------------------------------------------ continuous liquid stream (manual pouring)
+export interface StreamFrame {
+  /** Volumetric flow (mL/s). <= 0 lets the stream run out (tail catches up with the head). */
+  flowMlS: number;
+  /** World position of the pour lip (stream origin). */
+  lip: THREE.Vector3;
+  /** World landing point (on the target liquid surface, or the bottom / rim when empty). */
+  land: THREE.Vector3;
+  /** Receiving vessel (splash / ripples at the landing point), if any. */
+  target: VesselBundle | null;
+  /** Mouth radius of the source (cap on the stream thickness, cm). */
+  mouthR?: number;
+}
+
+/** Stream radius (cm) for a flow in mL/s: thin filament for a trickle, fat jet at full tilt. */
+export function streamRadius(flowMlS: number, mouthR = 1.3): number {
+  const q = Math.max(0, flowMlS);
+  return Math.min(Math.max(0.04, mouthR * 0.85), 0.045 + 0.075 * Math.sqrt(q));
+}
+
+/**
+ * Reusable continuous pour stream: a ballistic tube from the lip to the landing point whose thickness follows the
+ * flow rate. The mesh is rebuilt in place every frame (451 vertices), so the lip can move freely while pouring.
+ */
+export class PourStream {
+  public readonly mesh: THREE.Mesh;
+  private geo: THREE.BufferGeometry;
+  private sm: ReturnType<typeof streamMaterial>;
+  private posArr: Float32Array;
+  private norArr: Float32Array;
+  private head = 0;
+  private tail = 1.01;
+  private tf = 0;
+  private tt = 0;
+  private wasFlowing = false;
+  private splashT = 0;
+  private lastFlow = 0;
+  private lastLip = new THREE.Vector3();
+  private lastLand = new THREE.Vector3();
+  private lastTarget: VesselBundle | null = null;
+  private lastMouth = 1.3;
+  private color: THREE.Color;
+  private disposed = false;
+  private static readonly RINGS = 28;
+  private static readonly SEGS = 8;
+
+  constructor(private scene: THREE.Scene, colorHex: string) {
+    this.color = new THREE.Color(colorHex);
+    const R = PourStream.RINGS;
+    const S = PourStream.SEGS;
+    const n = (R + 1) * (S + 1);
+    this.posArr = new Float32Array(n * 3);
+    this.norArr = new Float32Array(n * 3);
+    const sAttr = new Float32Array(n);
+    const idx: number[] = [];
+    for (let j = 0; j <= R; j++) for (let i = 0; i <= S; i++) sAttr[j * (S + 1) + i] = j / R;
+    for (let j = 0; j < R; j++) {
+      for (let i = 0; i < S; i++) {
+        const a = j * (S + 1) + i;
+        const b = a + S + 1;
+        idx.push(a, b, a + 1, b, b + 1, a + 1);
+      }
+    }
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.posArr, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geo.setAttribute('normal', new THREE.BufferAttribute(this.norArr, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geo.setAttribute('aS', new THREE.BufferAttribute(sAttr, 1));
+    this.geo.setIndex(idx);
+    this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+    this.sm = streamMaterial(colorHex);
+    this.mesh = new THREE.Mesh(this.geo, this.sm.mat);
+    this.mesh.frustumCulled = false;
+    this.mesh.raycast = () => {};
+    this.mesh.visible = false;
+    scene.add(this.mesh);
+  }
+
+  /** True while any part of the stream is still visible (keep calling `update`). */
+  public get alive(): boolean {
+    return !this.disposed && (this.wasFlowing || this.tail < 1);
+  }
+
+  public setColor(hex: string) {
+    this.color.set(hex);
+  }
+
+  private build(lip: THREE.Vector3, land: THREE.Vector3, r0: number) {
+    const R = PourStream.RINGS;
+    const S = PourStream.SEGS;
+    const dirH = new THREE.Vector3(land.x - lip.x, 0, land.z - lip.z);
+    let D = dirH.length();
+    if (D < 0.04) {
+      dirH.set(1, 0, 0);
+      D = 0.04;
+    } else dirH.divideScalar(D);
+    const H = Math.max(0.4, lip.y - land.y);
+    const side = new THREE.Vector3().crossVectors(dirH, UP).normalize();
+    const c = new THREE.Vector3();
+    const t = new THREE.Vector3();
+    const n2 = new THREE.Vector3();
+    let k = 0;
+    for (let j = 0; j <= R; j++) {
+      const s = j / R;
+      c.copy(lip).addScaledVector(dirH, D * s);
+      c.y -= H * s * s;
+      t.copy(dirH).multiplyScalar(D).addScaledVector(UP, -2 * H * s).normalize();
+      n2.crossVectors(t, side).normalize();
+      const r = r0 * (1 - 0.45 * Math.sqrt(s));
+      for (let i = 0; i <= S; i++) {
+        const a = (i / S) * Math.PI * 2;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const nx = side.x * ca + n2.x * sa;
+        const ny = side.y * ca + n2.y * sa;
+        const nz = side.z * ca + n2.z * sa;
+        this.posArr[k] = c.x + nx * r;
+        this.posArr[k + 1] = c.y + ny * r;
+        this.posArr[k + 2] = c.z + nz * r;
+        this.norArr[k] = nx;
+        this.norArr[k + 1] = ny;
+        this.norArr[k + 2] = nz;
+        k += 3;
+      }
+    }
+    (this.geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.geo.getAttribute('normal') as THREE.BufferAttribute).needsUpdate = true;
+    return H;
+  }
+
+  public update(dt: number, time: number, f: StreamFrame) {
+    if (this.disposed) return;
+    const flowing = f.flowMlS > 0.005;
+    if (flowing) {
+      this.lastFlow = f.flowMlS;
+      this.lastLip.copy(f.lip);
+      this.lastLand.copy(f.land);
+      this.lastTarget = f.target;
+      this.lastMouth = f.mouthR ?? this.lastMouth;
+    }
+    if (flowing && !this.wasFlowing) {
+      // (re)start: a fully retracted stream grows from the lip, a lingering one just resumes
+      if (this.tail >= 1) {
+        this.tf = 0;
+        this.head = 0;
+      } else this.tf = 1e3;
+      this.tail = 0;
+      this.tt = 0;
+    } else if (!flowing && this.wasFlowing) {
+      this.tt = 0;
+    }
+    this.wasFlowing = flowing;
+    if (!flowing && this.tail >= 1) {
+      this.mesh.visible = false;
+      return;
+    }
+    const lip = flowing ? f.lip : this.lastLip;
+    const land = flowing ? f.land : this.lastLand;
+    const flow = flowing ? f.flowMlS : this.lastFlow;
+    const target = flowing ? f.target : this.lastTarget;
+    const H = this.build(lip, land, streamRadius(flow, flowing ? f.mouthR ?? this.lastMouth : this.lastMouth));
+    this.sm.time.value = time;
+    if (flowing) {
+      this.tf += dt;
+      this.head = Math.min(1, Math.sqrt(Math.min(1, (0.5 * G * this.tf * this.tf) / H + this.tf * 1.5)));
+      this.tail = 0;
+    } else {
+      this.tt += dt;
+      this.tail = Math.min(1.01, Math.sqrt(Math.min(1, (0.5 * G * this.tt * this.tt) / H + this.tt * 2)));
+    }
+    this.sm.head.value = this.head;
+    this.sm.tail.value = this.tail;
+    this.mesh.visible = this.tail < 1 && this.head > 0.02;
+    if (target) this.mesh.renderOrder = target.glassMesh.renderOrder - 1;
+    // landing: ripples + droplets, gentle for a trickle
+    if (flowing && target && this.head >= 0.95) {
+      this.splashT += dt;
+      const interval = Math.max(0.06, 0.3 - flow * 0.012);
+      if (this.splashT >= interval) {
+        this.splashT = 0;
+        try {
+          const lp = target.glassRoot.worldToLocal(land.clone());
+          const strength = Math.min(1.0, 0.18 + flow * 0.035);
+          const count = flow < 1.5 ? 0 : Math.min(8, Math.round(flow * 0.4));
+          target.effects.splashAt(lp.x, lp.z, this.color, count, strength);
+          if (flow > 6 && Math.random() < 0.15) target.liquid.slosh(0.012, land.x - lip.x, land.z - lip.z);
+        } catch (e) {
+          warnStream('splash', e);
+        }
+      }
+    }
+  }
+
+  public dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.scene.remove(this.mesh);
+    this.geo.dispose();
+    this.sm.mat.dispose();
+  }
+}
+
+const streamWarned = new Set<string>();
+function warnStream(key: string, e: unknown) {
+  if (streamWarned.has(key)) return;
+  streamWarned.add(key);
+  console.warn(`[stream] ${key}`, e);
+}
+
+// ------------------------------------------------------------------ falling powder (solid jar tilted over a vessel)
+/** World Y a falling thing hits inside `target` (liquid surface / powder bed / bench). */
+function landingY(target: VesselBundle | null, x: number, z: number): number {
+  if (!target) return 0;
+  const p = target.group.position;
+  const inside = Math.hypot(x - p.x, z - p.z) < Math.max(0.3, target.profile.rimInnerRadius - 0.15);
+  return inside ? p.y + target.surfaceLocalY() : p.y;
+}
+
+export class PowderStream {
+  private powder: SpriteParticles;
+  private acc = 0;
+  private col: THREE.Color;
+  private disposed = false;
+  private impactT = 0;
+
+  constructor(private scene: THREE.Scene, colorHex: string) {
+    this.col = new THREE.Color(colorHex);
+    this.powder = new SpriteParticles(700, softSpriteTexture(), { minPx: 1.0 });
+    this.powder.fadeIn = 0;
+    scene.add(this.powder.points);
+  }
+
+  public get alive(): boolean {
+    return !this.disposed && this.powder.live > 0;
+  }
+
+  /** `gPerS` <= 0 stops emitting; falling grains finish their fall. */
+  public update(dt: number, time: number, gPerS: number, lip: THREE.Vector3, target: VesselBundle | null) {
+    if (this.disposed) return;
+    const c = this.col;
+    if (target) this.powder.points.renderOrder = target.glassMesh.renderOrder - 1;
+    if (gPerS > 0) {
+      // grains per second grow slowly with mass flow (each grain stands for more powder at a high rate)
+      this.acc += Math.min(480, 14 + 70 * Math.sqrt(gPerS) + gPerS * 30) * dt;
+      while (this.acc >= 1) {
+        this.acc -= 1;
+        const sh = 0.85 + Math.random() * 0.3;
+        this.powder.spawn(
+          lip.x + (Math.random() - 0.5) * 0.5,
+          lip.y - Math.random() * 0.3,
+          lip.z + (Math.random() - 0.5) * 0.5,
+          (Math.random() - 0.5) * 1.6,
+          -Math.random() * 4 - 1,
+          (Math.random() - 0.5) * 1.6,
+          2.0, 0.055, 0.04, 0.95, c.r * sh, c.g * sh, c.b * sh, G * 0.5, 1.5, 0
+        );
+      }
+    } else this.acc = 0;
+    this.impactT += dt;
+    const pw = this.powder;
+    for (let i = 0; i < pw.live; i++) {
+      const x = pw.pos[i * 3];
+      const z = pw.pos[i * 3 + 2];
+      const y = landingY(target, x, z);
+      if (pw.pos[i * 3 + 1] <= y && pw.life[i] < pw.maxLife[i] - 0.01) {
+        if (target && this.impactT > 0.12 && y > target.group.position.y + 0.01) {
+          this.impactT = 0;
+          const lp = target.glassRoot.worldToLocal(new THREE.Vector3(x, y, z));
+          target.liquid.impact(lp.x, lp.z, Math.min(0.5, 0.12 + gPerS * 0.05), time);
+        }
+        pw.maxLife[i] = pw.life[i];
+      }
+    }
+    pw.update(dt);
+  }
+
+  public dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.scene.remove(this.powder.points);
+    this.powder.dispose();
+  }
+}
+
+// ------------------------------------------------------------------ falling metal pieces and liquid drops
+interface Faller {
+  m: THREE.Mesh;
+  v: number;
+  spin: THREE.Vector3;
+}
+
+abstract class FallerSet {
+  protected live: Faller[] = [];
+  constructor(protected scene: THREE.Scene) {}
+  public get alive(): boolean {
+    return this.live.length > 0;
+  }
+  protected abstract onLand(f: Faller, target: VesselBundle | null, time: number): void;
+  protected abstract release(f: Faller): void;
+  public update(dt: number, time: number, target: VesselBundle | null) {
+    for (let i = this.live.length - 1; i >= 0; i--) {
+      const f = this.live[i];
+      f.v += G * dt;
+      f.m.position.y -= f.v * dt;
+      f.m.rotation.x += f.spin.x * dt;
+      f.m.rotation.y += f.spin.y * dt;
+      if (target) f.m.renderOrder = target.glassMesh.renderOrder - 1;
+      const y = landingY(target, f.m.position.x, f.m.position.z);
+      if (f.m.position.y <= y + 0.05 || f.m.position.y < -5) {
+        this.onLand(f, target, time);
+        this.scene.remove(f.m);
+        this.release(f);
+        this.live.splice(i, 1);
+      }
+    }
+  }
+  public dispose() {
+    for (const f of this.live) {
+      this.scene.remove(f.m);
+      this.release(f);
+    }
+    this.live = [];
+  }
+}
+
+/** Discrete pieces of bare metal (ribbon) dropped one at a time. */
+export class MetalPieces extends FallerSet {
+  private mat: THREE.MeshStandardMaterial;
+  constructor(scene: THREE.Scene, colorHex: string) {
+    super(scene);
+    const c = new THREE.Color(colorHex);
+    this.mat = new THREE.MeshStandardMaterial({ color: c.getHex() === 0xffffff ? 0xc0c2c6 : c, metalness: 1, roughness: 0.3, side: THREE.DoubleSide });
+  }
+  public drop(lip: THREE.Vector3, target: VesselBundle | null) {
+    const m = new THREE.Mesh(getRibbonGeo(), this.mat);
+    const s = target ? Math.min(1, (target.profile.rimInnerRadius * 2 - 0.4) / 5) : 0.6;
+    m.scale.setScalar(Math.max(0.35, s));
+    m.position.copy(lip);
+    m.castShadow = true;
+    m.raycast = () => {};
+    m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    this.scene.add(m);
+    this.live.push({ m, v: 0, spin: new THREE.Vector3(2 + Math.random() * 3, 1 + Math.random() * 2, 0) });
+  }
+  protected onLand(f: Faller, target: VesselBundle | null) {
+    if (!target) return;
+    const lp = target.glassRoot.worldToLocal(f.m.position.clone());
+    target.effects.splashAt(lp.x, lp.z, new THREE.Color(target.getLiquidColorHex()), 8, 0.8);
+  }
+  protected release() {
+    /* geometry + material are shared / disposed with the set */
+  }
+  public dispose() {
+    super.dispose();
+    this.mat.dispose();
+  }
+}
+
+/** Single falling drops from a pipette tip. */
+export class DropFall extends FallerSet {
+  private mat: THREE.MeshPhysicalMaterial;
+  private col: THREE.Color;
+  constructor(scene: THREE.Scene, colorHex: string) {
+    super(scene);
+    dropGeo ??= new THREE.SphereGeometry(0.23, 14, 10);
+    this.col = new THREE.Color(colorHex);
+    const lum = this.col.r * 0.3 + this.col.g * 0.59 + this.col.b * 0.11;
+    this.mat = new THREE.MeshPhysicalMaterial({
+      color: lum > 0.82 ? 0xeef6fb : this.col,
+      roughness: 0.03,
+      transparent: true,
+      opacity: lum > 0.82 ? 0.45 : 0.85,
+      envMapIntensity: 2,
+      depthWrite: false,
+    });
+  }
+  public drop(tip: THREE.Vector3) {
+    const m = new THREE.Mesh(dropGeo!, this.mat);
+    m.position.copy(tip);
+    m.raycast = () => {};
+    this.scene.add(m);
+    this.live.push({ m, v: 0, spin: new THREE.Vector3() });
+  }
+  protected onLand(f: Faller, target: VesselBundle | null) {
+    if (!target) return;
+    const lp = target.glassRoot.worldToLocal(f.m.position.clone());
+    target.effects.splashAt(lp.x, lp.z, this.col, 3, 0.4);
+  }
+  protected release() {
+    /* shared geometry */
+  }
+  public update(dt: number, time: number, target: VesselBundle | null) {
+    super.update(dt, time, target);
+    for (const f of this.live) f.m.scale.set(1, 1 + Math.min(0.5, f.v / 400), 1);
+  }
+  public dispose() {
+    super.dispose();
+    this.mat.dispose();
+  }
+}
