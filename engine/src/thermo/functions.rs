@@ -48,38 +48,22 @@ fn put_cached(key: (String, String, i64, i64), state: ThermoState) {
     }
 }
 
-/// Fallback standard properties at 298.15 K: (dfH [kJ/mol], dfG [kJ/mol], Cp [J/(mol*K)])
-fn default_species_thermo_298(species: &str) -> (f64, f64, f64) {
-    match species {
-        "H+" => (0.0, 0.0, 0.0),
-        "OH-" => (-230.0, -157.24, -148.5),
-        "H2O" | "H2O(l)" => (-285.83, -237.13, 75.38),
-        "Cl-" => (-167.2, -131.23, -136.4),
-        "Ag+" => (105.6, 77.11, 77.0),
-        "Ag(NH3)2+" => (-111.0, -17.2, 180.0),
-        "Na+" => (-240.1, -261.91, 46.4),
-        "K+" => (-252.4, -283.27, 21.8),
-        "Ca+2" => (-542.8, -553.58, -22.0),
-        "Ba+2" => (-537.6, -560.77, -30.0),
-        "SO4-2" => (-909.3, -744.53, -293.0),
-        "CO3-2" => (-677.1, -527.81, -50.0),
-        "HCO3-" => (-692.0, -586.77, 112.0),
-        "CrO4-2" => (-881.2, -727.75, 110.0),
-        "CH3COOH" => (-484.5, -396.46, 124.0),
-        "CH3COO-" => (-486.0, -369.31, 80.0),
-        "NH3" => (-80.3, -26.50, 80.0),
-        "NH4+" => (-132.5, -79.31, 79.9),
-        "CO2(aq)" => (-413.8, -385.98, 243.0),
-        "CO2(g)" => (-393.5, -394.39, 37.1),
-        "NaHCO3(s)" => (-950.8, -851.0, 87.6),
-        "Na2CO3(s)" => (-1130.7, -1044.4, 112.3),
-        "AgCl(s)" => (-127.07, -109.79, 50.8),
-        "CaCO3(s)" => (-1207.6, -1128.8, 81.9),
-        "CaSO4(s)" => (-1434.5, -1321.8, 99.6),
-        "BaSO4(s)" => (-1473.2, -1362.2, 101.8),
-        "Ag2CrO4(s)" => (-731.8, -642.3, 142.3),
-        "C2H5OH" | "C2H5OH(l)" => (-277.69, -174.78, 112.3),
-        _ => (-100.0, -80.0, 50.0),
+/// General physical estimation for unknown species when absent from SpeciesStore.
+fn estimate_species_thermo_298(species: &str, phase: &str) -> (f64, f64, f64, ProvenanceTier) {
+    let charge = crate::ions::species_charge(species);
+    let tier = ProvenanceTier::Speculative;
+    match phase {
+        "s" => (-100.0, -80.0, 50.0, tier),
+        "g" => (-50.0, -50.0, 30.0, tier),
+        "aq" => {
+            if charge != 0 {
+                let z = charge.abs() as f64;
+                (-150.0 * z, -120.0 * z, -40.0 * z, tier)
+            } else {
+                (-100.0, -80.0, 80.0, tier)
+            }
+        }
+        _ => (-100.0, -80.0, 50.0, tier),
     }
 }
 
@@ -98,32 +82,54 @@ pub fn get_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Ther
         return st;
     }
 
+    let mut found = false;
     let mut tier = ProvenanceTier::Tabulated;
-    let (mut dfh_kj, mut dfg_kj, mut cp) = default_species_thermo_298(species);
+    let (mut dfh_kj, mut dfg_kj, mut cp) = (0.0, 0.0, 0.0);
 
     // 1. Query SpeciesStore
     if let Ok(store) = SpeciesStore::global().read() {
-        if let Some(rec) = store.get(species) {
-            let ph = rec.phases.get(phase)
-                .or_else(|| rec.phases.get("aq"))
-                .or_else(|| rec.phases.get("l"))
-                .or_else(|| rec.phases.get("s"))
-                .or_else(|| rec.phases.get("g"));
+        let base_id = species.trim_end_matches("(s)").trim_end_matches("(g)").trim_end_matches("(l)").trim_end_matches("(aq)");
+        let rec = store.get(species)
+            .or_else(|| store.get(base_id))
+            .or_else(|| store.get(&format!("{}(s)", base_id)))
+            .or_else(|| store.get(&format!("{}(g)", base_id)))
+            .or_else(|| store.get(&format!("{}(l)", base_id)));
+        if let Some(r) = rec {
+            let ph = r.phases.get(phase)
+                .or_else(|| r.phases.get("aq"))
+                .or_else(|| r.phases.get("l"))
+                .or_else(|| r.phases.get("s"))
+                .or_else(|| r.phases.get("g"));
             if let Some(p_data) = ph {
                 if let Some(t_data) = &p_data.thermo {
                     if let Some(d) = &t_data.dfH {
                         dfh_kj = d.value;
                         tier = d.tier.clone();
+                        found = true;
                     }
                     if let Some(d) = &t_data.dfG {
                         dfg_kj = d.value;
+                    } else {
+                        // Approximate dfG ~ dfH if missing
+                        dfg_kj = dfh_kj;
                     }
                     if let Some(d) = &t_data.cp {
                         cp = d.value;
+                    } else {
+                        cp = 50.0;
                     }
                 }
             }
         }
+    }
+
+    // 2. Fallback to general physical estimation if not in store
+    if !found {
+        let (est_h, est_g, est_cp, est_tier) = estimate_species_thermo_298(species, phase);
+        dfh_kj = est_h;
+        dfg_kj = est_g;
+        cp = est_cp;
+        tier = est_tier;
     }
 
     // Standard thermodynamic formation entropy: dfS = (dfH - dfG) / 298.15

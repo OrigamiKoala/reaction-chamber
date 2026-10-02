@@ -144,6 +144,7 @@ fn s1_4_guessed_pbi2_resolves_through_generic_queue() {
         density_g_ml: 6.16,
         default_particle_um: 50.0,
         kind: "crystal".to_string(),
+        log_ksp_analytic: None,
         tier: ProvenanceTier::Speculative,
         source: "Rule guess".to_string(),
     });

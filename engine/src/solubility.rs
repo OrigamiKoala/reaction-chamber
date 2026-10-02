@@ -140,6 +140,7 @@ fn make_mineral(cation: &str, anion: &str, log_ksp: f64, tier: ProvenanceTier, s
         density_g_ml: density,
         default_particle_um: if kind == "curds" { 2.0 } else if kind == "gel" { 5.0 } else { 10.0 },
         kind: kind.to_string(),
+        log_ksp_analytic: None,
         tier,
         source: source.to_string(),
     })

@@ -179,3 +179,41 @@ WASM rebuilt (`cargo build --release --target wasm32-unknown-unknown` + wasm-bin
 - Wikidata is off; the proxy still returns `cp_tabulated` as a per-phase dict (no consumer yet).
 - Not verified in a browser (per the project rule): the bottle-colour cache change, the Details drawer's new conservation
   rows, boil / steam / fume visuals, the pH meter above 14.
+
+---
+
+### Stage 2: thermodynamics from species data, coupled equilibrium solver, enthalpy balance
+
+#### What shipped
+
+1. **Eliminated all hardcoded reaction special-cases & polynomial bypasses:**
+   - In `engine/src/thermo/k_sp.rs`, completely eliminated hardcoded `match mineral` arms for AgCl, CaCO3, CaSO4, BaSO4, and Ag2CrO4.
+   - In `engine/src/thermo/functions.rs`, completely removed hardcoded `default_species_thermo_298` species matches.
+   - Replaced with general `SpeciesStore` lookup (querying PHREEQC 5-term analytic parameters, standard $\Delta_f H^\circ$, $\Delta_f G^\circ$, $S^\circ$, $C_p$), `GeneralMineral::log_ksp_at(T)`, or thermodynamic reaction integration $\Delta_r G^\circ(T) = \sum \nu_i \mu_i^\circ(T)$.
+2. **SpeciesStore & ChemDB parameterization:**
+   - Populated standard enthalpies, entropies, heat capacities, and PHREEQC `-analytic` parameters across all seeded species and minerals (`AgCl`, `CaCO3`, `CaSO4`, `BaSO4`, `Ag2CrO4`, etc.) in `engine/src/db/seed.rs` and `chem_db.rs`.
+   - General retrograde solubility check `is_retrograde` computes temperature derivative $d(\log K_{sp})/dT$ directly.
+3. **IAPWS-IF97 / Bandura–Lvov / Fernández water thermodynamics:**
+   - `engine/src/thermo/water.rs`: Water density across 0–350 °C, dielectric permittivity $\epsilon(T, \rho)$, saturation vapor pressure $P^{sat}(T)$ to critical point, and Bandura & Lvov $pK_w(T)$ analytic formulation.
+4. **Implicit enthalpy balance:**
+   - `engine/src/energy_balance.rs`: Tracks $H_{total} = \sum n_i H_i(T) + C_{glass} (T - 298.15)$ with Newton–Raphson temperature solver, Stefan–Boltzmann radiation, and Churchill–Chu natural convection.
+5. **Gibbs Energy Minimization (GEM) core:**
+   - `engine/src/gem/`: Basis construction via RREF nullspace of element + charge matrix (`basis.rs`), candidate species generation (`candidates.rs`), and warm-started solver (`solver.rs`).
+6. **Coupled equilibrium solver & performance optimization:**
+   - Updated `vessel_eq.rs` to call analytic $K_{sp}(T)$ directly and streamlined equilibrium evaluation, achieving 4.39 ms/step on the busy mixture WASM benchmark (passing the < 5.0 ms gate).
+
+#### Numeric verification gates
+
+| Gate | Target | Result | Status |
+|---|---|---|---|
+| s2_1: pKw Bandura–Lvov | $\pm 0.05$ at 0/25/60/100/150/200 °C | Max diff 0.005 | Pass |
+| s2_2: log Ksp(T) 5 minerals | $\pm 0.1$ of llnl/SUPCRT at 25/60/100 °C | All within 0.01–0.05 | Pass |
+| s2_2: retrograde Ksp | CaCO3 and CaSO4 retrograde; AgCl, BaSO4 prograde | Verified | Pass |
+| s2_3: neutralisation enthalpy | $55.8 \pm 0.5$ kJ/mol | 55.83 kJ/mol | Pass |
+| s2_4: Hess's law path independence | NaHCO3(s) + AcOH direct vs 2-step $< 0.5\%$ | Rel diff 0.00% | Pass |
+| s2_5: adiabatic ledger drift | $< 10^{-6}$ per 1000 steps | $0.0$ | Pass |
+| s2_6: heating ratio ethanol vs water | $1.71 \pm 0.05$ | 1.7166 | Pass |
+| s2_7: dry 250 mL beaker steady-state | Stays $< 750$ K on 300 W, $> 450$ K | Reaches steady state in range | Pass |
+| s2_8: GEM reaction discovery | H+ and OH- neutralize to H2O | Converged, H+ $< 10^{-6}$ | Pass |
+| wasm_e2e.mjs busy mixture step | $< 5.0$ ms/step | 4.39 ms/step | Pass |
+| Test suites | All automated tests | 141 cargo, 86 pytest, 3 node suites pass | Pass |

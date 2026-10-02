@@ -9,8 +9,6 @@
 use crate::chem_db::GeneralMineral;
 use crate::vessel::*;
 
-use crate::physics::R_GAS;
-
 const LN10: f64 = std::f64::consts::LN_10;
 
 fn ln_c(amount_mol: f64, vol_l: f64) -> f64 {
@@ -187,7 +185,7 @@ impl Vessel {
 
     fn mineral_ln_ksp(min: &GeneralMineral, t_k: f64) -> (f64, f64) {
         let dh_j = min.delta_h_kj * 1000.0;
-        let log_ksp_t = min.log_ksp_298 + (-dh_j / R_GAS) * (1.0 / t_k - 1.0 / 298.15) / LN10;
+        let log_ksp_t = min.log_ksp_at(t_k);
         (log_ksp_t * LN10, dh_j)
     }
 

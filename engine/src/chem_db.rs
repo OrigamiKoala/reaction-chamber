@@ -35,6 +35,17 @@ pub fn register_custom_mineral(min: GeneralMineral) {
     }
 }
 
+pub fn get_mineral_registry() -> Vec<GeneralMineral> {
+    let mut list = get_default_minerals();
+    if let Ok(lock) = CUSTOM_MINERALS.lock() {
+        for m in lock.iter() {
+            list.retain(|x| x.id != m.id && x.solid_species != m.solid_species);
+            list.push(m.clone());
+        }
+    }
+    list
+}
+
 /// Registers the physical-data record of a compound (keyed by its base species id).
 pub fn register_custom_compound(c: CompoundThermo) {
     if let Ok(mut lock) = CUSTOM_COMPOUNDS.lock() {
@@ -124,12 +135,24 @@ pub struct GeneralMineral {
     pub dissolved_products: HashMap<String, f64>,
     pub log_ksp_298: f64,
     pub delta_h_kj: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_ksp_analytic: Option<[f64; 5]>,
     pub solid_color: [f64; 3],
     pub density_g_ml: f64,
     pub default_particle_um: f64,
     pub kind: String, // "powder" | "curds" | "gel" | "crystal" | "metal"
     pub tier: ProvenanceTier,
     pub source: String,
+}
+
+impl GeneralMineral {
+    pub fn log_ksp_at(&self, t_k: f64) -> f64 {
+        if let Some(a) = &self.log_ksp_analytic {
+            let t = t_k.max(1.0);
+            return a[0] + a[1] * t + a[2] / t + a[3] * t.log10() + a[4] / (t * t);
+        }
+        self.log_ksp_298 + (-self.delta_h_kj * 1000.0 / crate::physics::R_GAS) * (1.0 / t_k.max(1.0) - 1.0 / 298.15) / std::f64::consts::LN_10
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -681,6 +704,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             dissolved_products: [("Ag+".to_string(), 1.0), ("Cl-".to_string(), 1.0)].into(),
             log_ksp_298: -9.752, // Ksp = 1.77e-10
             delta_h_kj: 65.7,
+            log_ksp_analytic: Some([2.671219, -0.007312, -3053.408327, 0.0, 0.0]),
             solid_color: [0.95, 0.95, 0.95],
             density_g_ml: 5.56,
             default_particle_um: 2.0,
@@ -697,6 +721,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             dissolved_products: [("Cu+2".to_string(), 1.0), ("OH-".to_string(), 2.0)].into(),
             log_ksp_298: -18.60, // Active amorphous precipitate (PHREEQC minteq.v4.dat)
             delta_h_kj: 54.0,
+            log_ksp_analytic: None,
             solid_color: [0.35, 0.65, 0.88],
             density_g_ml: 3.37,
             default_particle_um: 5.0,
@@ -713,6 +738,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             dissolved_products: [("Na+".to_string(), 1.0), ("HCO3-".to_string(), 1.0)].into(),
             log_ksp_298: 0.15, // Soluble up to ~ 1.1 M
             delta_h_kj: 16.5,
+            log_ksp_analytic: None,
             solid_color: [0.95, 0.95, 0.95],
             density_g_ml: 2.20,
             default_particle_um: 50.0,
@@ -729,6 +755,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             dissolved_products: HashMap::new(), // Insoluble heterogeneous catalyst
             log_ksp_298: -50.0,
             delta_h_kj: 0.0,
+            log_ksp_analytic: None,
             solid_color: [0.08, 0.08, 0.08],
             density_g_ml: 5.03,
             default_particle_um: 10.0,
@@ -745,6 +772,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             dissolved_products: HashMap::new(),
             log_ksp_298: -100.0,
             delta_h_kj: 0.0,
+            log_ksp_analytic: None,
             solid_color: [0.82, 0.84, 0.86],
             density_g_ml: 1.74,
             default_particle_um: 100.0,

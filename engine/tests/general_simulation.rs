@@ -34,6 +34,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         density_g_ml: 4.28,
         default_particle_um: 15.0,
         kind: "powder".to_string(),
+        log_ksp_analytic: None,
         tier: ProvenanceTier::Tabulated,
         source: "Inorganic Chemistry Handbook".to_string(),
     };

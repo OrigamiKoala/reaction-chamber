@@ -11,58 +11,64 @@ use crate::physics::R_GAS;
 /// If the mineral has an analytic expression from llnl.dat / SUPCRTBL, it is used;
 /// otherwise, log10 Ksp is computed directly from Delta_sol G0 = sum nu_i mu0_ion - mu0_solid.
 pub fn mineral_log_ksp(mineral: &str, t_k: f64, p_pa: f64) -> f64 {
-    let t = t_k.clamp(273.15, 600.0);
-    let t_c = t - 273.15;
+    let t = t_k.clamp(100.0, 3000.0);
+    let norm_name = mineral.trim_end_matches("(s)");
 
-    // Direct llnl.dat / SUPCRTBL analytic fits for key benchmark minerals:
-    // log10 Ksp(T) = a1 + a2*T + a3/T + a4*log10(T) + a5/T^2
-    match mineral {
-        "AgCl" | "AgCl(s)" => {
-            // AgCl = Ag+ + Cl- (prograde)
-            // 25 C: -9.75, 60 C: -8.93, 100 C: -8.24
-            let dt = t_c - 25.0;
-            -9.7500 + 0.026312 * dt - 0.00008238 * dt * dt
-        }
-        "CaCO3" | "CaCO3(s)" | "Calcite" => {
-            // Calcite CaCO3 = Ca+2 + CO3-2 (retrograde!)
-            // 25 C: -8.48, 60 C: -8.76, 100 C: -9.16
-            let dt = t_c - 25.0;
-            -8.4800 - 0.007067 * dt - 0.00002667 * dt * dt
-        }
-        "CaSO4" | "CaSO4(s)" | "Anhydrite" => {
-            // Anhydrite CaSO4 = Ca+2 + SO4-2 (retrograde!)
-            // 25 C: -4.36, 60 C: -4.73, 100 C: -5.29
-            let dt = t_c - 25.0;
-            -4.3600 - 0.008971 * dt - 0.00004571 * dt * dt
-        }
-        "BaSO4" | "BaSO4(s)" | "Barite" => {
-            // Barite BaSO4 = Ba+2 + SO4-2 (prograde)
-            // 25 C: -9.97, 60 C: -9.70, 100 C: -9.51
-            let dt = t_c - 25.0;
-            -9.9700 + 0.009098 * dt - 0.00003952 * dt * dt
-        }
-        "Ag2CrO4" | "Ag2CrO4(s)" => {
-            // Ag2CrO4 = 2 Ag+ + CrO4-2 (prograde)
-            // 25 C: -11.95, 60 C: -11.39, 100 C: -10.92
-            let dt = t_c - 25.0;
-            -11.9500 + 0.017983 * dt - 0.00005667 * dt * dt
-        }
-        _ => {
-            // General thermodynamic calculation:
-            // Delta_r G0 = sum nu_i mu0(ion) - mu0(solid)
-            // log Ksp = -Delta_r G0 / (2.302585 * R * T)
-            let mut reactants = HashMap::new();
-            reactants.insert(format!("{}(s)", mineral.trim_end_matches("(s)")), 1.0);
-            let mut products = HashMap::new();
-            if let Some(elems) = crate::ions::species_elements(mineral) {
-                for (e, &n) in &elems {
-                    products.insert(e.clone(), n);
+    // 1. Query SpeciesStore for analytic parameters or solid record
+    if let Ok(store) = crate::db::SpeciesStore::global().read() {
+        let rec = store.get(mineral)
+            .or_else(|| store.get(norm_name))
+            .or_else(|| store.get(&format!("{}(s)", norm_name)));
+        if let Some(r) = rec {
+            if let Some(p_data) = r.phases.get("s") {
+                if let Some(thermo) = &p_data.thermo {
+                    if let Some(params_val) = &thermo.params {
+                        if let Ok(a) = serde_json::from_value::<[f64; 5]>(params_val.clone()) {
+                            return a[0] + a[1] * t + a[2] / t + a[3] * t.log10() + a[4] / (t * t);
+                        }
+                    }
                 }
             }
-            let dg = crate::thermo::functions::delta_r_g0(&reactants, &products, t, p_pa);
-            -dg / (R_GAS * t * std::f64::consts::LN_10)
         }
     }
+
+    // 2. Query registered mineral in chem_db
+    for m in crate::chem_db::get_mineral_registry() {
+        if m.mineral == mineral || m.formula == mineral || m.solid_species == mineral || m.formula == norm_name {
+            return m.log_ksp_at(t);
+        }
+    }
+
+    // 3. General thermodynamic calculation: Delta_r G0 = sum nu_i mu0(ion) - mu0(solid)
+    let solid_key = if mineral.ends_with("(s)") {
+        mineral.to_string()
+    } else {
+        format!("{}(s)", mineral)
+    };
+    let mut reactants = HashMap::new();
+    reactants.insert(solid_key.clone(), 1.0);
+    let mut products = HashMap::new();
+
+    // Check if dissolved_products known from any registered mineral
+    let mut found_products = false;
+    for m in crate::chem_db::get_mineral_registry() {
+        if m.solid_species == solid_key || m.formula == norm_name {
+            products = m.dissolved_products.clone();
+            found_products = true;
+            break;
+        }
+    }
+
+    if !found_products {
+        if let Some(elems) = crate::ions::species_elements(norm_name) {
+            for (e, &n) in &elems {
+                products.insert(e.clone(), n);
+            }
+        }
+    }
+
+    let dg = crate::thermo::functions::delta_r_g0(&reactants, &products, t, p_pa);
+    -dg / (R_GAS * t * std::f64::consts::LN_10)
 }
 
 /// Checks if a mineral exhibits retrograde solubility (d(log Ksp)/dT < 0).
