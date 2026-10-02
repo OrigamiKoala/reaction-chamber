@@ -1,0 +1,9 @@
+{
+  "model": "Redlich-Kister excess molar volume of binary liquid mixtures: V_E = x_a x_b sum_k A_k (x_a - x_b)^k, cm3 per mole of mixture",
+  "tier": "estimated",
+  "source": "Redlich-Kister coefficients of the water + ethanol and water + acetone excess volumes at 25 C, recalled from textbook / DECHEMA-type compilations; verify against the pipeline's measured-density sets. A pair that is not listed here has no excess volume: the volumes add (ideal) and the phase is labelled so.",
+  "pairs": [
+    {"a": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "b": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "A_cm3_mol": [-4.25, -1.10], "T_K": 298.15, "note": "water + ethanol"},
+    {"a": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "b": "CSCPPACGZOOCGX-UHFFFAOYSA-N", "A_cm3_mol": [-4.50, -1.20], "T_K": 298.15, "note": "water + acetone"}
+  ]
+}

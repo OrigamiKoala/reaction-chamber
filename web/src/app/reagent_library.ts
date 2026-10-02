@@ -165,7 +165,7 @@ export class ReagentLibrary {
     const e = it.entry;
     if (f === 'indicator') return !!e.dropper;
     if (f === 'solid') return e.form === 'solid' || e.by_mass;
-    if (f === 'liquid') return e.form === 'liquid' && !e.dropper;
+    if (f === 'liquid') return (e.form === 'liquid' || e.form === 'gas') && !e.dropper;
     if (f === 'solution') return e.form === 'solution' && !e.dropper;
     return true;
   }
@@ -327,6 +327,7 @@ function catalogStrength(it: Extract<ReagentItem, { kind: 'catalog' }>): string 
   if (e.dropper) return pct ? `${pct[1]} · drops` : 'dropper';
   if (e.by_mass || e.form === 'solid') return 'solid';
   if (e.form === 'liquid') return pct ? `${pct[1]} liquid` : 'liquid';
+  if (e.form === 'gas') return 'gas';
   if (e.concentration_m !== undefined && e.concentration_m !== null) {
     const c = e.concentration_m;
     return `${c >= 1 ? c.toFixed(1) : c.toPrecision(2)} M`;

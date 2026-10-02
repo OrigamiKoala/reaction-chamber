@@ -77,7 +77,8 @@ const [sa, sb] = compare(`250 x 10 mg ${solid.id}`, 'solid',
   (h) => { dose(h, { reagent_id: 'water', volume_ml: 50 }); for (let i = 0; i < 250; i++) dose(h, { reagent_id: solid.id, mass_g: 0.01 }); },
   // pH is compared too: the engine solves all equilibria jointly, so one 2.5 g dose and 250 x 10 mg both give ~8.2
   { minMol: 1e-3 });
-assert.ok(sa.ph > 8.0 && sa.ph < 8.5, `NaHCO3 pH ${sa.ph}`);
+// 0.6 M NaHCO3 reads ~8.0 on the activity scale (Debye-Hueckel slope now follows the dielectric constant of water at T)
+assert.ok(sa.ph > 7.9 && sa.ph < 8.5, `NaHCO3 pH ${sa.ph}`);
 near('weigh-in mass', sb.contents_mass_g - snap0Water, 2.5, 0.01);
 
 // 5. drops: 60 x 1 drop == 3 mL by drops==volume equivalence (0.05 mL each)

@@ -22,7 +22,7 @@ export interface BottleInput {
   ghs?: string[];
   signal_word?: 'Danger' | 'Warning' | '';
   bottle_colour?: 'amber' | 'clear' | 'white';
-  form?: 'solid' | 'liquid' | 'solution';
+  form?: 'solid' | 'liquid' | 'solution' | 'gas';
   dropper?: boolean;
   by_mass?: boolean;
   /** Content colour hint ('#rrggbb'); otherwise guessed generically from formula/name. */
@@ -408,7 +408,7 @@ export function makeLabelTexture(b: BottleInput, kind: BottleKind): THREE.Canvas
   ctx.fillText(sig ? sig.toUpperCase() : 'LABORATORY REAGENT', 22, 28);
   ctx.textAlign = 'right';
   ctx.font = '600 20px Arial, sans-serif';
-  const formLbl = b.form === 'solid' || b.by_mass ? 'SOLID' : b.form === 'liquid' ? 'LIQUID' : b.form === 'solution' ? 'SOLUTION' : '';
+  const formLbl = b.form === 'solid' || b.by_mass ? 'SOLID' : b.form === 'liquid' ? 'LIQUID' : b.form === 'gas' ? 'GAS' : b.form === 'solution' ? 'SOLUTION' : '';
   ctx.fillText(formLbl, W - 22, 28);
 
   // name

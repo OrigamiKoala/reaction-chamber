@@ -150,13 +150,12 @@ export interface LayerLike {
 }
 
 /**
- * The lower (aqueous) layer is used up while a second layer is left: the interface has reached the stopcock. The
- * engine drains the densest layer first, so that is exactly when the upper layer would start to run out.
+ * The bottom layer is used up while one layer is left: the interface has reached the stopcock. The engine lists the layers
+ * densest first and drains the densest first (whatever they are: water under hexane, dichloromethane under water), so the
+ * caller, which knows that two layers were present when the stopcock opened, only needs to see a single layer remain.
  */
 export function interfaceReached(layers: LayerLike[]): boolean {
-  const aq = layers.filter((l) => l.phase === 'aqueous').reduce((s, l) => s + l.volume_ml, 0);
-  const org = layers.filter((l) => l.phase === 'organic').reduce((s, l) => s + l.volume_ml, 0);
-  return aq < 0.05 && org > 0.05;
+  return layers.filter((l) => l.volume_ml > 0.05).length === 1;
 }
 
 // ------------------------------------------------------------------ readout text

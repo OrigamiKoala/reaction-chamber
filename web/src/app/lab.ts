@@ -218,8 +218,8 @@ export class Lab {
       temperature_k: 298.15,
       room_k: 295.15,
       sealed: false,
-      stopper_pop_atm: 2.2,
-      burst_atm: 6.0,
+      stopper_pop_atm: spec.popAtm,
+      burst_atm: spec.burstAtm,
     };
     await this.sim.createVessel(state.id, config);
     this.onVesselsChanged?.();

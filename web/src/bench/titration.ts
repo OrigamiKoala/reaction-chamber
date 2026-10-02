@@ -849,8 +849,7 @@ export class TitrationRig {
     // funnel: remember that a bottom layer was present when the stopcock opened (see the interface check below)
     const snap = b.lastSnapshot;
     if (d.kind === 'funnel' && snap && q > 0 && !d.hadBottom) {
-      const aq = snap.layers.filter((l) => l.phase === 'aqueous').reduce((s, l) => s + l.volume_ml, 0);
-      if (aq > 0.05) d.hadBottom = true;
+      if (snap.layers.filter((l) => l.volume_ml > 0.05).length >= 2) d.hadBottom = true;
     }
 
     let flowNow = 0;

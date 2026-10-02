@@ -199,20 +199,23 @@ fn gate_5_nacl_dissolution_volume() {
 }
 
 #[test]
-fn gate_6_water_acetone_excess_volume() {
-    // Water + acetone (50 + 20 mL) gives 69 ± 2 mL
+fn gate_6_water_ethanol_excess_volume() {
+    // Changed in Stage 5: this gate used to check 50 mL water + 20 mL acetone = 69 +- 2 mL against a hardcoded pair literal
+    // in volume.rs, which Stage 5 removed (the excess volume of a pair is now tabulated data keyed by InChIKey,
+    // `engine/data/excess_volume.json`, and pairs without data are flagged ideal, i.e. the volumes add). The gate keeps its
+    // point on a pair that has data: water + ethanol (50 + 50 mL) contracts to 96.5 +- 1.5 mL (measured 96.4 at 20 C).
     let mut species = HashMap::new();
-    let n_water = 50.0 / water_molar_volume_cm3_mol(298.15); // ~ 2.766 mol
-    let n_acetone = 20.0 / organic_molar_volume_cm3_mol("acetone", 298.15); // ~ 0.272 mol
+    let n_water = 50.0 / water_molar_volume_cm3_mol(298.15);
+    let n_ethanol = 50.0 / organic_molar_volume_cm3_mol("C2H5OH", 298.15);
     species.insert("H2O".into(), n_water);
-    species.insert("acetone".into(), n_acetone);
-
+    species.insert("C2H5OH".into(), n_ethanol);
     let v_ml = calculate_aqueous_volume_ml(&species, 298.15, 0.0);
-    assert!(
-        (v_ml - 69.0).abs() <= 2.0,
-        "50 mL water + 20 mL acetone volume was {:.2} mL, expected 69.0 ± 2.0 mL",
-        v_ml
-    );
+    assert!((v_ml - 96.5).abs() <= 1.5, "50 mL water + 50 mL ethanol volume was {:.2} mL, expected 96.5 +- 1.5 mL", v_ml);
+    // a pair without tabulated excess volume adds the pure volumes (flagged ideal): water + an unknown liquid
+    let mut ideal = HashMap::new();
+    ideal.insert("H2O".into(), n_water);
+    ideal.insert("C2H5OH".into(), 0.0);
+    assert!((calculate_aqueous_volume_ml(&ideal, 298.15, 0.0) - 50.0).abs() < 0.2);
 }
 
 #[test]

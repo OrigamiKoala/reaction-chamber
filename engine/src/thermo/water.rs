@@ -4,7 +4,8 @@
 //! - `pkw_bandura_lvov(t_k)`: negative log10 of water ionization constant Kw(T).
 //! - `water_density_kg_m3(t_k, p_pa)`: liquid water density.
 //! - `water_dielectric(t_k, rho_kg_m3)`: relative permittivity epsilon(T, rho).
-//! - `water_sat_pressure_pa(t_k)`: saturation vapour pressure to critical point.
+//! - `water_sat_pressure_pa(t_k)`: saturation vapour pressure to critical point (the single copy; IF97 region 4).
+//! - `water_dielectric_sat(t_k)`: relative permittivity along the saturation curve (for Debye-Hueckel slopes).
 
 use std::f64::consts::LN_10;
 
@@ -57,29 +58,42 @@ pub fn water_dielectric(t_k: f64, rho_kg_m3: f64) -> f64 {
     eps.max(1.0)
 }
 
-/// Saturation vapour pressure of water (Pa) from IAPWS-IF97 Region 4 equation.
+/// Saturation vapour pressure of water (Pa): the IAPWS-IF97 region-4 equation (R7-97, eq. 30), valid from 273.15 K to
+/// the critical point. This is the engine's single implementation of the water saturation curve; the species record of
+/// water names it (`vapor_pressure.model = "iapws-if97-region4"`) and everything else (sealed vessels, boiling, collectors
+/// over water, humidity) asks the vapour-liquid-equilibrium layer, which calls it. Below the triple point the curve is
+/// evaluated at 273.15 K (ice is Stage 5); above the critical temperature it returns the critical pressure.
 pub fn water_sat_pressure_pa(t_k: f64) -> f64 {
+    const N: [f64; 10] = [
+        0.11670521452767e4,
+        -0.72421316703206e6,
+        -0.17073846940092e2,
+        0.12020824702470e5,
+        -0.32325550322333e7,
+        0.14915108613530e2,
+        -0.48232657361591e4,
+        0.40511340542057e6,
+        -0.23855557567849,
+        0.65017534844798e3,
+    ];
     if t_k >= WATER_TC_K {
         return WATER_PC_PA;
     }
-    if t_k <= 273.15 {
-        // Sublimation / supercooled extrapolation
-        let t_c = t_k - 273.15;
-        return (611.21 * (17.502 * t_c / (240.97 + t_c)).exp()).max(1.0);
-    }
+    let t = t_k.max(273.15);
+    let th = t + N[8] / (t - N[9]);
+    let a = th * th + N[0] * th + N[1];
+    let b = N[2] * th * th + N[3] * th + N[4];
+    let c = N[5] * th * th + N[6] * th + N[7];
+    let p_mpa = (2.0 * c / (-b + (b * b - 4.0 * a * c).sqrt())).powi(4);
+    p_mpa * 1.0e6
+}
 
-    // IF97 Region 4: P_sat = P* * (2 C / (-B + (B^2 - 4 A C)^0.5))^4
-    let theta = t_k + 0.27315e1 / (t_k - 0.27315e3 + 1e-12);
-    let theta2 = theta * theta;
-
-    let a = theta2 - 0.34805185628969e4 * theta - 0.11671858127639e7;
-    let b = -0.64759644972777e3 * theta2 + 0.20615150426300e7 * theta - 0.26780269360580e9;
-    let c = 0.32623843214569e5 * theta2 - 0.37068285775183e8 * theta + 0.43495960414907e10;
-
-    let disc = (b * b - 4.0 * a * c).max(0.0);
-    let term = 2.0 * c / (-b + disc.sqrt());
-    let p_sat_mpa = term.powi(4);
-    (p_sat_mpa * 1e6).clamp(1.0, WATER_PC_PA)
+/// Relative permittivity of liquid water along the saturation curve, 0-200 C (Malmberg & Maryott 1956 polynomial,
+/// accurate to about 1 % to 100 C and 2 % to 200 C; 78.30 at 25 C, 55.7 at 100 C). Used by the
+/// Debye-Hueckel limiting-law slopes, which need the dielectric constant of the *actual* solvent at T.
+pub fn water_dielectric_sat(t_k: f64) -> f64 {
+    let t = (t_k - 273.15).clamp(0.0, 200.0);
+    87.740 - 0.40008 * t + 9.398e-4 * t * t - 1.410e-6 * t * t * t
 }
 
 #[cfg(test)]
@@ -116,6 +130,18 @@ mod tests {
                 (actual - expected).abs()
             );
         }
+    }
+
+    #[test]
+    fn if97_saturation_pressure_check_values() {
+        // IAPWS-IF97 verification values (Table 35 of R7-97): 300 K 0.353658941e-2 MPa, 500 K 0.263889776e1, 600 K 0.123443146e2
+        for (t, p) in [(300.0, 0.353658941e-2), (500.0, 0.263889776e1), (600.0, 0.123443146e2)] {
+            let got = water_sat_pressure_pa(t) / 1e6;
+            assert!(((got - p) / p).abs() < 1e-7, "T={} K: {} vs {}", t, got, p);
+        }
+        // normal boiling point and the critical region
+        assert!((water_sat_pressure_pa(373.124) - 101325.0).abs() < 100.0);
+        assert!((water_sat_pressure_pa(647.0) / 1e6 - 22.06).abs() < 0.05);
     }
 
     #[test]

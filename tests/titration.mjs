@@ -95,6 +95,8 @@ ok('drain target: the opening under the tip, else the bench', () => {
 ok('interface + burette tag text', () => {
   assert.ok(!T.interfaceReached([{ phase: 'aqueous', volume_ml: 20 }, { phase: 'organic', volume_ml: 5 }]));
   assert.ok(T.interfaceReached([{ phase: 'aqueous', volume_ml: 0.01 }, { phase: 'organic', volume_ml: 5 }]));
+  // generic: a dense organic layer at the bottom is drained first, then the aqueous one is the last layer
+  assert.ok(T.interfaceReached([{ phase: 'organic', volume_ml: 0.01 }, { phase: 'aqueous', volume_ml: 30 }]));
   assert.ok(!T.interfaceReached([{ phase: 'aqueous', volume_ml: 0 }]));
   assert.deepEqual(T.buretteTag(12.346, 40), { main: 'Burette reads 12.35 mL', sub: '(delivered)' });
   assert.equal(T.buretteTag(-1.2, 55).sub, 'above the zero mark');
@@ -243,12 +245,19 @@ ok('stopcock simulation: dripping NaOH from a burette model into the flask stays
 });
 
 // ------------------------------------------------------------------ separatory funnel (drain the bottom layer first)
-ok('funnel: engine drains the aqueous (bottom) layer before the ethanol layer; species conserved', () => {
+// (until Stage 5 these tests used ethanol as the organic layer, which the engine wrongly kept as a second phase on water;
+// water and ethanol are miscible, so the organic layer is hexane, imported like the web layer does)
+const hexane = () => {
+  const r = J(eng.import_compound(JSON.stringify({ id: 'tn_hexane', name: 'Hexane', formula: 'C6H14', smiles: 'CCCCCC', inchi_key: 'VLKZOEOYAKHREP-UHFFFAOYSA-N', state: 'liquid', density: 0.659, t_melt_ref_k: 177.83, vapor_pressure_points: [[341.88, 101325]] })));
+  assert.ok(r.modelable, r.reason);
+  return 'tn_hexane';
+};
+ok('funnel: engine drains the aqueous (bottom) layer before the hexane layer; species conserved', () => {
   const cfg = { type: 'separatory-funnel-250', capacity_ml: 250, glass_mass_g: 230, inner_radius_cm: 3.3, temperature_k: 295.15, room_k: 295.15 };
   const f = mk(cfg);
   const dst = mk({ ...cfg, type: 'beaker-250', glass_mass_g: 110 });
   dose(f, { reagent_id: 'nacl_0_1m', volume_ml: 40 });
-  dose(f, { reagent_id: 'ethanol', volume_ml: 20 });
+  dose(f, { reagent_id: hexane(), volume_ml: 20 });
   const s0 = snap(f);
   const layer = (s, ph) => s.layers.find((l) => l.phase === ph)?.volume_ml ?? 0;
   const aq0 = layer(s0, 'aqueous');
@@ -260,7 +269,7 @@ ok('funnel: engine drains the aqueous (bottom) layer before the ethanol layer; s
     const p = J(eng.vessel_remove_liquid_bottom(f, Math.min(0.5, aq0 - moved - 0.1), true)); // stop short of the interface
     eng.vessel_add_portion(dst, JSON.stringify(p));
     moved += p.volume_ml;
-    assert.ok(layer(snap(f), 'organic') > org0 - 1e-6, 'ethanol layer untouched while the aqueous layer drains');
+    assert.ok(layer(snap(f), 'organic') > org0 - 1e-6, 'hexane layer untouched while the aqueous layer drains');
   }
   const mid = snap(f);
   assert.ok(layer(mid, 'aqueous') < 0.3, `aqueous almost gone: ${layer(mid, 'aqueous')}`);
@@ -271,7 +280,7 @@ ok('funnel: engine drains the aqueous (bottom) layer before the ethanol layer; s
   // default removal is still proportional over both phases
   const g = mk(cfg);
   dose(g, { reagent_id: 'water', volume_ml: 30 });
-  dose(g, { reagent_id: 'ethanol', volume_ml: 20 });
+  dose(g, { reagent_id: hexane(), volume_ml: 20 });
   const b0 = snap(g);
   eng.vessel_remove_liquid(g, 10, true);
   const b1 = snap(g);

@@ -219,7 +219,7 @@ CORE_SPECIES = [
     # Gases
     {
         "id": "g:CO2",
-        "identity": {"formula": "CO2", "charge": 0, "inchikey": "CURLTQBHLGFTAB-UHFFFAOYSA-N", "smiles": "O=C=O", "names": ["carbon dioxide"]},
+        "identity": {"formula": "CO2", "charge": 0, "inchikey": "CURLTUGMZLYLDI-UHFFFAOYSA-N", "smiles": "O=C=O", "names": ["carbon dioxide"]},
         "phases": {
             "g": {
                 "thermo": {"model": "point+cp", "tier": "tabulated", "source": "NASA CEA",

@@ -12,3 +12,6 @@ __pycache__/
 # Local data: never commit (NIST SRD cache is not redistributable; chamber.db is a local SQLite flywheel)
 server/cache/*.db
 server/chamber.db
+
+# downloaded source tables of the data pipeline (pipeline/db/*.py --fetch); regenerate, do not commit
+pipeline/cache/

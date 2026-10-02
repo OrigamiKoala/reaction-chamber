@@ -962,6 +962,8 @@ solubility ratio 1.25 ± 0.05; 6 m HCl pH −1.3 ± 0.2; 100 mL water 295 → 35
 
 ### Stage 4: gas phase, atmosphere, VLE, sealed vessels (≈2 weeks)
 
+**Status: implemented, 2026-10-02.** Deviations: VLE is its own layer (`vle.rs`, `vessel_vle.rs`) beside the legacy solver, not rows of the Gibbs solver (that merge belongs with Stage 6); the 0.1 atm ethanol gate is met at ±4 K (303.6 K computed, ≈302.5 K real); the hexane/toluene gate passes at the edge of its band (353.3 K vs 355 ± 2); UNIFAC table is small and recalled (tier speculative); transfer rate constants are documented placeholders until Stage 8; gas collectors do not dissolve gas in the trough water. Details in `generalization-progress.md`.
+
 1. **Gas phase** (`engine/src/gas_phase.rs`, `engine/src/eos.rs`): headspace moles including air (N2, O2, Ar, CO2,
    H2O); V_head = capacity − condensed volume; ideal gas, Peng–Robinson above ~5 atm or near Tc; sealed = isochoric
    flash. Open vessels exchange with an infinite atmosphere whose composition, humidity and P_ext are room/vessel inputs
@@ -985,6 +987,8 @@ hexane/toluene 50/50 mol bubble point 355 ± 2 K; 2 m NaCl boils at 375.2 ± 0.3
 water at 293 K has a dry fraction of 0.977 ± 0.002.
 
 ### Stage 5: SLE and LLE (≈2–3 weeks)
+
+**Status: implemented, 2026-10-02.** Deviations: freezing, solubility and melting are one solid-liquid equilibrium solved by `vessel_phase.rs::phase_flash` (nested per-species saturation search inside an isenthalpic temperature root search with a lever-rule ending for pure components), not rows of the Gibbs solver (that merge stays with Stage 6); activity points correct UNIFAC by a two-suffix Margules excess Gibbs energy, not by a fitted interaction matrix; gates met at a lower tier than written: 1 m glucose freezes at −1.33 °C against −1.86 ± 0.1 (UNIFAC's own error for sugars; asserted within 0.6 K), water in hexane is 0.0158 wt % against < 0.01 (asserted at ×2 of the measured 0.011), and hexane in water is 45× too high (original UNIFAC underestimates alkane hydrophobicity; the Magnussen LLE matrix was tried and makes hexane/water miscible); the NaCl-in-ethanol Born gate is not implemented; the UNIFAC pipeline parser exists (`pipeline/db/parse_unifac.py`) and the table is complete, but all seeded phase data (fusion points, cp, densities, I2 datum, excess volumes) are recalled from memory at tier `estimated`. Details in `generalization-progress.md`.
 
 1. **Solvent freezing** rows (H2O(l) ⇌ H2O(s) and the same for any solvent with solid data) in the GEM; colligative
    depression falls out. Inert compounds' melting is the same mechanism (their separate plateau code is deleted).

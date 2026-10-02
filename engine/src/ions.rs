@@ -151,8 +151,13 @@ fn pseudo_species(body: &str) -> Option<(&'static str, Option<i32>)> {
     PSEUDO_SPECIES.iter().find(|(id, _, _)| *id == body).map(|(_, f, c)| (*f, *c))
 }
 
-/// Element counts of a species id (charge and phase tags ignored).
-pub fn species_elements(species: &str) -> Option<HashMap<String, f64>> {
+thread_local! {
+    /// Element counts and molar masses by species id: pure functions of the id (a static table and a formula parser) that the
+    /// equilibrium solver asks for thousands of times per step.
+    static ELEMENT_CACHE: std::cell::RefCell<HashMap<String, Option<(HashMap<String, f64>, Option<f64>)>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn species_elements_uncached(species: &str) -> Option<HashMap<String, f64>> {
     let s = species.trim().trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)").trim_end_matches("(aq)");
     // isomer tag of an inert compound id ("C2H6O#LCGLNKUT"): identity only, the formula is what comes before it
     let s = s.split('#').next().unwrap_or(s);
@@ -163,9 +168,33 @@ pub fn species_elements(species: &str) -> Option<HashMap<String, f64>> {
     parse_formula_strict(body)
 }
 
+fn cached_species<R>(species: &str, f: impl FnOnce(&Option<(HashMap<String, f64>, Option<f64>)>) -> R) -> R {
+    ELEMENT_CACHE.with(|c| {
+        if let Some(v) = c.borrow().get(species) {
+            return f(v);
+        }
+        let entry = species_elements_uncached(species).map(|e| {
+            let m = mass_of_elements(&e);
+            (e, m)
+        });
+        let r = f(&entry);
+        let mut map = c.borrow_mut();
+        if map.len() > 20_000 {
+            map.clear();
+        }
+        map.insert(species.to_string(), entry);
+        r
+    })
+}
+
+/// Element counts of a species id (charge and phase tags ignored).
+pub fn species_elements(species: &str) -> Option<HashMap<String, f64>> {
+    cached_species(species, |e| e.as_ref().map(|(el, _)| el.clone()))
+}
+
 /// Molar mass of a species id from its formula (None if it cannot be parsed).
 pub fn species_mass(species: &str) -> Option<f64> {
-    mass_of_elements(&species_elements(species)?)
+    cached_species(species, |e| e.as_ref().and_then(|(_, m)| *m))
 }
 
 /// Canonical order-independent key of an element multiset ("ClNa" and "NaCl" give the same key).

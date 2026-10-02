@@ -463,7 +463,9 @@ fn test_m5_demo10_water_heating_boiling_steam() {
     v.temperature_k = 373.15;
     v.step(1.0).unwrap();
     let snap = v.snapshot();
-    assert_eq!(snap.temperature_k, 373.15, "Clamped at boiling point 373.15 K (99.9 - 100 C)");
+    // Stage 4: the plateau is the bubble point of the liquid at the atmosphere's pressure (water: 373.12 K at 1 atm,
+    // from the IF97 curve), not a hard-coded 373.15 K clamp
+    assert!((snap.temperature_k - 373.124).abs() < 0.05, "held at the boiling point: {} K", snap.temperature_k);
     assert!(snap.boil_intensity > 0.5, "Boil intensity active");
     assert!(snap.gas_fluxes.iter().any(|g| g.species == "H2O(g)"), "Steam bubbles generated");
 }

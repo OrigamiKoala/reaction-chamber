@@ -183,6 +183,23 @@ pub struct RejectedDatum {
     pub reason: String,
 }
 
+/// A reference-quality saturation-pressure *curve* of a liquid (a labelled curve, never a stored boiling point): the
+/// equation, its parameters and the temperature range it is valid for. `model` names an equation, not a compound
+/// ("iapws-if97-region4", "wagner", "antoine"); a record without one gets its vapour pressure from its labelled
+/// `points` plus critical constants (Lee-Kesler corresponding states) or from a Clausius-Clapeyron fit (`vle.rs`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct VaporPressureSpec {
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t_min_k: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t_max_k: Option<f64>,
+    pub tier: ProvenanceTier,
+    pub source: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SpeciesRecord {
     pub id: String,
@@ -193,6 +210,13 @@ pub struct SpeciesRecord {
     pub critical: Option<Critical>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub points: Vec<CurvePoint>,
+    /// Explicit saturation-pressure equation of the liquid (see `VaporPressureSpec`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vapor_pressure: Option<VaporPressureSpec>,
+    /// Explicit UNIFAC subgroup counts (`[["CH3", 1], ["CH2", 1], ["OH", 1]]`); when absent they are derived from
+    /// `identity.smiles` by `groups.rs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unifac_groups: Option<Vec<(String, f64)>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acid_base: Vec<AcidBaseSite>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -152,7 +152,7 @@ impl Vessel {
                 refractive_index: o.refractive_index,
             };
         }
-        if let Some(c) = self.inert_of(sp) {
+        if let Some(c) = self.compound_for(sp).filter(|c| c.phase_model != "ionic") {
             // metals are a bright grey sheet-like solid, other solids a fine pale powder unless the record has a colour
             let single_metal = ions::parse_formula_strict(&c.formula).map_or(false, |e| e.len() == 1 && e.keys().all(|k| is_metal_element(k)));
             return SolidProps {
@@ -164,6 +164,23 @@ impl Vessel {
                 particle_um: 30.0,
                 refractive_index: 1.55,
             };
+        }
+        // a molecular solid the species store describes (ice, iodine): its record's name and density
+        if mineral.is_none() {
+            if let Some(lk) = self.liquid_key_of_solid(sp) {
+                if let Some(mol) = self.molecule(&lk) {
+                    let rec_name = crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(sp).and_then(|r| r.identity.names.first().cloned()));
+                    return SolidProps {
+                        name: rec_name.unwrap_or_else(|| mol.name.clone()),
+                        formula,
+                        rgb: [0.88, 0.9, 0.93],
+                        kind: SolidKind::Crystal,
+                        density_g_ml: mol.v_solid_m3_mol.map(|v| mol.mw / (v * 1e6)).unwrap_or(1.5).max(0.3),
+                        particle_um: 150.0,
+                        refractive_index: 1.5,
+                    };
+                }
+            }
         }
         if let Some(m) = mineral {
             return SolidProps {

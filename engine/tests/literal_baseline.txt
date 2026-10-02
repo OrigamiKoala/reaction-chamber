@@ -1,0 +1,19 @@
+# compound-id literals per source file outside comments and test modules (a ratchet: only goes down)
+acid_estimate.rs 2
+activity.rs 81
+chem_db.rs 244
+compound_model.rs 29
+equilibrium.rs 11
+gem/solver.rs 2
+ions.rs 82
+kinetics.rs 2
+network_generator.rs 18
+phases/state.rs 1
+props.rs 57
+solubility.rs 70
+spectra.rs 57
+templates.rs 8
+vessel.rs 13
+vessel_eq.rs 10
+vessel_ext.rs 5
+volume.rs 25

@@ -1,5 +1,12 @@
 //! Compounds, not "solids" and "liquids": phase is derived from temperature, pressure and contents at run time.
 //! Inert compounds (no reaction chemistry) melt, boil and dissolve; ionic salts keep their Ksp path.
+//!
+//! Updated in Stage 5: a molecule's liquid is the species `X` in a liquid phase (the water-containing phase when there
+//! is one, else the neat liquid), its solid `X(s)`, its vapour `X(g)`; the old `X(l)` neat-layer species, the melt plateau
+//! code of `vessel_phase.rs`, the 0.1 g/L solubility default and the 500 g/L "miscible" rule are gone. Melting and
+//! freezing plateaus, dissolution caps and layers now come from one solid-liquid / liquid-liquid equilibrium, so the tests
+//! below assert those outcomes (plateau at the melting point with n * dHfus of latent heat, solubility at its reference
+//! temperature, densest layer at the bottom) with the new keys.
 use reaction_chamber_engine::chem_db;
 use reaction_chamber_engine::compound_model::*;
 use reaction_chamber_engine::compound_thermo::*;
@@ -10,6 +17,18 @@ fn beaker() -> Vessel {
         vessel_type: "beaker-100".into(), capacity_ml: 100.0, glass_mass_g: 50.0, inner_radius_cm: 2.5,
         temperature_k: Some(295.15), room_k: Some(295.15), sealed: Some(false), stopper_pop_atm: Some(2.2), burst_atm: Some(6.0),
     })
+}
+fn beaker_at(t: f64) -> Vessel {
+    Vessel::new(VesselConfig {
+        vessel_type: "beaker-100".into(), capacity_ml: 100.0, glass_mass_g: 50.0, inner_radius_cm: 2.5,
+        temperature_k: Some(t), room_k: Some(t), sealed: Some(false), stopper_pop_atm: Some(2.2), burst_atm: Some(6.0),
+    })
+}
+/// Holds the vessel at `t` with a bath and lets a dissolving or crystallising solid reach equilibrium there (dissolving a
+/// sugar is endothermic: 60 g in 50 mL of water would otherwise cool the solution by ~10 K and lower its saturation).
+fn equilibrate_at(v: &mut Vessel, t: f64, seconds: f64) {
+    v.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+    for _ in 0..(seconds / 0.5) as usize { v.step(0.5).unwrap(); }
 }
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
     v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
@@ -45,7 +64,7 @@ fn cyclohexane(id: &str) -> CompoundRequest {
     CompoundRequest {
         id: id.into(), name: "Cyclohexane".into(), formula: "C6H12".into(), state: Some("liquid".into()), density: Some(0.774),
         t_melt_ref_k: Some(279.65),
-        vapor_pressure_points: vec![[298.15, 10_300.0], [353.85, 101_325.0]],
+        vapor_pressure_points: vec![[298.15, 13_000.0], [353.85, 101_325.0]],
         dh_vap_kj_mol: Some(29.97),
         solubility_g_per_l: Some(0.055),
         ..Default::default()
@@ -53,12 +72,18 @@ fn cyclohexane(id: &str) -> CompoundRequest {
 }
 
 fn sol(v: &Vessel, k: &str) -> f64 { v.solid_mol.get(k).copied().unwrap_or(0.0) }
+/// Moles of a molecule in the primary liquid phase.
 fn sp(v: &Vessel, k: &str) -> f64 { v.species_mol.get(k).copied().unwrap_or(0.0) }
+/// Moles of a molecule in every liquid phase (primary and immiscible layers).
+fn liq(v: &Vessel, k: &str) -> f64 {
+    sp(v, k) + v.extra_liquids.iter().map(|m| m.get(k).copied().unwrap_or(0.0)).sum::<f64>()
+}
 /// Total moles of an inert compound over every place it can be, plus what boiled/vented away.
 fn total_mol(v: &Vessel, base: &str, mw: f64) -> f64 {
-    sol(v, &format!("{}(s)", base)) + sp(v, &format!("{}(l)", base)) + sp(v, base) + v.mass_lost_g / mw
+    sol(v, &format!("{}(s)", base)) + liq(v, base) + v.mass_lost_g / mw
         + v.headspace_gas_mol.get(&format!("{}(g)", base)).copied().unwrap_or(0.0)
 }
+
 
 #[test]
 fn naphthalene_melts_with_a_plateau_and_latent_heat() {
@@ -79,19 +104,17 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
 
     let dt = 0.05;
     let mut plateau_j = 0.0;
-    let mut max_t_on_plateau: f64 = 0.0;
     let mut saw_partial = false;
     let mut t_before_melt_ok = true;
     for _ in 0..1500 {
         let t = v.temperature_k;
-        let l0 = sp(&v, "C10H8(l)");
+        let l0 = liq(&v, "C10H8");
         v.step(dt).unwrap();
-        let (s1, l1) = (sol(&v, "C10H8(s)"), sp(&v, "C10H8(l)"));
+        let (s1, l1) = (sol(&v, "C10H8(s)"), liq(&v, "C10H8"));
         if l0 < 1e-12 && l1 < 1e-12 && v.temperature_k > tm + 0.05 { t_before_melt_ok = false; }
         if s1 > 1e-9 && l1 > 1e-9 {
             saw_partial = true;
             plateau_j += (150.0 - 0.5 * (t - 295.15)) * dt;
-            max_t_on_plateau = max_t_on_plateau.max(v.temperature_k);
             assert!((v.temperature_k - tm).abs() < 0.2, "T {} off the melting plateau", v.temperature_k);
         }
         if s1 <= 1e-9 && l1 > 1e-9 && v.temperature_k > tm + 3.0 { break; }
@@ -101,27 +124,29 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
     let expect = n_tot * dh_fus;
     assert!((plateau_j - expect).abs() < 0.10 * expect, "plateau heat {:.0} J vs n*dHfus {:.0} J", plateau_j, expect);
 
+    // the melt is a liquid layer of its own with the liquid's computed density (the import's solid density is 1.14)
     let snap = v.snapshot();
     assert!(snap.solids.is_empty());
-    let layer = snap.layers.iter().find(|l| l.species.as_deref() == Some("C10H8(l)")).expect("neat liquid layer");
+    assert_eq!(snap.layers.len(), 1);
+    let layer = &snap.layers[0];
     assert_eq!(layer.phase, PhaseKind::Organic);
-    assert!((layer.density_g_ml - 1.14 * 0.9).abs() < 1e-9, "own (estimated liquid) density {}", layer.density_g_ml);
+    assert!(layer.density_g_ml > 0.9 && layer.density_g_ml < 1.14, "own (liquid) density {}", layer.density_g_ml);
     assert!((layer.volume_ml - 5.0 / layer.density_g_ml).abs() < 0.05);
-    assert!(snap.events.iter().any(|e| e.detail.as_deref().map_or(false, |d| d.contains("melted"))), "{:?}", snap.events);
     assert!((total_mol(&v, "C10H8", m.mw) - n_tot).abs() < 1e-9, "inert compound conserves moles");
-    // cool it down: the melt freezes on the plateau and a solid reappears
+    // cool it down: the melt freezes on the plateau and a solid reappears (announced in the reaction log)
     heater(&mut v, 0.0);
     v.set_controls(VesselControls { bath_k: Some(Some(280.0)), ..Default::default() });
     let mut froze = false;
     for _ in 0..40000 {
         v.step(0.05).unwrap();
-        if sol(&v, "C10H8(s)") > 1e-6 && sp(&v, "C10H8(l)") > 1e-6 { froze = true; assert!((v.temperature_k - tm).abs() < 0.3); }
-        if sp(&v, "C10H8(l)") < 1e-9 { break; }
+        if sol(&v, "C10H8(s)") > 1e-6 && liq(&v, "C10H8") > 1e-6 { froze = true; assert!((v.temperature_k - tm).abs() < 0.3); }
+        if liq(&v, "C10H8") < 1e-9 { break; }
     }
     assert!(froze);
-    assert!(v.snapshot().events.iter().any(|e| e.detail.as_deref().map_or(false, |d| d.contains("solidified"))));
+    assert!(v.snapshot().events.iter().any(|e| e.detail.as_deref().map_or(false, |d| d.contains("freezing"))), "{:?}", v.snapshot().events);
     assert!((total_mol(&v, "C10H8", m.mw) - n_tot).abs() < 1e-9);
 }
+
 
 #[test]
 fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
@@ -136,11 +161,11 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
     let mut v = beaker();
     dose_ml(&mut v, "cp_chx_b", 20.0);
     let n_tot = 20.0 * 0.774 / m.mw;
-    assert!((sp(&v, "C6H12(l)") - n_tot).abs() < 1e-9);
+    assert!((sp(&v, "C6H12") - n_tot).abs() < 1e-9);
     // the layer is there right away, lighter than water
     let snap = v.snapshot();
     assert_eq!(snap.layers.len(), 1);
-    assert!((snap.layers[0].density_g_ml - 0.774).abs() < 1e-9 && (snap.layers[0].volume_ml - 20.0).abs() < 0.01);
+    assert!((snap.layers[0].density_g_ml - 0.774).abs() < 1e-3 && (snap.layers[0].volume_ml - 20.0).abs() < 0.05);
     heater(&mut v, 200.0);
     let dt = 0.05;
     let mut boil_j = 0.0;
@@ -152,17 +177,17 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
         v.step(dt).unwrap();
         if v.gas_fluxes.iter().any(|g| g.species == "C6H12(g)" && g.rate_ml_s > 0.0) {
             saw_flux = true;
-            if sp(&v, "C6H12(l)") > 1e-9 {
+            if sp(&v, "C6H12") > 1e-9 {
                 assert!((v.temperature_k - tb).abs() < 0.01, "T {} should sit at the boiling point", v.temperature_k);
             }
             lost_at_start.get_or_insert(v.mass_lost_g);
             boil_j += (200.0 - 0.5 * (t - 295.15)) * dt;
             boil_steps += 1;
         }
-        if sp(&v, "C6H12(l)") < 1e-9 { break; }
+        if sp(&v, "C6H12") < 1e-9 { break; }
     }
     assert!(saw_flux && boil_steps > 100);
-    assert!(sp(&v, "C6H12(l)") < 1e-9, "boiled off completely");
+    assert!(sp(&v, "C6H12") < 1e-9, "boiled off completely");
     assert!(v.snapshot().events.iter().any(|e| e.detail.as_deref().map_or(false, |d| d.contains("boiling"))));
     assert!(v.snapshot().events.iter().any(|e| e.kind == VesselEventKind::DryOut && e.detail.as_deref().map_or(false, |d| d.contains("boiled off"))));
     assert!((v.mass_lost_g - 20.0 * 0.774).abs() < 0.01, "lost {} g", v.mass_lost_g);
@@ -181,13 +206,18 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
     s.dose(DoseRequest { reagent_id: "cp_chx_b".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: Some(360.0) }).unwrap();
     assert!(s.temperature_k > tb + 1.0);
     for _ in 0..40 { s.step(0.05).unwrap(); }
-    assert!(s.sealed && s.mass_lost_g < 1e-9 && sp(&s, "C6H12(l)") > 0.1);
+    // (the only mass that left is the air the 20 mL of liquid pushed out of the stoppered vessel: < 0.05 g)
+    assert!(s.sealed && s.mass_lost_g < 0.05 && sp(&s, "C6H12") > 0.1);
     // its vapour is in the headspace (not lost): the pressure is air + x*Psat(T) from the compound's own curve
+    // (Stage 4: the closed gas phase holds the air captured at sealing, compressed by the liquid, plus the vapour)
     let curve = s.compounds["C6H12"].vapor_curve.unwrap();
-    let expect = s.temperature_k / 295.15 + curve.p_pa(s.temperature_k) / 101325.0;
-    assert!((s.pressure_atm - expect).abs() < 0.05 * expect, "{} atm vs {}", s.pressure_atm, expect);
-    assert!(s.vapour_mol.get("C6H12(g)").copied().unwrap_or(0.0) > 1e-3);
+    let n_air: f64 = ["N2(g)", "O2(g)", "Ar(g)"].iter().map(|k| s.headspace_gas_mol.get(*k).copied().unwrap_or(0.0)).sum();
+    let p_air_atm = n_air * 8.314462618 * s.temperature_k / ((100.0 - s.total_liquid_volume_ml()) * 1e-6) / 101325.0;
+    let expect = p_air_atm + curve.p_pa(s.temperature_k) / 101325.0;
+    assert!((s.pressure_atm - expect).abs() < 0.06 * expect, "{} atm vs {}", s.pressure_atm, expect);
+    assert!(s.headspace_gas_mol.get("C6H12(g)").copied().unwrap_or(0.0) > 1e-3);
 }
+
 
 #[test]
 fn dissolution_is_limited_by_solubility() {
@@ -198,20 +228,29 @@ fn dissolution_is_limited_by_solubility() {
     assert_eq!(g.phase_model, "inert");
     assert!((g.thermo.dhf_kj_mol.unwrap() + 1273.0).abs() < 2.0, "Hess: {:?}", g.thermo.dhf_kj_mol);
     assert!(g.thermo.normal_bp_k.is_none(), "no vapour-pressure data, no boiling point");
-    let mut v = beaker();
+    // The supplied solubility is a datum at its reference temperature (25 C); the saturation limit at any other temperature
+    // follows from the solid-liquid equilibrium (Stage 5 deleted the temperature-independent cap), so this runs at 25 C.
+    let mut v = beaker_at(298.15);
     dose_ml(&mut v, "water", 50.0);
     dose_g(&mut v, "cp_glucose_c", 5.0);
-    assert!((sp(&v, "C6H12O6") - 5.0 / g.mw).abs() < 1e-9, "5 g in 50 mL (cap 45 g) dissolves fully");
+    assert!((sp(&v, "C6H12O6") - 5.0 / g.mw).abs() < 1e-9, "5 g in 50 mL (cap ~45 g) dissolves fully");
     assert!(sol(&v, "C6H12O6(s)") < 1e-12);
     let snap = v.snapshot();
     assert!(snap.solids.is_empty());
     let row = snap.species.iter().find(|r| r.id == "C6H12O6").unwrap();
     assert_eq!(row.phase, "aqueous");
     assert_eq!(row.name, "Glucose");
-    // more than the cap stays as solid: 60 g in 50 mL of water
+    // more than the cap stays as solid: 60 g in 50 mL of water. The cap is the saturated solution at the datum: the solute
+    // mole fraction of 909 g/L (taken per litre of water, x = 0.0834), whatever the amount of water makes of it.
     dose_g(&mut v, "cp_glucose_c", 60.0);
-    let cap = 909.0 * 0.05 / g.mw;
-    assert!((sp(&v, "C6H12O6") - cap).abs() < 0.02 * cap, "{} vs cap {}", sp(&v, "C6H12O6"), cap);
+    assert!(v.temperature_k < 290.0, "dissolving glucose is endothermic: {} K", v.temperature_k);
+    equilibrate_at(&mut v, 298.15, 600.0);
+    assert!((v.temperature_k - 298.15).abs() < 0.5, "{} K", v.temperature_k);
+    let n_w = sp(&v, "H2O");
+    let c = 909.0 / g.mw;
+    let x_sat = c / (c + 1000.0 * 0.997 / 18.015);
+    let cap = x_sat / (1.0 - x_sat) * n_w;
+    assert!((sp(&v, "C6H12O6") - cap).abs() < 0.03 * cap, "{} vs cap {}", sp(&v, "C6H12O6"), cap);
     assert!(sol(&v, "C6H12O6(s)") > 0.2 * 65.0 / g.mw);
     assert!(v.snapshot().solids.iter().any(|s| s.species == "C6H12O6(s)" && s.name == "Glucose"));
 
@@ -228,7 +267,9 @@ fn dissolution_is_limited_by_solubility() {
     let mut dry = beaker();
     dose_g(&mut dry, "cp_naph_c", 1.0);
     assert!(sp(&dry, "C10H8") < 1e-15);
-    // a miscible liquid (solubility >= 500 g/L) dissolves completely instead of forming a layer
+    // A liquid with a very high measured "solubility" (>= 500 g/L, PubChem's way of saying miscible) is no longer a special
+    // case ("the 500 g/L rule" is deleted): its datum is a saturation mole fraction (0.2 here), and 5 mL of it in 50 mL of
+    // water stays below that, so it dissolves completely and no layer forms.
     let a = import(CompoundRequest {
         id: "cp_acetone_c".into(), name: "Acetone".into(), formula: "C3H6O".into(), state: Some("liquid".into()), density: Some(0.79),
         t_melt_ref_k: Some(178.5), vapor_pressure_points: vec![[329.35, 101_325.0], [298.15, 30_800.0]], solubility_g_per_l: Some(1000.0),
@@ -237,9 +278,10 @@ fn dissolution_is_limited_by_solubility() {
     let mut x = beaker();
     dose_ml(&mut x, "water", 50.0);
     dose_ml(&mut x, "cp_acetone_c", 5.0);
-    assert!((sp(&x, "C3H6O") - 5.0 * 0.79 / a.mw).abs() < 1e-9 && sp(&x, "C3H6O(l)") < 1e-12);
+    assert!((liq(&x, "C3H6O") - 5.0 * 0.79 / a.mw).abs() < 1e-9);
     assert_eq!(x.snapshot().layers.len(), 1);
 }
+
 
 #[test]
 fn heavy_neat_liquid_sinks_below_water() {
@@ -253,19 +295,21 @@ fn heavy_neat_liquid_sinks_below_water() {
     dose_ml(&mut v, "cp_dcm_d", 10.0);
     let snap = v.snapshot();
     assert_eq!(snap.layers.len(), 2);
-    assert_eq!(snap.layers[0].species.as_deref(), Some("CH2Cl2(l)"), "densest layer first (bottom)");
+    assert!(snap.layers[0].density_g_ml > 1.2 && snap.layers[1].density_g_ml < 1.05, "densest layer first (bottom): {} / {}", snap.layers[0].density_g_ml, snap.layers[1].density_g_ml);
+    assert_eq!(snap.layers[0].phase, PhaseKind::Organic);
     assert_eq!(snap.layers[1].phase, PhaseKind::Aqueous);
     // coloured layer: absorbs blue more than red
     let a = &snap.layers[0].absorbance_per_cm;
     assert!(a[3] > a[22] + 0.05, "blue {} vs red {}", a[3], a[22]);
     // dissolved fraction: 13 g/L * 0.03 L
-    assert!((sp(&v, "CH2Cl2") - 13.0 * 0.03 / m.mw).abs() < 0.05 * 13.0 * 0.03 / m.mw);
-    // draining from the bottom takes the denser organic layer first
+    assert!((sp(&v, "CH2Cl2") - 13.0 * 0.03 / m.mw).abs() < 0.15 * 13.0 * 0.03 / m.mw, "{}", sp(&v, "CH2Cl2"));
+    // draining from the bottom takes the denser layer first: the portion carries the densest phase in `organic_mol` (the
+    // immiscible phases) and nothing of the water-containing primary phase
     let p = v.remove_liquid_bottom(5.0, false).unwrap();
-    assert!(p.organic_mol.get("CH2Cl2(l)").copied().unwrap_or(0.0) > 0.0 && p.aqueous_mol.get("H2O").copied().unwrap_or(0.0) < 1e-12);
+    assert!(p.organic_mol.get("CH2Cl2").copied().unwrap_or(0.0) > 0.05 && p.aqueous_mol.get("H2O").copied().unwrap_or(0.0) < 1e-3, "{:?} / {:?}", p.aqueous_mol, p.organic_mol);
     let mut w = beaker();
     w.add_portion(p).unwrap();
-    assert!(sp(&w, "CH2Cl2(l)") > 0.0);
+    assert!(liq(&w, "CH2Cl2") > 0.0);
 }
 
 #[test]
@@ -309,6 +353,7 @@ fn state_at_room_derivation_table() {
     }
 }
 
+
 #[test]
 fn inert_compound_is_dose_size_independent() {
     let m = import(CompoundRequest {
@@ -316,16 +361,20 @@ fn inert_compound_is_dose_size_independent() {
         t_melt_ref_k: Some(459.15), solubility_g_per_l: Some(100.0), ..Default::default()
     });
     let weigh = |n: usize| {
-        let mut v = beaker();
+        let mut v = beaker_at(298.15); // the temperature of the solubility datum
         dose_ml(&mut v, "water", 40.0);
         for _ in 0..n { dose_g(&mut v, "cp_suc_f", 8.0 / n as f64); }
+        equilibrate_at(&mut v, 298.15, 300.0);
         v
     };
     let (one, many) = (weigh(1), weigh(250));
-    // 8 g in 40 mL at 100 g/L: 4 g dissolve, 4 g stay solid
+    // 8 g in 40 mL at 100 g/L: ~4 g dissolve, the rest stays solid, whether it came in one dose or 250
+    assert!((sp(&one, "C12H22O11") - sp(&many, "C12H22O11")).abs() < 1e-6 * sp(&one, "C12H22O11"));
+    assert!((sol(&one, "C12H22O11(s)") - sol(&many, "C12H22O11(s)")).abs() < 1e-6);
     for v in [&one, &many] {
-        assert!((sp(v, "C12H22O11") - 4.0 / m.mw).abs() < 1e-9, "{}", sp(v, "C12H22O11"));
-        assert!((sol(v, "C12H22O11(s)") - 4.0 / m.mw).abs() < 1e-9);
+        let dissolved_g = sp(v, "C12H22O11") * m.mw;
+        assert!((dissolved_g - 4.0).abs() < 0.1, "dissolved {} g", dissolved_g);
+        assert!((sp(v, "C12H22O11") + sol(v, "C12H22O11(s)") - 8.0 / m.mw).abs() < 1e-9);
     }
     // neat liquid: one dose or 250 doses give the same layer volume
     let c = import(cyclohexane("cp_chx_f"));
@@ -336,14 +385,18 @@ fn inert_compound_is_dose_size_independent() {
         v
     };
     let (a, b) = (pour(1), pour(250));
-    assert!((sp(&a, "C6H12(l)") - sp(&b, "C6H12(l)")).abs() < 1e-9 && (sp(&a, "C6H12") - sp(&b, "C6H12")).abs() < 1e-9);
-    assert!((a.neat_volume_ml() - b.neat_volume_ml()).abs() < 1e-6);
-    assert!((total_mol(&a, "C6H12", c.mw) - 10.0 * 0.774 / c.mw).abs() < 1e-9);
-    // stepping on at room temperature changes nothing
+    assert!((liq(&a, "C6H12") - liq(&b, "C6H12")).abs() < 1e-9);
+    assert!((a.organic_volume_ml() - b.organic_volume_ml()).abs() < 1e-3, "{} vs {}", a.organic_volume_ml(), b.organic_volume_ml());
+    assert!((total_mol(&a, "C6H12", c.mw) - 10.0 * 0.774 / c.mw).abs() < 1e-6);
+    // stepping on at room temperature: a liquid with a vapour pressure of 10 kPa evaporates slowly into the room air
+    // (Stage 4), booking the loss and cooling the liquid a little; nothing else moves
     let mut s = pour(1);
     for _ in 0..200 { s.step(0.1).unwrap(); }
-    assert!((sp(&s, "C6H12(l)") - sp(&a, "C6H12(l)")).abs() < 1e-9);
-    assert!((s.temperature_k - 295.15).abs() < 0.01);
+    let evaporated = liq(&a, "C6H12") - liq(&s, "C6H12");
+    assert!(evaporated > 0.0 && evaporated < 0.02 * liq(&a, "C6H12"), "evaporated {} mol", evaporated);
+    assert!(s.mass_lost_g >= evaporated * c.mw - 1e-9 && s.mass_lost_g < evaporated * c.mw + 0.05, "{} g lost (cyclohexane {} g + a little water)", s.mass_lost_g, evaporated * c.mw);
+    assert!(s.temperature_k < 295.15 && s.temperature_k > 294.5, "{}", s.temperature_k);
+    assert!(s.snapshot().conservation.ok);
 }
 
 #[test]

@@ -207,12 +207,11 @@ ok('gas: molar volume and the 0.01 mol Mg example', () => {
 });
 
 ok('gas: over water the reading includes the water vapour (~2.3 % at 20 C)', () => {
-  near(G.waterVapourAtm(293.15), 0.0231, 0.0008);
-  const dry = G.collectorVolumeMl('syringe', 0.002, 293.15);
-  const wet = G.collectorVolumeMl('over_water', 0.002, 293.15);
-  near(wet / dry, 1 / (1 - G.waterVapourAtm(293.15)), 1e-9);
+  const vapour = 0.0231; // the engine reports it (GasInfo.vapour_atm, IF97 curve of the water record)
+  const dry = G.collectorVolumeMl(0.002, 293.15, 0);
+  const wet = G.collectorVolumeMl(0.002, 293.15, vapour);
+  near(wet / dry, 1 / (1 - vapour), 1e-9);
   assert.ok(wet / dry > 1.015 && wet / dry < 1.03);
-  assert.equal(G.waterVapourAtm(263.15), 0);
 });
 
 ok('gas: tag text and readings', () => {

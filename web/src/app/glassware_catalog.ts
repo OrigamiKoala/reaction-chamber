@@ -33,6 +33,10 @@ export interface GlasswareSpec {
   description: string;
   tolerance?: string;
   icon: IconName;
+  /** Absolute pressure (atm) at which the closure lets go (stopper pop). Open-mouth ware has only a loose cover. */
+  popAtm: number;
+  /** Absolute pressure (atm) at which the glass bursts (engine: vessel `burst_atm`). */
+  burstAtm: number;
 }
 
 export const GLASSWARE_CATEGORIES: ReadonlyArray<{ id: GlasswareCategory; label: string; icon: IconName }> = [
@@ -54,7 +58,30 @@ export function formatCapacity(ml: number): string {
   return `${+ml.toFixed(1)} mL`;
 }
 
-type Row = Omit<GlasswareSpec, 'label' | 'description'> & { name: string; blurb: string; showCap?: boolean };
+/**
+ * Closure and glass pressure limits by family (absolute atm). Rough bench figures, not ratings: ordinary lab glass is
+ * not pressure ware; heavy-wall tubes and filter flasks take more, open-mouth beakers and dishes almost nothing.
+ */
+const PRESSURE_LIMITS: Record<GlasswareCategory, { popAtm: number; burstAtm: number }> = {
+  beakers: { popAtm: 1.3, burstAtm: 2.0 },
+  flasks: { popAtm: 2.2, burstAtm: 6.0 },
+  cylinders: { popAtm: 1.5, burstAtm: 3.0 },
+  volumetric: { popAtm: 1.8, burstAtm: 4.0 },
+  burettes: { popAtm: 2.0, burstAtm: 5.0 },
+  pipettes: { popAtm: 1.5, burstAtm: 3.0 },
+  tubes: { popAtm: 2.5, burstAtm: 8.0 },
+  gas: { popAtm: 1.5, burstAtm: 4.0 },
+  funnels: { popAtm: 1.5, burstAtm: 3.0 },
+  dishes: { popAtm: 1.3, burstAtm: 2.0 },
+};
+
+type Row = Omit<GlasswareSpec, 'label' | 'description' | 'popAtm' | 'burstAtm'> & {
+  name: string;
+  blurb: string;
+  showCap?: boolean;
+  popAtm?: number;
+  burstAtm?: number;
+};
 
 // Row shorthand: name is prefixed to the capacity unless `showCap` is false (e.g. "Test tube").
 const rows: Row[] = [
@@ -76,7 +103,7 @@ const rows: Row[] = [
   { type: 'round-bottom-250', name: 'Round-bottom flask', category: 'flasks', icon: 'roundFlask', capacityMl: 250, glassMassG: 105, innerRadiusCm: 4.0, blurb: 'Even heating, no graduations' },
   { type: 'round-bottom-500', name: 'Round-bottom flask', category: 'flasks', icon: 'roundFlask', capacityMl: 500, glassMassG: 190, innerRadiusCm: 5.0, blurb: 'Even heating, no graduations' },
   { type: 'florence-500', name: 'Florence flask', category: 'flasks', icon: 'roundFlask', capacityMl: 500, glassMassG: 180, innerRadiusCm: 5.0, blurb: 'Flat-bottom boiling flask, long neck, stands on the bench' },
-  { type: 'buchner-flask-250', name: 'Büchner flask', category: 'flasks', icon: 'erlenmeyer', capacityMl: 250, glassMassG: 200, innerRadiusCm: 3.6, blurb: 'Heavy-wall filter flask with a side arm for vacuum' },
+  { type: 'buchner-flask-250', name: 'Büchner flask', category: 'flasks', icon: 'erlenmeyer', capacityMl: 250, glassMassG: 200, innerRadiusCm: 3.6, burstAtm: 8.0, blurb: 'Heavy-wall filter flask with a side arm for vacuum' },
 
   // ---------------------------------------------------------------- graduated cylinders (ISO 6706 class B)
   { type: 'cylinder-10', name: 'Graduated cylinder', category: 'cylinders', icon: 'cylinder', capacityMl: 10, glassMassG: 30, innerRadiusCm: 0.6, tolerance: 'Class B, ±0.2 mL', blurb: 'Tall form, hexagonal base' },
@@ -135,8 +162,9 @@ const rows: Row[] = [
 export const GLASSWARE: GlasswareSpec[] = rows.map((r) => {
   const label = r.showCap === false ? r.name : `${r.name} ${formatCapacity(r.nominalMl ?? r.capacityMl)}`;
   const description = r.tolerance && !r.tolerance.startsWith('Class') ? `${r.blurb} (${r.tolerance})` : r.tolerance ? `${r.tolerance} — ${r.blurb}` : r.blurb;
-  const { name: _n, blurb: _b, showCap: _s, ...spec } = r;
-  return { ...spec, label, description };
+  const { name: _n, blurb: _b, showCap: _s, popAtm, burstAtm, ...spec } = r;
+  const lim = PRESSURE_LIMITS[r.category];
+  return { ...spec, label, description, popAtm: popAtm ?? lim.popAtm, burstAtm: burstAtm ?? lim.burstAtm };
 });
 
 const BY_TYPE = new Map<VesselType, GlasswareSpec>(GLASSWARE.map((g) => [g.type, g]));
