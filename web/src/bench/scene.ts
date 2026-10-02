@@ -1296,6 +1296,11 @@ export class BenchScene {
   }
 
   private pick(): PickHit | null {
+    return this.pickAll()[0] ?? null;
+  }
+
+  /** All hits under the pointer, nearest first (with the balance TARE-key override applied). */
+  private pickAll(): PickHit[] {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const proxies: THREE.Object3D[] = [];
     for (const b of this.glasswareMap.values()) if (!b.isBurst()) proxies.push(b.pickProxy);
@@ -1313,8 +1318,11 @@ export class BenchScene {
     }
     const first = picks[0];
     // the TARE key sits inside the balance's box: it wins over the balance body
-    if (first?.type === 'instrument' && first.id === 'balance') return picks.find((p) => p.type === 'balance-tare') ?? first;
-    return first ?? null;
+    if (first?.type === 'instrument' && first.id === 'balance') {
+      const tare = picks.find((p) => p.type === 'balance-tare');
+      if (tare) return [tare, ...picks.filter((p) => p !== tare)];
+    }
+    return picks;
   }
 
   /** Capture-phase press: arm a grab when the press lands on a bottle / vessel (keeps OrbitControls from starting). */
@@ -1339,7 +1347,13 @@ export class BenchScene {
     const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
     if (moved > 5 || performance.now() - d.t > 800) return;
     this.setPointer(e);
-    const hit = this.pick();
+    const all = this.pickAll();
+    let hit = all[0] ?? null;
+    // a probe standing in the selected vessel is behind the glass proxy: clicking it should open the probe, not re-pick the vessel
+    if (hit?.type === 'vessel' && hit.id === this.selectedId) {
+      const probe = all.find((p) => p.type === 'instrument' && (p.id === 'thermometer' || p.id === 'phmeter'));
+      if (probe) hit = probe;
+    }
     if (hit?.type === 'balance-tare') {
       this.instruments.balance.tare();
       return;

@@ -365,9 +365,7 @@ async function initApp() {
   lab.onVesselRemoved = (id) => instLog.forgetSource(id);
   bench.onSelectObject = (type, id) => {
     if (type === 'instrument') {
-      // Probes (thermometer, pH meter, gauge) keep reading the selected vessel; the bench-side instruments stand alone.
-      const probe = id === 'thermometer' || id === 'phmeter' || id === 'gauge';
-      if (!probe && lab.selectedId) lab.select(null);
+      // The selected vessel stays selected: deselecting it would lift the thermometer / pH probe out of it.
       setInstrument(id as InstrumentId);
       setSheet('vessel');
     } else if (type === 'vessel') {
