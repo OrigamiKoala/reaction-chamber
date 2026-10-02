@@ -123,3 +123,41 @@ pub fn build_reaction_basis(species: &[String]) -> Vec<BasisReaction> {
 
     basis
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_redox_basis_discovery() {
+        let species = vec![
+            "Zn(s)".to_string(),
+            "Zn+2".to_string(),
+            "H+".to_string(),
+            "H2(g)".to_string(),
+        ];
+        let basis = build_reaction_basis(&species);
+        assert_eq!(basis.len(), 1, "Should discover exactly 1 independent reaction");
+        // Zn + 2 H+ <=> Zn+2 + H2
+        // Check that stoichiometry balances both Zn, H and charge
+        let rxn = &basis[0];
+        let mut net_charge = 0.0;
+        for &(idx, coeff) in &rxn.nu {
+            let sp = &species[idx];
+            net_charge += coeff * crate::ions::species_charge(sp) as f64;
+        }
+        assert!(net_charge.abs() < 1e-9, "Reaction must be charge balanced: {}", net_charge);
+    }
+
+    #[test]
+    fn test_thermal_decomposition_basis() {
+        let species = vec![
+            "CaCO3(s)".to_string(),
+            "CaO(s)".to_string(),
+            "CO2(g)".to_string(),
+        ];
+        let basis = build_reaction_basis(&species);
+        assert_eq!(basis.len(), 1, "CaCO3 <=> CaO + CO2 should be discovered");
+    }
+}
+

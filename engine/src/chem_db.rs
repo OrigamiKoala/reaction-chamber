@@ -798,16 +798,34 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
 
 pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
     let mut list = vec![
-        // 2. Catalysed H2O2 decomposition
+        // 1. Uncatalysed H2O2 decomposition
+        GeneralKineticRxn {
+            id: "h2o2_decomposition_uncatalyzed".to_string(),
+            equation: "2 H2O2 -> 2 H2O + O2(g)".to_string(),
+            reactants: [("H2O2".to_string(), 2.0)].into(),
+            products: [("H2O".to_string(), 2.0)].into(),
+            gas_products: [("O2(g)".to_string(), 1.0)].into(),
+            orders: Some([("H2O2".to_string(), 1.0)].into()),
+            arrhenius_a: 1.0e7,
+            arrhenius_n: 0.0,
+            arrhenius_ea: 75000.0,
+            delta_h_kj: -98.0,
+            catalyst_species: None,
+            is_reversible: false,
+            k_eq_298: None,
+            tier: ProvenanceTier::Tabulated,
+            source: "NIST Chemical Kinetics".to_string(),
+        },
+        // 2. Catalysed H2O2 decomposition (MnO2 surface catalysis)
         GeneralKineticRxn {
             id: "h2o2_decomposition".to_string(),
             equation: "2 H2O2 -> 2 H2O + O2(g)".to_string(),
             reactants: [("H2O2".to_string(), 2.0)].into(),
             products: [("H2O".to_string(), 2.0)].into(),
             gas_products: [("O2(g)".to_string(), 1.0)].into(),
-            // heterogeneously catalysed decomposition is first order in H2O2 (surface-limited), not second
+            // heterogeneously catalysed decomposition is first order in H2O2 (surface-limited)
             orders: Some([("H2O2".to_string(), 1.0)].into()),
-            arrhenius_a: 1000.0,
+            arrhenius_a: 2000.0,
             arrhenius_n: 0.0,
             arrhenius_ea: 25000.0,
             delta_h_kj: -98.0, // exothermic
@@ -817,7 +835,7 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
             tier: ProvenanceTier::Tabulated,
             source: "NIST Chemical Kinetics".to_string(),
         },
-        // 3. Iodine clock: persulfate + iodide
+        // 3. Iodine clock: persulfate + iodide (cited Indelli & Prue 1958)
         GeneralKineticRxn {
             id: "iodine_clock_slow".to_string(),
             equation: "S2O8-2 + 2 I- -> 2 SO4-2 + I2(aq)".to_string(),
@@ -826,7 +844,7 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
             gas_products: HashMap::new(),
             // measured rate law: rate = k [S2O8 2-][I-] (first order in iodide although two I- are consumed)
             orders: Some([("S2O8-2".to_string(), 1.0), ("I-".to_string(), 1.0)].into()),
-            arrhenius_a: 1.15e8,
+            arrhenius_a: 3.73e7,
             arrhenius_n: 0.0,
             arrhenius_ea: 52000.0,
             delta_h_kj: -140.0,
@@ -834,7 +852,7 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
             is_reversible: false,
             k_eq_298: None,
             tier: ProvenanceTier::Tabulated,
-            source: "J. Chem. Educ. Iodine Clock Kinetics".to_string(),
+            source: "Indelli & Prue 1958 / J. Chem. Educ.".to_string(),
         },
         // 4. Iodine clock fast reduction: I2 + 2 S2O3-2 -> 2 I- + S4O6-2
         GeneralKineticRxn {
@@ -845,7 +863,7 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
             gas_products: HashMap::new(),
             // rate = k [I2][S2O3 2-] (first order in each)
             orders: Some([("I2(aq)".to_string(), 1.0), ("S2O3-2".to_string(), 1.0)].into()),
-            arrhenius_a: 1e11,
+            arrhenius_a: 5.0e6,
             arrhenius_n: 0.0,
             arrhenius_ea: 0.0,
             delta_h_kj: -95.0,

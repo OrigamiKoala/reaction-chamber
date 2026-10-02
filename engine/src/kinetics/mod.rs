@@ -1,6 +1,9 @@
+pub mod core;
+pub use core::*;
+
 use crate::equilibrium::R_IDEAL;
 
-/// Elementary or empirical reaction
+/// Elementary or empirical reaction (legacy network model, kept for benchmark)
 #[derive(Clone, Debug)]
 pub struct KineticReaction {
     pub name: String,
@@ -30,7 +33,7 @@ impl KineticReaction {
     }
 }
 
-/// Chemical kinetics network
+/// Chemical kinetics network (legacy model, kept for benchmark)
 #[derive(Clone, Debug)]
 pub struct KineticNetwork {
     pub species_names: Vec<String>,
@@ -171,7 +174,7 @@ impl KineticNetwork {
     }
 }
 
-/// L-stable Rosenbrock (ROS2) stiff ODE integrator
+/// L-stable Rosenbrock (ROS2) stiff ODE integrator (concentration coordinates)
 pub fn rosenbrock_step(
     network: &KineticNetwork,
     concs: &[f64],
@@ -184,12 +187,9 @@ pub fn rosenbrock_step(
     let n = network.num_species();
     let gamma = 1.0 - 1.0 / std::f64::consts::SQRT_2; // ~0.2928932188
 
-    // f0 = f(y_n)
     let f0 = network.derivatives(concs, temp_k);
-    // J = df/dy
     let jac = network.jacobian(concs, temp_k);
 
-    // Matrix W = I - gamma * dt * J
     let mut w = vec![vec![0.0; n]; n];
     for i in 0..n {
         for j in 0..n {
@@ -198,21 +198,16 @@ pub fn rosenbrock_step(
         w[i][i] += 1.0;
     }
 
-    // Solve W * k1 = f0
     let k1 = solve_linear_system(&w, &f0);
 
-    // Intermediate state y* = y_n + dt * k1
     let mut y_star = vec![0.0; n];
     for i in 0..n {
         let val = concs[i] + dt * k1[i];
         y_star[i] = if val.is_finite() && val > 0.0 { val } else { 0.0 };
     }
 
-    // f(y*)
     let f_star = network.derivatives(&y_star, temp_k);
 
-    // RHS2 = f_star - 2.0 * gamma * dt * J * k1
-    // Let's compute J * k1
     let mut jk1 = vec![0.0; n];
     for i in 0..n {
         for j in 0..n {
@@ -225,10 +220,8 @@ pub fn rosenbrock_step(
         rhs2[i] = f_star[i] - 2.0 * gamma * dt * jk1[i];
     }
 
-    // Solve W * k2 = rhs2
     let k2 = solve_linear_system(&w, &rhs2);
 
-    // Next state y_{n+1} = y_n + (dt / 2) * (k1 + k2)
     let mut next_concs = vec![0.0; n];
     for i in 0..n {
         let updated = concs[i] + 0.5 * dt * (k1[i] + k2[i]);
@@ -238,72 +231,7 @@ pub fn rosenbrock_step(
     next_concs
 }
 
-/// Linear solver using Gaussian elimination with partial pivoting
-pub fn solve_linear_system(a: &[Vec<f64>], b: &[f64]) -> Vec<f64> {
-    let n = b.len();
-    let mut mat = a.to_vec();
-    let mut rhs = b.to_vec();
-
-    // Forward elimination
-    for col in 0..n {
-        // Find pivot
-        let mut max_row = col;
-        let mut max_val = mat[col][col].abs();
-        for row in (col + 1)..n {
-            let val = mat[row][col].abs();
-            if val > max_val {
-                max_val = val;
-                max_row = row;
-            }
-        }
-
-        if max_row != col {
-            mat.swap(col, max_row);
-            rhs.swap(col, max_row);
-        }
-
-        let pivot = mat[col][col];
-        if pivot.abs() < 1e-15 || pivot.is_nan() {
-            continue;
-        }
-
-        for row in (col + 1)..n {
-            let factor = mat[row][col] / pivot;
-            mat[row][col] = 0.0;
-            for c in (col + 1)..n {
-                mat[row][c] -= factor * mat[col][c];
-            }
-            rhs[row] -= factor * rhs[col];
-        }
-    }
-
-    // Back substitution
-    let mut x = vec![0.0; n];
-    for i in (0..n).rev() {
-        let mut sum = rhs[i];
-        for j in (i + 1)..n {
-            sum -= mat[i][j] * x[j];
-        }
-        let diag = mat[i][i];
-        x[i] = if diag.abs() > 1e-15 && diag.is_finite() {
-            let val = sum / diag;
-            if val.is_finite() { val } else { 0.0 }
-        } else {
-            0.0
-        };
-    }
-
-    x
-}
-
 /// Builds the Iodine Clock (Persulfate-Iodide Landolt) kinetic network
-/// Species indices:
-/// 0: S2O8^2- (persulfate)
-/// 1: I^- (iodide)
-/// 2: SO4^2- (sulfate)
-/// 3: I2 (iodine)
-/// 4: S2O3^2- (thiosulfate)
-/// 5: S4O6^2- (tetrathionate)
 pub fn build_iodine_clock_network() -> KineticNetwork {
     let species_names = vec![
         "S2O8_2-".to_string(),
@@ -314,13 +242,9 @@ pub fn build_iodine_clock_network() -> KineticNetwork {
         "S4O6_2-".to_string(),
     ];
 
-    // Reaction 1: S2O8^2- + 2 I- -> 2 SO4^2- + I2
-    // Rate = k1 [S2O8^2-] [I-]
-    // Literature: k1(293.15 K) ~ 0.020 M^-1 s^-1, Ea ~ 52 kJ/mol
-    // A = 0.020 * exp(52000 / (8.314 * 293.15)) ~ 3.73e7
     let rxn1 = KineticReaction {
         name: "Persulfate oxidation of iodide".to_string(),
-        reactants: vec![(0, 1.0), (1, 1.0)], // first order in each
+        reactants: vec![(0, 1.0), (1, 1.0)],
         products: vec![(2, 2.0), (3, 1.0)],
         stoich_reactants: Some(vec![(0, 1.0), (1, 2.0)]),
         stoich_products: None,
@@ -332,9 +256,6 @@ pub fn build_iodine_clock_network() -> KineticNetwork {
         k_eq_298: None,
     };
 
-    // Reaction 2: I2 + 2 S2O3^2- -> 2 I- + S4O6^2-
-    // Fast scavenging reaction: k2 ~ 5.0e5 M^-1 s^-1
-    // Rate order is first-order in each, but stoichiometry consumes 2 S2O3^2-
     let rxn2 = KineticReaction {
         name: "Thiosulfate reduction of iodine".to_string(),
         reactants: vec![(3, 1.0), (4, 1.0)],
@@ -356,7 +277,6 @@ pub fn build_iodine_clock_network() -> KineticNetwork {
 }
 
 /// Simulates the Iodine Clock reaction until color transition (free I2 emerges)
-/// Returns (delay_time_sec, time_series_i2, time_series_thiosulfate)
 pub fn simulate_iodine_clock(
     initial_s2o8: f64,
     initial_i: f64,
@@ -400,7 +320,6 @@ pub fn simulate_iodine_clock(
         i2_series.push((current_time, concs[3]));
         s2o3_series.push((current_time, concs[4]));
 
-        // Check transition: thiosulfate depleted and free I2 surges
         if !transition_detected && concs[3] > 1e-5 && concs[4] < 1e-4 {
             delay_time = current_time;
             transition_detected = true;

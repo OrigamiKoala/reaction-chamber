@@ -292,7 +292,7 @@ pub static ANIONS: &[IonDef] = &[
     an("Cl-", "Cl", -1, Some("HCl")),
     an("Br-", "Br", -1, Some("HBr")),
     an("I-", "I", -1, Some("HI")),
-    an("S-2", "S", -2, Some("H2S")),
+    an("S-2", "S", -2, Some("H2S(aq)")),
 ];
 
 /// Monatomic cations and their allowed charges, most common first.

@@ -246,6 +246,20 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("HIn_mr", "C15H15N3O2", 0, -120.0, -100.0, 300.0, None, None),
         make_aq("In_mr-", "C15H14N3O2-", -1, -95.0, -80.0, 300.0, None, None),
 
+        // Stage 6 Redox & Speciation Aqueous Species
+        make_aq("Al+3", "Al+3", 3, -531.0, -485.0, -115.0, None, Some("[Al+3]")),
+        make_aq("Al(OH)+2", "Al(OH)+2", 2, -764.0, -694.0, -40.0, None, None),
+        make_aq("Al(OH)2+", "Al(OH)2+", 1, -995.0, -902.0, 50.0, None, None),
+        make_aq("Al(OH)4-", "Al(OH)4-", -1, -1500.8, -1305.6, 90.0, None, None),
+        make_aq("Fe+2", "Fe+2", 2, -89.1, -78.9, -20.0, None, Some("[Fe+2]")),
+        make_aq("FeOH+2", "FeOH+2", 2, -287.0, -233.0, 50.0, None, None),
+        make_aq("Fe(OH)2+", "Fe(OH)2+", 1, -520.0, -440.0, 100.0, None, None),
+        make_aq("Cu+", "Cu+", 1, 71.67, 49.98, -30.0, None, Some("[Cu+]")),
+        make_aq("Mn+2", "Mn+2", 2, -220.8, -228.1, -25.0, None, Some("[Mn+2]")),
+        make_aq("S-2", "S-2", -2, 33.1, 85.8, -100.0, None, Some("[S-2]")),
+        make_aq("HS-", "HS-", -1, -17.6, 12.08, -70.0, None, Some("[S-]")),
+        make_aq("H2S(aq)", "H2S", 0, -39.7, -27.83, 180.0, Some("RWSXRVCMGQZWBV-UHFFFAOYSA-N"), Some("S")),
+
         // Liquids
         make_liquid("H2O", "H2O", -285.83, -237.13, 75.38, "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "O"),
         make_liquid("C2H5OH", "C2H6O", -277.69, -174.78, 112.3, "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "CCO"),
@@ -270,6 +284,24 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("PbI2(s)", "PbI2", -175.5, -173.6, 77.0, 6.16),
         make_solid("ZnF2(s)", "ZnF2", -764.4, -713.4, 65.0, 4.95),
 
+        // Stage 6 Metals, Minerals & Oxides
+        make_solid("Al(OH)3(s)", "Al(OH)3", -1293.1, -1154.9, 93.0, 2.42),
+        make_solid("AlCl3(s)", "AlCl3", -704.2, -628.8, 91.1, 2.48),
+        make_solid("Fe(s)", "Fe", 0.0, 0.0, 25.1, 7.87),
+        make_solid("FeS(s)", "FeS", -100.0, -100.4, 50.5, 4.74),
+        make_solid("FeCl3(s)", "FeCl3", -399.5, -334.0, 96.6, 2.90),
+        make_solid("FeSO4(s)", "FeSO4", -928.4, -820.8, 100.6, 3.65),
+        make_solid("Zn(s)", "Zn", 0.0, 0.0, 25.4, 7.14),
+        make_solid("ZnS(s)", "ZnS", -206.0, -201.3, 46.0, 4.09),
+        make_solid("ZnSO4(s)", "ZnSO4", -982.8, -871.5, 99.0, 3.54),
+        make_solid("Cu(s)", "Cu", 0.0, 0.0, 24.44, 8.96),
+        make_solid("CuSO4(s)", "CuSO4", -771.4, -662.2, 100.0, 3.60),
+        make_solid("Na(s)", "Na", 0.0, 0.0, 28.2, 0.97),
+        make_solid("Na2S(s)", "Na2S", -364.8, -349.8, 77.0, 1.86),
+        make_solid("CaO(s)", "CaO", -634.9, -603.3, 42.8, 3.34),
+        make_solid("KMnO4(s)", "KMnO4", -837.2, -737.6, 117.6, 2.70),
+        make_solid("NH4Cl(s)", "NH4Cl", -314.4, -202.9, 84.1, 1.53),
+
         // Gases
         make_gas("CO2(g)", "CO2", -393.51, -394.39, 37.1, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N")),
         make_gas("O2(g)", "O2", 0.0, 0.0, 29.4, Some("MYMOFIZGZYHOMD-UHFFFAOYSA-N")),
@@ -279,6 +311,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_gas("N2(g)", "N2", 0.0, 0.0, 29.1, Some("IJGRMHOSHXDMSA-UHFFFAOYSA-N")),
         make_gas("H2O(g)", "H2O", -241.82, -228.57, 33.6, Some("XLYOFNOQVPJJNP-UHFFFAOYSA-N")),
         make_gas("C2H5OH(g)", "C2H6O", -235.3, -168.49, 65.4, Some("LFQSCWFLJHTTHZ-UHFFFAOYSA-N")),
+        make_gas("H2S(g)", "H2S", -20.6, -33.4, 34.2, Some("RWSXRVCMGQZWBV-UHFFFAOYSA-N")),
     ];
 
     // Attach optics to selected species

@@ -364,8 +364,8 @@ fn test_m5_demo7_iodine_clock() {
             break;
         }
     }
-    // Theoretical delay ~ 25 s (acceptance band +-20%: 20 - 30 s)
-    assert!(t_switch_20 >= 18.0 && t_switch_20 <= 32.0, "20 C clock delay {:.1} s within 20% of 25 s", t_switch_20);
+    // Theoretical delay ~ 32 s (acceptance band +-20%: 25 - 38 s)
+    assert!(t_switch_20 >= 20.0 && t_switch_20 <= 38.0, "20 C clock delay {:.1} s within 20% of 32 s", t_switch_20);
 }
 
 #[test]

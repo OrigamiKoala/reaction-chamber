@@ -8,7 +8,11 @@
 pub mod candidates;
 pub mod basis;
 pub mod solver;
+pub mod redox;
+pub mod discovery;
 
 pub use candidates::*;
 pub use basis::*;
 pub use solver::*;
+pub use redox::*;
+pub use discovery::*;

@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 /// The one gas constant used by the whole engine, J/(mol K) (CODATA 2018).
 pub const R_GAS: f64 = 8.314462618;
+/// Faraday constant, C/mol (CODATA 2018).
+pub const FARADAY: f64 = 96485.33212;
 pub const SPECIFIC_HEAT_WATER: f64 = 4.184; // J/(g*K)
 pub const DENSITY_WATER: f64 = 0.998;       // g/mL at 20 C
 

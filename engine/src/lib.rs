@@ -36,6 +36,7 @@ pub mod phases;
 pub mod volume;
 pub mod props;
 pub mod activity;
+pub mod transport;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
