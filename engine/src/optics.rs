@@ -82,6 +82,38 @@ pub fn absorbance_per_cm(conc_m: &HashMap<String, f64>) -> [f64; N_BINS] {
     a_bins
 }
 
+/// Same as absorbance_per_cm, but computes concentrations on the fly from species_mol and vol_l, avoiding HashMap allocation.
+pub fn absorbance_per_cm_from_mol(species_mol: &HashMap<String, f64>, vol_l: f64) -> [f64; N_BINS] {
+    let mut a_bins = [0.0; N_BINS];
+    if vol_l <= 1e-6 {
+        return a_bins;
+    }
+    const LN2_TIMES_4: f64 = 2.772588722239781;
+
+    for (species_id, &mol) in species_mol {
+        let conc = mol / vol_l;
+        if conc <= 1e-12 {
+            continue;
+        }
+        if let Some(bands) = spectra::bands(species_id) {
+            for band in bands {
+                for (i, a_bin) in a_bins.iter_mut().enumerate() {
+                    let lambda = BIN_NM0 + (i as f64) * BIN_STEP_NM;
+                    let diff = lambda - band.centre_nm;
+                    let fwhm = band.fwhm_nm.max(1.0);
+                    let exponent = -LN2_TIMES_4 * (diff / fwhm).powi(2);
+                    if exponent > -20.0 {
+                        let eps_lambda = band.eps * exponent.exp();
+                        *a_bin += conc * eps_lambda;
+                    }
+                }
+            }
+        }
+    }
+
+    a_bins
+}
+
 /// Natural-log extinction per cm from a suspension of spheres (Mie / Rayleigh-Gans blend).
 pub fn scatter_extinction_per_cm(
     mass_conc_g_per_ml: f64,

@@ -9,6 +9,7 @@
 use crate::chem_db::GeneralMineral;
 use crate::vessel::*;
 
+
 const LN10: f64 = std::f64::consts::LN_10;
 
 fn ln_c(amount_mol: f64, vol_l: f64) -> f64 {
@@ -55,7 +56,7 @@ fn solve_saturation_core(
         return Some(0.0);
     }
     let (mut lo, mut hi) = (y_lo, y_hi);
-    for _ in 0..100 {
+    for _ in 0..50 {
         let mid = 0.5 * (lo + hi);
         if ln_iap(mid) > ln_ksp {
             hi = mid;
@@ -168,13 +169,13 @@ impl Vessel {
             })
             .map(|(i, _)| i)
             .collect();
+        let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+        let ln_aw = a_w.max(1e-10).ln();
+
         for e in 0..self.equilibria.len() {
-            q_joules += self.relax_equilibrium(e, vol_l, t_k, dt_s, &active);
+            q_joules += self.relax_equilibrium(e, vol_l, t_k, dt_s, &active, &gamma_cache, ln_aw);
         }
-        q_joules += self.saturate_minerals(vol_l, t_k);
-        // The sweeps above relax one equilibrium at a time, which converges very slowly (and to a path-dependent
-        // point after a finite number of sweeps) when equilibria share species, e.g. the carbonate system.
-        // Finish with a coupled solve of all of them at once so the end state depends only on the contents.
+        q_joules += self.saturate_minerals(&active, vol_l, t_k, &gamma_cache);
         q_joules += self.solve_coupled_equilibria(vol_l, t_k, dt_s);
 
         // Numerical dust: exact zeros are removed so that species tables only list what is present.
@@ -190,29 +191,41 @@ impl Vessel {
     }
 
     /// Saturates every solid with its ions (exact IAP = Ksp). Returns heat (J).
-    fn saturate_minerals(&mut self, vol_l: f64, t_k: f64) -> f64 {
+    fn saturate_minerals(&mut self, active: &[usize], vol_l: f64, t_k: f64, gamma_cache: &std::collections::HashMap<String, f64>) -> f64 {
         let mut q = 0.0;
         let eps_mol = 1e-15 * vol_l;
-        let present_mol = 1e-9 * vol_l;
-        for idx in 0..self.minerals.len() {
+        for &idx in active {
             let plan = {
                 let min = &self.minerals[idx];
                 if min.dissolved_products.is_empty() {
                     continue;
                 }
                 let solid_mol = self.solid_mol.get(&min.solid_species).copied().unwrap_or(0.0);
-                let all_present = min.dissolved_products.keys().all(|i| self.species_mol.get(i).copied().unwrap_or(0.0) > present_mol);
-                if solid_mol <= eps_mol && !all_present {
-                    continue;
-                }
                 let (ln_ksp, dh_j) = Self::mineral_ln_ksp(min, t_k);
+                let mut ln_act_sum = 0.0;
+                for (ion, &c) in &min.dissolved_products {
+                    ln_act_sum += c * gamma_cache.get(ion).copied().unwrap_or(0.0);
+                }
+                let ln_ksp_eff = ln_ksp - ln_act_sum;
+                if solid_mol > eps_mol {
+                    let mut ln_iap = 0.0;
+                    let mut can_calc_iap = true;
+                    for (ion, &c) in &min.dissolved_products {
+                        let amt = self.species_mol.get(ion).copied().unwrap_or(0.0);
+                        if amt <= 0.0 { can_calc_iap = false; break; }
+                        ln_iap += c * (amt / vol_l).ln();
+                    }
+                    if can_calc_iap && (ln_iap - ln_ksp_eff).abs() < 1e-4 {
+                        continue;
+                    }
+                }
                 let mut ion_mol = Vec::with_capacity(min.dissolved_products.len());
                 let mut mu = Vec::with_capacity(min.dissolved_products.len());
                 for (ion, &c) in &min.dissolved_products {
                     ion_mol.push(self.species_mol.get(ion).copied().unwrap_or(0.0).max(0.0));
                     mu.push(c);
                 }
-                solve_saturation(&ion_mol, &mu, solid_mol, vol_l, ln_ksp).map(|y| (y, dh_j))
+                solve_saturation(&ion_mol, &mu, solid_mol, vol_l, ln_ksp_eff).map(|y| (y, dh_j))
             };
             if let Some((y, dh_j)) = plan {
                 if y.abs() < 100.0 * eps_mol {
@@ -236,27 +249,83 @@ impl Vessel {
     }
 
     /// Relaxes equilibrium `e` exactly, coupled with any solid that shares its ions. Returns heat (J).
-    fn relax_equilibrium(&mut self, e: usize, vol_l: f64, t_k: f64, dt_s: f64, active_minerals: &[usize]) -> f64 {
+    fn relax_equilibrium(
+        &mut self,
+        e: usize,
+        vol_l: f64,
+        t_k: f64,
+        dt_s: f64,
+        active_minerals: &[usize],
+        gamma_cache: &std::collections::HashMap<String, f64>,
+        ln_aw: f64,
+    ) -> f64 {
         let eq = &self.equilibria[e];
-        let dh_j = eq.delta_h_kj * 1000.0;
-        let ln_k = eq.log_k_at(t_k) * LN10;
-        // concentration-scaled tolerances: 1e-15 M and 1e-9 M expressed as amounts in this vessel
-        let eps_mol = 1e-15 * vol_l;
-        let present_mol = 1e-9 * vol_l;
 
         // Shortcut: with no active mineral touching this equilibrium it can only move forward (every reactant present)
         // or backward (every product present); otherwise there is nothing to solve.
+        let has_supply = |sp: &String| {
+            if sp == "H2O" { return true; }
+            if self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * vol_l {
+                return true;
+            }
+            active_minerals.iter().any(|&mi| {
+                let m = &self.minerals[mi];
+                m.dissolved_products.contains_key(sp) && self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0) > 1e-15 * vol_l
+            })
+        };
+        let forward = eq.reactants.keys().all(has_supply);
+        let backward = eq.products.keys().all(has_supply);
+        if !forward && !backward {
+            return 0.0;
+        }
+
         let touches_mineral = active_minerals.iter().any(|&mi| {
             self.minerals[mi].dissolved_products.keys().any(|k| eq.reactants.contains_key(k) || eq.products.contains_key(k))
         });
-        if !touches_mineral {
-            let have = |sp: &String| sp == "H2O" || self.species_mol.get(sp).copied().unwrap_or(0.0) > 0.0;
-            let forward = eq.reactants.keys().all(have);
-            let backward = eq.products.keys().all(have);
-            if !forward && !backward {
-                return 0.0;
+
+        let dh_j = eq.delta_h_kj * 1000.0;
+        let mut ln_act_eq = 0.0;
+        for (r, &c) in &eq.reactants {
+            if r == "H2O" {
+                ln_act_eq -= c * ln_aw;
+            } else {
+                ln_act_eq -= c * gamma_cache.get(r).copied().unwrap_or(0.0);
             }
         }
+        for (p, &c) in &eq.products {
+            if p == "H2O" {
+                ln_act_eq += c * ln_aw;
+            } else {
+                ln_act_eq += c * gamma_cache.get(p).copied().unwrap_or(0.0);
+            }
+        }
+        let ln_k = eq.log_k_at(t_k) * LN10 - ln_act_eq;
+        if !touches_mineral {
+            let mut ln_q = 0.0;
+            let mut can_calc_q = true;
+            for (r, &c) in &eq.reactants {
+                if r != "H2O" {
+                    let amt = self.species_mol.get(r).copied().unwrap_or(0.0);
+                    if amt <= 0.0 { can_calc_q = false; break; }
+                    ln_q -= c * (amt / vol_l).ln();
+                }
+            }
+            if can_calc_q {
+                for (p, &c) in &eq.products {
+                    if p != "H2O" {
+                        let amt = self.species_mol.get(p).copied().unwrap_or(0.0);
+                        if amt <= 0.0 { can_calc_q = false; break; }
+                        ln_q += c * (amt / vol_l).ln();
+                    }
+                }
+                if can_calc_q && (ln_q - ln_k).abs() < 1e-4 {
+                    return 0.0;
+                }
+            }
+        }
+        // concentration-scaled tolerances: 1e-15 M and 1e-9 M expressed as amounts in this vessel
+        let eps_mol = 1e-15 * vol_l;
+        let present_mol = 1e-9 * vol_l;
 
         let mut names: Vec<String> = Vec::new();
         let index_of = |name: &str, names: &mut Vec<String>| -> usize {
@@ -311,7 +380,12 @@ impl Vessel {
                     ions.push((index_of(ion, &mut names), c));
                 }
                 let (ln_ksp, mdh) = Self::mineral_ln_ksp(m, t_k);
-                minerals.push(MineralLocal { idx, ions, ln_ksp, dh_j: mdh, solid0 });
+                let mut ln_act_min = 0.0;
+                for (ion, &c) in &m.dissolved_products {
+                    ln_act_min += c * gamma_cache.get(ion).copied().unwrap_or(0.0);
+                }
+                let ln_ksp_eff = ln_ksp - ln_act_min;
+                minerals.push(MineralLocal { idx, ions, ln_ksp: ln_ksp_eff, dh_j: mdh, solid0 });
             }
         }
 
@@ -352,6 +426,9 @@ impl Vessel {
             xi_lo = xi_lo.min(supply(*i) / c);
         }
         let xi_lo = if xi_lo.is_finite() { -xi_lo } else { 0.0 };
+        if xi_hi <= 1e-18 * vol_l && xi_lo >= -1e-18 * vol_l {
+            return 0.0;
+        }
 
         let start = sys.eval(0.0);
         let log_q_over_k = start.as_ref().map(|s| (s.ln_q - ln_k) / LN10);
@@ -365,16 +442,16 @@ impl Vessel {
             // changes below 1e-9 of an amount (or of the 1e-9 M floor) are solver noise from the coupled Newton solve,
             // not a state to relax: without this every tick re-ran the full nested bisection on settled equilibria
             let moved = s.amounts.iter().zip(&sys.a0).any(|(a, b)| (a - b).abs() > 1e-9 * a.max(*b).max(present_mol));
-            if !moved && (s.ln_q - ln_k).abs() < 1e-8 {
+            if !moved && (s.ln_q - ln_k).abs() < 1e-4 {
                 return 0.0;
             }
         }
 
         // ln Q increases with xi; infeasible extents mean a reactant (xi>0) / product (xi<0) ran out.
         let (mut lo, mut hi) = (xi_lo, xi_hi);
-        for _ in 0..80 {
-            // 1e-11 relative is far below any observable and the coupled Newton solve that follows polishes the result
-            if (hi - lo).abs() <= 1e-11 * lo.abs().max(hi.abs()).max(eps_mol) {
+        for _ in 0..45 {
+            // 1e-10 relative is far below any observable and the coupled Newton solve that follows polishes the result
+            if (hi - lo).abs() <= 1e-10 * lo.abs().max(hi.abs()).max(eps_mol) {
                 break;
             }
             let mid = 0.5 * (lo + hi);
@@ -402,7 +479,7 @@ impl Vessel {
         for (i, a) in state.amounts.iter().enumerate() {
             max_change = max_change.max((a - sys.a0[i]).abs() / a.max(sys.a0[i]).max(present_mol));
         }
-        if max_change < 1e-9 {
+        if max_change < 1e-6 {
             return 0.0;
         }
         self.eq_moved = true;
@@ -535,18 +612,46 @@ impl Vessel {
         let n0: Vec<f64> = names.iter().map(|n| amount(self, n)).collect();
         let ns = names.len();
 
-        let amounts_at = |x: &[f64]| -> Vec<f64> {
-            let mut n = n0.clone();
+        let compute_amounts = |x: &[f64], n: &mut [f64]| {
+            n.copy_from_slice(&n0);
             for (r, rx) in rxns.iter().enumerate() {
-                for (i, c) in rx.nu.iter().chain(rx.nu_solv.iter()) {
-                    n[*i] += c * x[r];
+                let xr = x[r];
+                if xr != 0.0 {
+                    for (i, c) in rx.nu.iter().chain(rx.nu_solv.iter()) {
+                        n[*i] += c * xr;
+                    }
                 }
             }
-            n
         };
-        let residual = |n: &[f64]| -> Vec<f64> {
+        let compute_act_corr = |n_vec: &[f64]| -> Vec<f64> {
+            let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw_from_slices(
+                &names,
+                n_vec,
+                &self.species_mol,
+                t_k,
+            );
+            let ln_aw = a_w.max(1e-10).ln();
+            let mut corr = vec![0.0; nr];
+            for (r, rx) in rxns.iter().enumerate() {
+                let mut c_sum = 0.0;
+                for (i, c) in &rx.nu {
+                    c_sum += c * gamma_cache.get(&names[*i]).copied().unwrap_or(0.0);
+                }
+                for (i, c) in &rx.nu_solv {
+                    if names[*i] == "H2O" {
+                        c_sum += c * ln_aw;
+                    }
+                }
+                corr[r] = c_sum;
+            }
+            corr
+        };
+
+        let mut act_corr = compute_act_corr(&n0);
+        let residual = |n: &[f64], act: &[f64]| -> Vec<f64> {
             rxns.iter()
-                .map(|rx| rx.nu.iter().map(|(i, c)| c * ln_c(n[*i], vol_l)).sum::<f64>() - rx.ln_k)
+                .enumerate()
+                .map(|(r, rx)| rx.nu.iter().map(|(i, c)| c * ln_c(n[*i], vol_l)).sum::<f64>() + act[r] - rx.ln_k)
                 .collect()
         };
         // Bound-aware merit: a dissolving solid already fully consumed whose residual still wants more is satisfied.
@@ -559,154 +664,184 @@ impl Vessel {
 
         let mut x = vec![0.0; nr];
         let mut n = n0.clone();
-        let mut f = residual(&n);
+        let mut f = residual(&n, &act_corr);
         let f_start = f.clone();
         let mut free = free_mask(&x, &f);
         let merit_start = merit(&f, &free);
-        if merit_start < 1e-9 {
+        if merit_start < 1e-4 {
             self.eq_converged = true;
             return 0.0;
         }
         let mut cur = merit_start;
 
-        for _iter in 0..200 {
-            if cur < 1e-11 {
-                break;
-            }
-            let fidx: Vec<usize> = (0..nr).filter(|r| free[*r]).collect();
-            let m = fidx.len();
-            if m == 0 {
-                break;
-            }
-            // Newton system  H d = -f  on the free reactions, Jacobi-scaled, lightly regularised
-            let mut h = vec![vec![0.0; m]; m];
-            for (a, &ra) in fidx.iter().enumerate() {
-                for (b, &rb) in fidx.iter().enumerate() {
-                    let mut s = 0.0;
-                    for (i, ca) in &rxns[ra].nu {
-                        for (j, cb) in &rxns[rb].nu {
-                            if i == j {
-                                s += ca * cb / n[*i].max(1e-300);
+        for _outer in 0..2 {
+            for _iter in 0..30 {
+                if cur < 1e-7 {
+                    break;
+                }
+                let fidx: Vec<usize> = (0..nr).filter(|r| free[*r]).collect();
+                let m = fidx.len();
+                if m == 0 {
+                    break;
+                }
+                // Newton system  H d = -f  on the free reactions, Jacobi-scaled, lightly regularised
+                let mut h = vec![vec![0.0; m]; m];
+                for (a, &ra) in fidx.iter().enumerate() {
+                    for (b, &rb) in fidx.iter().enumerate() {
+                        let mut s = 0.0;
+                        for (i, ca) in &rxns[ra].nu {
+                            for (j, cb) in &rxns[rb].nu {
+                                if i == j {
+                                    s += ca * cb / n[*i].max(1e-300);
+                                }
                             }
                         }
-                    }
-                    h[a][b] = s;
-                }
-            }
-            let scale: Vec<f64> = (0..m).map(|a| 1.0 / h[a][a].max(1e-300).sqrt()).collect();
-            let mut aug = vec![vec![0.0; m + 1]; m];
-            for a in 0..m {
-                for b in 0..m {
-                    aug[a][b] = h[a][b] * scale[a] * scale[b];
-                }
-                aug[a][a] *= 1.0 + 1e-12;
-                aug[a][m] = -f[fidx[a]] * scale[a];
-            }
-            let mut singular = false;
-            for col in 0..m {
-                let mut piv = col;
-                for r in col + 1..m {
-                    if aug[r][col].abs() > aug[piv][col].abs() {
-                        piv = r;
+                        h[a][b] = s;
                     }
                 }
-                if aug[piv][col].abs() < 1e-14 {
-                    singular = true;
+                let scale: Vec<f64> = (0..m).map(|a| 1.0 / h[a][a].max(1e-300).sqrt()).collect();
+                let mut aug = vec![vec![0.0; m + 1]; m];
+                for a in 0..m {
+                    for b in 0..m {
+                        aug[a][b] = h[a][b] * scale[a] * scale[b];
+                    }
+                    aug[a][a] += 1e-11;
+                    aug[a][m] = -f[fidx[a]] * scale[a];
+                }
+                let mut singular = false;
+                for col in 0..m {
+                    let mut piv = col;
+                    for r in col + 1..m {
+                        if aug[r][col].abs() > aug[piv][col].abs() {
+                            piv = r;
+                        }
+                    }
+                    if aug[piv][col].abs() < 1e-14 {
+                        singular = true;
+                        break;
+                    }
+                    aug.swap(col, piv);
+                    for r in col + 1..m {
+                        let fct = aug[r][col] / aug[col][col];
+                        for c in col..=m {
+                            aug[r][c] -= fct * aug[col][c];
+                        }
+                    }
+                }
+                if singular {
                     break;
                 }
-                aug.swap(col, piv);
-                for r in col + 1..m {
-                    let fct = aug[r][col] / aug[col][col];
-                    for c in col..=m {
-                        aug[r][c] -= fct * aug[col][c];
+                let mut d = vec![0.0; nr];
+                let mut y = vec![0.0; m];
+                for a in (0..m).rev() {
+                    let mut s = aug[a][m];
+                    for b in a + 1..m {
+                        s -= aug[a][b] * y[b];
                     }
+                    y[a] = s / aug[a][a];
                 }
-            }
-            if singular {
-                break;
-            }
-            let mut d = vec![0.0; nr];
-            let mut y = vec![0.0; m];
-            for a in (0..m).rev() {
-                let mut s = aug[a][m];
-                for b in a + 1..m {
-                    s -= aug[a][b] * y[b];
+                for a in 0..m {
+                    d[fidx[a]] = y[a] * scale[a];
                 }
-                y[a] = s / aug[a][a];
-            }
-            for a in 0..m {
-                d[fidx[a]] = y[a] * scale[a];
-            }
 
-            // largest step that keeps every amount positive and every dissolving solid within what is present
-            let mut dn = vec![0.0; ns];
-            for (r, rx) in rxns.iter().enumerate() {
-                for (i, c) in rx.nu.iter().chain(rx.nu_solv.iter()) {
-                    dn[*i] += c * d[r];
-                }
-            }
-            let mut alpha: f64 = 1.0;
-            let mut bound_hit: Option<usize> = None;
-            for i in 0..ns {
-                if dn[i] < 0.0 {
-                    alpha = alpha.min(0.9 * n[i] / -dn[i]);
-                }
-            }
-            for r in 0..nr {
-                if rxns[r].upper.is_finite() && d[r] > 0.0 {
-                    let a_max = (rxns[r].upper - x[r]) / d[r];
-                    if a_max <= alpha {
-                        alpha = a_max;
-                        bound_hit = Some(r);
+                // largest step that keeps every amount positive and every dissolving solid within what is present
+                let mut dn = vec![0.0; ns];
+                for (r, rx) in rxns.iter().enumerate() {
+                    for (i, c) in rx.nu.iter().chain(rx.nu_solv.iter()) {
+                        dn[*i] += c * d[r];
                     }
                 }
-            }
-            if !(alpha > 0.0) {
-                break;
-            }
+                let mut alpha: f64 = 1.0;
+                let mut bound_hit: Option<usize> = None;
+                for i in 0..ns {
+                    if dn[i] < 0.0 {
+                        alpha = alpha.min(0.9 * n[i] / -dn[i]);
+                    }
+                }
+                for r in 0..nr {
+                    if rxns[r].upper.is_finite() && d[r] > 0.0 {
+                        let a_max = (rxns[r].upper - x[r]) / d[r];
+                        if a_max <= alpha {
+                            alpha = a_max;
+                            bound_hit = Some(r);
+                        }
+                    }
+                }
+                if !(alpha > 0.0) {
+                    break;
+                }
 
-            // backtrack until the residual does not grow
-            let mut accepted = false;
-            for _ in 0..40 {
-                let mut x_try: Vec<f64> = (0..nr).map(|r| x[r] + alpha * d[r]).collect();
-                if let Some(r) = bound_hit {
-                    if alpha == (rxns[r].upper - x[r]) / d[r] {
-                        x_try[r] = rxns[r].upper;
+                // backtrack until the residual does not grow
+                let mut accepted = false;
+                let mut x_try = vec![0.0; nr];
+                let mut n_try = vec![0.0; ns];
+                let mut f_try = vec![0.0; nr];
+                let mut free_try = vec![false; nr];
+                let mut ln_c_try = vec![0.0; ns];
+                for _ in 0..40 {
+                    for r in 0..nr {
+                        x_try[r] = x[r] + alpha * d[r];
                     }
-                }
-                let n_try = amounts_at(&x_try);
-                if n_try.iter().any(|v| *v < 0.0) {
+                    if let Some(r) = bound_hit {
+                        if alpha == (rxns[r].upper - x[r]) / d[r] {
+                            x_try[r] = rxns[r].upper;
+                        }
+                    }
+                    compute_amounts(&x_try, &mut n_try);
+                    if n_try.iter().any(|v| *v < 0.0) {
+                        alpha *= 0.5;
+                        bound_hit = None;
+                        continue;
+                    }
+                    for i in 0..ns {
+                        ln_c_try[i] = ln_c(n_try[i], vol_l);
+                    }
+                    let mut mer = 0.0_f64;
+                    for (r, rx) in rxns.iter().enumerate() {
+                        let f_val = rx.nu.iter().map(|(i, c)| c * ln_c_try[*i]).sum::<f64>() + act_corr[r] - rx.ln_k;
+                        f_try[r] = f_val;
+                        let is_free = !(rx.upper.is_finite() && x_try[r] >= rx.upper - 1e-3 * eps_mol && f_val < 0.0);
+                        free_try[r] = is_free;
+                        if is_free && f_val.abs() > mer {
+                            mer = f_val.abs();
+                        }
+                    }
+                    if mer < cur || mer < 1e-11 {
+                        x.copy_from_slice(&x_try);
+                        n.copy_from_slice(&n_try);
+                        f.copy_from_slice(&f_try);
+                        free.copy_from_slice(&free_try);
+                        cur = mer;
+                        accepted = true;
+                        break;
+                    }
                     alpha *= 0.5;
                     bound_hit = None;
-                    continue;
                 }
-                let f_try = residual(&n_try);
-                let free_try = free_mask(&x_try, &f_try);
-                let mer = merit(&f_try, &free_try);
-                if mer < cur || mer < 1e-11 {
-                    x = x_try;
-                    n = n_try;
-                    f = f_try;
-                    free = free_try;
-                    cur = mer;
-                    accepted = true;
+                if !accepted {
                     break;
                 }
-                alpha *= 0.5;
-                bound_hit = None;
             }
-            if !accepted {
+            let next_act_corr = compute_act_corr(&n);
+            let d_act = (0..nr).map(|r| (next_act_corr[r] - act_corr[r]).abs()).fold(0.0, f64::max);
+            act_corr = next_act_corr;
+            f = residual(&n, &act_corr);
+            free = free_mask(&x, &f);
+            cur = merit(&f, &free);
+            if d_act < 1e-3 || cur < 1e-6 {
                 break;
             }
         }
-
-        self.eq_converged = cur < 1e-9;
+        self.eq_converged = cur < 1e-4;
         if !(cur < merit_start) {
             return 0.0;
         }
 
         // Commit
-        self.eq_moved = true;
+        let max_move = x.iter().map(|v| v.abs()).fold(0.0, f64::max);
+        if max_move > 1e-10 {
+            self.eq_moved = true;
+        }
         let mut q = 0.0;
         for (i, name) in names.iter().enumerate() {
             let a = n[i].max(0.0);

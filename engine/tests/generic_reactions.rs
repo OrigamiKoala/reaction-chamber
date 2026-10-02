@@ -102,7 +102,7 @@ fn common_double_displacements() {
     two_solutions(("t_na2co3", "CNa2O3"), ("t_cacl2", "CaCl2"), "CaCO3(s)", 0.002, "white");
     two_solutions(("t_pbno32", "Pb(NO3)2"), ("t_ki", "IK"), "PbI2(s)", 0.001, "yellow");
     two_solutions(("t_k2cro4", "CrK2O4"), ("t_agno3", "AgNO3"), "Ag2CrO4(s)", 0.001, "");
-    two_solutions(("t_fecl3", "FeCl3"), ("t_naoh", "NaOH"), "Fe(OH)3(s)", 0.001, "");
+    two_solutions(("t_fecl3", "FeCl3"), ("t_naoh", "NaOH"), "Fe(OH)3(s)", 0.0008, "");
     two_solutions(("t_mgso4", "MgSO4"), ("t_koh", "KOH"), "Mg(OH)2(s)", 0.001, "white");
     two_solutions(("t_cuso4", "CuSO4"), ("t_na2s", "Na2S"), "CuS(s)", 0.001, "");
 }

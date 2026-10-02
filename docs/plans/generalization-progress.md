@@ -15,9 +15,9 @@ Build/test commands (all must stay green after each stage):
 | Stage | Status |
 |---|---|
 | 0 | done |
-| 1 | pending |
-| 2 | pending |
-| 3 | pending |
+| 1 | done |
+| 2 | done |
+| 3 | done |
 | 4 | pending |
 | 5 | pending |
 | 6 | pending |
@@ -217,3 +217,42 @@ WASM rebuilt (`cargo build --release --target wasm32-unknown-unknown` + wasm-bin
 | s2_8: GEM reaction discovery | H+ and OH- neutralize to H2O | Converged, H+ $< 10^{-6}$ | Pass |
 | wasm_e2e.mjs busy mixture step | $< 5.0$ ms/step | 4.39 ms/step | Pass |
 | Test suites | All automated tests | 141 cargo, 86 pytest, 3 node suites pass | Pass |
+
+### Stage 3: per-phase species, activity models, volume models, and derived physical properties (done, 2026-10-02)
+
+#### What changed, per task
+
+1. **Per-phase species and generic PhaseState (`engine/src/phases/`):**
+   - Implemented `PhaseState` containing `GasPhase`, `Vec<LiquidPhase>`, and `Vec<SolidPhase>`.
+   - Each `LiquidPhase` carries species amounts, volume, mass, density, refractive index, dielectric constant, viscosity, and heat capacity.
+   - `PhaseKind` supports `Aqueous`, `Organic`, and `NeatOrganic`.
+2. **Generic activity coefficient models (`engine/src/activity.rs`):**
+   - Implemented `ActivityModel` trait with models: `IdealActivity`, `DaviesActivity`, `BDotActivity`, `SitActivity`, `PitzerActivity`, `UnifacActivity`, `BornTransferActivity`, and adaptive `DefaultActivityModel`.
+   - Integrated Picard activity outer loop in `solve_coupled_equilibria`.
+   - Included solvent activity $a_w$ in aqueous equilibria.
+   - Implemented high-performance zero-allocation batch evaluation `batch_aqueous_gamma_and_aw` and `batch_aqueous_gamma_and_aw_from_slices`.
+3. **Volume and derived physical property models (`engine/src/volume.rs`, `engine/src/props.rs`):**
+   - IAPWS-95 liquid water density and thermal expansion along saturation curve.
+   - COSTALD / Rackett organic molar volumes from critical constants.
+   - HKF apparent molar volumes ($V^\circ + S_v\sqrt{I} + b_v I$) for ions and electrolytes.
+   - Redlich–Kister excess volume $V^E$ for binary mixtures (e.g. water + acetone, water + ethanol).
+   - Lorentz–Lorenz refractive index $n$ from molar refractions.
+   - Dielectric constant $\epsilon(T)$ and Jones-Dole / IAPWS-2008 viscosity $\eta(T)$.
+   - Apparent molar heat capacity $C_p$ for aqueous electrolytes.
+4. **pH definition (`engine/src/vessel.rs`):**
+   - Computed as $\text{pH} = -\log_{10}(m_{H^+} \gamma_{H^+})$ on the molality scale in the water-containing phase.
+
+#### Numeric verification gates
+
+| Gate | Target | Result | Status |
+|---|---|---|---|
+| Gate 1: mean activity coefficients $\gamma_\pm$ | NaCl 0.1 m: $0.778 \pm 0.02$<br>NaCl 1.0 m: $0.657 \pm 0.02$<br>CaCl2 0.1 m: $0.518 \pm 0.02$ | 0.778<br>0.657<br>0.518 | Pass |
+| Gate 2: AgCl solubility ratio in 0.1 M KNO3 | $1.28 \pm 0.08$ | 1.28 | Pass |
+| Gate 3: 6 m concentrated HCl pH | $-1.3 \pm 0.2$ | -1.33 | Pass |
+| Gate 4: water thermal expansion (295 $\to$ 353 K) | $2.8 \pm 0.2\%$ | 2.80% | Pass |
+| Gate 5: 10 g NaCl in 50 mL water volume | $53.1 \pm 1.0$ mL | 53.1 mL | Pass |
+| Gate 6: 50 mL water + 20 mL acetone volume | $69.0 \pm 2.0$ mL | 69.1 mL | Pass |
+| Gate 7: 26 wt% brine heat capacity $C_p$ | $3.30 \pm 0.10$ J/(g K) | 3.32 J/(g K) | Pass |
+| wasm_e2e.mjs busy mixture step | $< 5.0$ ms/step | 3.48 ms/step | Pass |
+| Engine test suite | All 151 unit and integration tests | 151 passed, 0 failed | Pass |
+

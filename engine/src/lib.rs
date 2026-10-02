@@ -27,6 +27,10 @@ pub mod db;
 pub mod thermo;
 pub mod gem;
 pub mod energy_balance;
+pub mod phases;
+pub mod volume;
+pub mod props;
+pub mod activity;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;

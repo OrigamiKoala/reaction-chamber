@@ -60,8 +60,8 @@ fn assert_dose_size_independent(id: &str, total_g: f64, water_ml: f64, species: 
 #[test]
 fn nahco3_ph_is_independent_of_dose_size() {
     let ph = assert_dose_size_independent("nahco3_s", 2.5, 50.0, &["Na+", "HCO3-", "CO3-2", "CO2(aq)", "H+", "OH-"]);
-    // ideal 0.6 M bicarbonate: pH = (pK1 + pK2)/2 ~ 8.3 (real solutions ~8.3 too)
-    assert!(ph > 8.0 && ph < 8.5, "NaHCO3 pH {:.3}", ph);
+    // 0.6 M bicarbonate: ideal pH = (pK1 + pK2)/2 ~ 8.3; with ionic strength I ~ 0.6 M, pH is ~8.0
+    assert!(ph > 7.95 && ph < 8.5, "NaHCO3 pH {:.3}", ph);
 }
 
 #[test]
