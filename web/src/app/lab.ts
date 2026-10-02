@@ -9,6 +9,7 @@ import type { FlowForm } from '../bench/handling';
 import { DROP_ML, DrainSink, LabFlowSink, LabFlowSource, ReagentFlowSink, VesselFlowSink } from './flow';
 export type { LabFlowSink, LabFlowSource } from './flow';
 import { VisualContents, VisualItem, hexToLinear } from './visual_contents';
+import { effectiveThermo } from '../pubchem/parser';
 import { knownReagentColor } from './reagent_colors';
 import { looksLikeMetal } from '../equipment/bottle';
 import { glasswareSpec } from './glassware_catalog';
@@ -509,7 +510,7 @@ export class Lab {
     return amount;
   }
 
-  /** The engine reagent entry an item doses as, or undefined when it is visual-only (unmodelable import). */
+  /** The engine reagent entry an item doses as, or undefined when it is visual-only (the engine could not model the formula). */
   private engineEntry(item: ReagentItem): ReagentCatalogEntry | undefined {
     if (item.kind === 'catalog') return item.entry;
     return item.model?.modelable && item.model.entry ? item.model.entry : undefined;
@@ -555,8 +556,10 @@ export class Lab {
     const mode = amountMode(item);
     if (!e && item.kind === 'imported') {
       const b = item.bottle;
-      // No reaction model: keep what was added as visible contents (powder bed / coloured liquid).
-      const density = b.userOverrides?.density ?? b.sourcedProperties?.density;
+      // The engine could not model the formula at all (modelable=false): keep what was added as visible contents
+      // (powder bed / coloured liquid). Compounds the engine models - reacting or inert - never come through here:
+      // their solids / layers are in the engine snapshot.
+      const density = effectiveThermo(b).density; // undefined when PubChem gave none (placeholder 1 g/mL is not data)
       const rho = typeof density === 'number' && isFinite(density) && density > 0.05 && density < 25 ? density : mode === 'g' ? 1.6 : 1.0;
       const vis: VisualItem = {
         key: b.id,
@@ -579,7 +582,10 @@ export class Lab {
     else if (mode === 'g') {
       // The engine may dissolve a soluble solid instantly; keep a pile that visibly dissolves away instead of
       // letting the powder vanish the moment it lands (metals are consumed by reaction, not dissolved).
-      if (!looksLikeMetal(e.formula, e.name)) {
+      // Inert compounds are different: the engine tracks their undissolved solid itself (snapshot `solids`), so a
+      // ghost pile would draw it twice.
+      const inert = item.kind === 'imported' && item.model?.phase_model === 'inert';
+      if (!inert && !looksLikeMetal(e.formula, e.name)) {
         const own = item.kind === 'imported' && /^#[0-9a-f]{6}$/i.test(item.bottle.color) ? item.bottle.color : undefined;
         this.visual.add(vesselId, {
           key: e.id,

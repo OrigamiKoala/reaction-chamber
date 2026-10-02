@@ -1,7 +1,7 @@
 {
   "timestamp": "2026-09-30T19:20:00Z",
   "milestone": "M2 - Data Bundle v1",
-  "total_species_in_database": 501,
+  "total_species_in_database": 72,
   "spot_checked_conflicts_analyzed": 10,
   "conflicts_resolved": 10,
   "priority_order": [

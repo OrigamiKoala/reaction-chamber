@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::ProvenanceTier;
 use crate::templates::{
-    self, CatalysisType, ReactionFamily, R_IDEAL,
+    self, CatalysisType, Medium, ReactionFamily, R_IDEAL,
     calculate_mayr_rate, apply_diffusion_cap,
 };
 
@@ -88,6 +88,7 @@ impl NetworkGenerator {
         ph: f64,
     ) -> GeneratedNetwork {
         let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
+        let medium = Medium::from_solution(ph, t, initial_concs);
         let mut active_species_set: HashSet<String> = initial_concs.keys().cloned().collect();
         let mut species_concs = initial_concs.clone();
 
@@ -113,7 +114,7 @@ impl NetworkGenerator {
             }
 
             // 1. Unimolecular candidate generation (e.g. keto-enol tautomerism, elimination, rearrangement)
-            let unimol_rxns = self.match_unimolecular(&current_sp, t, ph, &mayr_db);
+            let unimol_rxns = self.match_unimolecular(&current_sp, t, medium, &mayr_db);
             for cand in unimol_rxns {
                 if seen_reaction_ids.contains(&cand.id) {
                     continue;
@@ -122,7 +123,7 @@ impl NetworkGenerator {
                 let reactant_conc = species_concs.get(&current_sp).copied().unwrap_or(0.0);
                 let flux = cand.k_fwd * reactant_conc;
 
-                if flux >= self.config.flux_threshold_abs || generated_reactions.len() < 10 {
+                if flux >= self.config.flux_threshold_abs  {
                     seen_reaction_ids.insert(cand.id.clone());
                     total_flux += flux;
 
@@ -161,7 +162,7 @@ impl NetworkGenerator {
                     break;
                 }
 
-                let bimol_rxns = self.match_bimolecular(&current_sp, &partner_sp, t, ph, &mayr_db);
+                let bimol_rxns = self.match_bimolecular(&current_sp, &partner_sp, t, medium, &mayr_db);
                 for cand in bimol_rxns {
                     if seen_reaction_ids.contains(&cand.id) {
                         continue;
@@ -172,7 +173,7 @@ impl NetworkGenerator {
                     let flux = cand.k_fwd * c1 * c2;
 
                     // Promote candidate products if flux exceeds threshold
-                    if flux >= self.config.flux_threshold_abs || generated_reactions.len() < 10 {
+                    if flux >= self.config.flux_threshold_abs  {
                         seen_reaction_ids.insert(cand.id.clone());
                         total_flux += flux;
 
@@ -220,7 +221,7 @@ impl NetworkGenerator {
         &self,
         species: &str,
         temp_k: f64,
-        ph: f64,
+        medium: Medium,
         _mayr_db: &HashMap<String, templates::MayrParameter>,
     ) -> Vec<GeneratedReaction> {
         let mut results = Vec::new();
@@ -228,7 +229,7 @@ impl NetworkGenerator {
         // Check tautomerism, unimolecular eliminations, or rearrangements
         for fam in &self.families {
             if fam.category == "tautomerism" && (species.contains("CHO") || species.contains("CO") || species.contains("one")) {
-                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, ph, false, false);
+                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, medium, false, false);
                 let prod = format!("{}_enol", species);
                 results.push(GeneratedReaction {
                     id: format!("{}_{}", fam.id, species),
@@ -248,7 +249,7 @@ impl NetworkGenerator {
                     formation_flux: 0.0,
                 });
             } else if fam.id == "sn1_solvolysis" && species.contains("tert") && (species.contains("Cl") || species.contains("Br")) {
-                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, ph, false, false);
+                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, medium, false, false);
                 let alcohol = format!("{}_alcohol", species.replace("Cl", "").replace("Br", ""));
                 results.push(GeneratedReaction {
                     id: format!("{}_{}", fam.id, species),
@@ -278,7 +279,7 @@ impl NetworkGenerator {
         sp1: &str,
         sp2: &str,
         temp_k: f64,
-        ph: f64,
+        medium: Medium,
         mayr_db: &HashMap<String, templates::MayrParameter>,
     ) -> Vec<GeneratedReaction> {
         let mut results = Vec::new();
@@ -319,30 +320,41 @@ impl NetworkGenerator {
         }
 
         // 2. SN2 and E2 competition
-        let is_halide = |s: &str| s.contains("Br") || s.contains("Cl") || s.contains("I") || s.contains("bromo") || s.contains("chloro");
+        let is_halide = |s: &str| {
+            !matches!(s, "Cl-" | "Br-" | "I-" | "F-" | "NaCl" | "KCl" | "AgCl" | "CaCl2" | "MgCl2" | "FeCl3" | "BaCl2" | "PbI2" | "CuCl2")
+                && (s.contains('C') || s.contains("bromo") || s.contains("chloro") || s.contains("alkyl") || s.contains("ethyl") || s.contains("propyl"))
+                && (s.contains("Br") || s.contains("Cl") || s.contains("I") || s.contains("bromo") || s.contains("chloro"))
+        };
         let is_base = |s: &str| s.contains("OH") || s.contains("oxide") || s.contains("O-") || s.contains("NH3") || s.contains("amine") || s.contains("BuO");
         let is_bulky = |s: &str| s.contains("tert") || s.contains("t-Bu") || s.contains("bulky") || s.contains("LDA");
 
         if (is_halide(sp1) && is_base(sp2)) || (is_halide(sp2) && is_base(sp1)) {
             let (halide, base) = if is_halide(sp1) { (sp1, sp2) } else { (sp2, sp1) };
             let bulky = is_bulky(base);
+            let leaving_group = if halide.contains("Cl") || halide.contains("chloro") {
+                "Cl-"
+            } else if halide.contains("I") || halide.contains("iodo") {
+                "I-"
+            } else {
+                "Br-"
+            };
 
             // Family SN2
             if let Some(fam_sn2) = self.families.iter().find(|f| f.id == "sn2_secondary_halide") {
-                let (mut k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam_sn2, temp_k, ph, bulky, false);
+                let (mut k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam_sn2, temp_k, medium, bulky, false);
                 if bulky {
                     k_fwd *= fam_sn2.base_steric_penalty; // heavily penalize SN2
                 }
                 k_fwd = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
 
-                let subst_prod = format!("{}_subst", halide.replace("Br", "").replace("Cl", ""));
+                let subst_prod = format!("{}_subst", halide.replace("Br", "").replace("Cl", "").replace("I", ""));
                 results.push(GeneratedReaction {
                     id: format!("sn2_{}_{}", halide, base),
                     name: format!("SN2 Substitution: {} + {}", halide, base),
                     family_id: fam_sn2.id.clone(),
-                    equation: format!("{} + {} -> {} + Halide-", halide, base, subst_prod),
+                    equation: format!("{} + {} -> {} + {}", halide, base, subst_prod, leaving_group),
                     reactants: [(halide.to_string(), 1.0), (base.to_string(), 1.0)].into(),
-                    products: [(subst_prod, 1.0), ("Br-".to_string(), 1.0)].into(),
+                    products: [(subst_prod, 1.0), (leaving_group.to_string(), 1.0)].into(),
                     gas_products: HashMap::new(),
                     k_fwd,
                     k_rev,
@@ -357,20 +369,20 @@ impl NetworkGenerator {
 
             // Family E2
             if let Some(fam_e2) = self.families.iter().find(|f| f.id == "e2_elimination") {
-                let (mut k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam_e2, temp_k, ph, false, bulky);
+                let (mut k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam_e2, temp_k, medium, false, bulky);
                 if bulky {
                     k_fwd *= fam_e2.base_elimination_boost; // boost E2 with bulky base
                 }
                 k_fwd = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
 
-                let alkene_prod = format!("{}_alkene", halide.replace("Br", "").replace("Cl", ""));
+                let alkene_prod = format!("{}_alkene", halide.replace("Br", "").replace("Cl", "").replace("I", ""));
                 results.push(GeneratedReaction {
                     id: format!("e2_{}_{}", halide, base),
                     name: format!("E2 Elimination: {} + {}", halide, base),
                     family_id: fam_e2.id.clone(),
-                    equation: format!("{} + {} -> {} + BH + Halide-", halide, base, alkene_prod),
+                    equation: format!("{} + {} -> {} + BH + {}", halide, base, alkene_prod, leaving_group),
                     reactants: [(halide.to_string(), 1.0), (base.to_string(), 1.0)].into(),
-                    products: [(alkene_prod, 1.0), ("Br-".to_string(), 1.0)].into(),
+                    products: [(alkene_prod, 1.0), (leaving_group.to_string(), 1.0)].into(),
                     gas_products: HashMap::new(),
                     k_fwd,
                     k_rev,
@@ -390,11 +402,11 @@ impl NetworkGenerator {
 
         if (is_ester(sp1) && is_water_or_oh(sp2)) || (is_ester(sp2) && is_water_or_oh(sp1)) {
             let (ester, water_or_oh) = if is_ester(sp1) { (sp1, sp2) } else { (sp2, sp1) };
-            let is_basic = water_or_oh.contains("OH") || ph > 7.5;
+            let is_basic = water_or_oh.contains("OH") || medium.oh_conc > 10.0 * medium.h_conc;
 
             let fam_id = if is_basic { "base_ester_hydrolysis" } else { "acid_ester_hydrolysis" };
             if let Some(fam) = self.families.iter().find(|f| f.id == fam_id) {
-                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, ph, false, false);
+                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, medium, false, false);
                 let capped_k = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
 
                 let acid_prod = format!("{}_acid", ester);
@@ -427,7 +439,7 @@ impl NetworkGenerator {
         if (is_alkene(sp1) && is_halogen(sp2)) || (is_alkene(sp2) && is_halogen(sp1)) {
             let (alkene, hal) = if is_alkene(sp1) { (sp1, sp2) } else { (sp2, sp1) };
             if let Some(fam) = self.families.iter().find(|f| f.id == "alkene_bromination") {
-                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, ph, false, false);
+                let (k_fwd, k_rev, k_eq, delta_g) = self.compute_rate_and_equilibrium(fam, temp_k, medium, false, false);
                 let capped_k = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
                 let dihalide = format!("{}_{}_adduct", alkene, hal);
 
@@ -460,7 +472,7 @@ impl NetworkGenerator {
         &self,
         fam: &ReactionFamily,
         temp_k: f64,
-        ph: f64,
+        medium: Medium,
         _is_bulky_base_sn2: bool,
         _is_bulky_base_e2: bool,
     ) -> (f64, f64, f64, f64) {
@@ -483,17 +495,13 @@ impl NetworkGenerator {
         // Acid / Base Catalysis Scaling
         match fam.catalysis {
             CatalysisType::Acid => {
-                let h_conc = 10.0_f64.powf(-ph.clamp(0.0, 14.0));
-                k_fwd *= h_conc / 0.1; // Normalized to 0.1 M H+
+                k_fwd *= medium.h_conc / 0.1; // Normalized to 0.1 M H+
             }
             CatalysisType::Base => {
-                let oh_conc = 10.0_f64.powf(-(14.0 - ph.clamp(0.0, 14.0)));
-                k_fwd *= oh_conc / 0.1; // Normalized to 0.1 M OH-
+                k_fwd *= medium.oh_conc / 0.1; // Normalized to 0.1 M OH-
             }
             CatalysisType::BothAcidBase => {
-                let h_conc = 10.0_f64.powf(-ph.clamp(0.0, 14.0));
-                let oh_conc = 10.0_f64.powf(-(14.0 - ph.clamp(0.0, 14.0)));
-                let cat_factor = (h_conc * 10.0 + 1e-4 + oh_conc * 10.0).clamp(1e-4, 10.0);
+                let cat_factor = (medium.h_conc * 10.0 + 1e-4 + medium.oh_conc * 10.0).clamp(1e-4, 10.0);
                 k_fwd *= cat_factor;
             }
             _ => {}

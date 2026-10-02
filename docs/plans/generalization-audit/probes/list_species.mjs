@@ -1,0 +1,18 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+const dir = '/Users/carlliu/reaction-chamber/web/src/wasm/engine';
+const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
+eng.initSync({ module: readFileSync(path.join(dir, 'reaction_chamber_engine_bg.wasm')) });
+eng.init_engine();
+const J = (x) => (typeof x === 'string' ? JSON.parse(x) : x);
+const h = eng.vessel_new(JSON.stringify({ type: 'b', capacity_ml: 250, glass_mass_g: 110, inner_radius_cm: 3.5, temperature_k: 298.15, room_k: 298.15 }));
+const imp = (r) => J(eng.import_compound(JSON.stringify(r)));
+imp({ id: 'x_Na2CO3', name: 'Na2CO3', formula: 'CNa2O3', state: 'liquid', molarity: 0.5 });
+imp({ id: 'x_NH4Cl', name: 'NH4Cl', formula: 'ClH4N', state: 'liquid', molarity: 1.0 });
+for (const [id, v] of [['water', 50], ['x_Na2CO3', 20], ['x_NH4Cl', 20], ['cuso4_0_1m', 10], ['agno3_0_1m', 5], ['ch3cooh_5pct', 10]]) eng.vessel_dose(h, JSON.stringify({ reagent_id: id, volume_ml: v }));
+const s = J(eng.vessel_snapshot(h));
+console.log(s.species.map((x) => `${x.id}:${x.amount_mol.toExponential(1)}`).join('  '));
+console.log('heat W', s.net_reaction_heat_w, 'conservation', JSON.stringify(s.conservation));
+for (let i = 0; i < 100; i++) eng.vessel_step(h, 0.1);
+const s2 = J(eng.vessel_snapshot(h));
+console.log('after 10 s T', s2.temperature_k, 'conservation', JSON.stringify(s2.conservation));

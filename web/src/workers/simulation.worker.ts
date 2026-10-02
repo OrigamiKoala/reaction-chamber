@@ -28,6 +28,8 @@ import init, {
   register_reaction,
   register_equilibrium,
   register_mineral,
+  take_mineral_lookups,
+  resolve_mineral,
   import_compound,
   m6_get_reaction_families,
   m6_calculate_mayr_rate,
@@ -369,6 +371,26 @@ self.onmessage = async (e: MessageEvent) => {
         const res = register_mineral(JSON.stringify(payload));
         self.postMessage({
           type: 'REGISTER_MINERAL_RESPONSE',
+          payload: JSON.parse(res),
+          requestId,
+        });
+        break;
+      }
+
+      case 'TAKE_MINERAL_LOOKUPS': {
+        const res = take_mineral_lookups();
+        self.postMessage({
+          type: 'TAKE_MINERAL_LOOKUPS_RESPONSE',
+          payload: JSON.parse(res),
+          requestId,
+        });
+        break;
+      }
+
+      case 'RESOLVE_MINERAL': {
+        const res = resolve_mineral(JSON.stringify(payload));
+        self.postMessage({
+          type: 'RESOLVE_MINERAL_RESPONSE',
           payload: JSON.parse(res),
           requestId,
         });

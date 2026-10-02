@@ -1,8 +1,9 @@
 // Visual-only vessel contents, merged into the engine snapshot before it reaches the 3D scene / panels.
 //
-// Two generic uses (no per-compound data anywhere):
-//   1. PubChem imports have no reaction data, so the engine never sees them. They still have to *show up* in the
-//      vessel: a powder bed / a coloured liquid, driven only by amount, density and the colour parsed from PubChem.
+// Two generic uses (no per-compound data anywhere). Every compound the engine models (reacting, or inert with phases /
+// melting / boiling / dissolution) is drawn from the engine snapshot and must NOT be added here.
+//   1. Fallback only: PubChem imports whose formula the engine cannot model at all (`modelable: false`) still have to
+//      *show up* in the vessel: a powder bed / a coloured liquid, driven only by amount, density and the colour from PubChem.
 //   2. "Ghost" piles: the engine dissolves a soluble catalog solid instantly, so a spatula of powder would vanish
 //      the moment it landed. A ghost pile keeps the undissolved-looking powder on the vessel floor and shrinks it
 //      away (shrinking-core, faster when stirred) while the vessel holds liquid. The engine's own undissolved

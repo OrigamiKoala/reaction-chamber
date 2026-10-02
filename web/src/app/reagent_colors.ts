@@ -10,11 +10,35 @@ import { loadJSON, saveJSON } from './storage';
  * solid's reflectance colour). Works for any catalog size; results are cached per reagent id.
  */
 
-const STORE_KEY = 'rc.reagentColors.v1';
+/** v2: the store records the engine optics-data hash its colours were computed from; a different hash discards them. */
+const STORE_KEY = 'rc.reagentColors.v2';
 /** Light path through a typical reagent bottle, cm. */
 const BOTTLE_PATH_CM = 6.0;
 
-const cache = new Map<string, string>(Object.entries(loadJSON<Record<string, string>>(STORE_KEY, {})));
+interface ColourStore {
+  version: string;
+  colors: Record<string, string>;
+}
+const stored = loadJSON<ColourStore>(STORE_KEY, { version: '', colors: {} });
+/** Engine optics-data version the in-memory colours are valid for ('' until `setOpticsDataVersion` is called). */
+let cacheVersion = stored.version;
+const cache = new Map<string, string>(Object.entries(stored.colors ?? {}));
+
+function persist() {
+  saveJSON(STORE_KEY, { version: cacheVersion, colors: Object.fromEntries(cache) } satisfies ColourStore);
+}
+
+/**
+ * Tells the cache which optics data the engine runs on. Colours computed from different absorption data are dropped,
+ * so a change to the engine's spectra can never leave stale bottle colours behind.
+ */
+export function setOpticsDataVersion(version: string | undefined) {
+  if (!version || version === cacheVersion) return;
+  cache.clear();
+  inflight.clear();
+  cacheVersion = version;
+  persist();
+}
 const inflight = new Map<string, Promise<string | null>>();
 let queue: Promise<unknown> = Promise.resolve();
 let probeSeq = 0;
@@ -52,7 +76,7 @@ function probeDose(entry: ReagentCatalogEntry): DoseRequest {
 
 /** Cached colour if already known (sync). */
 export function knownReagentColor(id: string): string | undefined {
-  return cache.get(id);
+  return cacheVersion ? cache.get(id) : undefined;
 }
 
 /** Engine-derived contents colour for a catalog reagent ('#rrggbb'), or null if it can't be determined. */
@@ -61,10 +85,11 @@ export function probeReagentColor(
   entry: ReagentCatalogEntry,
   optics: OpticsTables | null
 ): Promise<string | null> {
-  const hit = cache.get(entry.id);
-  if (hit) return Promise.resolve(hit);
   // Without the optics tables the spectrum can't be turned into a colour; don't cache a wrong answer.
   if (!optics) return Promise.resolve(null);
+  setOpticsDataVersion(optics.data_version);
+  const hit = cache.get(entry.id);
+  if (hit) return Promise.resolve(hit);
   const pending = inflight.get(entry.id);
   if (pending) return pending;
 
@@ -83,7 +108,7 @@ export function probeReagentColor(
       const hex = snap ? colourFromSnapshot(snap, optics) : null;
       if (hex) {
         cache.set(entry.id, hex);
-        saveJSON(STORE_KEY, Object.fromEntries(cache));
+        persist();
       }
       return hex;
     } catch {

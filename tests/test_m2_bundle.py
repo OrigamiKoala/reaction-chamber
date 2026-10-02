@@ -15,20 +15,25 @@ def test_m2_bundle_structure_and_species_count():
     assert "colors" in bundle
     assert "species" in bundle
     
+    # Stage 0: the bundle holds only hand-checked species. The generated homologous series and salt matrix that padded it
+    # to 501 entries were synthetic (mp/bp/density from molar-mass arithmetic) and were removed.
     total_species = len(bundle["species"])
-    assert total_species >= 500, f"M2 requires InChIKey mapping for 500+ species, got {total_species}"
+    assert total_species >= 60, f"expected the ~70 curated species, got {total_species}"
+    for s in bundle["species"].values():
+        assert not s["formula"].startswith(("Salt_", "Ester_", "AminoAcid_", "Alkane_")), f"synthetic entry {s['name']}"
+        assert s["source"] not in ("PHREEQC_Inorganic_Matrix", "Joback_Additivity", "CRC_Amino_Acids"), s["name"]
 
-def test_m2_gate_100_spot_checked_species():
+def test_m2_gate_spot_checked_species():
     bundle_path = Path(__file__).resolve().parent.parent / "web" / "public" / "data" / "bundle.json"
     with open(bundle_path, "r", encoding="utf-8") as f:
         bundle = json.load(f)
         
     species_list = list(bundle["species"].values())
-    assert len(species_list) >= 100
-    
-    # Spot-check 100 species for valid physical properties
+    assert len(species_list) >= 60
+
+    # Spot-check every curated species for valid physical properties
     checked = 0
-    for s in species_list[:100]:
+    for s in species_list:
         assert "inchi_key" in s and len(s["inchi_key"]) > 5
         assert "name" in s and len(s["name"]) > 0
         assert "mw" in s and s["mw"] > 0
@@ -39,7 +44,7 @@ def test_m2_gate_100_spot_checked_species():
         assert "tier" in s and s["tier"] in ["tabulated", "estimated", "speculative", "user-set"]
         checked += 1
         
-    assert checked == 100
+    assert checked == len(species_list)
 
 def test_m2_gate_conflict_report_reviewed():
     report_path = Path(__file__).resolve().parent.parent / "web" / "public" / "data" / "conflict_report.json"

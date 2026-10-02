@@ -61,7 +61,7 @@ pub fn bands(species_id: &str) -> Option<&'static [Band]> {
         "Cu+2" => Some(&BANDS_CU2),
         "Cu(NH3)4+2" => Some(&BANDS_CU_NH3_4),
         "HIn_phph" => Some(&BANDS_HIN_PHPH),
-        "In_phph-2" => Some(&BANDS_IN_PHPH),
+        "In_phph-" => Some(&BANDS_IN_PHPH),
         "HIn_btb" => Some(&BANDS_HIN_BTB),
         "In_btb-" => Some(&BANDS_IN_BTB),
         "HIn_mo" => Some(&BANDS_HIN_MO),
@@ -197,12 +197,35 @@ pub fn fume_optics(species_id: &str) -> Option<FumeOptics> {
     }
 }
 
+/// FNV-1a hash of every absorption band of every species with a spectrum. Any change to the optics data changes it,
+/// so caches of derived colours (bottle colours) can key on it and never serve colours computed from older data.
+pub fn data_hash() -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut feed = |bytes: &[u8]| {
+        for b in bytes {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+    };
+    for id in species_with_spectra() {
+        feed(id.as_bytes());
+        if let Some(bs) = bands(id) {
+            for b in bs {
+                feed(&b.centre_nm.to_bits().to_le_bytes());
+                feed(&b.fwhm_nm.to_bits().to_le_bytes());
+                feed(&b.eps.to_bits().to_le_bytes());
+            }
+        }
+    }
+    h
+}
+
 pub fn species_with_spectra() -> Vec<&'static str> {
     vec![
         "Cu+2",
         "Cu(NH3)4+2",
         "HIn_phph",
-        "In_phph-2",
+        "In_phph-",
         "HIn_btb",
         "In_btb-",
         "HIn_mo",

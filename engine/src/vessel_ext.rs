@@ -3,16 +3,20 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::compound_thermo::is_metal_element;
 use crate::ions;
 use crate::optics;
 use crate::solubility;
 use crate::spectra;
 use crate::vessel::*;
 
-/// Minimum amount of a new solid (mol) before it is announced (below ~2 umol it is invisible anyway).
-const SOLID_ANNOUNCE_MOL: f64 = 2e-6;
-/// Below this (mol) a solid counts as gone. The solver zeroes anything under 1e-7.
-const SOLID_GONE_MOL: f64 = 3e-7;
+/// A new solid is announced above this concentration-equivalent (mol per litre of aqueous solvent: 2.5 umol in 50 mL,
+/// 1 nmol in a 22 uL droplet) and counts as gone below `SOLID_GONE_M`; both are also at least a few multiples of the
+/// vessel's dust amount (`Vessel::dust_mol`). Scale-relative, so a droplet and a litre behave alike.
+const SOLID_ANNOUNCE_M: f64 = 5e-5;
+const SOLID_GONE_M: f64 = 6e-6;
+const SOLID_ANNOUNCE_DUST: f64 = 20.0;
+const SOLID_GONE_DUST: f64 = 3.0;
 const MAX_EVENTS: usize = 80;
 
 #[derive(Default, Clone, Debug)]
@@ -33,6 +37,8 @@ pub struct EventState {
     pub checked_pairs: HashSet<(String, String)>,
     /// Fraction of each solid currently suspended (1 = freshly precipitated cloud, decays as it settles).
     pub susp: HashMap<String, f64>,
+    /// Announced phase changes of inert compounds (bit flags, see `vessel_phase`).
+    pub phase: HashMap<String, u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -146,6 +152,19 @@ impl Vessel {
                 refractive_index: o.refractive_index,
             };
         }
+        if let Some(c) = self.inert_of(sp) {
+            // metals are a bright grey sheet-like solid, other solids a fine pale powder unless the record has a colour
+            let single_metal = ions::parse_formula_strict(&c.formula).map_or(false, |e| e.len() == 1 && e.keys().all(|k| is_metal_element(k)));
+            return SolidProps {
+                name: if c.name.is_empty() { name } else { c.name.clone() },
+                formula,
+                rgb: c.color_linear_rgb.unwrap_or(if single_metal { [0.55, 0.56, 0.58] } else { [0.85, 0.85, 0.85] }),
+                kind: if single_metal { SolidKind::Metal } else { SolidKind::Powder },
+                density_g_ml: c.rho_solid.max(0.3),
+                particle_um: 30.0,
+                refractive_index: 1.55,
+            };
+        }
         if let Some(m) = mineral {
             return SolidProps {
                 name,
@@ -192,6 +211,8 @@ impl Vessel {
                 }
                 self.ev.checked_pairs.insert(key);
                 if let Some(m) = solubility::mineral_for_pair(c, a) {
+                    // A rule-based guess is queued so the web layer can replace it with PubChem data.
+                    solubility::request_lookup(&m);
                     if !self.minerals.iter().any(|x| x.solid_species == m.solid_species) {
                         self.minerals.push(m);
                     }
@@ -205,7 +226,8 @@ impl Vessel {
     /// seconds (faster for large/dense particles, aggregated 10x); stirring keeps solids suspended.
     pub fn update_suspension(&mut self, dt_s: f64) {
         let stirring = self.controls.stirring.unwrap_or(false);
-        let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > 1e-7).map(|(k, _)| k.clone()).collect();
+        let dust = self.dust_mol();
+        let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > dust).map(|(k, _)| k.clone()).collect();
         self.ev.susp.retain(|k, _| live.contains(k));
         for sp in live {
             let props = self.solid_props(&sp);
@@ -251,10 +273,15 @@ impl Vessel {
         self.push_event_full(kind, detail, severity, None, None);
     }
 
+    fn solid_gone_mol(&self) -> f64 {
+        (SOLID_GONE_M * self.solvent_volume_ml() / 1000.0).max(SOLID_GONE_DUST * self.dust_mol())
+    }
+
     /// Marks every solid currently present as known (user-added), so only later arrivals are reported as precipitates.
     pub fn sync_known_solids(&mut self) {
+        let gone_mol = self.solid_gone_mol();
         for (sp, &mol) in &self.solid_mol {
-            if mol > SOLID_GONE_MOL {
+            if mol > gone_mol {
                 self.ev.solids.insert(sp.clone());
                 self.ev.susp.entry(sp.clone()).or_insert(0.2);
             }
@@ -265,8 +292,10 @@ impl Vessel {
     pub fn detect_events(&mut self, force: bool) {
         // --- solids appearing / disappearing
         let mut appeared: Vec<String> = Vec::new();
+        let announce_mol = (SOLID_ANNOUNCE_M * self.solvent_volume_ml() / 1000.0).max(SOLID_ANNOUNCE_DUST * self.dust_mol());
+        let gone_mol = self.solid_gone_mol();
         for (sp, &mol) in &self.solid_mol {
-            if mol > SOLID_ANNOUNCE_MOL && !self.ev.solids.contains(sp) {
+            if mol > announce_mol && !self.ev.solids.contains(sp) {
                 appeared.push(sp.clone());
             }
         }
@@ -283,7 +312,7 @@ impl Vessel {
             .ev
             .solids
             .iter()
-            .filter(|sp| self.solid_mol.get(*sp).copied().unwrap_or(0.0) <= SOLID_GONE_MOL)
+            .filter(|sp| self.solid_mol.get(*sp).copied().unwrap_or(0.0) <= gone_mol)
             .cloned()
             .collect();
         let mut gone = gone;
@@ -379,7 +408,7 @@ impl Vessel {
     }
 
     fn detect_colour_change(&mut self) {
-        if self.aqueous_volume_ml() < 0.5 {
+        if !self.has_aqueous_phase() {
             return;
         }
         let a = optics::absorbance_per_cm(&self.concentrations_m());

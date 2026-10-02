@@ -1,0 +1,125 @@
+//! Stoichiometric reaction basis via null space (RREF) of formula + charge matrix.
+
+use std::collections::HashSet;
+
+/// An independent reaction in the null space basis: sum nu_i * species_i = 0
+#[derive(Clone, Debug, PartialEq)]
+pub struct BasisReaction {
+    /// Stoichiometric coefficients per species index: (species_idx, nu)
+    pub nu: Vec<(usize, f64)>,
+}
+
+/// Builds the null-space stoichiometric basis for the given candidate species.
+pub fn build_reaction_basis(species: &[String]) -> Vec<BasisReaction> {
+    if species.is_empty() {
+        return Vec::new();
+    }
+
+    // 1. Collect all elements
+    let mut all_elements = HashSet::new();
+    let mut compositions = Vec::new();
+    let mut charges = Vec::new();
+
+    for sp in species {
+        let elems = crate::ions::species_elements(sp).unwrap_or_default();
+        for e in elems.keys() {
+            all_elements.insert(e.clone());
+        }
+        compositions.push(elems);
+        charges.push(crate::ions::species_charge(sp) as f64);
+    }
+
+    let mut element_list: Vec<String> = all_elements.into_iter().collect();
+    element_list.sort();
+
+    let n_rows = element_list.len() + 1; // elements + charge
+    let n_cols = species.len();
+
+    // Construct matrix A: (n_rows x n_cols)
+    let mut a = vec![vec![0.0; n_cols]; n_rows];
+    for (j, comp) in compositions.iter().enumerate() {
+        for (i, elem) in element_list.iter().enumerate() {
+            if let Some(&count) = comp.get(elem) {
+                a[i][j] = count;
+            }
+        }
+        // Charge row
+        a[n_rows - 1][j] = charges[j];
+    }
+
+    // Gaussian elimination to RREF
+    let mut pivot_row = 0;
+    let mut pivot_cols = Vec::new();
+
+    for col in 0..n_cols {
+        if pivot_row >= n_rows {
+            break;
+        }
+
+        // Find max pivot
+        let mut max_val = 0.0;
+        let mut max_row = pivot_row;
+        for row in pivot_row..n_rows {
+            let val = a[row][col].abs();
+            if val > max_val {
+                max_val = val;
+                max_row = row;
+            }
+        }
+
+        if max_val < 1e-9 {
+            continue;
+        }
+
+        // Swap rows
+        a.swap(pivot_row, max_row);
+
+        // Normalize pivot row
+        let p_val = a[pivot_row][col];
+        for c in col..n_cols {
+            a[pivot_row][c] /= p_val;
+        }
+
+        // Eliminate other rows
+        for row in 0..n_rows {
+            if row != pivot_row {
+                let factor = a[row][col];
+                if factor.abs() > 1e-12 {
+                    for c in col..n_cols {
+                        a[row][c] -= factor * a[pivot_row][c];
+                    }
+                }
+            }
+        }
+
+        pivot_cols.push(col);
+        pivot_row += 1;
+    }
+
+    // Free columns (columns that are not pivot columns) define basis reactions
+    let mut free_cols = Vec::new();
+    for col in 0..n_cols {
+        if !pivot_cols.contains(&col) {
+            free_cols.push(col);
+        }
+    }
+
+    let mut basis = Vec::new();
+    for &free_col in &free_cols {
+        let mut rxn_nu = Vec::new();
+        // Free variable coefficient = +1.0
+        rxn_nu.push((free_col, 1.0));
+
+        // Pivot variable coefficients = - A[row][free_col]
+        for (row, &p_col) in pivot_cols.iter().enumerate() {
+            let coeff = -a[row][free_col];
+            if coeff.abs() > 1e-9 {
+                rxn_nu.push((p_col, coeff));
+            }
+        }
+
+        basis.push(BasisReaction { nu: rxn_nu });
+    }
+
+    basis
+}

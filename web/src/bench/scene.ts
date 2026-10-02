@@ -13,7 +13,6 @@ import { buildLabRoom, LabRoom, BENCH } from './lab_room';
 import { ReagentShelf } from './shelf';
 import { Animator, AnimTask, PourSource, dropsTask, ease, moveTask, once, pourTask, solidTask } from './animations';
 import { setParticleViewport } from '../render/particles';
-import { importIsSolid } from '../pubchem/parser';
 import {
   DropPlace,
   DropSpot,
@@ -389,11 +388,11 @@ export class BenchScene {
     this.shelf.add(entryToBottleInput(entry));
   }
 
-  /** PubChem import: generic labelled bottle on the shelf (positions are auto-allocated). */
-  public addBottle(bottle: BottleState, posX?: number, posZ?: number) {
+  /** PubChem import: generic labelled bottle on the shelf (positions are auto-allocated); `phase` = its phase at room temperature (jar for solids). */
+  public addBottle(bottle: BottleState, phase: 'solid' | 'liquid' | 'gas' = 'liquid', posX?: number, posZ?: number) {
     void posX;
     void posZ;
-    const solid = importIsSolid(bottle);
+    const solid = phase === 'solid';
     this.shelf.add({
       id: bottle.id,
       name: bottle.name,

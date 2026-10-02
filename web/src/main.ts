@@ -2,13 +2,15 @@
 import './style.css';
 import { BenchScene } from './bench/scene';
 import { SimController } from './sim/sim_controller';
-import { BottleState } from './types';
-import { importIsSolid } from './pubchem/parser';
+import { BottleState, SpeciesRecord } from './types';
+import { effectiveThermo, vaporPressurePoints } from './pubchem/parser';
+import { parseWaterSolubilityGPerL, srgbHexToLinear } from './pubchem/solubility_parser';
 import { OpticsTables, ReagentCatalogEntry, VesselSnapshot } from './types/sim';
 import { initDataBundle, importCompound } from './pubchem/api';
 import { Lab } from './app/lab';
-import { knownReagentColor, probeReagentColor } from './app/reagent_colors';
-import { ReagentLibrary, ReagentItem, displayName } from './app/reagent_library';
+import { setSessionToken } from './pubchem/session';
+import { knownReagentColor, probeReagentColor, setOpticsDataVersion } from './app/reagent_colors';
+import { ReagentLibrary, ReagentItem, displayName, itemPhase, describeModel } from './app/reagent_library';
 import { TopBar } from './ui/top_bar';
 import { ReagentPanel } from './ui/reagent_panel';
 import { AddCard } from './ui/add_card';
@@ -21,6 +23,7 @@ import { AdvancedView } from './ui/advanced_view';
 import { CustomReactionModal } from './ui/custom_reaction_modal';
 import { BottleCard } from './ui/bottle_card';
 import { toast } from './ui/toast';
+import { MineralResolver } from './app/mineral_resolver';
 import { anyModalOpen } from './ui/modal';
 import { runSelfTest } from './ui/self_test';
 import { h, isTypingTarget } from './ui/dom';
@@ -37,6 +40,7 @@ import type { PourState } from './bench/handling';
 const simWorker = new Worker(new URL('./workers/simulation.worker.ts', import.meta.url), { type: 'module' });
 
 let sessionToken = new URLSearchParams(window.location.search).get('token') || '';
+setSessionToken(sessionToken);
 
 const SHELF_SEED = 8;
 const NOTABLE_EVENTS = new Set(['stopper_pop', 'ignition', 'flame_out', 'boil_over', 'dry_out', 'splatter']);
@@ -102,21 +106,40 @@ async function initApp() {
   const reagentPanel = new ReagentPanel(lib, addCard);
 
   /**
-   * Asks the engine to model an imported compound from its formula (ions, solubility, ...). Compounds it can model
-   * become real reacting reagents; the rest stay visual-only with an explanation.
+   * Asks the engine to model an imported compound: every PubChem import is a compound whose phase the engine derives
+   * from conditions (vapour-pressure curve, melting point, ...), so this sends the physical data and no state. Compounds
+   * the engine can react (salts, known molecules) become reacting reagents, the rest inert-but-physical compounds;
+   * only unparseable formulas stay visual-only with an explanation.
    */
   const modelImported = async (b: BottleState) => {
     try {
-      const density = b.userOverrides?.density ?? b.sourcedProperties?.density;
+      const th = effectiveThermo(b);
+      const phys = b.physical ?? {};
+      // user-typed solubility ("5 g/L") overrides the parsed one
+      const solOverride = typeof b.userOverrides?.solubility === 'string' ? parseWaterSolubilityGPerL([b.userOverrides.solubility], b.mw || undefined) : undefined;
+      const points = vaporPressurePoints(b);
       const model = await sim.importCompound({
         id: b.id,
         name: b.name,
         formula: b.formula,
         smiles: b.smiles || undefined,
+        inchi_key: b.inchi_key || undefined, // identity: built-in molecules and inert compounds are matched / keyed on it
         mw: b.mw || undefined,
-        density: typeof density === 'number' && isFinite(density) ? density : undefined,
-        state: importIsSolid(b) ? 'solid' : b.state === 'gas' ? 'gas' : 'liquid',
+        density: th.density,
+        state: b.state, // PubChem text hint only: the engine uses it when it has no melting / vapour-pressure data
         ghs: [],
+        vapor_pressure_points: points.length > 0 ? points : undefined,
+        dh_vap_kj_mol: phys.dh_vap_kj_mol,
+        dh_vap_at_k: phys.dh_vap_at_k,
+        t_melt_ref_k: th.mp_c !== undefined ? th.mp_c + 273.15 : undefined,
+        dh_fus_kj_mol: phys.dh_fus_kj_mol,
+        dh_comb_kj_mol: phys.dh_comb_kj_mol,
+        solubility_g_per_l: solOverride ?? phys.solubility_g_per_l,
+        dh_sol_kj_mol: phys.dh_sol_kj_mol,
+        s_j_mol_k: phys.s_j_mol_k,
+        cp_j_mol_k: phys.cp_j_mol_k,
+        cp_coefficients: phys.cp_coefficients,
+        color_linear_rgb: b.sourcedProperties?.known?.color && /^#[0-9a-f]{6}$/i.test(b.color) ? srgbHexToLinear(b.color) : undefined,
       });
       lib.setModel(b.id, model);
       return model;
@@ -217,7 +240,7 @@ async function initApp() {
             if (hex) bench.setBottleContentColor(entry.id, hex);
           });
       } else if (!shelvedImports.has(it.id)) {
-        bench.addBottle(it.bottle);
+        bench.addBottle(it.bottle, itemPhase(it));
         shelvedImports.add(it.id);
       }
     } catch (err) {
@@ -259,33 +282,41 @@ async function initApp() {
   };
   bottleCard.onBottleUpdated = (b) => {
     lib.persistImported();
-    // Overrides (density, melting point -> solid/liquid) change how the compound is dosed: re-model it.
+    // Overrides (density, melting / boiling point, solubility) change the compound's phase behaviour: re-model it.
     void modelImported(b);
+  };
+
+  /** PubChem record -> bottle in the reagent library (deduped) -> engine reaction model. Used by hand imports and by products formed in the lab. */
+  const addImportedRecord = async (rec: SpeciesRecord, extra: Partial<BottleState> = {}) => {
+    const bottle: BottleState = {
+      id: rec.inchi_key ? `pc_${rec.inchi_key.slice(0, 14)}` : `pc_${Date.now()}`,
+      cid: rec.cid,
+      name: rec.name,
+      formula: rec.formula,
+      smiles: rec.smiles,
+      inchi_key: rec.inchi_key,
+      mw: rec.mw,
+      sourcedProperties: { mp_c: rec.mp_c, bp_c: rec.bp_c, density: rec.density, solubility: rec.solubility, known: rec.known },
+      physical: rec.physical,
+      userOverrides: {},
+      color: rec.color || '#e8f4fa',
+      ghs: rec.ghs || [],
+      remainingMl: 500,
+      state: rec.physical_state,
+      ...extra,
+    };
+    const it0 = lib.addImported(bottle);
+    const model = await modelImported(it0.kind === 'imported' ? it0.bottle : bottle);
+    const item = lib.get(it0.key) ?? it0;
+    return { item, model };
   };
 
   reagentPanel.onImportPubChem = async (name) => {
     try {
       const rec = await importCompound(name);
-      const bottle: BottleState = {
-        id: rec.inchi_key ? `pc_${rec.inchi_key.slice(0, 14)}` : `pc_${Date.now()}`,
-        cid: rec.cid,
-        name: rec.name,
-        formula: rec.formula,
-        smiles: rec.smiles,
-        inchi_key: rec.inchi_key,
-        mw: rec.mw,
-        sourcedProperties: { mp_c: rec.mp_c, bp_c: rec.bp_c, density: rec.density, solubility: rec.solubility },
-        userOverrides: {},
-        color: rec.color || '#e8f4fa',
-        ghs: rec.ghs || [],
-        remainingMl: 500,
-        state: rec.physical_state,
-      };
-      const it0 = lib.addImported(bottle);
-      const model = await modelImported(it0.kind === 'imported' ? it0.bottle : bottle);
-      const it = lib.get(it0.key) ?? it0;
-      openReagent(it);
-      if (model?.modelable) toast(`Imported ${rec.name} from PubChem. ${model.reason}.`, 'success');
+      const { item, model } = await addImportedRecord(rec);
+      openReagent(item);
+      if (model?.modelable) toast(`Imported ${rec.name} from PubChem. ${model.phase_model === 'inert' ? describeModel(model) : model.reason}.`, 'success');
       else toast(`Imported ${rec.name} from PubChem. It's visual only — ${model?.reason ?? 'no reaction model available'}.`, 'info');
     } catch (err) {
       toast(`Couldn't import “${name}” from PubChem: ${errMsg(err)}`, 'error');
@@ -643,7 +674,10 @@ async function initApp() {
     fetch('/api/session-token')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.token) sessionToken = d.token;
+        if (d?.token) {
+          sessionToken = d.token;
+          setSessionToken(sessionToken);
+        }
       })
       .catch(() => {});
   }
@@ -654,6 +688,7 @@ async function initApp() {
   try {
     optics = await withTimeout(sim.getOpticsTables(), 20000, 'Loading optics tables');
     bench.setOpticsTables(optics);
+    setOpticsDataVersion(optics.data_version);
   } catch (err) {
     console.warn('[Main] optics tables unavailable', err);
   }
@@ -683,6 +718,15 @@ async function initApp() {
   } catch (err) {
     toast(`Couldn't set out glassware: ${errMsg(err)}`, 'error');
   }
+
+  // Solids with only a rule-of-thumb Ksp get looked up on PubChem and fed back to the engine.
+  const minerals = new MineralResolver(sim, (msg, kind) => toast(msg, kind === 'warn' ? 'warning' : 'info'));
+  minerals.onProduct = async (rec) => {
+    if (lib.has(rec.formula, rec.inchi_key)) return false; // already a reagent (catalog or imported)
+    await addImportedRecord(rec, { formedInLab: true });
+    return true;
+  };
+  minerals.start();
 
   loading.classList.add('is-done');
   window.setTimeout(() => loading.remove(), 400);

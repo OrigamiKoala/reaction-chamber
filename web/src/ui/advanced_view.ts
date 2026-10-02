@@ -139,8 +139,8 @@ export class AdvancedView {
     q('cons').innerHTML = `
       <dt>Status</dt><dd class="${c.ok ? 'ok' : 'bad'}">${c.ok ? 'Balanced' : 'Check failed'}</dd>
       <dt>Charge error</dt><dd>${c.charge_err_mol.toExponential(2)} mol</dd>
-      <dt>Element error</dt><dd>${(c.max_element_rel_err * 100).toFixed(4)} %</dd>
-      <dt>Energy error</dt><dd>${(c.energy_rel_err * 100).toFixed(4)} %</dd>`;
+      <dt>Element error</dt><dd>${(c.max_element_rel_err * 100).toFixed(4)} % (max ${c.max_element_abs_err_mol.toExponential(1)} mol)</dd>
+      ${c.unverified_species.length > 0 ? `<dt>Not covered</dt><dd title="Formula cannot be parsed, so its atoms are not checked">${esc(c.unverified_species.join(', '))}</dd>` : ''}`;
     q('energy').innerHTML = `
       <dt>Temperature</dt><dd>${s.temperature_k.toFixed(2)} K · ${(s.temperature_k - 273.15).toFixed(2)} °C</dd>
       <dt>Contents</dt><dd>${s.contents_mass_g.toFixed(2)} g</dd>

@@ -1,4 +1,96 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+
+use serde::{Deserialize, Serialize};
+
+/// Relative tolerance of the per-element ledger.
+pub const ELEMENT_REL_TOL: f64 = 1e-6;
+/// Absolute amount (mol) below which an element discrepancy is numerical dust.
+pub const ELEMENT_DUST_MOL: f64 = 1e-12;
+
+/// Per-vessel cumulative element ledger: everything that ever entered (doses, portions poured in, gas received) and
+/// everything that ever left (portions removed, gas vented or collected elsewhere, boil-off, evaporation, combustion).
+/// The element balance of a vessel is `added - removed` versus what it holds now, so a reaction that creates or destroys
+/// atoms shows up as an error instead of being absorbed into a moving baseline.
+#[derive(Clone, Debug, Default)]
+pub struct ElementLedger {
+    pub added: HashMap<String, f64>,
+    pub removed: HashMap<String, f64>,
+    /// Species that were booked but whose formula cannot be parsed: their atoms are not tracked and are reported.
+    pub unverified: BTreeSet<String>,
+}
+
+impl ElementLedger {
+    fn book(map: &mut HashMap<String, f64>, unverified: &mut BTreeSet<String>, species: &str, mol: f64) {
+        if mol == 0.0 || !mol.is_finite() {
+            return;
+        }
+        match crate::ions::species_elements(species) {
+            Some(elems) => {
+                for (e, n) in elems {
+                    *map.entry(e).or_insert(0.0) += mol * n;
+                }
+            }
+            None => {
+                unverified.insert(species.to_string());
+            }
+        }
+    }
+
+    pub fn book_in(&mut self, species: &str, mol: f64) {
+        Self::book(&mut self.added, &mut self.unverified, species, mol);
+    }
+
+    pub fn book_out(&mut self, species: &str, mol: f64) {
+        Self::book(&mut self.removed, &mut self.unverified, species, mol);
+    }
+
+    /// Expected element inventory (added - removed).
+    pub fn expected(&self) -> HashMap<String, f64> {
+        let mut out = self.added.clone();
+        for (e, n) in &self.removed {
+            *out.entry(e.clone()).or_insert(0.0) -= n;
+        }
+        out
+    }
+}
+
+/// Element discrepancy of one element.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ElementError {
+    pub element: String,
+    pub expected_mol: f64,
+    pub actual_mol: f64,
+    pub abs_err_mol: f64,
+    pub rel_err: f64,
+}
+
+/// Compares the ledger's expected inventory with what the vessel holds. Returns every element with a non-zero
+/// discrepancy (sorted by element), the largest relative error, the largest absolute error and whether all are within
+/// tolerance (`rel <= ELEMENT_REL_TOL` or `abs <= ELEMENT_DUST_MOL`).
+pub fn audit_elements(ledger: &ElementLedger, current: &HashMap<String, f64>) -> (Vec<ElementError>, f64, f64, bool) {
+    let expected = ledger.expected();
+    let mut names: BTreeSet<&String> = expected.keys().collect();
+    names.extend(current.keys());
+    let mut errors = Vec::new();
+    let (mut max_rel, mut max_abs, mut ok) = (0.0_f64, 0.0_f64, true);
+    for e in names {
+        let exp = expected.get(e).copied().unwrap_or(0.0);
+        let act = current.get(e).copied().unwrap_or(0.0);
+        let abs = (act - exp).abs();
+        let rel = abs / exp.abs().max(act.abs()).max(1e-300);
+        if abs > 0.0 {
+            errors.push(ElementError { element: e.clone(), expected_mol: exp, actual_mol: act, abs_err_mol: abs, rel_err: rel });
+        }
+        if abs > ELEMENT_DUST_MOL {
+            max_rel = max_rel.max(rel);
+            max_abs = max_abs.max(abs);
+            if rel > ELEMENT_REL_TOL {
+                ok = false;
+            }
+        }
+    }
+    (errors, max_rel, max_abs, ok)
+}
 
 /// Conservation check report
 #[derive(Clone, Debug, Default)]

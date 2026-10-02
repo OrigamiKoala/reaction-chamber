@@ -1,0 +1,178 @@
+[
+  {
+    "id": "ion:H+1",
+    "identity": {
+      "formula": "H+",
+      "charge": 1,
+      "smiles": "[H+]",
+      "names": [
+        "hydrogen ion",
+        "hydronium"
+      ]
+    },
+    "phases": {
+      "aq": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": 0.0,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 0.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ion:OH-1",
+    "identity": {
+      "formula": "OH-",
+      "charge": -1,
+      "smiles": "[OH-]",
+      "names": [
+        "hydroxide"
+      ]
+    },
+    "phases": {
+      "aq": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -230.0,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": -148.5,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ion:Na+1",
+    "identity": {
+      "formula": "Na+",
+      "charge": 1,
+      "smiles": "[Na+]",
+      "names": [
+        "sodium ion"
+      ]
+    },
+    "phases": {
+      "aq": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -240.1,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 46.4,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ion:Cl-1",
+    "identity": {
+      "formula": "Cl-",
+      "charge": -1,
+      "smiles": "[Cl-]",
+      "names": [
+        "chloride"
+      ]
+    },
+    "phases": {
+      "aq": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -167.2,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": -136.4,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ion:SO4-2",
+    "identity": {
+      "formula": "SO4-2",
+      "charge": -2,
+      "smiles": "[O-]S(=O)(=O)[O-]",
+      "names": [
+        "sulfate"
+      ]
+    },
+    "phases": {
+      "aq": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -909.3,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": -293.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  }
+]

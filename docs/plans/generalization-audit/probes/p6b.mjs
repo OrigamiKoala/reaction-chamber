@@ -1,0 +1,11 @@
+import { imp, vessel, dose, step, snap, ctl } from './lib.mjs';
+imp({ id: 'x_NaOH', name: 'NaOH', formula: 'HNaO', smiles: '[OH-].[Na+]', state: 'liquid', molarity: 1.0 });
+imp({ id: 'x_EtBr', name: 'Bromoethane', formula: 'C2H5Br', smiles: 'CCBr', state: 'liquid' });
+const id = 'sn2_C2H5Br(l)_OH-';
+const k = (s) => { const r = s.reactions.filter((x) => x.id === id).reduce((a, x) => a + x.rate, 0); const c = (n) => s.species.find((x) => x.id === n)?.conc_m ?? 0; return r / (c('OH-')); };
+const h = vessel();
+dose(h, { reagent_id: 'x_NaOH', volume_ml: 50 }); dose(h, { reagent_id: 'x_EtBr', volume_ml: 1 });
+step(h, 1, 0.1); const a = snap(h);
+ctl(h, { heater_w: 150 }); for (let i = 0; i < 400; i++) { step(h, 1, 0.1); if (snap(h).temperature_k > 330) break; } ctl(h, { heater_w: 0 }); step(h, 1, 0.1);
+const b = snap(h);
+console.log(`rate/[OH-] (${id}) at ${a.temperature_k.toFixed(1)} K: ${k(a).toExponential(3)}; at ${b.temperature_k.toFixed(1)} K: ${k(b).toExponential(3)} (Arrhenius with Ea=85 kJ would give x${Math.exp(85000 / 8.314 * (1 / a.temperature_k - 1 / b.temperature_k)).toFixed(1)})`);

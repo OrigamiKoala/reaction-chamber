@@ -1,0 +1,38 @@
+llnl.dat: SOLUTION_SPECIES reactions 1327 | PHASES 1215 | with log_k 1215 | with analytic 881 | with delta_h 0
+minteq.v4.dat: SOLUTION_SPECIES 1335 | PHASES 568
+NASA thermo.inp: species blocks ~ 2111 | condensed-phase blocks ~ 815 | e.g. ['e-                Ref-Sp', 'Ag                Hf:Cox', 'Ag+               Moore,', 'Ag-               Hotop,', 'AL                Hf:Cox'] ['Ag(cr)            Cubic.', 'Ag(L)             Liquid', 'AL(cr)            Cubic.', 'AL(L)             Liquid']
+
+formula      engine     llnl   diff  llnl phase / reaction
+CuCl          -6.76    -6.76  +0.00  Nantokite: CuCl = Cl- + Cu+ 
+PbCl2         -4.77    -4.84  +0.07  Cotunnite: PbCl2 = Pb+2 + 2 Cl- 
+PbI2          -8.01    -8.04  +0.03  PbI2: PbI2 = Pb+2 + 2 I- 
+PbF2          -7.48    -5.20  -2.28  PbF2: PbF2 = Pb+2 + 2 F- 
+Hg2Cl2       -17.84   -17.82  -0.02  Calomel: Hg2Cl2 = Hg2+2 + 2 Cl- 
+CaF2         -10.46   -10.04  -0.42  Fluorite: CaF2 = Ca+2 + 2 F- 
+MgF2         -10.29    -9.38  -0.91  Sellaite: MgF2 = Mg+2 + 2 F- 
+SrF2          -8.36    -8.54  +0.18  SrF2: SrF2 = Sr+2 + 2 F- 
+BaSO4         -9.97    -9.97  +0.00  Barite: BaSO4 = Ba+2 + SO4-2 
+SrSO4         -6.46    -5.68  -0.78  Celestite: SrSO4 = SO4-2 + Sr+2 
+CaSO4         -4.31    -4.31  -0.00  Anhydrite: CaSO4 = Ca+2 + SO4-2 
+PbSO4         -7.60    -7.85  +0.25  Anglesite: PbSO4 = Pb+2 + SO4-2 
+CaCO3         -8.47     1.85 -10.32  Calcite: CaCO3 + H+ = Ca+2 + HCO3- (H+-based, not a Ksp)
+MgCO3         -5.17     2.29  -7.46  Magnesite: MgCO3 + H+ = HCO3- + Mg+2 (H+-based, not a Ksp)
+BaCO3         -8.59    -3.00  -5.59  Witherite: BaCO3 + H+ = Ba+2 + HCO3- (H+-based, not a Ksp)
+SrCO3         -9.25    -0.31  -8.94  Strontianite: SrCO3 + H+ = HCO3- + Sr+2 (H+-based, not a Ksp)
+PbCO3        -13.13    -3.21  -9.92  Cerussite: PbCO3 + H+ = HCO3- + Pb+2 (H+-based, not a Ksp)
+Mg(OH)2      -11.25    16.30 -27.55  Brucite: Mg(OH)2 + 2 H+ = Mg+2 + 2 H2O (H+-based, not a Ksp)
+Ca(OH)2       -5.30    22.56 -27.86  Portlandite: Ca(OH)2 + 2 H+ = Ca+2 + 2 H2O (H+-based, not a Ksp)
+Al(OH)3      -33.50     7.76 -41.26  Gibbsite: Al(OH)3 + 3 H+ = Al+3 + 3 H2O (H+-based, not a Ksp)
+Fe(OH)3      -38.55     5.66 -44.21  Fe(OH)3: Fe(OH)3 + 3 H+ = Fe+3 + 3 H2O (H+-based, not a Ksp)
+Fe(OH)2      -16.31    13.90 -30.21  Fe(OH)2: Fe(OH)2 + 2 H+ = Fe+2 + 2 H2O (H+-based, not a Ksp)
+Zn(OH)2      -16.50    11.93 -28.43  Zn(OH)2(beta): Zn(OH)2 + 2 H+ = Zn+2 + 2 H2O (H+-based, not a Ksp)
+Ni(OH)2      -15.26    12.75 -28.01  Ni(OH)2: Ni(OH)2 + 2 H+ = Ni+2 + 2 H2O (H+-based, not a Ksp)
+Co(OH)2      -14.23    12.30 -26.53  Co(OH)2: Co(OH)2 + 2 H+ = Co+2 + 2 H2O (H+-based, not a Ksp)
+CuS          -36.10   -22.83 -13.27  Covellite: CuS + H+ = Cu+2 + HS- (H+-based, not a Ksp)
+Ag2S         -49.20   -36.03 -13.17  Acanthite: Ag2S + H+ = HS- + 2 Ag+ (H+-based, not a Ksp)
+ZnS          -21.60   -11.44 -10.16  Sphalerite: ZnS + H+ = HS- + Zn+2 (H+-based, not a Ksp)
+PbS          -27.10   -14.85 -12.25  Galena: PbS + H+ = HS- + Pb+2 (H+-based, not a Ksp)
+HgS          -51.80   -38.97 -12.83  Cinnabar: HgS + H+ = HS- + Hg+2 (H+-based, not a Ksp)
+FeS          -18.10    -3.72 -14.38  Pyrrhotite: FeS + H+ = Fe+2 + HS- (H+-based, not a Ksp)
+MnS          -12.60    -0.39 -12.21  Alabandite: MnS + H+ = HS- + Mn+2 (H+-based, not a Ksp)
+compared 32 | |diff|>0.3 (true Ksp rows) 4

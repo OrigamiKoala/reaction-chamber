@@ -9,3 +9,6 @@ web/dist/
 *.pyc
 __pycache__/
 .DS_Store
+# Local data: never commit (NIST SRD cache is not redistributable; chamber.db is a local SQLite flywheel)
+server/cache/*.db
+server/chamber.db

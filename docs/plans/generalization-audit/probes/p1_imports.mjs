@@ -1,0 +1,41 @@
+import { imp } from './lib.mjs';
+const list = [
+  ['Methyl formate', 'C2H4O2', 'COC=O', 'liquid'],
+  ['Glycolaldehyde', 'C2H4O2', 'C(C=O)O', 'solid'],
+  ['Acetic acid (no smiles)', 'C2H4O2', undefined, 'liquid'],
+  ['Citric acid', 'C6H8O7', 'C(C(=O)O)C(CC(=O)O)(C(=O)O)O', 'solid'],
+  ['Benzoic acid', 'C7H6O2', 'C1=CC=C(C=C1)C(=O)O', 'solid'],
+  ['Phenol', 'C6H6O', 'C1=CC=C(C=C1)O', 'solid'],
+  ['Boric acid', 'BH3O3', 'B(O)(O)O', 'solid'],
+  ['Sodium benzoate', 'C7H5NaO2', 'C1=CC=C(C=C1)C(=O)[O-].[Na+]', 'solid'],
+  ['Zinc', 'Zn', '[Zn]', 'solid'],
+  ['Iron', 'Fe', '[Fe]', 'solid'],
+  ['Sodium', 'Na', '[Na]', 'solid'],
+  ['Magnesium', 'Mg', '[Mg]', 'solid'],
+  ['Copper(II) oxide', 'CuO', 'O=[Cu]', 'solid'],
+  ['Calcium oxide', 'CaO', '[O-2].[Ca+2]', 'solid'],
+  ['Potassium permanganate', 'KMnO4', '[O-][Mn](=O)(=O)=O.[K+]', 'solid'],
+  ['Iron(II) sulfate', 'FeO4S', '[O-]S(=O)(=O)[O-].[Fe+2]', 'solid'],
+  ['Hydrogen peroxide', 'H2O2', 'OO', 'liquid'],
+  ['Chlorine', 'Cl2', 'ClCl', 'gas'],
+  ['Ammonium chloride', 'ClH4N', '[NH4+].[Cl-]', 'solid'],
+  ['Sodium sulfide', 'Na2S', '[Na+].[Na+].[S-2]', 'solid'],
+  ['Sodium sulfite', 'Na2O3S', '[O-]S(=O)[O-].[Na+].[Na+]', 'solid'],
+  ['Sulfuric acid', 'H2O4S', 'OS(=O)(=O)O', 'liquid'],
+  ['Nitric acid', 'HNO3', '[N+](=O)([O-])O', 'liquid'],
+  ['Sodium hydride', 'HNa', '[H-].[Na+]', 'solid'],
+  ['Ethyl acetate', 'C4H8O2', 'CCOC(C)=O', 'liquid'],
+  ['Bromoethane', 'C2H5Br', 'CCBr', 'liquid'],
+  ['Cyclohexene', 'C6H10', 'C1CCC=CC1', 'liquid'],
+  ['Copper(II) chloride dihydrate', 'Cl2CuH4O2', 'O.O.Cl[Cu]Cl', 'solid'],
+  ['Potassium ferrocyanide', 'C6FeK4N6', '[C-]#N.[C-]#N.[C-]#N.[C-]#N.[C-]#N.[C-]#N.[K+].[K+].[K+].[K+].[Fe+2]', 'solid'],
+  ['Silver oxide', 'Ag2O', '[O-2].[Ag+].[Ag+]', 'solid'],
+  ['Sodium hypochlorite', 'ClNaO', '[O-]Cl.[Na+]', 'solid'],
+  ['Calcium carbide', 'C2Ca', '[C-]#[C-].[Ca+2]', 'solid'],
+  ['Urea', 'CH4N2O', 'C(=O)(N)N', 'solid'],
+  ['Ammonium cyanate', 'CH4N2O', 'C(#N)[O-].[NH4+]', 'solid'],
+];
+for (const [name, formula, smiles, state] of list) {
+  const m = imp({ id: 'x_' + name.replace(/\W/g, ''), name, formula, smiles, state });
+  console.log(`${name.padEnd(30)} ${formula.padEnd(10)} modelable=${m.modelable} kind=${m.kind.padEnd(8)} pm=${m.phase_model.padEnd(7)} comp=${JSON.stringify(m.entry?.composition ?? {}).slice(0, 110)}`);
+}

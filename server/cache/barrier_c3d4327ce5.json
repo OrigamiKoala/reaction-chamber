@@ -1,0 +1,25 @@
+{
+  "job_id": "barrier_c3d4327ce5",
+  "status": "completed",
+  "reaction": "CC(Br)C + [OH-] -> CC(O)C + [Br-]",
+  "family": "sn2_secondary_halide",
+  "solvent": "water",
+  "temperature_k": 298.15,
+  "method": "rate_rule_fallback",
+  "energy_hartree": null,
+  "delta_e_electronic_kcal": 24.0,
+  "xtb_raw_delta_g_kcal": 26.0,
+  "calibrated_delta_g_kcal": 21.22,
+  "uncertainty_kcal": 0.2,
+  "calibrated_rate_constant": 0.001742739233741302,
+  "arrhenius_ea_j_mol": 88771.1,
+  "arrhenius_a": 100000000000.0,
+  "num_imaginary_frequencies": 1,
+  "imaginary_frequency_cm1": 450.0,
+  "validation_flags": [
+    "rate_rule_fallback"
+  ],
+  "failure_reason": "scf_convergence_failed: No module named 'tblite'",
+  "runtime_sec": 0.0278,
+  "tier": "estimated"
+}

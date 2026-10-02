@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::*;
 use crate::vessel::Vessel;
 
 /// J / (mol K)
-pub const R_GAS: f64 = 8.314462618;
+pub const R_GAS: f64 = crate::physics::R_GAS;
 /// Pa per atm.
 pub const ATM_PA: f64 = 101325.0;
 /// Relaxation time (s) of the source pressure through the delivery tube (flow ~ proportional to the excess pressure).
@@ -174,6 +174,7 @@ impl Vessel {
         let take = mol.min(room);
         if take > 0.0 {
             *self.gas.collected_mol.entry(species.to_string()).or_default() += take;
+            self.ledger.book_in(species, take);
         }
         let lost = mol - take;
         if lost > 0.0 {
@@ -185,7 +186,9 @@ impl Vessel {
     /// Empty a collector (plunger pushed in, jar flushed, tube refilled with water). Returns the moles discarded.
     pub fn vent_collector(&mut self) -> f64 {
         let n = self.collected_total_mol();
-        self.gas.collected_mol.clear();
+        for (sp, mol) in std::mem::take(&mut self.gas.collected_mol) {
+            self.ledger.book_out(&sp, mol);
+        }
         n
     }
 }
@@ -220,10 +223,11 @@ pub fn step_link(src: &mut Vessel, dst: &mut Vessel, dt_s: f64) -> (f64, f64) {
         }
         if let Some(m) = src.headspace_gas_mol.get_mut(&sp) {
             *m -= take;
-            if *m <= 1e-15 {
+            if *m <= 0.0 {
                 src.headspace_gas_mol.remove(&sp);
             }
         }
+        src.ledger.book_out(&sp, take);
         lost += dst.receive_gas(&sp, take);
         moved += take;
     }

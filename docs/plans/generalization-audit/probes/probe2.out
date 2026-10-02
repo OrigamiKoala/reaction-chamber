@@ -1,0 +1,37 @@
+water:
+  23C vis=0.00 cond=0.00 boil=0 gas=
+  45C vis=0.00 cond=0.57 boil=0 gas=
+  66C vis=0.22 cond=1.00 boil=0 gas=
+  87C vis=0.71 cond=1.00 boil=0 gas=
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+  100C vis=1.00 cond=1.00 boil=0.85 gas=H2O(g):271.9
+ethanol:
+  24C vis=0.00 cond=0.00 boil=0 gas=
+  68C vis=0.26 cond=1.00 boil=0 gas=
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  78C vis=0.50 cond=1.00 boil=0 gas=C2H5OH(g):278.1
+  266C vis=1.00 cond=1.00 boil=0 gas=
+  469C vis=1.00 cond=1.00 boil=0 gas=
+  598C vis=1.00 cond=1.00 boil=0 gas=
+  680C vis=1.00 cond=1.00 boil=0 gas=
+  732C vis=1.00 cond=1.00 boil=0 gas=
+  765C vis=1.00 cond=1.00 boil=0 gas=
+  786C vis=1.00 cond=1.00 boil=0 gas=
+sealed Br2: T 127.8 P 1.36 fumes [] sealed? true
+NaHCO3+HCl open: gas [{"species":"CO2(g)","rate_ml_s":63.014305833397266,"bubble_diameter_mm":2,"nucleation":"bulk"}] foam 0.95 fumes []
+Mg+HCl: gas [{"species":"H2(g)","rate_ml_s":10.167711822649439,"bubble_diameter_mm":1,"nucleation":"solid"}] solids [["Mg(s)","metal",true]]

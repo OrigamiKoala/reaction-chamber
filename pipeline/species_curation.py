@@ -1,7 +1,10 @@
 """
-Species Curation Module: 500+ Most Common Chemical Species
-Provides InChIKey mapping, standard reference properties (mp, bp, density, solubility, pKa, GHS hazards),
-and dissolution fragment rules.
+Species Curation Module: the hand-checked core species (about 70 common bench chemicals).
+Provides InChIKey mapping and reference properties (mp, bp, density, solubility, GHS hazards).
+
+Only entries whose values were written down from a reference are kept. The generated homologous series and the
+cation x anion salt matrix that used to pad this list to 500 species were removed (Stage 0): their mp / bp / density were
+molar-mass arithmetic, their formulas tokens like "Salt_Sodium_bromide", and they overrode PubChem data on import.
 """
 from typing import Dict, Any, List, Optional
 from rdkit import Chem
@@ -85,20 +88,14 @@ PRIMARY_CHEMICALS = [
 ]
 
 def generate_inchikey(smiles: str) -> str:
-    """Generates standard InChIKey from SMILES via RDKit."""
-    try:
-        mol = Chem.MolFromSmiles(smiles)
-        if mol:
-            return Chem.MolToInchiKey(mol)
-    except Exception:
-        pass
-    # Fallback deterministic synthetic key if SMILES cannot be converted
-    import hashlib
-    h = hashlib.sha256(smiles.encode("utf-8")).hexdigest()[:25].upper()
-    return f"{h[:14]}-{h[14:24]}-N"
+    """Standard InChIKey of `smiles` via RDKit. An unparseable SMILES is an error: no key is ever fabricated."""
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"RDKit cannot parse SMILES {smiles!r}")
+    return Chem.MolToInchiKey(mol)
 
 def build_curated_database() -> Dict[str, Dict[str, Any]]:
-    """Builds a database of 500+ chemical species keyed by InChIKey."""
+    """Builds the curated database keyed by InChIKey."""
     db: Dict[str, Dict[str, Any]] = {}
 
     # 1. Process primary chemicals
@@ -121,239 +118,22 @@ def build_curated_database() -> Dict[str, Dict[str, Any]]:
             "source": "PubChem_Evaluated"
         }
 
-    # 20 Standard Amino Acids
-    amino_acids = [
-        ("Glycine", "NCC(=O)O", 75.07, 233.0, 1.607, [2.34, 9.60]),
-        ("L-Alanine", "CC(N)C(=O)O", 89.09, 297.0, 1.424, [2.34, 9.69]),
-        ("L-Valine", "CC(C)C(N)C(=O)O", 117.15, 315.0, 1.230, [2.32, 9.62]),
-        ("L-Leucine", "CC(C)CC(N)C(=O)O", 131.18, 293.0, 1.293, [2.36, 9.60]),
-        ("L-Isoleucine", "CCC(C)C(N)C(=O)O", 131.18, 284.0, 1.200, [2.36, 9.68]),
-        ("L-Serine", "OCC(N)C(=O)O", 105.09, 228.0, 1.537, [2.21, 9.15]),
-        ("L-Threonine", "CC(O)C(N)C(=O)O", 119.12, 256.0, 1.464, [2.11, 9.62]),
-        ("L-Cysteine", "SCC(N)C(=O)O", 121.16, 240.0, 1.496, [1.96, 8.18, 10.28]),
-        ("L-Methionine", "CSCCC(N)C(=O)O", 149.21, 281.0, 1.340, [2.28, 9.21]),
-        ("L-Proline", "C1CC(NC1)C(=O)O", 115.13, 221.0, 1.350, [1.99, 10.60]),
-        ("L-Phenylalanine", "c1ccc(cc1)CC(N)C(=O)O", 165.19, 283.0, 1.290, [1.83, 9.13]),
-        ("L-Tyrosine", "Oc1ccc(cc1)CC(N)C(=O)O", 181.19, 343.0, 1.456, [2.20, 9.11, 10.07]),
-        ("L-Tryptophan", "c1ccc2c(c1)c(c[nH]2)CC(N)C(=O)O", 204.23, 289.0, 1.340, [2.38, 9.39]),
-        ("L-Aspartic acid", "OC(=O)CC(N)C(=O)O", 133.10, 270.0, 1.700, [1.88, 3.65, 9.60]),
-        ("L-Glutamic acid", "OC(=O)CCC(N)C(=O)O", 147.13, 199.0, 1.538, [2.19, 4.25, 9.67]),
-        ("L-Asparagine", "NC(=O)CC(N)C(=O)O", 132.12, 234.0, 1.543, [2.02, 8.80]),
-        ("L-Glutamine", "NC(=O)CCC(N)C(=O)O", 146.15, 185.0, 1.400, [2.17, 9.13]),
-        ("L-Histidine", "c1c(nc[nH]1)CC(N)C(=O)O", 155.16, 287.0, 1.440, [1.82, 6.00, 9.17]),
-        ("L-Lysine", "NCCCCC(N)C(=O)O", 146.19, 224.0, 1.125, [2.18, 8.95, 10.53]),
-        ("L-Arginine", "N=C(N)NCCCC(N)C(=O)O", 174.20, 244.0, 1.300, [2.17, 9.04, 12.48]),
-    ]
-    for idx, (aa_name, aa_smi, aa_mw, aa_mp, aa_d, aa_pka) in enumerate(amino_acids):
-        ikey = generate_inchikey(aa_smi)
-        if ikey not in db:
-            db[ikey] = {
-                "inchi_key": ikey, "cid": 60000 + idx, "name": aa_name, "formula": f"AminoAcid_{aa_name}",
-                "smiles": aa_smi, "charge": 0, "mw": aa_mw, "mp_c": aa_mp, "bp_c": aa_mp + 150.0,
-                "density": aa_d, "solubility": "soluble", "ghs": [], "tier": "tabulated",
-                "source": "CRC_Amino_Acids", "pka": aa_pka
-            }
-
-    # Methyl and Ethyl Esters of aliphatic carboxylic acids C1-C15
-    for acid_n in range(1, 16):
-        for ester_prefix, r_smi, r_mw in [("Methyl", "C", 15.03), ("Ethyl", "CC", 29.06)]:
-            acid_tail = "C" * (acid_n - 1) if acid_n > 1 else ""
-            ester_smi = f"{acid_tail}C(=O)O{r_smi}" if acid_n > 1 else f"C(=O)O{r_smi}"
-            ester_name = f"{ester_prefix} alkanoate C{acid_n}"
-            e_mw = round(14.027 * (acid_n - 1) + 44.01 + r_mw, 2)
-            e_bp = round(31.8 + 16.0 * acid_n + (20.0 if r_smi == "CC" else 0.0), 1)
-            e_mp = round(-90.0 + 5.0 * acid_n, 1)
-            e_d = round(0.92 - 0.01 * min(acid_n, 12), 3)
-            ikey = generate_inchikey(ester_smi)
-            if ikey not in db:
-                db[ikey] = {
-                    "inchi_key": ikey, "cid": 70000 + acid_n * 10 + len(r_smi), "name": ester_name,
-                    "formula": f"Ester_C{acid_n}_{ester_prefix}", "smiles": ester_smi, "charge": 0,
-                    "mw": e_mw, "mp_c": e_mp, "bp_c": e_bp, "density": e_d,
-                    "solubility": "slightly soluble" if acid_n <= 3 else "insoluble",
-                    "ghs": ["H225"], "tier": "estimated", "source": "Joback_Additivity"
-                }
-
-    # Alkenes C2-C15
-    for n in range(2, 16):
-        sm = "C=C" + "C" * (n - 2) if n > 2 else "C=C"
-        name = f"1-Alkene_C{n}"
-        mw = round(14.027 * n, 2)
-        bp = round(-103.7 + 25.0 * (n - 2), 1)
-        mp = round(-169.0 + 10.0 * (n - 2), 1)
-        d = round(0.51 + 0.02 * min(n, 12), 3)
-        ikey = generate_inchikey(sm)
-        if ikey not in db:
-            db[ikey] = {"inchi_key": ikey, "cid": 80000 + n, "name": name, "formula": f"C{n}H{2*n}", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "immiscible", "ghs": ["H225"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # Alkynes C2-C15
-    for n in range(2, 16):
-        sm = "C#C" + "C" * (n - 2) if n > 2 else "C#C"
-        name = f"1-Alkyne_C{n}"
-        mw = round(14.027 * n - 2.016, 2)
-        bp = round(-84.0 + 26.0 * (n - 2), 1)
-        mp = round(-80.8 + 8.0 * (n - 2), 1)
-        d = round(0.61 + 0.015 * min(n, 12), 3)
-        ikey = generate_inchikey(sm)
-        if ikey not in db:
-            db[ikey] = {"inchi_key": ikey, "cid": 85000 + n, "name": name, "formula": f"C{n}H{2*n-2}", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "immiscible", "ghs": ["H220"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # Aldehydes and Ketones C1-C15
-    for n in range(1, 16):
-        # Aldehyde
-        sm_al = "C" * (n - 1) + "C=O" if n > 1 else "C=O"
-        name_al = f"Alkanal_C{n}"
-        mw_al = round(14.027 * (n - 1) + 30.03, 2)
-        bp_al = round(-19.0 + 23.0 * (n - 1), 1)
-        mp_al = round(-92.0 + 7.0 * (n - 1), 1)
-        d_al = round(0.81 + 0.005 * n, 3)
-        ikey_al = generate_inchikey(sm_al)
-        if ikey_al not in db:
-            db[ikey_al] = {"inchi_key": ikey_al, "cid": 90000 + n, "name": name_al, "formula": f"C{n}H{2*n}O", "smiles": sm_al, "charge": 0, "mw": mw_al, "mp_c": mp_al, "bp_c": bp_al, "density": d_al, "solubility": "miscible" if n <= 3 else "insoluble", "ghs": ["H225", "H319"], "tier": "estimated", "source": "Joback_Additivity"}
-
-        # 2-Ketones C4-C15
-        if n >= 4:
-            sm_kt = "CC(=O)" + "C" * (n - 3)
-            name_kt = f"2-Alkanone_C{n}"
-            mw_kt = round(14.027 * (n - 1) + 30.03, 2)
-            bp_kt = round(56.1 + 22.0 * (n - 3), 1)
-            mp_kt = round(-86.0 + 6.0 * (n - 3), 1)
-            d_kt = round(0.805 + 0.005 * n, 3)
-            ikey_kt = generate_inchikey(sm_kt)
-            if ikey_kt not in db:
-                db[ikey_kt] = {"inchi_key": ikey_kt, "cid": 95000 + n, "name": name_kt, "formula": f"C{n}H{2*n}O", "smiles": sm_kt, "charge": 0, "mw": mw_kt, "mp_c": mp_kt, "bp_c": bp_kt, "density": d_kt, "solubility": "miscible" if n <= 4 else "insoluble", "ghs": ["H225", "H319"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # 2. Add systematic homologous series and functional variants (alkanes, alcohols, acids, esters, halides, amines)
-    # Alkanes C1-C20
-    for n in range(1, 21):
-        name = f"Alkane_C{n}"
-        if n == 1: name = "Methane"; sm = "C"; mw = 16.04; mp = -182.5; bp = -161.5; d = 0.422
-        elif n == 2: name = "Ethane"; sm = "CC"; mw = 30.07; mp = -182.8; bp = -88.6; d = 0.548
-        elif n == 3: name = "Propane"; sm = "CCC"; mw = 44.10; mp = -187.7; bp = -42.1; d = 0.582
-        elif n == 4: name = "Butane"; sm = "CCCC"; mw = 58.12; mp = -138.4; bp = -0.5; d = 0.601
-        elif n == 5: name = "Pentane"; sm = "CCCCC"; mw = 72.15; mp = -129.8; bp = 36.1; d = 0.626
-        else:
-            sm = "C" * n
-            mw = round(14.027 * n + 2.016, 2)
-            bp = round(198.2 + 23.58 * 2 + 22.88 * (n - 2) - 273.15, 1)
-            mp = round(122.5 - 5.10 * 2 + 11.27 * (n - 2) - 273.15, 1)
-            d = round(0.65 + 0.015 * min(n, 12), 3)
-        ikey = generate_inchikey(sm)
-        if ikey not in db:
-            db[ikey] = {"inchi_key": ikey, "cid": 10000 + n, "name": name, "formula": f"C{n}H{2*n+2}", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "immiscible", "ghs": ["H225"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # 1-Alkanols C1-C18
-    for n in range(1, 19):
-        sm = "C" * n + "O"
-        name = f"1-Alkanol_C{n}" if n > 4 else ["Methanol", "Ethanol", "1-Propanol", "1-Butanol"][n-1]
-        mw = round(14.027 * n + 18.015, 2)
-        bp = round(64.7 + 18.5 * (n - 1), 1)
-        mp = round(-97.6 + 12.0 * (n - 1), 1)
-        d = round(0.79 + 0.005 * n, 3)
-        ikey = generate_inchikey(sm)
-        if ikey not in db:
-            db[ikey] = {"inchi_key": ikey, "cid": 20000 + n, "name": name, "formula": f"C{n}H{2*n+2}O", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "miscible" if n <= 3 else "slightly soluble", "ghs": ["H225", "H319"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # Carboxylic acids C1-C18
-    for n in range(1, 19):
-        sm = "C" * (n - 1) + "C(=O)O" if n > 1 else "C(=O)O"
-        name = f"Alkanoic_acid_C{n}" if n > 4 else ["Formic acid", "Acetic acid", "Propanoic acid", "Butanoic acid"][n-1]
-        mw = round(14.027 * (n - 1) + 46.025, 2)
-        bp = round(100.8 + 17.5 * (n - 1), 1)
-        mp = round(8.4 + 4.5 * (n - 1), 1)
-        d = round(1.22 - 0.02 * min(n, 15), 3)
-        ikey = generate_inchikey(sm)
-        if ikey not in db:
-            db[ikey] = {"inchi_key": ikey, "cid": 30000 + n, "name": name, "formula": f"C{n}H{2*n}O2", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "miscible" if n <= 4 else "insoluble", "ghs": ["H314"], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # Alkyl halides (Chlorides C1-C15, Bromides C1-C15, Iodides C1-C10)
-    for halogen, sym, ghs_h in [("Chloro", "Cl", "H315"), ("Bromo", "Br", "H319"), ("Iodo", "I", "H302")]:
-        for n in range(1, 16 if sym != "I" else 11):
-            sm = "C" * n + sym
-            name = f"1-{halogen}alkane_C{n}"
-            mw = round(14.027 * n + (35.45 if sym == "Cl" else (79.90 if sym == "Br" else 126.90)) + 1.008, 2)
-            bp = round(12.3 * n + (40.0 if sym == "Cl" else (70.0 if sym == "Br" else 100.0)), 1)
-            mp = round(-130.0 + 8.0 * n, 1)
-            d = round(0.88 + (0.1 if sym == "Cl" else (0.4 if sym == "Br" else 0.8)), 3)
-            ikey = generate_inchikey(sm)
-            if ikey not in db:
-                db[ikey] = {"inchi_key": ikey, "cid": 40000 + n, "name": name, "formula": f"C{n}H{2*n+1}{sym}", "smiles": sm, "charge": 0, "mw": mw, "mp_c": mp, "bp_c": bp, "density": d, "solubility": "insoluble", "ghs": ["H225", ghs_h], "tier": "estimated", "source": "Joback_Additivity"}
-
-    # Inorganic salts library: Cations x Anions combinations
-    cations = [
-        ("Sodium", "[Na+]", "Na+", 22.99, 1),
-        ("Potassium", "[K+]", "K+", 39.10, 1),
-        ("Lithium", "[Li+]", "Li+", 6.94, 1),
-        ("Cesium", "[Cs+]", "Cs+", 132.91, 1),
-        ("Ammonium", "[NH4+]", "NH4+", 18.04, 1),
-        ("Calcium", "[Ca+2]", "Ca+2", 40.08, 2),
-        ("Magnesium", "[Mg+2]", "Mg+", 24.31, 2),
-        ("Barium", "[Ba+2]", "Ba+2", 137.33, 2),
-        ("Strontium", "[Sr+2]", "Sr+2", 87.62, 2),
-        ("Zinc", "[Zn+2]", "Zn+2", 65.38, 2),
-        ("Copper(II)", "[Cu+2]", "Cu+2", 63.55, 2),
-        ("Iron(II)", "[Fe+2]", "Fe+2", 55.85, 2),
-        ("Iron(III)", "[Fe+3]", "Fe+3", 55.85, 3),
-        ("Aluminium", "[Al+3]", "Al+3", 26.98, 3),
-        ("Lead(II)", "[Pb+2]", "Pb+2", 207.2, 2),
-        ("Cobalt(II)", "[Co+2]", "Co+2", 58.93, 2),
-        ("Nickel(II)", "[Ni+2]", "Ni+2", 58.69, 2),
-        ("Silver", "[Ag+]", "Ag+", 107.87, 1),
-        ("Manganese(II)", "[Mn+2]", "Mn+2", 54.94, 2),
-    ]
-
-    anions = [
-        ("chloride", "[Cl-]", "Cl-", 35.45, 1),
-        ("bromide", "[Br-]", "Br-", 79.90, 1),
-        ("iodide", "[I-]", "I-", 126.90, 1),
-        ("fluoride", "[F-]", "F-", 19.00, 1),
-        ("nitrate", "[N+](=O)([O-])[O-]", "NO3-", 62.00, 1),
-        ("sulfate", "[O-]S(=O)(=O)[O-]", "SO4-2", 96.06, 2),
-        ("carbonate", "[O-]C(=O)[O-]", "CO3-2", 60.01, 2),
-        ("bicarbonate", "[O-]C(=O)O", "HCO3-", 61.02, 1),
-        ("acetate", "[O-]C(=O)C", "CH3COO-", 59.04, 1),
-        ("phosphate", "[O-]P(=O)([O-])[O-]", "PO4-3", 94.97, 3),
-        ("hydroxide", "[OH-]", "OH-", 17.01, 1),
-        ("thiocyanate", "[S-]C#N", "SCN-", 58.08, 1),
-        ("perchlorate", "[O-][Cl](=O)(=O)=O", "ClO4-", 99.45, 1),
-        ("formate", "[O-]C=O", "HCOO-", 45.02, 1),
-    ]
-
-    salt_idx = 50000
-    for c_name, c_smi, c_ion, c_mw, c_ch in cations:
-        for a_name, a_smi, a_ion, a_mw, a_ch in anions:
-            salt_idx += 1
-            # Stoichiometry to balance charge: c_count * c_ch == a_count * a_ch
-            import math
-            l = math.lcm(c_ch, a_ch)
-            c_count = l // c_ch
-            a_count = l // a_ch
-            
-            salt_smi = ".".join([c_smi] * c_count + [a_smi] * a_count)
-            salt_name = f"{c_name} {a_name}"
-            total_mw = round(c_count * c_mw + a_count * a_mw, 2)
-            
-            ikey = generate_inchikey(salt_smi)
-            if ikey not in db:
-                db[ikey] = {
-                    "inchi_key": ikey,
-                    "cid": salt_idx,
-                    "name": salt_name,
-                    "formula": f"Salt_{c_name}_{a_name}",
-                    "smiles": salt_smi,
-                    "charge": 0,
-                    "mw": total_mw,
-                    "mp_c": round(500.0 + (c_mw + a_mw) % 300, 1),
-                    "bp_c": round(1200.0 + (c_mw + a_mw) % 500, 1),
-                    "density": round(2.0 + (total_mw % 100) / 100.0, 3),
-                    "solubility": "soluble",
-                    "ghs": [],
-                    "tier": "tabulated",
-                    "source": "PHREEQC_Inorganic_Matrix",
-                    "dissolution": [
-                        {"ion": c_ion, "stoichiometry": float(c_count), "charge": c_ch},
-                        {"ion": a_ion, "stoichiometry": float(a_count), "charge": -a_ch}
-                    ]
-                }
+    # Real, hand-checked light alkanes (CRC Handbook values). Everything else that used to be generated here
+    # (inorganic salt matrix, homologous series of alkanes / alcohols / acids / esters / halides, amino acids with
+    # bp = mp + 150) was synthetic: formulas such as "Salt_Sodium_bromide", mp/bp from molar-mass arithmetic, fake CIDs,
+    # labelled tabulated. It overrode PubChem on import and was removed in Stage 0. A real species store arrives in Stage 1.
+    for name, cid, formula, smi, mw, mp, bp, d in [
+        ("Methane", 297, "CH4", "C", 16.043, -182.5, -161.5, 0.422),
+        ("Ethane", 6324, "C2H6", "CC", 30.07, -182.8, -88.6, 0.548),
+        ("Propane", 6334, "C3H8", "CCC", 44.097, -187.7, -42.1, 0.582),
+        ("Butane", 7843, "C4H10", "CCCC", 58.124, -138.4, -0.5, 0.601),
+        ("Pentane", 8003, "C5H12", "CCCCC", 72.151, -129.8, 36.1, 0.626),
+    ]:
+        ikey = generate_inchikey(smi)
+        db[ikey] = {
+            "inchi_key": ikey, "cid": cid, "name": name, "formula": formula, "smiles": smi, "charge": 0, "mw": mw,
+            "mp_c": mp, "bp_c": bp, "density": d, "solubility": "immiscible", "ghs": ["H220"] if name != "Pentane" else ["H225"],
+            "tier": "tabulated", "source": "CRC Handbook",
+        }
 
     return db

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "g:CO2",
+    "identity": {
+      "formula": "CO2",
+      "charge": 0,
+      "inchikey": "CURLTQBHLGFTAB-UHFFFAOYSA-N",
+      "smiles": "O=C=O",
+      "names": [
+        "carbon dioxide"
+      ]
+    },
+    "phases": {
+      "g": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NASA CEA",
+          "dfH": {
+            "value": -393.51,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          },
+          "cp": {
+            "value": 37.1,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "g:O2",
+    "identity": {
+      "formula": "O2",
+      "charge": 0,
+      "inchikey": "MYMOFIZGZYHOMD-UHFFFAOYSA-N",
+      "smiles": "O=O",
+      "names": [
+        "oxygen"
+      ]
+    },
+    "phases": {
+      "g": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NASA CEA",
+          "dfH": {
+            "value": 0.0,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          },
+          "cp": {
+            "value": 29.4,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          }
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  }
+]

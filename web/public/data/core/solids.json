@@ -1,0 +1,266 @@
+[
+  {
+    "id": "s:AgCl:cerargyrite",
+    "identity": {
+      "formula": "AgCl",
+      "charge": 0,
+      "names": [
+        "silver chloride",
+        "cerargyrite"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -127.07,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 50.8,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        },
+        "rho": {
+          "value": 5.56,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        },
+        "polymorph": "cerargyrite"
+      }
+    },
+    "points": [
+      {
+        "kind": "solubility",
+        "solvent": "water",
+        "T_K": 298.15,
+        "value": 0.0019,
+        "unit": "g/L",
+        "tier": "tabulated",
+        "source": "llnl.dat"
+      }
+    ],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "s:PbI2:solid",
+    "identity": {
+      "formula": "PbI2",
+      "charge": 0,
+      "names": [
+        "lead(II) iodide"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -175.5,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          },
+          "cp": {
+            "value": 77.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          }
+        },
+        "rho": {
+          "value": 6.16,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [
+      {
+        "kind": "solubility",
+        "solvent": "water",
+        "T_K": 298.15,
+        "value": 0.76,
+        "unit": "g/L",
+        "tier": "tabulated",
+        "source": "llnl.dat"
+      }
+    ],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "s:BaSO4:barite",
+    "identity": {
+      "formula": "BaSO4",
+      "charge": 0,
+      "names": [
+        "barium sulfate",
+        "barite"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -1473.2,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          },
+          "cp": {
+            "value": 101.8,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          }
+        },
+        "rho": {
+          "value": 4.5,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "s:CaCO3:calcite",
+    "identity": {
+      "formula": "CaCO3",
+      "charge": 0,
+      "names": [
+        "calcium carbonate",
+        "calcite"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -1207.6,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          },
+          "cp": {
+            "value": 81.9,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          }
+        },
+        "rho": {
+          "value": 2.71,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "s:Fe(OH)3:solid",
+    "identity": {
+      "formula": "Fe(OH)3",
+      "charge": 0,
+      "names": [
+        "iron(III) hydroxide"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -823.0,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          },
+          "cp": {
+            "value": 105.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          }
+        },
+        "rho": {
+          "value": 3.4,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "s:ZnF2:solid",
+    "identity": {
+      "formula": "ZnF2",
+      "charge": 0,
+      "names": [
+        "zinc fluoride"
+      ]
+    },
+    "phases": {
+      "s": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "PHREEQC llnl.dat",
+          "dfH": {
+            "value": -764.4,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          },
+          "cp": {
+            "value": 65.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "llnl.dat"
+          }
+        },
+        "rho": {
+          "value": 4.95,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [],
+    "acid_base": [],
+    "redox": []
+  }
+]

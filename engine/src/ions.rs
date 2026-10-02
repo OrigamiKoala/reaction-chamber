@@ -123,13 +123,43 @@ pub fn split_charge(species: &str) -> (&str, i32) {
 
 /// Charge of a species id, e.g. "PO4-3" -> -3.
 pub fn species_charge(species: &str) -> i32 {
-    split_charge(species).1
+    let (body, q) = split_charge(species.trim().trim_end_matches("(aq)"));
+    match pseudo_species(body) {
+        Some((_, Some(c))) => c,
+        _ => q,
+    }
+}
+
+/// Pseudo-species of the engine (indicator dyes, starch) and the molecular formula of each: id body (no charge) ->
+/// (formula, charge override for ids that carry no charge suffix). Structural formulas of the real compounds, so
+/// element and charge ledgers cover them: phenolphthalein C20H14O4, bromothymol blue C27H28Br2O5S, methyl orange
+/// C14H15N3O3S (acid form), methyl red C15H15N3O2, starch as one anhydroglucose unit C6H10O5 and its triiodide complex.
+const PSEUDO_SPECIES: &[(&str, &str, Option<i32>)] = &[
+    ("HIn_phph", "C20H14O4", None),
+    ("In_phph", "C20H13O4", None),
+    ("HIn_btb", "C27H28Br2O5S", None),
+    ("In_btb", "C27H27Br2O5S", None),
+    ("HIn_mo", "C14H15N3O3S", None),
+    ("In_mo", "C14H14N3O3S", None),
+    ("HIn_mr", "C15H15N3O2", None),
+    ("In_mr", "C15H14N3O2", None),
+    ("starch", "C6H10O5", None),
+    ("starch_I3", "C6H10O5I3", Some(-1)),
+];
+
+fn pseudo_species(body: &str) -> Option<(&'static str, Option<i32>)> {
+    PSEUDO_SPECIES.iter().find(|(id, _, _)| *id == body).map(|(_, f, c)| (*f, *c))
 }
 
 /// Element counts of a species id (charge and phase tags ignored).
 pub fn species_elements(species: &str) -> Option<HashMap<String, f64>> {
-    let s = species.trim().trim_end_matches("(s)").trim_end_matches("(g)").trim_end_matches("(aq)");
+    let s = species.trim().trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)").trim_end_matches("(aq)");
+    // isomer tag of an inert compound id ("C2H6O#LCGLNKUT"): identity only, the formula is what comes before it
+    let s = s.split('#').next().unwrap_or(s);
     let (body, _) = split_charge(s);
+    if let Some((formula, _)) = pseudo_species(body) {
+        return parse_formula_strict(formula);
+    }
     parse_formula_strict(body)
 }
 

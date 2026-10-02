@@ -1,4 +1,4 @@
-// Property card for PubChem-imported compounds (visual only): sourced values + user overrides.
+// Property card for PubChem-imported compounds: sourced values + user overrides (the engine re-models the compound on save).
 import { BottleState } from '../types';
 import { saveUserOverride, getUserOverrides } from '../pubchem/cache';
 import { splitSaltsAndHydrates } from '../pubchem/splitter';
@@ -61,12 +61,14 @@ export class BottleCard {
 
     this.modal.body.innerHTML = `
       <p class="bc-sub"><span class="mono">${esc(prettyFormula(b.formula))}</span> · ${b.mw ? b.mw.toFixed(2) + ' g/mol' : ''}${b.cid ? ` · CID ${b.cid}` : ''}</p>
-      <p class="add-note">Visual only — imported from PubChem, so it has no reaction data.</p>
+      <p class="add-note">Imported from PubChem. The engine derives melting, boiling and dissolving from these values; blank means PubChem had none.</p>
       ${hz.length ? `<p class="add-hazard is-warning"><span class="hz-dot" aria-hidden="true"></span>${esc(hz.join(', '))}</p>` : ''}
       <form class="form" novalidate>
         <div class="form-grid">
           ${FIELDS.map((f) => {
-            const src = b.sourcedProperties[f.key];
+            // mp / bp / density that PubChem did not give are placeholders in the record: show them as missing, not as data.
+            const missing = (f.key === 'mp_c' || f.key === 'bp_c' || f.key === 'density') && b.sourcedProperties.known?.[f.key] === false;
+            const src = missing ? undefined : b.sourcedProperties[f.key];
             const cur = ov[f.key] !== undefined ? ov[f.key] : src;
             return `<label class="f">${f.label}${ov[f.key] !== undefined ? ' <span class="tag tag-user">edited</span>' : ''}
               <input name="${f.key}" type="${f.type}" ${f.step ? `step="${f.step}"` : ''} value="${esc(String(cur ?? ''))}" />

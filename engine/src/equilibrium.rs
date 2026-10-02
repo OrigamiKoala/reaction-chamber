@@ -1,7 +1,7 @@
 use crate::types::{EquilibriumResult, ProvenanceTier, TitrationCurve, TitrationPoint};
 use std::collections::HashMap;
 
-pub const R_IDEAL: f64 = 8.314462618; // J/(mol*K)
+pub const R_IDEAL: f64 = crate::physics::R_GAS; // J/(mol*K)
 pub const KW_298: f64 = 1.008e-14;
 pub const KSP_AGCL_298: f64 = 1.77e-10;
 

@@ -1,0 +1,301 @@
+[
+  {
+    "id": "ik:LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+    "identity": {
+      "formula": "C2H6O",
+      "charge": 0,
+      "inchikey": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+      "smiles": "CCO",
+      "cas": "64-17-5",
+      "cid": 702,
+      "names": [
+        "ethanol"
+      ]
+    },
+    "phases": {
+      "l": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -277.69,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 112.3,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        },
+        "rho": {
+          "value": 0.789,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      },
+      "g": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NASA CEA",
+          "dfH": {
+            "value": -235.3,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          },
+          "cp": {
+            "value": 65.4,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          }
+        }
+      }
+    },
+    "critical": {
+      "Tc": {
+        "value": 514.0,
+        "unit": "K",
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      },
+      "Pc": {
+        "value": 6140000.0,
+        "unit": "Pa",
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      }
+    },
+    "points": [
+      {
+        "kind": "tb",
+        "T_K": 351.44,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      },
+      {
+        "kind": "psat",
+        "T_K": 351.44,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      },
+      {
+        "kind": "tm",
+        "T_K": 159.0,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      }
+    ],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ik:XLYOFNOQVPJJNP-UHFFFAOYSA-N",
+    "identity": {
+      "formula": "H2O",
+      "charge": 0,
+      "inchikey": "XLYOFNOQVPJJNP-UHFFFAOYSA-N",
+      "smiles": "O",
+      "cas": "7732-18-5",
+      "cid": 962,
+      "names": [
+        "water"
+      ]
+    },
+    "phases": {
+      "l": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "IAPWS / NBS",
+          "dfH": {
+            "value": -285.83,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 75.38,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        },
+        "rho": {
+          "value": 0.997,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "IAPWS"
+        }
+      },
+      "g": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NASA CEA",
+          "dfH": {
+            "value": -241.82,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          },
+          "cp": {
+            "value": 33.6,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          }
+        }
+      }
+    },
+    "points": [
+      {
+        "kind": "tb",
+        "T_K": 373.15,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "IAPWS"
+      },
+      {
+        "kind": "tm",
+        "T_K": 273.15,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "IAPWS"
+      }
+    ],
+    "acid_base": [],
+    "redox": []
+  },
+  {
+    "id": "ik:QTBSBXVTEAMEQO-UHFFFAOYSA-N",
+    "identity": {
+      "formula": "C2H4O2",
+      "charge": 0,
+      "inchikey": "QTBSBXVTEAMEQO-UHFFFAOYSA-N",
+      "smiles": "CC(=O)O",
+      "cas": "64-19-7",
+      "cid": 176,
+      "names": [
+        "acetic acid"
+      ]
+    },
+    "phases": {
+      "l": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NBS Tables",
+          "dfH": {
+            "value": -484.5,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          },
+          "cp": {
+            "value": 124.0,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NBS Tables"
+          }
+        },
+        "rho": {
+          "value": 1.049,
+          "unit": "g/mL",
+          "tier": "tabulated",
+          "source": "CRC Handbook"
+        }
+      }
+    },
+    "points": [
+      {
+        "kind": "tb",
+        "T_K": 391.2,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      },
+      {
+        "kind": "tm",
+        "T_K": 289.8,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      }
+    ],
+    "acid_base": [
+      {
+        "site": "carboxyl",
+        "pKa": {
+          "value": 4.756,
+          "unit": "pKa",
+          "tier": "tabulated",
+          "source": "PHREEQC"
+        }
+      }
+    ],
+    "redox": []
+  },
+  {
+    "id": "ik:BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+    "identity": {
+      "formula": "C2H6O",
+      "charge": 0,
+      "inchikey": "BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+      "smiles": "COC",
+      "cas": "115-10-6",
+      "cid": 8254,
+      "names": [
+        "dimethyl ether"
+      ]
+    },
+    "phases": {
+      "g": {
+        "thermo": {
+          "model": "point+cp",
+          "tier": "tabulated",
+          "source": "NASA CEA",
+          "dfH": {
+            "value": -184.1,
+            "unit": "kJ/mol",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          },
+          "cp": {
+            "value": 65.6,
+            "unit": "J/(mol K)",
+            "tier": "tabulated",
+            "source": "NASA CEA"
+          }
+        }
+      }
+    },
+    "points": [
+      {
+        "kind": "tb",
+        "T_K": 249.1,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      },
+      {
+        "kind": "tm",
+        "T_K": 131.7,
+        "P_Pa": 101325,
+        "tier": "tabulated",
+        "source": "NIST WebBook"
+      }
+    ],
+    "acid_base": [],
+    "redox": []
+  }
+]

@@ -91,7 +91,7 @@ def test_m5_optics_copper_tetrammine_color():
     assert b > g, "Blue dominates over green"
 
 def test_m5_optics_phenolphthalein_switch():
-    """HIn_phph is colorless; In_phph-2 is deep magenta / pink."""
+    """HIn_phph is colorless; In_phph- is deep magenta / pink."""
     in_bands = [{"centre_nm": 552.0, "fwhm_nm": 50.0, "eps": 31000.0}]
     # 5e-5 M indicator (dilute drop)
     a_acid = [0.0] * N_BINS

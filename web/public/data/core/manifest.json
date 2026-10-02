@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-10-02T12:00:00Z",
+  "sources": {
+    "nbs-tables": {
+      "name": "NBS Tables of Chemical Thermodynamic Properties",
+      "licence": "NIST Open License / Public Domain",
+      "url": "https://data.nist.gov/od/id/mds2-2124"
+    },
+    "phreeqc-llnl": {
+      "name": "USGS PHREEQC llnl.dat",
+      "licence": "USGS Public Domain",
+      "url": "https://www.usgs.gov/software/phreeqc-version-3"
+    },
+    "nasa-cea": {
+      "name": "NASA CEA thermo.inp",
+      "licence": "Apache-2.0",
+      "url": "https://www.grc.nasa.gov/WWW/CEAWeb/"
+    },
+    "curated-bench": {
+      "name": "Reaction Chamber Curated Bench Compilation",
+      "licence": "MIT",
+      "url": "https://github.com/OrigamiKoala/reaction-chamber"
+    }
+  },
+  "counts": {
+    "total": 17,
+    "ions": 5,
+    "solids": 6,
+    "gases": 2,
+    "organics": 4
+  },
+  "shards": [
+    "ions",
+    "solids",
+    "gases",
+    "organics"
+  ]
+}

@@ -58,6 +58,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         label: "La(NO3)3".to_string(),
         by_mass: false,
         dropper: None,
+        inchi_key: None,
     });
 
     // 3. Dose 25 mL of La(NO3)3 (2.5e-3 mol La3+)
@@ -109,6 +110,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         label: "HCl 1 M".to_string(),
         by_mass: false,
         dropper: None,
+        inchi_key: None,
     });
 
     // 10 mL of 1 M HCl = 0.010 mol H+, enough to neutralize OH- and completely dissolve La(OH)3
@@ -137,6 +139,7 @@ fn test_arbitrary_custom_kinetic_reaction_network() {
         reactants: [("EtAc".to_string(), 1.0), ("OH-".to_string(), 1.0)].into(),
         products: [("C2H5OH".to_string(), 1.0), ("CH3COO-".to_string(), 1.0)].into(),
         gas_products: HashMap::new(),
+        orders: None,
         arrhenius_a: 5.0e7,
         arrhenius_n: 0.0,
         arrhenius_ea: 48000.0, // J/mol
@@ -168,6 +171,7 @@ fn test_arbitrary_custom_kinetic_reaction_network() {
         label: "EtAc Alkaline".to_string(),
         by_mass: false,
         dropper: None,
+        inchi_key: None,
     });
 
     v.dose(DoseRequest {

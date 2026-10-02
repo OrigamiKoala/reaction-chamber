@@ -2093,6 +2093,11 @@ kbd {
   color: #1f7a52;
 }
 
+.tier-imported {
+  background: var(--teal-wash);
+  color: var(--teal-ink);
+}
+
 .tier-estimated {
   background: var(--amber-wash);
   color: #7a4705;

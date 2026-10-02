@@ -48,7 +48,9 @@ pub fn tables_json() -> String {
     let weights_vec: Vec<f64> = RGB_WEIGHTS.to_vec();
     serde_json::json!({
         "n_bins": N_BINS,
-        "rgb_weights": weights_vec
+        "rgb_weights": weights_vec,
+        // hash of every absorption band: caches of colours derived from the optics data key on it
+        "data_version": format!("{:016x}", spectra::data_hash())
     }).to_string()
 }
 

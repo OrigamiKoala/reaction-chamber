@@ -8,6 +8,9 @@ import {
   ReagentCatalogEntry,
   CompoundRequest,
   CompoundModel,
+  MineralLookup,
+  MineralData,
+  MineralResolution,
 } from '../types/sim';
 
 export class SimController {
@@ -178,6 +181,16 @@ export class SimController {
   /** Models an imported compound (formula-driven) as a reacting reagent and registers it with the engine. */
   public async importCompound(req: CompoundRequest): Promise<CompoundModel> {
     return this.sendRequest<CompoundModel>('IMPORT_COMPOUND', req);
+  }
+
+  /** Drains the engine's queue of solids whose Ksp is only a rule-of-thumb guess (each call clears it). */
+  public async takeMineralLookups(): Promise<MineralLookup[]> {
+    return this.sendRequest<MineralLookup[]>('TAKE_MINERAL_LOOKUPS');
+  }
+
+  /** Feeds looked-up (PubChem) solubility / appearance data for a solid back to the engine. */
+  public async resolveMineral(data: MineralData): Promise<MineralResolution> {
+    return this.sendRequest<MineralResolution>('RESOLVE_MINERAL', data);
   }
 
   public async registerCustomReaction(rxn: any): Promise<any> {

@@ -1,0 +1,18 @@
+after doses: T=298.29 pH=7.206 I=0.347
+  log Kw resid = 0.0045
+  carbonic1 resid = 0.0007
+  bicarb2 resid = 0.0012
+  NH3 resid = 0.0003
+  species count 71 solids AgCl(s),CaCO3(s),CaHPO4(s),CuCO3(s)
+  reactions in log: water_autoionization,bicarbonate_dissoc2,carbonic_acid_dissoc1,ammonia_hydrolysis,HPO4_dissoc_3,H2PO4_dissoc_2,H3PO4_dissoc_1,HSO4_dissoc,copper_tetraammine,silver_diammine,acetic_acid_dissoc
+after 10 s: T=298.28 pH=7.213 I=0.347
+  log Kw resid = 0.0044
+  carbonic1 resid = 0.0007
+  bicarb2 resid = 0.0012
+  NH3 resid = 0.0003
+  species count 72 solids AgCl(s),CaCO3(s),CaHPO4(s),CuCO3(s)
+  reactions in log: baking_soda_vinegar,sn2_AgCl(s)_Cu(NH3)4+2,acetic_acid_dissoc,carbonic_acid_dissoc1,bicarbonate_dissoc2,copper_tetraammine,HSO4_dissoc,H2PO4_dissoc_2,water_autoionization,ammonia_hydrolysis,silver_diammine
+vessel_step cost: 23.291 ms/step (busy mixture)
+vessel_step cost: 0.586 ms/step (pure water)
+vessel_snapshot cost: 0.148 ms
+small dose (settle_after_addition) cost: 33.026 ms

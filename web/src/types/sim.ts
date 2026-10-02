@@ -14,6 +14,8 @@ export interface OpticsTables {
   n_bins: number;
   /** length N_BINS*3. Linear-sRGB weights per bin (illuminant D65, white-balanced so a bin-wise T=1 gives rgb=(1,1,1)). */
   rgb_weights: number[];
+  /** Hash of the engine's absorption-band data: caches of derived colours (bottle colours) key on it. */
+  data_version?: string;
 }
 
 export type PhaseKind = 'aqueous' | 'organic';
@@ -148,11 +150,25 @@ export interface ReactionRow {
   active: boolean;
 }
 
+/** One element's discrepancy against the vessel's cumulative ledger (added - removed). */
+export interface ElementError {
+  element: string;
+  expected_mol: number;
+  actual_mol: number;
+  abs_err_mol: number;
+  rel_err: number;
+}
+
 export interface ConservationInfo {
+  /** Every element within 1e-6 relative of the ledger and the net charge within tolerance. */
   ok: boolean;
   max_element_rel_err: number;
+  max_element_abs_err_mol: number;
   charge_err_mol: number;
-  energy_rel_err: number;
+  /** Elements with a non-zero discrepancy (usually only numerical dust). */
+  element_errors: ElementError[];
+  /** Species whose formula cannot be parsed: their atoms are not covered by the element check. */
+  unverified_species: string[];
 }
 
 export type CollectorKind = 'syringe' | 'over_water' | 'jar';
@@ -271,6 +287,8 @@ export interface VesselControls {
   igniter?: boolean;
   /** Direct burner flame heating, watts (0 = off). */
   burner_w?: number;
+  /** Debug: enable the substring-matched organic network generator (off by default, Stage 9 replaces it). */
+  debug_network_generator?: boolean;
 }
 
 export interface ReagentCatalogEntry {
@@ -292,6 +310,8 @@ export interface ReagentCatalogEntry {
   by_mass: boolean;
   /** Hint for UI: dropper bottle (indicators) dosed in drops. */
   dropper?: boolean;
+  /** InChIKey of the main species (identity; absent for pseudo-reagents such as starch solution). */
+  inchi_key?: string;
 }
 
 /** Messages the simulation worker understands (added to the existing PING/WASM_ROUNDTRIP/... set). */
@@ -311,7 +331,9 @@ export type SimRequest =
   | { type: 'VESSEL_EQUILIBRATE'; payload: { handle: number; max_sim_s?: number }; requestId: string }
   | { type: 'STEP_ALL'; payload: { handles: number[]; dt_s: number }; requestId: string }
   | { type: 'OPTICS_TABLES'; payload: {}; requestId: string }
-  | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string };
+  | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string }
+  | { type: 'TAKE_MINERAL_LOOKUPS'; payload: {}; requestId: string }
+  | { type: 'RESOLVE_MINERAL'; payload: MineralData; requestId: string };
 
 /** Request to model an imported compound as a reacting reagent (engine `import_compound`). */
 export interface CompoundRequest {
@@ -319,21 +341,127 @@ export interface CompoundRequest {
   name: string;
   formula: string;
   smiles?: string;
+  /** Standard InChIKey: identity. The engine matches built-in molecules and keys inert compounds on it. */
+  inchi_key?: string;
+  /** CAS registry number (secondary identity). */
+  cas?: string;
   mw?: number;
+  /** g/mL (solid / room-temperature value, or the only one PubChem gave). */
   density?: number;
+  /**
+   * Physical state hint only (PubChem text): the engine derives the phase from the melting / vapour-pressure data
+   * and uses this solely when it has neither.
+   */
   state?: 'solid' | 'liquid' | 'gas';
   molarity?: number;
   ghs?: string[];
+  // --- compound thermodynamic data (COMPOUND_PHASE_PLAN.md contract); each omitted when PubChem has nothing ---
+  // Only (nearly) pressure-independent values or points of a curve: the engine derives boiling, melting and phase.
+  /** Measured points [T kelvin, P pascal] of the vapour-pressure curve; includes the 1-atm normal boiling point (Tb, 101325). None = non-volatile. */
+  vapor_pressure_points?: Array<[number, number]>;
+  /** Molar heat of vaporization, kJ/mol, and the temperature (K) it was measured at. */
+  dh_vap_kj_mol?: number;
+  dh_vap_at_k?: number;
+  /** Melting point at ~1 atm, kelvin (one point on the solid-liquid curve). */
+  t_melt_ref_k?: number;
+  /** Molar heat of fusion, kJ/mol. */
+  dh_fus_kj_mol?: number;
+  /** Standard heat of combustion, kJ/mol (negative = exothermic). */
+  dh_comb_kj_mol?: number;
+  /** Water, ~25 C, g/L. */
+  solubility_g_per_l?: number;
+  /** Enthalpy of solution, kJ/mol. */
+  dh_sol_kj_mol?: number;
+  /** Standard entropy S° (J/(mol K)). */
+  s_j_mol_k?: number;
+  /** Molar heat capacity at 298 K (J/(mol K)). */
+  cp_j_mol_k?: number;
+  /** Heat capacity polynomial coefficients. */
+  cp_coefficients?: number[];
+  /** LINEAR (not sRGB) rgb, 0..1. */
+  color_linear_rgb?: [number, number, number];
 }
 
-/** Engine's answer: `modelable=false` means the compound stays visual-only. */
+/** Derived thermodynamic record of a compound (engine response). */
+export interface CompoundThermo {
+  /** Standard enthalpy of formation, kJ/mol (derived from the heat of combustion for CHNOS compounds). */
+  dhf_kj_mol?: number;
+  dh_vap_kj_mol?: number;
+  dh_fus_kj_mol?: number;
+  /** DERIVED: temperature where the fitted vapour pressure reaches 1 atm / the melting temperature at 1 atm. */
+  normal_bp_k?: number;
+  normal_mp_k?: number;
+  /** Names of quantities that are estimates (Trouton, Walden, ...), not data. */
+  estimated: string[];
+}
+
+/** Engine's answer: `modelable=false` (unparseable formula / unknown element) means the compound stays visual-only. */
 export interface CompoundModel {
   modelable: boolean;
   /** Human-readable explanation, e.g. "Modelled as salt: K+ + Cl-". */
   reason: string;
-  kind: 'salt' | 'acid' | 'base' | 'molecule' | 'none';
+  kind: 'salt' | 'acid' | 'base' | 'molecule' | 'inert' | 'none';
   entry: ReagentCatalogEntry | null;
   species: Array<[string, number]>;
   mw: number;
   by_mass: boolean;
+  /** Phase at 298.15 K, 1 atm derived from the fitted curves (absent until the engine lands the compound-phase contract). */
+  state_at_room?: 'solid' | 'liquid' | 'gas';
+  /**
+   * How the engine models the compound: 'ionic' (dissociating salt), 'neutral' (known molecule with reaction
+   * chemistry), 'inert' (physically present - phases, heat, boil-off, dissolution - but not reacting; `modelable` is true).
+   */
+  phase_model?: 'ionic' | 'neutral' | 'inert';
+  /** Derived thermodynamics (absent until the engine lands the compound-phase contract). */
+  thermo?: CompoundThermo;
+}
+
+/** A solid the engine formed with only a rule-of-thumb Ksp: the app should look it up (engine `take_mineral_lookups`). */
+export interface MineralLookup {
+  /** Species id, e.g. "PbI2(s)". */
+  solid_species: string;
+  /** Formula as written, may contain parentheses ("Pb(NO3)2"). */
+  formula: string;
+  /** Hill-order formula without parentheses ("I2Pb"): use for PubChem fastformula. */
+  hill_formula: string;
+  cation: string;
+  anion: string;
+  n_c: number;
+  n_a: number;
+  molar_mass: number;
+  tier: 'speculative' | 'estimated';
+}
+
+/** Looked-up data for a solid (engine `resolve_mineral`). Engine picks Ksp by priority log_ksp > solubility > qualitative. */
+export interface MineralData {
+  solid_species: string;
+  cid?: number;
+  name?: string;
+  /** Water, ~25 C, g of solid per litre of solution. */
+  solubility_g_per_l?: number;
+  /** Explicit literature value, if the record states one. */
+  log_ksp?: number;
+  qualitative?:
+    | 'very_soluble'
+    | 'freely_soluble'
+    | 'soluble'
+    | 'sparingly_soluble'
+    | 'slightly_soluble'
+    | 'very_slightly_soluble'
+    | 'practically_insoluble';
+  /** LINEAR (not sRGB) rgb, 0..1. */
+  color_linear_rgb?: [number, number, number];
+  density_g_ml?: number;
+  kind?: 'powder' | 'curds' | 'gel' | 'crystal';
+  /** e.g. "PubChem CID 24931". */
+  source: string;
+}
+
+export interface MineralResolution {
+  registered: boolean;
+  id: string;
+  log_ksp: number | null;
+  tier: string;
+  source: string;
+  detail: string;
 }

@@ -1,0 +1,21 @@
+// P5: generated rate constants are frozen at generation T and pH (A = k(T_gen), Ea = 0)
+import { vessel, dose, snap, step, ctl } from './common.mjs';
+const rate = (h, id) => snap(h).reactions.find((r) => r.id === id)?.rate ?? 0;
+const conc = (h, id) => snap(h).species.find((r) => r.id === id)?.conc_m ?? 0;
+const id = 'keto_enol_tautomerism_CH3COOH';
+const h = vessel();
+dose(h, { reagent_id: 'ch3cooh_5pct', volume_ml: 20 });
+dose(h, { reagent_id: 'hcl_1m', volume_ml: 20 });
+step(h, 1);
+const k0 = rate(h, id) / conc(h, 'CH3COOH');
+console.log(`298 K, pH ${snap(h).ph.toFixed(2)}: k_obs = ${k0.toExponential(3)} s^-1`);
+ctl(h, { bath_k: 348.15 });
+for (let i = 0; i < 600; i++) step(h, 1);
+const k1 = rate(h, id) / conc(h, 'CH3COOH');
+console.log(`after bath -> ${snap(h).temperature_k.toFixed(1)} K: k_obs = ${k1.toExponential(3)} s^-1 (Ea 70 kJ/mol predicts x${Math.exp(70000 / 8.314 * (1 / 298.15 - 1 / snap(h).temperature_k)).toFixed(0)})`);
+ctl(h, { bath_k: 298.15 });
+for (let i = 0; i < 600; i++) step(h, 1);
+dose(h, { reagent_id: 'naoh_1m', volume_ml: 19.9 });
+step(h, 1);
+const k2 = rate(h, id) / conc(h, 'CH3COOH');
+console.log(`after neutralising to pH ${snap(h).ph.toFixed(2)} at ${snap(h).temperature_k.toFixed(1)} K: k_obs = ${k2.toExponential(3)} s^-1 (template catalysis predicts x${((10 * 10 ** -snap(h).ph + 1e-4 + 10 * 10 ** (snap(h).ph - 14)) / (10 * 10 ** -0.3 + 1e-4)).toExponential(1)})`);

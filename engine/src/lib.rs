@@ -9,8 +9,13 @@ pub mod benchmark;
 pub mod optics;
 pub mod spectra;
 pub mod ions;
+pub mod acid_estimate;
+pub mod smiles;
+pub mod vapour;
 pub mod solubility;
 pub mod compound_model;
+pub mod compound_thermo;
+pub mod vessel_phase;
 pub mod chem_db;
 pub mod vessel;
 pub mod vessel_ext;
@@ -18,6 +23,10 @@ pub mod gas;
 pub mod vessel_eq;
 pub mod templates;
 pub mod network_generator;
+pub mod db;
+pub mod thermo;
+pub mod gem;
+pub mod energy_balance;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
@@ -391,6 +400,12 @@ pub fn optics_tables_json() -> String {
     optics::tables_json()
 }
 
+/// Hash of the engine's optics data (absorption bands): a cache key for anything derived from solution colours.
+#[wasm_bindgen]
+pub fn optics_data_version() -> String {
+    format!("{:016x}", spectra::data_hash())
+}
+
 #[wasm_bindgen]
 pub fn reagent_catalog_json() -> String {
     serde_json::to_string(&chem_db::get_reagent_catalog()).unwrap_or_else(|_| "[]".to_string())
@@ -422,10 +437,22 @@ pub fn import_compound(req_json: &str) -> Result<JsValue, JsValue> {
     if let Some(min) = &model.mineral {
         chem_db::register_custom_mineral(min.clone());
     }
+    if let Some(c) = &model.compound {
+        chem_db::register_custom_compound(c.clone());
+    }
+    for eq in &model.equilibria {
+        chem_db::register_custom_equilibrium(eq.clone());
+    }
     with_vessels(|map| {
         for v in map.values_mut() {
+            for eq in &model.equilibria {
+                v.register_equilibrium(eq.clone());
+            }
             if let Some(entry) = &model.entry {
                 v.register_reagent(entry.clone());
+            }
+            if let Some(c) = &model.compound {
+                v.register_compound(c.clone());
             }
             if let Some(min) = &model.mineral {
                 v.register_mineral(min.clone());
@@ -437,27 +464,30 @@ pub fn import_compound(req_json: &str) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn register_reaction(rxn_json: &str) -> Result<JsValue, JsValue> {
-    let rxn: chem_db::GeneralKineticRxn = serde_json::from_str(rxn_json)
+    let mut rxn: chem_db::GeneralKineticRxn = serde_json::from_str(rxn_json)
         .map_err(|e| JsValue::from_str(&format!("Invalid GeneralKineticRxn: {}", e)))?;
+    // element + charge balance check: an unbalanced / unverifiable reaction is demoted to Speculative with a warning
+    let warning = chem_db::audit_kinetic_reaction(&mut rxn);
     chem_db::register_custom_kinetic_rxn(rxn.clone());
     with_vessels(|map| {
         for v in map.values_mut() {
             v.register_kinetic_reaction(rxn.clone());
         }
-        serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": rxn.id}))
+        serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": rxn.id, "tier": rxn.tier.as_str(), "warning": warning}))
     })
 }
 
 #[wasm_bindgen]
 pub fn register_equilibrium(eq_json: &str) -> Result<JsValue, JsValue> {
-    let eq: chem_db::GeneralEquilibrium = serde_json::from_str(eq_json)
+    let mut eq: chem_db::GeneralEquilibrium = serde_json::from_str(eq_json)
         .map_err(|e| JsValue::from_str(&format!("Invalid GeneralEquilibrium: {}", e)))?;
+    let warning = chem_db::audit_equilibrium(&mut eq);
     chem_db::register_custom_equilibrium(eq.clone());
     with_vessels(|map| {
         for v in map.values_mut() {
             v.register_equilibrium(eq.clone());
         }
-        serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": eq.id}))
+        serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": eq.id, "tier": eq.tier.as_str(), "warning": warning}))
     })
 }
 
@@ -472,6 +502,136 @@ pub fn register_mineral(min_json: &str) -> Result<JsValue, JsValue> {
         }
         serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": min.id}))
     })
+}
+
+/// Solids whose Ksp is a guess and should be looked up externally (PubChem); drains the queue.
+#[wasm_bindgen]
+pub fn take_mineral_lookups() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen_to_val(&solubility::take_lookups())
+}
+
+/// Applies externally found solubility / appearance data (see `solubility::MineralData`) to a guessed solid and
+/// registers the improved mineral with the engine and every open vessel.
+#[wasm_bindgen]
+pub fn resolve_mineral(data_json: &str) -> Result<JsValue, JsValue> {
+    let data: solubility::MineralData = serde_json::from_str(data_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid MineralData: {}", e)))?;
+    let res = solubility::resolve_mineral(&data);
+    if let Some(min) = &res.mineral {
+        chem_db::register_custom_mineral(min.clone());
+        with_vessels(|map| {
+            for v in map.values_mut() {
+                v.register_mineral(min.clone());
+            }
+            Ok(())
+        })?;
+    }
+    serde_wasm_bindgen_to_val(&res)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct PropertyRequest {
+    pub species_id: String,
+    pub identity: db::Identity,
+    pub kinds: Vec<String>,
+    pub reason: String,
+    pub current_tier: types::ProvenanceTier,
+}
+
+static PROPERTY_REQUESTS: Mutex<Vec<PropertyRequest>> = Mutex::new(Vec::new());
+
+pub fn queue_property_request(req: PropertyRequest) {
+    if let Ok(mut queue) = PROPERTY_REQUESTS.lock() {
+        if !queue.iter().any(|r| r.species_id == req.species_id) {
+            queue.push(req);
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn register_species(species_json: &str) -> Result<JsValue, JsValue> {
+    let rec: db::SpeciesRecord = serde_json::from_str(species_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid SpeciesRecord: {}", e)))?;
+    let id = rec.id.clone();
+    if let Ok(mut store) = db::SpeciesStore::global().write() {
+        store.register(rec);
+    }
+    serde_wasm_bindgen_to_val(&serde_json::json!({"registered": true, "id": id}))
+}
+
+#[wasm_bindgen]
+pub fn load_database(shard_json: &str) -> Result<JsValue, JsValue> {
+    let count = if let Ok(mut store) = db::SpeciesStore::global().write() {
+        store.load_database_json(shard_json)
+            .map_err(|e| JsValue::from_str(&e))?
+    } else {
+        0
+    };
+    serde_wasm_bindgen_to_val(&serde_json::json!({"loaded": true, "count": count}))
+}
+
+#[wasm_bindgen]
+pub fn species_record(id: &str) -> Result<JsValue, JsValue> {
+    let global = db::SpeciesStore::global();
+    let store = global.read()
+        .map_err(|e| JsValue::from_str(&format!("Lock error: {}", e)))?;
+    if let Some(rec) = store.get(id) {
+        serde_wasm_bindgen_to_val(rec)
+    } else {
+        Ok(JsValue::NULL)
+    }
+}
+
+pub fn get_property_requests() -> Vec<PropertyRequest> {
+    let mut reqs = if let Ok(mut queue) = PROPERTY_REQUESTS.lock() {
+        std::mem::take(&mut *queue)
+    } else {
+        Vec::new()
+    };
+    for m in solubility::take_lookups() {
+        reqs.push(PropertyRequest {
+            species_id: m.solid_species.clone(),
+            identity: db::Identity {
+                inchikey: None,
+                smiles: None,
+                formula: m.formula.clone(),
+                charge: 0,
+                cas: None,
+                cid: None,
+                names: vec![m.formula.clone()],
+                db_names: HashMap::new(),
+            },
+            kinds: vec!["ksp".to_string(), "solubility".to_string()],
+            reason: format!("Guessed Ksp for precipitate {}", m.solid_species),
+            current_tier: types::ProvenanceTier::Speculative,
+        });
+    }
+    reqs
+}
+
+pub fn apply_resolved_properties(records: Vec<db::SpeciesRecord>) -> usize {
+    let mut resolved = 0;
+    if let Ok(mut store) = db::SpeciesStore::global().write() {
+        for rec in records {
+            store.register(rec);
+            resolved += 1;
+        }
+    }
+    resolved
+}
+
+#[wasm_bindgen]
+pub fn take_property_requests() -> Result<JsValue, JsValue> {
+    let reqs = get_property_requests();
+    serde_wasm_bindgen_to_val(&reqs)
+}
+
+#[wasm_bindgen]
+pub fn resolve_properties(records_json: &str) -> Result<JsValue, JsValue> {
+    let records: Vec<db::SpeciesRecord> = serde_json::from_str(records_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid records JSON: {}", e)))?;
+    let resolved = apply_resolved_properties(records);
+    serde_wasm_bindgen_to_val(&serde_json::json!({"resolved": resolved}))
 }
 
 fn serde_wasm_bindgen_to_val<T: Serialize>(val: &T) -> Result<JsValue, JsValue> {

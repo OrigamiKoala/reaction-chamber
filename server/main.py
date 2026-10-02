@@ -161,6 +161,61 @@ def barrier_calibration_check():
     eval_res = GLOBAL_CALIBRATOR.evaluate_held_out()
     return eval_res
 
+# --- Intrinsic Thermodynamic Data & NIST WebBook Proxy Endpoints ---
+from .data_proxy import NistWebBookClient, UnifiedPropertyResolver
+
+class ResolveCompoundRequest(BaseModel):
+    name: str = ""
+    formula: str = ""
+    smiles: str = ""
+    inchikey: str = ""
+    cas: str = ""
+
+@app.get("/api/data/nist-webbook")
+def get_nist_webbook(
+    identifier: str = "",
+    cas: str = "",
+    inchikey: str = "",
+    formula: str = "",
+    name: str = "",
+    _token: str = Depends(verify_token),
+):
+    query_val = cas or inchikey or formula or name or identifier
+    by = "cas" if cas else ("inchikey" if inchikey else ("formula" if formula else "name"))
+    if not query_val:
+        raise HTTPException(status_code=400, detail="Missing identifier for NIST lookup")
+    res = NistWebBookClient.lookup(query_val, by=by)
+    if not res:
+        raise HTTPException(status_code=404, detail="Compound not found in NIST Chemistry WebBook")
+    return res
+
+@app.get("/api/data/properties")
+def get_properties(
+    name: str = "",
+    formula: str = "",
+    smiles: str = "",
+    inchikey: str = "",
+    cas: str = "",
+    _token: str = Depends(verify_token),
+):
+    return UnifiedPropertyResolver.resolve_compound(
+        name=name,
+        formula=formula,
+        smiles=smiles,
+        inchikey=inchikey,
+        cas=cas
+    )
+
+@app.post("/api/data/resolve-compound")
+def resolve_compound(req: ResolveCompoundRequest, _token: str = Depends(verify_token)):
+    return UnifiedPropertyResolver.resolve_compound(
+        name=req.name,
+        formula=req.formula,
+        smiles=req.smiles,
+        inchikey=req.inchikey,
+        cas=req.cas
+    )
+
 # Static frontend serving
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 WEB_SRC = Path(__file__).resolve().parent.parent / "web"

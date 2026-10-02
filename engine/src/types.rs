@@ -1,13 +1,39 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+/// Provenance tier of a value. Serialises as kebab-case ("tabulated", "user-set") to match the web `ProvenanceTier`;
+/// the capitalised spellings used by older data files are still accepted on input.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
 pub enum ProvenanceTier {
+    #[default]
+    #[serde(alias = "Tabulated")]
     Tabulated,
+    /// Taken from an external database record (e.g. PubChem solubility converted to a Ksp).
+    #[serde(alias = "Imported")]
+    Imported,
+    #[serde(alias = "Estimated")]
     Estimated,
+    #[serde(alias = "Speculative")]
     Speculative,
+    #[serde(alias = "Refined")]
     Refined,
+    #[serde(alias = "UserSet", alias = "User-set")]
     UserSet,
+}
+
+impl ProvenanceTier {
+    /// The serialised (kebab-case) spelling.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProvenanceTier::Tabulated => "tabulated",
+            ProvenanceTier::Imported => "imported",
+            ProvenanceTier::Estimated => "estimated",
+            ProvenanceTier::Speculative => "speculative",
+            ProvenanceTier::Refined => "refined",
+            ProvenanceTier::UserSet => "user-set",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

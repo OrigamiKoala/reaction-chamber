@@ -12,9 +12,15 @@ fn beaker() -> Vessel {
 }
 
 fn import(id: &str, name: &str, formula: &str, smiles: Option<&str>, state: &str) -> CompoundModel {
+    import_ik(id, name, formula, smiles, state, None)
+}
+
+/// Import with an InChIKey (identity): molecules the engine has chemistry for are only recognised by it.
+fn import_ik(id: &str, name: &str, formula: &str, smiles: Option<&str>, state: &str, inchi_key: Option<&str>) -> CompoundModel {
     let m = model_compound(&CompoundRequest {
         id: id.into(), name: name.into(), formula: formula.into(), smiles: smiles.map(|s| s.to_string()),
-        mw: None, density: None, state: Some(state.into()), molarity: None, ghs: vec![],
+        inchi_key: inchi_key.map(|s| s.to_string()),
+        mw: None, density: None, state: Some(state.into()), molarity: None, ghs: vec![], ..Default::default()
     });
     if let Some(e) = &m.entry { chem_db::register_custom_reagent(e.clone()); }
     if let Some(min) = &m.mineral { chem_db::register_custom_mineral(min.clone()); }
@@ -131,12 +137,13 @@ fn agcl_dissolves_in_ammonia_but_agi_does_not() {
 }
 
 #[test]
-fn unmodelable_molecules_are_reported() {
+fn molecules_without_chemistry_are_inert_compounds() {
+    // no known reactions: modelled as inert compounds (phases, heat, dissolution), not as visual-only
     let glucose = import("t_glc", "Glucose", "C6H12O6", Some("C(C1C(C(C(C(O1)O)O)O)O)O"), "solid");
-    assert!(!glucose.modelable, "{}", glucose.reason);
+    assert!(glucose.modelable && glucose.phase_model == "inert" && glucose.entry.is_some(), "{}", glucose.reason);
     let urea = import("t_urea", "Urea", "CH4N2O", Some("C(=O)(N)N"), "solid");
-    assert!(!urea.modelable, "urea must not be mistaken for ammonium cyanate");
-    let nh3 = import("t_nh3", "Ammonia", "H3N", Some("N"), "liquid");
+    assert!(urea.modelable && urea.kind == "inert", "urea must not be mistaken for ammonium cyanate: {}", urea.reason);
+    let nh3 = import_ik("t_nh3", "Ammonia", "H3N", Some("N"), "liquid", Some("QGZKDVFQNNGYKY-UHFFFAOYSA-N"));
     assert!(nh3.modelable && nh3.species[0].0 == "NH3", "{:?}", nh3.species);
     let hcl = import("t_hcl", "Hydrochloric acid", "ClH", Some("Cl"), "liquid");
     assert!(hcl.modelable);

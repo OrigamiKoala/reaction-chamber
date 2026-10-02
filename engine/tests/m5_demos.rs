@@ -90,7 +90,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
 
     let init_t = v.temperature_k;
     let snap_init = v.snapshot();
-    let in_dianion_init = *v.species_mol.get("In_phph-2").unwrap_or(&0.0);
+    let in_dianion_init = *v.species_mol.get("In_phph-").unwrap_or(&0.0);
     assert!(in_dianion_init < 1e-9, "Phenolphthalein must be colorless in acid (pH ~ 1.0)");
     assert!(snap_init.ph.unwrap() < 1.5);
 
@@ -117,7 +117,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
     let ph_end = snap_end.ph.unwrap();
     assert!(ph_end >= 8.3 && ph_end <= 11.5, "Endpoint pH {:.2} must be in pink/magenta range", ph_end);
 
-    let in_dianion_end = *v.species_mol.get("In_phph-2").unwrap_or(&0.0);
+    let in_dianion_end = *v.species_mol.get("In_phph-").unwrap_or(&0.0);
     assert!(in_dianion_end > 0.0, "Phenolphthalein dianion (pink/magenta) must be present at endpoint");
 
     // Temperature rise ~ +0.6 K for dilute 0.1 M neutralisation

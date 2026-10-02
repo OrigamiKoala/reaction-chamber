@@ -19,7 +19,7 @@ fn dose_g(v: &mut Vessel, id: &str, g: f64) {
 fn import_solid(id: &str, formula: &str) {
     let m = model_compound(&CompoundRequest {
         id: id.into(), name: id.into(), formula: formula.into(), smiles: None, mw: None, density: None,
-        state: Some("solid".into()), molarity: None, ghs: vec![],
+        state: Some("solid".into()), molarity: None, ghs: vec![], ..Default::default()
     });
     assert!(m.modelable, "{}: {}", id, m.reason);
     if let Some(e) = &m.entry { chem_db::register_custom_reagent(e.clone()); }

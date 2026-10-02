@@ -1,0 +1,59 @@
+
+# P1 pKw(T) of pure water (engine pH*2 and -log([H+][OH-]))  lit: Bandura&Lvov 2006 at Psat
+T=273.15 K  T_after=273.15  pH=5.657  pKw_engine=14.90  pKw_lit=14.95
+T=298.15 K  T_after=298.15  pH=7.000  pKw_engine=14.00  pKw_lit=13.99
+T=333.15 K  T_after=333.15  pH=8.542  pKw_engine=12.97  pKw_lit=13.02
+T=373.15 K  T_after=373.15  pH=9.949  pKw_engine=12.03  pKw_lit=12.26
+T=423.15 K  T_after=423.15  pH=11.33  pKw_engine=11.11  pKw_lit=11.64
+T=473.15 K  T_after=473.15  pH=12.43  pKw_engine=10.38  pKw_lit=11.3
+
+# P2 Ksp(T): equimolar 0.01 M cation + anion, equilibrium [cation] -> s, Ksp_eff
+AgCl T=298.15: [Ag+]=0.0000134 [Cl-]=0.0000134 log IAP=-9.744 pH=7.01
+AgCl T=353.15: [Ag+]=0.000106 [Cl-]=0.000106 log IAP=-7.953 pH=9.29
+Mg(OH)2 T=298.15: [Mg+2]=0.000112 [OH-]=0.000224 log IAP=-11.25 pH=10.4
+Mg(OH)2 T=353.15: [Mg+2]=0.000112 [OH-]=0.000224 log IAP=-11.25 pH=11.9
+CaF2 T=298.15: [Ca+2]=0.000205 [F-]=0.000411 log IAP=-10.46 pH=7.10
+CaF2 T=353.15: [Ca+2]=0.000205 [F-]=0.000411 log IAP=-10.46 pH=9.34
+
+# P3 AgCl saturation with and without 0.5 M KNO3 background (real: s rises ~1.5x by gamma)
+KNO3 0: [Ag+]=0.0000134  I=0.00836  activity(Ag+) reported=0.0000134
+KNO3 0.42 M: [Ag+]=0.0000134  I=0.845  activity(Ag+) reported=0.0000134
+
+# P4 heating 50 g water vs 50 g ethanol, 50 W, 60 s (ideal ratio of dT ~ 1.6 incl. glass)
+water: mass=50.00 g dT=12.59 K
+ethanol: mass=50.00 g dT=19.83 K
+
+# P5 heating 100 mL water vs 100 mL water + 30 g NaCl at 50 W, 60 s (real Cp(26 wt% brine) ~3.3 J/g/K)
+NaCl 0 g: T after dissolution=295.15 (dissolution dT), mass=100.0, heating dT=6.707  solid left=0.00
+NaCl 30 g: T after dissolution=291.56 (dissolution dT), mass=130.0, heating dT=5.425  solid left=0.00
+
+# P6 heat of reaction, two routes
+HCl(aq)+NaOH(aq) 0.05 mol: dT=6.391 K (lit 55.8 kJ/mol -> ~6.2 K with this glass)
+HCl(aq)+NaOH(s) 0.05 mol: dT=11.61 K (lit: 55.8+44.5 kJ/mol -> ~11 K)
+NaHCO3(s) 1 g + 50 mL 5% AcOH right after dose: T=294.79 (dT=-0.357; at dose -0.357), CO2(aq)=0.231 M, mass lost 0.00 g, rxns: water_autoionization,acetic_acid_dissoc,acetic_acid_dissoc,acetic_acid_dissoc,carbonic_acid_dissoc1,bicarbonate_dissoc2,water_autoionization,acetic_acid_dissoc,carbonic_acid_dissoc1,bicarbonate_dissoc2,acetic_acid_dissoc,carbonic_acid_dissoc1
+NaHCO3(s) 1 g + 50 mL 5% AcOH after 60 s: T=294.62 (dT=-0.529; at dose -0.357), CO2(aq)=0.0201 M, mass lost 0.478 g, rxns: baking_soda_vinegar,keto_enol_tautomerism_CH3COOH,acetic_acid_dissoc,carbonic_acid_dissoc1,bicarbonate_dissoc2,acetic_acid_dissoc
+   expected from species dfH (NaHCO3(s)+AcOH(aq)->Na+ + Ac- + H2O + CO2(g)) = +29.9 kJ/mol x 11.9 mmol = 356 J -> ~ -1.5 K
+
+# P7 boiling: 100 mL 2 M NaCl (lit 375.2 K) and 50/50 vol water/ethanol (lit bubble pt ~ 353.5 K)
+2 M NaCl after 300 s at 400 W: T=373.15 K, boil_intensity=0.85, mass lost=31.9
+t=400s T=373.15 EtOH=0.00 mol H2O=1.51 mol fluxes=H2O(g)
+t=800s T=893.86 EtOH=0.00 mol H2O=0.00 mol fluxes=
+  first vapour flux at T=351.50 K
+
+# P8 50 mL water in a 250 K bath for 1000 s (expect ice, plateau at 273.15 K)
+T=250.89 K, solids=none, layers=aqueous
+
+# P9 sealed 50 mL water heated at 200 W (lit Psat 150 C = 4.7 atm + air)
+t=150s T=409.42 K (136.3 C) P=4.618 atm, liquid=50.00 mL
+t=300s T=491.05 K (217.9 C) P=11.66 atm, liquid=50.00 mL
+t=450s T=549.35 K (276.2 C) P=11.86 atm, liquid=50.00 mL
+t=600s T=591.01 K (317.9 C) P=12.00 atm, liquid=50.00 mL
+
+# P10 pH scale
+6 M HCl import: pH=-0.7793 [H+]=6.02 (lit pH(activity) ~ -1.1 to -1.4 ; conc-scale -0.78)
+1 M NaOH at 298.15: pH=14.00 (lit ~13.8 at 25 C with gamma; ~12.9 at 60 C)
+1 M NaOH at 333.15: pH=15.03 (lit ~13.8 at 25 C with gamma; ~12.9 at 60 C)
+
+# P11 cooling from 353 K in room 295 K for 600 s: 10 mL vs 200 mL (real: small volume cools much faster)
+10 mL: T0=308.93 -> T=295.21 after 600 s
+200 mL: T0=322.63 -> T=314.46 after 600 s

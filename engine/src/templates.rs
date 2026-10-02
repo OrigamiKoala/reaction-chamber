@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-pub const R_IDEAL: f64 = 8.314462618; // J/(mol·K)
+pub const R_IDEAL: f64 = crate::physics::R_GAS; // J/(mol·K)
 pub const BOLTZMANN_K: f64 = 1.380649e-23; // J/K
 pub const PLANCK_H: f64 = 6.62607015e-34; // J·s
 pub const VISCOSITY_WATER_298: f64 = 8.90e-4; // Pa·s (at 25 °C)
@@ -130,14 +130,40 @@ pub fn sn2_e2_product_ratio(substrate_type: &str, is_bulky_base: bool, temp_k: f
     (k_sn2, k_e2, ratio)
 }
 
-/// Ester hydrolysis pseudo-first-order rate constant as a function of pH:
+/// Acid/base state of the medium a template rate is evaluated in: H+ and OH- concentrations (mol/L) as the solver
+/// holds them. The OH- concentration is never inferred as 10^-(14 - pH).
+#[derive(Clone, Copy, Debug)]
+pub struct Medium {
+    pub ph: f64,
+    pub h_conc: f64,
+    pub oh_conc: f64,
+}
+
+impl Medium {
+    pub fn new(h_conc: f64, oh_conc: f64) -> Self {
+        Medium { ph: -h_conc.max(1e-300).log10(), h_conc, oh_conc }
+    }
+
+    /// From a pH and the solution: uses the solver's OH- concentration when it is in `concs` (mol/L), otherwise
+    /// Kw(T) / [H+] with the same Kw(T) as the solver's water equilibrium.
+    pub fn from_solution(ph: f64, temp_k: f64, concs: &HashMap<String, f64>) -> Self {
+        let h_conc = concs.get("H+").copied().filter(|c| *c > 0.0).unwrap_or_else(|| 10.0_f64.powf(-ph));
+        let oh_conc = concs
+            .get("OH-")
+            .copied()
+            .filter(|c| *c > 0.0)
+            .unwrap_or_else(|| 10.0_f64.powf(crate::chem_db::water_log_kw(temp_k)) / h_conc);
+        Medium { ph, h_conc, oh_conc }
+    }
+}
+
+/// Ester hydrolysis pseudo-first-order rate constant in a given medium:
 /// k_obs = k_acid * [H+] + k_neutral + k_base * [OH-]
 /// Gate requirement: rate vs pH shows V-shaped / U-shaped acid and base catalysis
-pub fn ester_hydrolysis_k_obs(ester_type: &str, ph: f64, temp_k: f64) -> f64 {
+pub fn ester_hydrolysis_k_obs_in(ester_type: &str, medium: Medium, temp_k: f64) -> f64 {
     let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
-    let clamped_ph = ph.clamp(0.0, 14.0);
-    let h_conc = 10.0_f64.powf(-clamped_ph);
-    let oh_conc = 10.0_f64.powf(-(14.0 - clamped_ph));
+    let h_conc = medium.h_conc;
+    let oh_conc = medium.oh_conc;
 
     // Temperature factor relative to 298.15 K (typical Ea ~ 60 kJ/mol)
     let ea = match ester_type {
@@ -156,6 +182,12 @@ pub fn ester_hydrolysis_k_obs(ester_type: &str, ph: f64, temp_k: f64) -> f64 {
     let k_base = k_base_25 * t_factor;
 
     k_acid * h_conc + k_neutral + k_base * oh_conc
+}
+
+/// Same as `ester_hydrolysis_k_obs_in` for a solution of known pH (OH- from the water equilibrium Kw(T)).
+pub fn ester_hydrolysis_k_obs(ester_type: &str, ph: f64, temp_k: f64) -> f64 {
+    let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
+    ester_hydrolysis_k_obs_in(ester_type, Medium::from_solution(ph, t, &HashMap::new()), temp_k)
 }
 
 /// Returns the 45 curated reaction families covering intro organic and general chemistry

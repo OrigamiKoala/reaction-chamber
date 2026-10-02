@@ -1,0 +1,860 @@
+
+## P1 water, 240 K bath, 20 min
+{
+ "T": 241.08,
+ "P": 1,
+ "V": 50,
+ "layers": [
+  "aqueous 50.00mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 3.526
+}
+
+## P2 0.1 M NaCl, 260 K bath
+{
+ "T": 260.69,
+ "P": 1,
+ "V": 50.048,
+ "layers": [
+  "aqueous 50.05mL rho=1.003"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 4.891
+}
+
+## P3 50 mL water + 50 mL ethanol (real: one phase, ~96 mL)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 100,
+ "layers": [
+  "aqueous 50.00mL rho=1.000",
+  "organic 50.00mL rho=0.789"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 7.152
+}
+
+## P3b heating the 50/50 mix at 150 W: [T, mol EtOH, mol H2O] every 30 s (real: bubble point ~353 K, rising, no plateau at 351.5 then 373)
+[
+ [
+  308.9,
+  0.856,
+  2.775
+ ],
+ [
+  322.1,
+  0.856,
+  2.775
+ ],
+ [
+  334.6,
+  0.856,
+  2.775
+ ],
+ [
+  346.6,
+  0.856,
+  2.775
+ ],
+ [
+  351.5,
+  0.802,
+  2.775
+ ],
+ [
+  351.5,
+  0.707,
+  2.775
+ ],
+ [
+  351.5,
+  0.612,
+  2.775
+ ],
+ [
+  351.5,
+  0.518,
+  2.775
+ ],
+ [
+  351.5,
+  0.423,
+  2.775
+ ],
+ [
+  351.5,
+  0.328,
+  2.775
+ ],
+ [
+  351.5,
+  0.233,
+  2.775
+ ],
+ [
+  351.5,
+  0.139,
+  2.775
+ ],
+ [
+  351.5,
+  0.044,
+  2.775
+ ],
+ [
+  360.1,
+  0,
+  2.775
+ ],
+ [
+  373.1,
+  0,
+  2.763
+ ],
+ [
+  373.1,
+  0,
+  2.681
+ ],
+ [
+  373.1,
+  0,
+  2.599
+ ],
+ [
+  373.1,
+  0,
+  2.517
+ ],
+ [
+  373.1,
+  0,
+  2.436
+ ],
+ [
+  373.1,
+  0,
+  2.354
+ ],
+ [
+  373.1,
+  0,
+  2.272
+ ],
+ [
+  373.1,
+  0,
+  2.19
+ ],
+ [
+  373.1,
+  0,
+  2.108
+ ],
+ [
+  373.1,
+  0,
+  2.026
+ ],
+ [
+  373.1,
+  0,
+  1.944
+ ],
+ [
+  373.1,
+  0,
+  1.862
+ ],
+ [
+  373.1,
+  0,
+  1.78
+ ],
+ [
+  373.1,
+  0,
+  1.698
+ ],
+ [
+  373.1,
+  0,
+  1.617
+ ],
+ [
+  373.1,
+  0,
+  1.535
+ ],
+ [
+  373.1,
+  0,
+  1.453
+ ],
+ [
+  373.1,
+  0,
+  1.371
+ ],
+ [
+  373.1,
+  0,
+  1.289
+ ],
+ [
+  373.1,
+  0,
+  1.207
+ ],
+ [
+  373.1,
+  0,
+  1.125
+ ],
+ [
+  373.1,
+  0,
+  1.043
+ ],
+ [
+  373.1,
+  0,
+  0.961
+ ],
+ [
+  373.1,
+  0,
+  0.879
+ ],
+ [
+  373.1,
+  0,
+  0.798
+ ],
+ [
+  373.1,
+  0,
+  0.716
+ ]
+]
+
+## P4 ethanol open 150 W 300 s
+{
+ "T": 351.5,
+ "P": 1,
+ "V": 3.101,
+ "layers": [
+  "organic 3.10mL rho=0.789"
+ ],
+ "solids": [],
+ "gas": [
+  "C2H5OH(g) 91.126mL/s"
+ ],
+ "lost": 37.0031,
+ "ph": null
+}
+
+## P5 sealed water 300 W: [T, P atm, mol H2O] (real P = p_air(T) + p_sat(T): 473 K -> ~15.5 atm)
+[
+ [
+  334.2,
+  1.34,
+  2.775
+ ],
+ [
+  370.7,
+  2.17,
+  2.775
+ ],
+ [
+  404.8,
+  4.19,
+  2.775
+ ],
+ [
+  436.7,
+  8.26,
+  2.775
+ ],
+ [
+  466.6,
+  11.58,
+  2.775
+ ],
+ [
+  494.4,
+  11.68,
+  2.775
+ ],
+ [
+  520.5,
+  11.76,
+  2.775
+ ],
+ [
+  544.9,
+  11.85,
+  2.775
+ ],
+ [
+  567.7,
+  11.92,
+  2.775
+ ],
+ [
+  589,
+  12,
+  2.775
+ ],
+ [
+  608.9,
+  12.06,
+  2.775
+ ],
+ [
+  627.5,
+  12.13,
+  2.775
+ ]
+]
+
+## P6 sealed water default pop
+{
+ "T": 373.15,
+ "P": 1,
+ "V": 10.924,
+ "layers": [
+  "aqueous 10.92mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [
+  "H2O(g) 196.551mL/s"
+ ],
+ "lost": 39.0755,
+ "ph": 9.952,
+ "events": [
+  "Stopper popped at 2.21 atm"
+ ]
+}
+
+## P7 5 g NaCl in 50 mL ethanol (real: ~0.03 g dissolves)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 49.999,
+ "layers": [
+  "organic 50.00mL rho=0.789"
+ ],
+ "solids": [
+  "NaCl(s) 4.9992g"
+ ],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P7b 25 g NaCl in 50 mL water (real: ~17.9 g dissolves, V ~ 57 mL)
+{
+ "T": 290.98,
+ "P": 1,
+ "V": 60.584,
+ "layers": [
+  "aqueous 60.58mL rho=1.179"
+ ],
+ "solids": [
+  "NaCl(s) 3.8342g"
+ ],
+ "gas": [],
+ "lost": 0,
+ "ph": 6.638
+}
+
+## P7c 10 g NaCl in 50 mL water: volume (real ~53.4 mL, density 1.13)
+{
+ "T": 292.68,
+ "P": 1,
+ "V": 55,
+ "layers": [
+  "aqueous 55.00mL rho=1.093"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 6.726
+}
+
+## P8 naphthalene model
+{
+ "state": "solid",
+ "thermo": {
+  "dh_vap_kj_mol": 43.54416146305192,
+  "dh_fus_kj_mol": 19.964275,
+  "normal_bp_k": 485.7448593221754,
+  "normal_mp_k": 353.35,
+  "estimated": [
+   "dh_fus"
+  ]
+ }
+}
+
+## P8a 5 g naphthalene open, 1 h at 295 K (real: sublimes slowly, mothball smell)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 0,
+ "layers": [],
+ "solids": [
+  "C10H8(s) 5.0000g"
+ ],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P8b heating 5 g naphthalene 60 W [T, solid g, layer mL, lost g]
+[
+ [
+  353.4,
+  "4.38",
+  "0.61",
+  0
+ ],
+ [
+  364.4,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  390.9,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  403.6,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  409.7,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  412.5,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  413.9,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  414.6,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  414.9,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ],
+ [
+  415.1,
+  "",
+  "4.87",
+  0
+ ]
+]
+
+## P9 iodine model
+{
+ "modelable": true,
+ "reason": "Modelled as molecule: I2(aq)",
+ "state": "solid",
+ "thermo": {
+  "dh_vap_kj_mol": 49.08716050251187,
+  "dh_fus_kj_mol": 15.52,
+  "normal_bp_k": 457.49999999999994,
+  "normal_mp_k": 386.85,
+  "estimated": []
+ }
+}
+
+## P9b 1 g iodine heated 30 W 240 s (real: violet vapour well below mp)
+{
+ "T": 355.14,
+ "P": 1,
+ "V": 0,
+ "layers": [],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P10 CO2 import (dry ice)
+{
+ "modelable": true,
+ "reason": "Modelled as molecule: CO2(aq)",
+ "by_mass": false,
+ "state": "gas",
+ "kind": "neutral",
+ "entry": {
+  "CO2(aq)": 0.0001,
+  "H2O": 0.05518664299337447
+ }
+}
+
+## P11 methane import
+{
+ "reason": "Modelled as an inert compound (CH4): melts, boils and dissolves up to its solubility, but no reaction chemistry is known for it",
+ "state": "gas",
+ "entry": {
+  "CH4": 0.0001,
+  "H2O": 0.055298376711074106
+ }
+}
+
+## P11b 10 mL "methane" dosed into water
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 59.963,
+ "layers": [
+  "aqueous 59.96mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0.0147,
+ "ph": 6.851
+}
+
+## P12 30 mL hexane + 30 mL toluene (real: one phase)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 60,
+ "layers": [
+  "organic:C7H8(l) 30.00mL rho=0.867",
+  "organic:C6H14(l) 30.00mL rho=0.655"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P12b same after 1 h open at 295 K (real: hexane evaporates, several mL/h from 38 cm2)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 60,
+ "layers": [
+  "organic:C7H8(l) 30.00mL rho=0.867",
+  "organic:C6H14(l) 30.00mL rho=0.655"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P12c heating hexane+toluene: [T, layers] (real: bubble point ~350 K rising continuously)
+[
+ [
+  313.3,
+  "C7H8(l):30.0,C6H14(l):30.0"
+ ],
+ [
+  329.8,
+  "C7H8(l):30.0,C6H14(l):30.0"
+ ],
+ [
+  341.9,
+  "C7H8(l):30.0,C6H14(l):28.6"
+ ],
+ [
+  341.9,
+  "C7H8(l):30.0,C6H14(l):21.9"
+ ],
+ [
+  341.9,
+  "C7H8(l):30.0,C6H14(l):15.1"
+ ],
+ [
+  341.9,
+  "C7H8(l):30.0,C6H14(l):8.4"
+ ],
+ [
+  341.9,
+  "C7H8(l):30.0,C6H14(l):1.6"
+ ],
+ [
+  358.6,
+  "C7H8(l):30.0"
+ ],
+ [
+  377.9,
+  "C7H8(l):30.0"
+ ],
+ [
+  383.8,
+  "C7H8(l):27.7"
+ ],
+ [
+  383.8,
+  "C7H8(l):24.2"
+ ],
+ [
+  383.8,
+  "C7H8(l):20.7"
+ ]
+]
+
+## P13 50 mL water + 20 mL acetone
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 57.84,
+ "layers": [
+  "aqueous 57.84mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 6.851
+}
+
+## P13b heating acetone/water [T, mol acetone dissolved, mol H2O] (real: acetone distils first from ~333 K)
+[
+ [
+  312.3,
+  0.27,
+  2.775
+ ],
+ [
+  328.5,
+  0.27,
+  2.775
+ ],
+ [
+  343.8,
+  0.27,
+  2.775
+ ],
+ [
+  358.2,
+  0.27,
+  2.775
+ ],
+ [
+  371.8,
+  0.27,
+  2.775
+ ],
+ [
+  373.1,
+  0.27,
+  2.702
+ ],
+ [
+  373.1,
+  0.27,
+  2.62
+ ],
+ [
+  373.1,
+  0.27,
+  2.538
+ ],
+ [
+  373.1,
+  0.27,
+  2.456
+ ],
+ [
+  373.1,
+  0.27,
+  2.375
+ ],
+ [
+  373.1,
+  0.27,
+  2.293
+ ],
+ [
+  373.1,
+  0.27,
+  2.211
+ ]
+]
+
+## P14 100 mL water 295 -> 353 K (real +2.9 % volume)
+{
+ "v0": 100.00000008033116,
+ "T": 352.01274509803824,
+ "v1": 100.00000050476888
+}
+
+## P15 vinegar + 1 g NaHCO3, open, after 10 min: CO2(aq) M (air equilibrium ~1.4e-5 M; Henry at 1 atm pure CO2 0.034 M)
+{
+ "co2_M": 0.0000017817321238103473,
+ "ph": 4.359785936319908
+}
+
+## P16 2 M NH3, 150 W, 10 min (real: NH3 strongly driven off well before boiling)
+{
+ "T": 373.15,
+ "P": 1,
+ "V": 26.126,
+ "layers": [
+  "aqueous 26.13mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [
+  "H2O(g) 83.591mL/s"
+ ],
+ "lost": 22.9177,
+ "ph": 13.946,
+ "nh3": 0.09975037421573632,
+ "nh4": 0.00024962578426361706
+}
+
+## P17 11 uL 0.1 M AgNO3 + 11 uL 0.1 M NaCl (real: ~1.1e-6 mol AgCl, ~0.16 mg)
+{
+ "solids": [],
+ "ag": 0.0000011
+}
+
+## P18 20 g glucose in 50 mL water (real V ~ 62.4 mL)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 60,
+ "layers": [
+  "aqueous 60.00mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 6.851
+}
+
+## P18b same in 268 K bath (real: f.p. depression ~4.1 K -> freezes ~269 K partially)
+{
+ "T": 268.68,
+ "P": 1,
+ "V": 60,
+ "layers": [
+  "aqueous 60.00mL rho=1.000"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": 5.39
+}
+
+## P19 sealed ethanol 200 W 240 s (real P includes p_sat(EtOH): 400 K -> ~5 atm)
+{
+ "T": 560.79,
+ "P": 1.9,
+ "V": 50,
+ "layers": [
+  "organic 50.00mL rho=0.789"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}
+
+## P20 10 mL hexane open 2 h at 295 K (real: gone in well under 2 h)
+{
+ "T": 295.15,
+ "P": 1,
+ "V": 10,
+ "layers": [
+  "organic:C6H14(l) 10.00mL rho=0.655"
+ ],
+ "solids": [],
+ "gas": [],
+ "lost": 0,
+ "ph": null
+}

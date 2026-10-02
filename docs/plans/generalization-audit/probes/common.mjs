@@ -1,0 +1,14 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+const dir = '/Users/carlliu/reaction-chamber/web/src/wasm/engine';
+export const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
+eng.initSync({ module: readFileSync(path.join(dir, 'reaction_chamber_engine_bg.wasm')) });
+eng.init_engine();
+export const J = (x) => (typeof x === 'string' ? JSON.parse(x) : x);
+export const cfg = { type: 'beaker-250', capacity_ml: 250, glass_mass_g: 110, inner_radius_cm: 3.5, temperature_k: 298.15, room_k: 298.15 };
+export const vessel = (c = {}) => eng.vessel_new(JSON.stringify({ ...cfg, ...c }));
+export const dose = (h, d) => eng.vessel_dose(h, JSON.stringify(d));
+export const snap = (h) => J(eng.vessel_snapshot(h));
+export const step = (h, dt) => eng.vessel_step(h, dt);
+export const ctl = (h, c) => eng.vessel_control(h, JSON.stringify(c));
+export const sp = (s) => Object.fromEntries(s.species.map((r) => [r.id, r]));

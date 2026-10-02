@@ -1,0 +1,23 @@
+name                Tb_lit  Tb_job    err unassigned_heavy groups
+ethanol              351.4  337.54    -14   0  {'-OH (alcohol)': 1, '-CH3': 1, '-CH2-': 1}
+acetic acid          391.1  390.87     -0   0  {'-COOH (acid)': 1, '-CH3': 1}
+acetone              329.2  322.11     -7   0  {'>C=O (non-ring)': 1, '-CH3': 2}
+dimethyl ether       248.3  267.78    +19   0  {'-O- (non-ring)': 1, '-CH3': 2}
+benzene              353.2  358.58     +5   0  {'=CH- (ring)': 6}
+toluene              383.8  386.44     +3   0  {'=CH- (ring)': 5, '=C< (ring)': 1, '-CH3': 1}
+benzoic acid         522.4  531.95    +10   0  {'-COOH (acid)': 1, '=CH- (ring)': 5, '=C< (ring)': 1}
+naphthalene          491.1  474.06    -17   0  {'=CH- (ring)': 8, '=C< (ring)': 2}
+cyclohexane          353.9   361.1     +7   0  {'-CH2- (ring)': 6}
+methylcyclohexane    374.0  384.26    +10   0  {'=CH- (ring)': 1, '-CH2- (ring)': 5, '-CH3': 1}
+cyclohexanol         434.0  453.56    +20   0  {'-OH (alcohol)': 1, '=CH- (ring)': 1, '-CH2- (ring)': 5}
+pyridine             388.4  331.85    -57   1  {'=CH- (ring)': 5}
+DMSO                 462.0  245.36   -217   2  {'-CH3': 2}
+formaldehyde         254.0  216.38    -38   1  {'=CH2': 1}
+methyl formate       304.9  302.88     -2   0  {'-COO- (ester)': 1, '-CH3': 1}
+nitrobenzene         483.9   515.4    +32   0  {'-NO2': 1, '=CH- (ring)': 5, '=C< (ring)': 1}
+acetonitrile         354.8  374.82    +20  -1  {'-CN': 1, '#C-': 1, '-CH3': 1}
+triethylamine        362.0  349.32    -13   0  {'>N-': 1, '-CH3': 3, '-CH2-': 3}
+glucose                     850.35          0  {'-OH (alcohol)': 5, '-O- (ring)': 1, '=CH- (ring)': 5, '-CH2-': 1}
+phenol               455.0   439.2    -16   0  {'-OH (phenol)': 1, '=CH- (ring)': 5, '=C< (ring)': 1}
+chloroform           334.3  334.33     +0   0  {'-Cl': 3, '>CH-': 1}
+urea                        222.34          3  {'=C<': 1}

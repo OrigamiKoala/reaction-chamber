@@ -12,6 +12,7 @@ import {
   signalWord,
   ghsOf,
   hazardWords,
+  describeModel,
 } from '../app/reagent_library';
 import { Lab } from '../app/lab';
 import { h, setText, prettyFormula } from './dom';
@@ -131,8 +132,9 @@ export class AddCard {
       const note = h('div', { class: 'add-note' });
       const model = it.model;
       let msg: string;
-      if (model?.modelable) msg = `Reacts — ${model.reason}. Imported solids are dosed by mass, liquids as a 0.10 M aqueous solution.`;
-      else if (model) msg = `Visual only — ${model.reason}`;
+      if (model?.modelable && model.phase_model === 'inert') msg = `${describeModel(model)}. Solids are dosed by mass, liquids by volume.`;
+      else if (model?.modelable) msg = `${describeModel(model)}. Imported solids are dosed by mass, liquids as a 0.10 M aqueous solution.`;
+      else if (model) msg = describeModel(model);
       else msg = 'Checking whether the engine can model this compound…';
       note.innerHTML = `${icon('info', 14)}<span></span>`;
       (note.querySelector('span') as HTMLElement).textContent = msg;
