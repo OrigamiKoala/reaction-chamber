@@ -1,0 +1,6 @@
+# Optional measured solid-water interfacial energies for the nucleation model (engine/src/transfer/nucleation.rs).
+# A row replaces the Mersmann estimate (needs only density, molar mass and solubility) for that solid. Leave a solid
+# out and the estimate is used; the model does not need any row to run. No row is shipped yet: add only values you can
+# cite (e.g. Nielsen & Sohnel 1971, J. Cryst. Growth 11, 233; Sohnel 1982, J. Cryst. Growth 57, 101; Mersmann 2001).
+# formula must match a `formula` of solubility_products.csv. gamma_mj_m2 is in mJ/m^2 (= 1e-3 J/m^2).
+formula,gamma_mj_m2,source

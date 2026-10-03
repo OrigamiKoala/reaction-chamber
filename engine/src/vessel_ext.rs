@@ -38,8 +38,21 @@ pub struct EventState {
     pub checked_pairs: HashSet<(String, String)>,
     /// Fraction of each solid currently suspended (1 = freshly precipitated cloud, decays as it settles).
     pub susp: HashMap<String, f64>,
+    /// Suspended fraction of each equal-mass size class of a solid (`transfer::psd`); `susp` is their mean and stays the
+    /// interface the rest of the engine uses: a change to `susp` from outside resets the classes to that value.
+    pub susp_cls: HashMap<String, [f64; crate::transfer::N_CLASSES]>,
     /// Announced phase changes of inert compounds (bit flags, see `vessel_phase`).
     pub phase: HashMap<String, u8>,
+}
+
+/// Particle size of one solid as the snapshot and optics see it (see `Vessel::solid_size_view`).
+#[derive(Clone, Debug)]
+pub struct SizeView {
+    pub class_d_m: [f64; crate::transfer::N_CLASSES],
+    pub class_susp: [f64; crate::transfer::N_CLASSES],
+    /// Mass-weighted mean diameter of the suspended part (the haze), m.
+    pub suspended_d_m: f64,
+    pub sigma_g: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -243,9 +256,11 @@ impl Vessel {
     /// Stokes-like sedimentation of suspended solids: a fresh precipitate is a cloud that settles over tens of
     /// seconds (faster for large/dense particles, aggregated 10x); stirring keeps solids suspended.
     pub fn update_suspension(&mut self, dt_s: f64) {
+        use crate::transfer::{LogNormal, N_CLASSES};
         let dust = self.dust_mol();
         let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > dust).map(|(k, _)| k.clone()).collect();
         self.ev.susp.retain(|k, _| live.contains(k));
+        self.ev.susp_cls.retain(|k, _| live.contains(k));
         if live.is_empty() {
             return;
         }
@@ -266,7 +281,16 @@ impl Vessel {
 
         for sp in live {
             let props = self.solid_props(&sp);
-            let d_primary = self.particle_populations.get(&sp).map_or(props.particle_um * 1e-6, |p| p.sauter_diameter_m());
+            // the size distribution (log-normal closure of the population moments) cut into equal-mass classes: each class
+            // has its own Stokes velocity, its own flocculation and its own just-suspended stirring speed, so a fresh
+            // polydisperse precipitate clears in two stages (coarse crystals first, a haze of fines much later)
+            let ln = self
+                .particle_populations
+                .get(&sp)
+                .filter(|p| !p.is_empty())
+                .map(LogNormal::from_population)
+                .unwrap_or(LogNormal { d_g_m: props.particle_um * 1e-6, sigma_g: 1.0 });
+            let d_cls = ln.class_diameters_m();
             let rho_p = props.density_g_ml * 1000.0;
             let solid_vol_m3 = self.solid_mol.get(&sp).copied().unwrap_or(0.0) * chem_db::get_species_thermo(&sp).mw * 1e-3 / rho_p.max(100.0);
             let phi_solid = (solid_vol_m3 / (self.total_liquid_volume_ml() * 1e-6).max(1e-9)).clamp(0.0, 0.5);
@@ -274,29 +298,64 @@ impl Vessel {
             // that outsize the Brownian limit (Pe = 1, d_Pe1 ~ 0.7 um for a dense salt) by an order of magnitude and settle
             let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * t_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
             let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
-            let d_eff = d_primary + w * ((20.0 * d_pe1).max(d_primary) - d_primary);
-            let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, hyd.rho_l, hyd.eta, phi_solid, t_k);
-            let n_js = crate::transfer::hydro::just_suspended_rps(
-                &hyd.st,
-                d_eff,
-                rho_p,
-                hyd.rho_l,
-                hyd.nu,
-                100.0 * solid_vol_m3 * rho_p / (self.total_liquid_volume_ml() * 1e-6 * hyd.rho_l).max(1e-12),
-            );
-            let target = crate::transfer::hydro::suspended_fraction(&hyd.st, n_js);
 
-            let cur = self.ev.susp.entry(sp).or_insert(1.0);
-            let floor = 0.02;
-            if hyd.st.is_stirred() && target > *cur {
-                // the stirring lifts the bed: faster than it settles
-                *cur += (target.max(floor) - *cur) * (1.0 - (-dt_s / 2.0).exp());
-            } else if tau.is_finite() {
-                // sedimentation toward the floor, held up by whatever the stirring still keeps suspended
-                let rest = floor.max(if hyd.st.is_stirred() { target } else { 0.0 });
-                *cur = rest + (*cur - rest) * (-dt_s / tau).exp();
+            let mean_of = |c: &[f64; N_CLASSES]| c.iter().sum::<f64>() / N_CLASSES as f64;
+            let published = self.ev.susp.get(&sp).copied();
+            let mut cls = match (self.ev.susp_cls.get(&sp), published) {
+                (Some(c), Some(m)) if (mean_of(c) - m).abs() < 1e-9 => *c,
+                (Some(c), None) => *c,
+                (_, m) => [m.unwrap_or(1.0); N_CLASSES],
+            };
+            for k in 0..N_CLASSES {
+                let d_primary = d_cls[k];
+                let d_eff = d_primary + w * ((20.0 * d_pe1).max(d_primary) - d_primary);
+                let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, hyd.rho_l, hyd.eta, phi_solid, t_k);
+                let n_js = crate::transfer::hydro::just_suspended_rps(
+                    &hyd.st,
+                    d_eff,
+                    rho_p,
+                    hyd.rho_l,
+                    hyd.nu,
+                    100.0 * solid_vol_m3 * rho_p / (self.total_liquid_volume_ml() * 1e-6 * hyd.rho_l).max(1e-12),
+                );
+                let target = crate::transfer::hydro::suspended_fraction(&hyd.st, n_js);
+
+                let cur = &mut cls[k];
+                let floor = 0.02;
+                if hyd.st.is_stirred() && target > *cur {
+                    // the stirring lifts the bed: faster than it settles
+                    *cur += (target.max(floor) - *cur) * (1.0 - (-dt_s / 2.0).exp());
+                } else if tau.is_finite() {
+                    // sedimentation toward the floor, held up by whatever the stirring still keeps suspended
+                    let rest = floor.max(if hyd.st.is_stirred() { target } else { 0.0 });
+                    *cur = rest + (*cur - rest) * (-dt_s / tau).exp();
+                }
             }
+            self.ev.susp.insert(sp.clone(), mean_of(&cls));
+            self.ev.susp_cls.insert(sp, cls);
         }
+    }
+
+    /// Size view of a solid for the snapshot and the optics: diameter and suspended fraction of each equal-mass size
+    /// class, the mass-weighted mean diameter of what is suspended (the haze) and the log-normal spread.
+    pub(crate) fn solid_size_view(&self, sp: &str, props: &SolidProps) -> SizeView {
+        use crate::transfer::{LogNormal, N_CLASSES};
+        let ln = self
+            .particle_populations
+            .get(sp)
+            .filter(|p| !p.is_empty())
+            .map(LogNormal::from_population)
+            .unwrap_or(LogNormal { d_g_m: props.particle_um * 1e-6, sigma_g: 1.0 });
+        let d = ln.class_diameters_m();
+        let published = self.ev.susp.get(sp).copied();
+        let s = match (self.ev.susp_cls.get(sp), published) {
+            (Some(c), Some(m)) if (c.iter().sum::<f64>() / N_CLASSES as f64 - m).abs() < 1e-9 => *c,
+            (Some(c), None) => *c,
+            (_, m) => [m.unwrap_or(0.5); N_CLASSES],
+        };
+        let s_sum: f64 = s.iter().sum();
+        let suspended_d = if s_sum > 1e-9 { d.iter().zip(s.iter()).map(|(d, s)| d * s).sum::<f64>() / s_sum } else { ln.mass_median_m() };
+        SizeView { class_d_m: d, class_susp: s, suspended_d_m: suspended_d, sigma_g: ln.sigma_g }
     }
 
     // ------------------------------------------------------------------------------------------ events

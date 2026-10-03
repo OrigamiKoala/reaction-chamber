@@ -66,7 +66,15 @@ pub struct SolidVisual {
     pub mass_g: f64,
     pub settled_volume_ml: f64,
     pub suspended_fraction: f64,
+    /// Volume-equivalent mean diameter of the whole population, um.
     pub particle_diameter_um: f64,
+    /// Mass-weighted mean diameter of the *suspended* part, um: coarse crystals settle first, so a settling precipitate
+    /// leaves a haze of fines and this falls below `particle_diameter_um`. 0 in snapshots that predate it.
+    #[serde(default)]
+    pub suspended_diameter_um: f64,
+    /// Geometric standard deviation of the size distribution (log-normal closure of the moments; 1 = monodisperse).
+    #[serde(default)]
+    pub particle_sigma_g: f64,
     pub rgb: [f64; 3],
     pub kind: SolidKind,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1491,12 +1499,19 @@ impl Vessel {
             } else {
                 SolidKind::Crystal
             };
+            // settling velocity of what is suspended: each equal-mass size class falls at its own Stokes velocity (a class
+            // below the Brownian limit does not settle), averaged with the class's suspended mass
+            let view = self.solid_size_view(sp, &props);
             let (settle_mm_s, area_cm2) = {
                 let rho_p = density * 1000.0;
-                let d_m = d_um * 1e-6;
-                let v = crate::transfer::hydro::terminal_velocity(d_m, rho_p, hyd.rho_l, hyd.eta);
-                let pe = crate::transfer::settling::peclet_number(v, d_m, hyd.eta, self.temperature_k);
-                (if v > 0.0 && pe >= 1.0 { v * 1e3 } else { 0.0 }, pop.map_or(0.0, |p| p.surface_area_m2() * 1e4))
+                let (mut vsum, mut wsum) = (0.0, 0.0);
+                for (d_m, s_k) in view.class_d_m.iter().zip(view.class_susp.iter()) {
+                    let v = crate::transfer::hydro::terminal_velocity(*d_m, rho_p, hyd.rho_l, hyd.eta);
+                    let pe = crate::transfer::settling::peclet_number(v, *d_m, hyd.eta, self.temperature_k);
+                    vsum += s_k * if v > 0.0 && pe >= 1.0 { v * 1e3 } else { 0.0 };
+                    wsum += s_k;
+                }
+                (if wsum > 1e-12 { vsum / wsum } else { 0.0 }, pop.map_or(0.0, |p| p.surface_area_m2() * 1e4))
             };
 
             solids.push(SolidVisual {
@@ -1506,6 +1521,8 @@ impl Vessel {
                 settled_volume_ml: settled_vol,
                 suspended_fraction: self.ev.susp.get(sp).copied().unwrap_or(if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 }),
                 particle_diameter_um: d_um,
+                suspended_diameter_um: view.suspended_d_m * 1e6,
+                particle_sigma_g: view.sigma_g,
                 rgb: props.rgb,
                 kind,
                 floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
@@ -1933,13 +1950,20 @@ impl Vessel {
                 let mass_g = mol * thermo.mw;
                 let mass_conc = (mass_g / vol_ml) * self.ev.susp.get(sp).copied().unwrap_or(0.8).clamp(0.0, 1.0);
                 let props = self.solid_props(sp);
-                let sc = optics::scatter_extinction_per_cm(
-                    mass_conc,
-                    props.particle_um,
-                    props.density_g_ml,
-                    props.refractive_index,
-                    1.333,
-                );
+                // every equal-mass size class scatters with its own cross-section per gram, weighted by its own suspended
+                // fraction (`mass_conc` already carries the mean one)
+                let view = self.solid_size_view(sp, &props);
+                let susp_mean = (view.class_susp.iter().sum::<f64>() / view.class_susp.len() as f64).max(1e-9);
+                let mut sc = 0.0;
+                for (d_m, s_k) in view.class_d_m.iter().zip(view.class_susp.iter()) {
+                    sc += optics::scatter_extinction_per_cm(
+                        mass_conc * (s_k / susp_mean) / view.class_d_m.len() as f64,
+                        d_m * 1e6,
+                        props.density_g_ml,
+                        props.refractive_index,
+                        1.333,
+                    );
+                }
                 total_scatter += sc;
                 // the scattered colour is the scattering-weighted mean of the suspended solids (order independent)
                 for k in 0..3 {

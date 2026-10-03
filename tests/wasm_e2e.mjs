@@ -31,6 +31,8 @@ dose(h, { reagent_id: 'pc_KCl', mass_g: 0.5 });
 let s = snap(h);
 const agcl = s.solids.find((x) => x.species === 'AgCl(s)');
 assert.ok(agcl && agcl.mass_g > 0.3, 'AgCl precipitates: ' + JSON.stringify(s.solids.map((x) => x.species)));
+// the size distribution of the crop (log-normal closure of the population moments) and the suspended part's size
+assert.ok(agcl.particle_sigma_g >= 1 && agcl.suspended_diameter_um > 0, 'size distribution fields: ' + JSON.stringify(agcl));
 assert.ok(s.species.some((x) => x.id === 'AgCl(s)' && x.phase === 'solid'), 'AgCl in species rows');
 const ev = s.events.find((e) => e.kind === 'precipitate_formed');
 assert.ok(ev && /white precipitate formed: AgCl/i.test(ev.detail), 'log: ' + JSON.stringify(s.events));

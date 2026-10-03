@@ -87,6 +87,23 @@ def rows(path):
     return list(csv.DictReader(lines))
 
 
+def interfacial_energies(known_formulas):
+    """Optional measured solid-water interfacial energies (pipeline/data/interfacial_energies.csv), mJ/m^2 -> J/m^2."""
+    path = DATA / "interfacial_energies.csv"
+    out = {}
+    if not path.exists():
+        return out
+    for r in rows(path):
+        f = r["formula"].strip()
+        if f not in known_formulas:
+            raise ValueError(f"interfacial_energies.csv: {f} is not a solid of solubility_products.csv")
+        gamma = float(r["gamma_mj_m2"]) * 1e-3
+        if not 0.005 <= gamma <= 1.0:
+            raise ValueError(f"interfacial_energies.csv: {f}: {r['gamma_mj_m2']} mJ/m^2 is outside 5-1000")
+        out[f] = (gamma, r["source"].strip())
+    return out
+
+
 def build():
     minerals = []
     for r in rows(DATA / "solubility_products.csv"):
@@ -121,6 +138,11 @@ def build():
             "tier": "Tabulated",
             "source": "CRC Handbook solubility table (solubility limit)" if soluble else "CRC Handbook Ksp table",
         })
+
+    gammas = interfacial_energies({m["formula"] for m in minerals})
+    for m in minerals:
+        if m["formula"] in gammas:
+            m["interfacial_energy_j_m2"], m["interfacial_energy_source"] = gammas[m["formula"]]
 
     equilibria = []
     for r in rows(DATA / "acid_base_equilibria.csv"):

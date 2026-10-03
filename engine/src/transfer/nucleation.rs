@@ -36,6 +36,9 @@ pub struct SaltProps {
     pub nu_total: f64,
     /// Saturation concentration expressed per formula unit, mol/m3: (Ksp / prod nu_i^nu_i)^(1/nu_total) x 1000.
     pub c_sat_fu_mol_m3: f64,
+    /// Measured solid-water interfacial energy (J/m2) of this solid when the mineral record carries one; it replaces
+    /// the Mersmann estimate. `None` for every compound without a citable value.
+    pub gamma_override_j_m2: Option<f64>,
 }
 
 impl SaltProps {
@@ -50,8 +53,12 @@ impl SaltProps {
     }
 }
 
-/// Solid-liquid interfacial energy gamma (J/m2), Mersmann (1990).
+/// Solid-liquid interfacial energy gamma (J/m2): the measured value of the mineral record when there is one, else the
+/// Mersmann (1990) correlation (which needs only density, molar mass and solubility).
 pub fn mersmann_interfacial_energy(t_k: f64, salt: &SaltProps) -> f64 {
+    if let Some(g) = salt.gamma_override_j_m2.filter(|g| g.is_finite() && *g > 0.0) {
+        return g;
+    }
     let c_solid = salt.density_kg_m3 / salt.molar_mass_kg_mol; // mol/m3
     let ratio = (c_solid / salt.c_sat_fu_mol_m3.max(1e-15)).max(1.01);
     let n_density = (c_solid * N_AVOGADRO).powf(2.0 / 3.0);
@@ -232,7 +239,7 @@ mod tests {
 
     fn baso4() -> SaltProps {
         // intrinsic data only: M, rho, and the saturation concentration of Ksp = 1.08e-10 (c_sat = sqrt(Ksp))
-        SaltProps { density_kg_m3: 4500.0, molar_mass_kg_mol: 0.23339, nu_total: 2.0, c_sat_fu_mol_m3: 1.04e-5 * 1000.0 }
+        SaltProps { density_kg_m3: 4500.0, molar_mass_kg_mol: 0.23339, nu_total: 2.0, c_sat_fu_mol_m3: 1.04e-5 * 1000.0, gamma_override_j_m2: None }
     }
 
     #[test]

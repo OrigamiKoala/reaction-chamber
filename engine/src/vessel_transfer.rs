@@ -189,7 +189,7 @@ impl Vessel {
             let c_sat_fu = ((ln_ksp - ln_gamma_sum - nu_prod) / nu_tot.max(1e-9)).exp() * 1000.0;
             let props = self.solid_props(sp);
             let mw = chem_db::get_species_thermo(sp).mw;
-            let salt = SaltProps { density_kg_m3: props.density_g_ml * 1000.0, molar_mass_kg_mol: mw * 1e-3, nu_total: nu_tot, c_sat_fu_mol_m3: c_sat_fu };
+            let salt = SaltProps { density_kg_m3: props.density_g_ml * 1000.0, molar_mass_kg_mol: mw * 1e-3, nu_total: nu_tot, c_sat_fu_mol_m3: c_sat_fu, gamma_override_j_m2: min.interfacial_energy_j_m2 };
             let diff = self.solid_diffusivity(sp);
             let pop0 = self.particle_populations.get(sp).cloned().unwrap_or_default();
             let clock0 = self.nuc_clock.get(sp).copied().unwrap_or(0.0);

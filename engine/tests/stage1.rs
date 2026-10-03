@@ -147,6 +147,8 @@ fn s1_4_guessed_pbi2_resolves_through_generic_queue() {
         log_ksp_analytic: None,
         tier: ProvenanceTier::Speculative,
         source: "Rule guess".to_string(),
+        interfacial_energy_j_m2: None,
+        interfacial_energy_source: None,
     });
 
     let reqs = reaction_chamber_engine::get_property_requests();

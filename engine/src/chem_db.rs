@@ -180,6 +180,13 @@ pub struct GeneralMineral {
     pub kind: String, // "powder" | "curds" | "gel" | "crystal" | "metal"
     pub tier: ProvenanceTier,
     pub source: String,
+    /// Optional measured solid-water interfacial energy (J/m^2, e.g. Nielsen & Sohnel 1971). When present it replaces
+    /// the Mersmann estimate in the nucleation model (`transfer::nucleation::SaltProps::gamma_override_j_m2`); the
+    /// model needs no such value to run. Per-compound data, tier `Tabulated`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interfacial_energy_j_m2: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interfacial_energy_source: Option<String>,
 }
 
 impl GeneralMineral {
@@ -787,6 +794,8 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "curds".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC core".to_string(),
+            interfacial_energy_j_m2: None,
+            interfacial_energy_source: None,
         },
         // 2. Cu(OH)2
         GeneralMineral {
@@ -804,6 +813,8 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "gel".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC minteq.v4.dat".to_string(),
+            interfacial_energy_j_m2: None,
+            interfacial_energy_source: None,
         },
         // 3. NaHCO3
         GeneralMineral {
@@ -821,6 +832,8 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "powder".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC core".to_string(),
+            interfacial_energy_j_m2: None,
+            interfacial_energy_source: None,
         },
         // 4. MnO2
         GeneralMineral {
@@ -838,6 +851,8 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "powder".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "CRC Handbook".to_string(),
+            interfacial_energy_j_m2: None,
+            interfacial_energy_source: None,
         },
         // 5. Magnesium metal
         GeneralMineral {
@@ -855,6 +870,8 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "metal".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "CRC Handbook".to_string(),
+            interfacial_energy_j_m2: None,
+            interfacial_energy_source: None,
         },
     ];
     // Data-driven solubility table: any cation/anion pair with IAP > Ksp precipitates (engine/data/solubility.json).

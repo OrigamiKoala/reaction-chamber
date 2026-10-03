@@ -37,6 +37,8 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         log_ksp_analytic: None,
         tier: ProvenanceTier::Tabulated,
         source: "Inorganic Chemistry Handbook".to_string(),
+        interfacial_energy_j_m2: None,
+        interfacial_energy_source: None,
     };
     v.register_mineral(la_oh3_mineral);
 

@@ -143,6 +143,8 @@ fn make_mineral(cation: &str, anion: &str, log_ksp: f64, tier: ProvenanceTier, s
         log_ksp_analytic: None,
         tier,
         source: source.to_string(),
+        interfacial_energy_j_m2: None,
+        interfacial_energy_source: None,
     })
 }
 

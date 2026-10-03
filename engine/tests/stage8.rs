@@ -182,7 +182,7 @@ fn baso4_mixture(s: f64) -> Vessel {
 fn gate2_baso4_induction_time_and_size_follow_nucleation_theory() {
     let min = chem_db::get_default_minerals().into_iter().find(|m| m.solid_species == "BaSO4(s)").unwrap();
     let ksp = 10f64.powf(min.log_ksp_at(298.15));
-    let salt = nucleation::SaltProps { density_kg_m3: 4500.0, molar_mass_kg_mol: 0.23339, nu_total: 2.0, c_sat_fu_mol_m3: ksp.sqrt() * 1000.0 };
+    let salt = nucleation::SaltProps { density_kg_m3: 4500.0, molar_mass_kg_mol: 0.23339, nu_total: 2.0, c_sat_fu_mol_m3: ksp.sqrt() * 1000.0, gamma_override_j_m2: None };
     let v_m3 = 50e-6;
     // induction time of the model (J V)^-1: monotonic, steep, minutes at S = 10, instantaneous at S >= 100
     let t10 = nucleation::induction_time_s(298.15, &salt, 10.0, v_m3);

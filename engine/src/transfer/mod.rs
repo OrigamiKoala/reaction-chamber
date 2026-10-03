@@ -6,6 +6,7 @@
 //! - `hydro`: stirring power, just-suspended speed, slip velocity, Sherwood numbers, gas-liquid k_L
 //! - `diffusion`: diffusivities from the formula (Hayduk-Laudie, Fuller-Schettler-Giddings, Nernst-Einstein)
 //! - `population`: particle population moments, area and mean size, the semi-implicit relaxation law
+//! - `psd`: log-normal closure of the population moments, equal-mass size classes (settling and scattering per class)
 //! - `nucleation`: Mersmann interfacial energy, classical nucleation theory, nucleation + growth precipitation
 //! - `electrochem`: discovered half-reactions, Butler-Volmer kinetics, mixed potential (corrosion, cementation) and
 //!   electrolysis
@@ -22,6 +23,8 @@ pub mod gas_transfer;
 pub mod hydro;
 pub mod nucleation;
 pub mod population;
+pub mod psd;
 pub mod settling;
 
 pub use population::ParticlePopulation;
+pub use psd::{LogNormal, N_CLASSES};

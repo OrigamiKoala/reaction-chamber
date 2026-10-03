@@ -390,7 +390,14 @@ Other suites: `cargo test --release` 276 passed / 0 failed; all 13 node suites e
 #### Known gaps / hand-off to Stage 9
 
 - Electrolysis has an engine API (`VesselControls.electrolysis`) and a snapshot readout only; there is no web UI, no electrode glassware and no tests beyond the half-reaction balancing unit tests and the shared corrosion path. Per the request this stage stops here.
-- Monodisperse populations only (no size distribution evolution, no aggregation/breakage balance beyond the Schulze-Hardy floc factor); the heterogeneous nucleation constants (theta = 73 degrees, J0 = 1e24 m^-3 s^-1) are global.
+- Populations are monodisperse per cohort (the size *spread* is read from the moments by the log-normal closure of `transfer/psd.rs`, see CLAUDE.md; no size distribution evolution, no aggregation/breakage balance beyond the Schulze-Hardy floc factor); the heterogeneous nucleation constants (theta = 73 degrees, J0 = 1e24 m^-3 s^-1) are global.
 - Pure-metal Butler-Volmer ignores surface oxide, alloying and impurity effects (Zn/Fe order above); HER/OER i0 values are a small table of recalled data (`electrode_kinetics.json`, tier estimated).
 - Bubble-site density, contact angle and the feedback gain are generic constants tuned against the carbonated-water and baking-soda gates, not measured per surface.
 - Not verified in a browser: bed height from the engine's settling/size fields (`effects.ts`), the removed ghost pile, fizz visuals at the new timescales.
+
+#### Possible future directions (precipitation)
+
+- Curate `pipeline/data/interfacial_energies.csv` from Nielsen & Sohnel (1971), Sohnel (1982), Mersmann (2001) for the ~30-50 common salts, with a spot check of each value. The hook (`GeneralMineral::interfacial_energy_j_m2` -> `SaltProps::gamma_override_j_m2`) is in place and tested; the barrier scales as gamma^3 inside an exponential, so this is the single per-compound number that moves induction time and particle count most.
+- A per-compound surface-integration rate (`SURFACE_INTEGRATION_M_S` is one global upper bound) and measured heterogeneous wetting angles per substrate (`WETTING_ANGLE_DEG` is a property of the vessel surface, so it stays global unless the glassware gets a surface).
+- Dissolution and growth that move the size distribution (small particles dissolve first; size-independent growth narrows the spread) instead of scaling the moments self-similarly, and a population balance for aggregation and breakage (a discretised or QMOM balance rather than the log-normal closure).
+- More than 6 size classes if the settling/scattering quadrature ever matters (it is cheap: the closure has no state of its own).

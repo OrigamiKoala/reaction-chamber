@@ -43,8 +43,15 @@ export interface SolidVisual {
   settled_volume_ml: number;
   /** 0..1 fraction of this solid's mass currently suspended in the liquid (rest is settled/resting). */
   suspended_fraction: number;
-  /** Representative particle diameter, micrometres (drives Stokes settling and scattering). */
+  /** Volume-equivalent mean particle diameter of the whole population, micrometres. */
   particle_diameter_um: number;
+  /**
+   * Mass-weighted mean diameter of the *suspended* part, micrometres. Coarse crystals settle first, so a settling
+   * precipitate leaves a haze of fines and this falls below `particle_diameter_um`; absent in older snapshots.
+   */
+  suspended_diameter_um?: number;
+  /** Geometric standard deviation of the size distribution (log-normal closure of the moments; 1 = monodisperse). */
+  particle_sigma_g?: number;
   /** Linear-RGB reflectance colour of the dry/wet solid. */
   rgb: [number, number, number];
   kind: SolidKind;

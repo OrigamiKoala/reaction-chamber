@@ -461,7 +461,7 @@ export class VesselEffects {
         sr += s.rgb[0] * susp;
         sg += s.rgb[1] * susp;
         sb += s.rgb[2] * susp;
-        diam += s.particle_diameter_um * susp;
+        diam += (s.suspended_diameter_um && s.suspended_diameter_um > 0 ? s.suspended_diameter_um : s.particle_diameter_um) * susp;
         vel += (s.settling_velocity_mm_s ?? 0) * susp;
       }
       if (s.kind === 'crystal') {
