@@ -48,6 +48,10 @@ export interface SolidVisual {
   /** Linear-RGB reflectance colour of the dry/wet solid. */
   rgb: [number, number, number];
   kind: SolidKind;
+  /** Stokes settling velocity of the particles in the liquid that is in the vessel (mm/s, 0 when they float or stay colloidal). */
+  settling_velocity_mm_s?: number;
+  /** Total particle surface, cm2. */
+  surface_area_cm2?: number;
   /** True when the solid is floating or clinging (e.g. a metal ribbon fizzing) rather than a bed. */
   floating?: boolean;
   /** Fraction of this solid still undissolved/unreacted relative to what was added (for shrinking pieces). 0..1 */

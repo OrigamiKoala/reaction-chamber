@@ -32,12 +32,6 @@ use crate::physics::R_GAS;
 use crate::vessel::*;
 use crate::vle::{self, Critical, LiquidVolume, PsatModel, Volatile};
 
-/// Liquid-side mass-transfer coefficient of a dissolved gas is computed via crate::transfer::gas_transfer.
-/// First-order release of dissolved gas as bubbles when the dissolved-gas tension exceeds the ambient pressure
-/// (the earlier engine's unstirred CO2 degassing constant, now general), 1/s; stirring multiplies it by 3.5.
-const K_BUBBLE_PER_S: f64 = 0.15;
-/// Gas-side film coefficient for evaporation from a free surface (natural convection over a bench vessel), m/s.
-const K_GAS_FILM_M_S: f64 = 3.0e-3;
 /// Fraction of a gas sparged through a liquid that comes to Henry equilibrium with it (bubble contact efficiency).
 const SPARGE_EFFICIENCY: f64 = 0.5;
 /// Thinnest liquid film that still spreads over an area (cm): a droplet does not cover the whole vessel floor.
@@ -106,6 +100,22 @@ impl FlashOut {
 }
 
 impl Vessel {
+    /// Vapour flux (mol/s, + = leaving the surface) of a species with surface partial pressure `p_surface` into a gas of
+    /// partial pressure `p_inf`, across `area_m2` of the vessel (depth below the rim from the geometry).
+    pub(crate) fn vapour_flux_mol_s(&self, liquid_id: &str, mw: f64, p_surface: f64, p_inf: f64, area_m2: f64, t: f64) -> f64 {
+        if area_m2 <= 1e-10 {
+            return 0.0;
+        }
+        let r_cm = self.config.inner_radius_cm.max(0.5);
+        let cross_cm2 = std::f64::consts::PI * r_cm.powi(2);
+        let depth_below_rim_m = ((self.config.capacity_ml - self.total_liquid_volume_ml()) / cross_cm2).max(0.0) * 0.01;
+        let el = crate::ions::species_elements(liquid_id).unwrap_or_default();
+        let p_tot = self.p_ext_pa();
+        let d_gas = crate::transfer::diffusion::fuller_gas_diffusivity_m2_s(t, p_tot, mw, &el);
+        let k = crate::transfer::evaporation::mass_transfer_coefficient_m_s(t, p_tot, area_m2, depth_below_rim_m, p_surface.max(p_inf), mw, d_gas);
+        k * area_m2 * (p_surface - p_inf) / (R_GAS * t.max(100.0))
+    }
+
     // ------------------------------------------------------------------------------------------------ atmosphere
     pub fn p_ext_pa(&self) -> f64 {
         self.atmosphere.pressure_pa()
@@ -560,7 +570,7 @@ impl Vessel {
             let props = self.solid_props(&sk);
             let solid_ml = n_s * vol.mw / props.density_g_ml.max(0.1);
             let a_s = self.wetted_area_m2(solid_ml);
-            let flux = K_GAS_FILM_M_S * a_s * (p_surface - p_inf) / (R_GAS * t);
+            let flux = self.vapour_flux_mol_s(&vol.id, vol.mw, p_surface, p_inf, a_s, t);
             let dn = (flux * dt_s).min(n_s);
             if dn <= 1e-18 {
                 continue; // a solid does not take up vapour from the air here
@@ -576,29 +586,10 @@ impl Vessel {
             let dh_sub = vol.latent_heat_j_mol(t) + self.molecule(&vol.id).map_or(0.0, |m| m.dh_dissolve_ideal(t));
             heat += dn * dh_sub;
         }
-        let r_cm = self.config.inner_radius_cm.max(0.5);
-        let area_cm2 = std::f64::consts::PI * r_cm.powi(2);
-        let total_h_cm = self.config.capacity_ml / area_cm2;
-        let liq_h_cm = self.total_liquid_volume_ml() / area_cm2;
-        let lip_m = ((total_h_cm - liq_h_cm).max(0.5) * 0.01).clamp(0.005, 0.20);
-
         for (ph, row) in phases.iter().zip(&parts) {
             for (c, p_surface) in ph.comps.iter().zip(row) {
                 let p_inf = atm.iter().find(|(k, _)| *k == c.vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
-                let flux = if *p_surface > p_inf {
-                    let (flux_mol_s, _) = crate::transfer::evaporation::sub_boiling_evaporation_rates(
-                        t,
-                        area,
-                        lip_m,
-                        *p_surface,
-                        p_inf,
-                        c.vol.mw,
-                        c.vol.latent_heat_j_mol(t),
-                    );
-                    flux_mol_s
-                } else {
-                    K_GAS_FILM_M_S * area * (p_surface - p_inf) / (R_GAS * t)
-                };
+                let flux = self.vapour_flux_mol_s(&c.vol.id, c.vol.mw, *p_surface, p_inf, area, t);
                 let mut dn = flux * dt_s;
                 if dn > 0.0 {
                     dn = dn.min(c.mol);
@@ -707,13 +698,9 @@ impl Vessel {
 
         let ionic = self.ionic_strength_molal();
         let ln_gamma = 0.1 * ionic * std::f64::consts::LN_10; // Setschenow salting-out of a neutral solute
-        let stirring = self.controls.stirring.unwrap_or(false);
-        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
         let aq_ml = self.aqueous_volume_ml().max(1e-6);
         let depth_m = (aq_ml / (self.surface_area_m2() * 1e6)).max(1e-4);
-        let k_l = crate::transfer::gas_transfer::gas_liquid_kl_m_s(stir_rpm, depth_m);
-        let lam_surface = k_l / depth_m;
-        let lam_bubble = K_BUBBLE_PER_S * (1.0 + (stir_rpm / 300.0) * 2.5);
+        let hyd = self.hydro_state();
         let p_ext = self.p_ext_pa();
         let phases = self.vle_phases(t);
         let p_liq = self.phase_partials(&phases, t).1;
@@ -742,8 +729,17 @@ impl Vessel {
 
         let mut heat = 0.0;
         let mut bubbled_ml = 0.0;
+        let r_m = self.config.inner_radius_cm.max(0.2) * 1e-2;
+        let liq_h_m = aq_ml * 1e-6 / (std::f64::consts::PI * r_m * r_m);
+        let wall_area = 2.0 * std::f64::consts::PI * r_m * liq_h_m + std::f64::consts::PI * r_m * r_m;
+        let solid_area: f64 = self.particle_populations.values().map(|p| p.surface_area_m2()).sum();
+        let sigma = crate::transfer::hydro::water_surface_tension_n_m(t);
         for it in items {
             let gas_id = it.h.gas_id.clone();
+            let diff = crate::transfer::diffusion::species_diffusivity_water_m2_s(&it.h.aq_id, t);
+            let lam_surface = crate::transfer::hydro::gas_liquid_kl(diff, hyd.nu, hyd.eps, depth_m) / depth_m;
+            let tension_ratio = if self.sealed { it.p_eq_pa / p_ambient.max(1.0) } else { (p_liq + tension) / p_ambient.max(1.0) };
+            let lam_bubble = crate::transfer::gas_transfer::bubble_release_rate_per_s(tension_ratio, p_ambient, wall_area, solid_area, hyd.liquid_m3, liq_h_m, it.k * 8.314_462_618 * t * 0.01, diff, hyd.rho_l, hyd.eta, sigma);
             // equilibrium target of the dissolved amount against the gas phase
             let exp_g = (-ln_gamma).exp();
             let n_target = if self.sealed {

@@ -101,8 +101,45 @@ pub struct GeneralEquilibrium {
     /// `-analytical_expression` form). When present it replaces the constant-ΔH van 't Hoff extrapolation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_k_analytic: Option<[f64; 5]>,
+    /// Kinetics of this row when it is not instantaneous on the time scale of the bench (CO2 hydration, ...): the forward
+    /// rate constant as a sum of an uncatalysed and species-catalysed terms. A row without a rate is in equilibrium at
+    /// all times (proton transfers, complexation: diffusion-controlled).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate: Option<EquilibriumRate>,
     pub tier: ProvenanceTier,
     pub source: String,
+}
+
+/// Forward rate law of an equilibrium row: k_f = sum_i k_i(T) [catalyst_i] (the reverse rate follows from detailed balance,
+/// k_r = k_f / K(T)).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EquilibriumRate {
+    pub terms: Vec<RateTerm>,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RateTerm {
+    /// Species whose molar concentration multiplies the term; None = the uncatalysed (solvent) path.
+    pub catalyst: Option<String>,
+    /// Rate constant at 298.15 K (s^-1, or M^-1 s^-1 with a catalyst).
+    pub k_298: f64,
+    /// Arrhenius activation energy, J/mol.
+    pub ea_j_mol: f64,
+}
+
+impl EquilibriumRate {
+    /// Forward first-order rate coefficient (s^-1) at `t_k` given the molar concentration of a species.
+    pub fn k_forward(&self, t_k: f64, conc_m: &dyn Fn(&str) -> f64) -> f64 {
+        let inv = 1.0 / t_k.max(1.0) - 1.0 / 298.15;
+        self.terms
+            .iter()
+            .map(|term| {
+                let k = term.k_298 * (-term.ea_j_mol / crate::physics::R_GAS * inv).exp();
+                k * term.catalyst.as_deref().map_or(1.0, conc_m)
+            })
+            .sum()
+    }
 }
 
 impl GeneralEquilibrium {
@@ -492,6 +529,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -14.00,
             delta_h_kj: 55.84,
             log_k_analytic: Some(WATER_KW_ANALYTIC),
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC phreeqc.dat (analytical expression for Kw, 0-300 C)".to_string(),
         },
@@ -505,21 +543,47 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -4.756,
             delta_h_kj: -0.41,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC pKa Dataset".to_string(),
         },
-        // 3. Carbonic acid 1st dissociation
+        // 3. Carbonic acid: the textbook two-step mechanism. CO2(aq) is dissolved CO2; its hydration to molecular H2CO3 is
+        // the slow step, the dissociation of H2CO3 is a diffusion-controlled proton transfer (fast). The product of the two
+        // constants is the apparent first dissociation constant of "carbonic acid" (pK1 = 6.35).
+        GeneralEquilibrium {
+            id: "co2_hydration".to_string(),
+            name: "CO2 hydration".to_string(),
+            equation: "CO2(aq) + H2O <=> H2CO3(aq)".to_string(),
+            reactants: [("CO2(aq)".to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
+            products: [("H2CO3(aq)".to_string(), 1.0)].into(),
+            log_k_298: -2.77,
+            delta_h_kj: 0.0,
+            log_k_analytic: None,
+            // forward k = 0.037 1/s (25 C, Ea 70 kJ/mol) for CO2 + H2O, plus 8500 1/(M s) (Ea 55 kJ/mol) for CO2 + OH-, whose
+            // product HCO3- is in fast equilibrium with H2CO3 (Pinsent, Pearson & Roughton 1956; Johnson 1982); the reverse
+            // follows from detailed balance
+            rate: Some(EquilibriumRate {
+                terms: vec![
+                    RateTerm { catalyst: None, k_298: 0.037, ea_j_mol: 70_000.0 },
+                    RateTerm { catalyst: Some("OH-".to_string()), k_298: 8500.0, ea_j_mol: 55_000.0 },
+                ],
+                source: "Pinsent, Pearson & Roughton, Trans. Faraday Soc. 52 (1956) 1512; Johnson, Geochim. Cosmochim. Acta 46 (1982) 1245".to_string(),
+            }),
+            tier: ProvenanceTier::Estimated,
+            source: "K_h = 1.7e-3 (Wang et al., Geochim. Cosmochim. Acta 2010); with the dissociation below the apparent pK1 = 6.35 (PHREEQC core)".to_string(),
+        },
         GeneralEquilibrium {
             id: "carbonic_acid_dissoc1".to_string(),
             name: "Carbonic acid 1st dissociation".to_string(),
-            equation: "CO2(aq) + H2O <=> H+ + HCO3-".to_string(),
-            reactants: [("CO2(aq)".to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
+            equation: "H2CO3(aq) <=> H+ + HCO3-".to_string(),
+            reactants: [("H2CO3(aq)".to_string(), 1.0)].into(),
             products: [("H+".to_string(), 1.0), ("HCO3-".to_string(), 1.0)].into(),
-            log_k_298: -6.35,
+            log_k_298: -3.58,
             delta_h_kj: 9.16,
             log_k_analytic: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC core".to_string(),
+            rate: None,
+            tier: ProvenanceTier::Estimated,
+            source: "apparent pK1 = 6.35 (PHREEQC core) less the hydration constant".to_string(),
         },
         // 4. Bicarbonate 2nd dissociation
         GeneralEquilibrium {
@@ -531,6 +595,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -10.33,
             delta_h_kj: 14.85,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC core".to_string(),
         },
@@ -544,6 +609,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -4.75,
             delta_h_kj: 3.64,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC core".to_string(),
         },
@@ -557,6 +623,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: 13.8,
             delta_h_kj: -88.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "Critical Stability Constants (Smith & Martell)".to_string(),
         },
@@ -570,6 +637,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: 7.40,
             delta_h_kj: -56.1,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "Critical Stability Constants".to_string(),
         },
@@ -583,6 +651,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: 2.301, // K1 = 200.0 M^-1
             delta_h_kj: -26.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Stability Constants".to_string(),
         },
@@ -596,6 +665,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -4.0, // effective K in aqueous chloride
             delta_h_kj: 50.0, // endothermic => turns blue on heating
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "J. Chem. Educ. Thermochromic Cobalt System".to_string(),
         },
@@ -609,6 +679,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: 2.85, // K ~ 710 M^-1
             delta_h_kj: -17.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Stability Constants".to_string(),
         },
@@ -622,6 +693,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: 4.5,
             delta_h_kj: -30.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "J. Am. Chem. Soc. Starch-Iodine Complex".to_string(),
         },
@@ -635,6 +707,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -9.30,
             delta_h_kj: 12.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Indicator pKa".to_string(),
         },
@@ -648,6 +721,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -7.00,
             delta_h_kj: 10.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Indicator pKa".to_string(),
         },
@@ -661,6 +735,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -3.70,
             delta_h_kj: 8.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Indicator pKa".to_string(),
         },
@@ -674,6 +749,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             log_k_298: -5.00,
             delta_h_kj: 8.0,
             log_k_analytic: None,
+            rate: None,
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Indicator pKa".to_string(),
         },

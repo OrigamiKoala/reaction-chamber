@@ -257,6 +257,10 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("CO3-2", "CO3-2", -2, -677.1, -527.81, -50.0, None, Some("[O-]C(=O)[O-]")),
         make_aq("HCO3-", "HCO3-", -1, -692.0, -586.77, 112.0, None, Some("OC(=O)[O-]")),
         make_aq("CO2(aq)", "CO2", 0, -413.8, -385.98, 243.0, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N"), Some("O=C=O")),
+        // molecular carbonic acid (the intermediate of CO2 hydration): dfG from K_h = 1.7e-3, dfH from zero hydration enthalpy.
+        // No SMILES: it is a speciation species that never forms a phase of its own, and a trace partitionable component
+        // destabilises the solid-liquid solve of the phase flash
+        make_aq("H2CO3(aq)", "H2CO3", 0, -699.63, -607.3, 243.0, Some("BVKZGUZCCUSVTD-UHFFFAOYSA-N"), None),
         make_aq("CH3COOH", "C2H4O2", 0, -484.5, -396.46, 124.0, Some("QTBSBXVTEAMEQO-UHFFFAOYSA-N"), Some("CC(=O)O")),
         make_aq("CH3COO-", "C2H3O2-", -1, -486.0, -369.31, 80.0, None, Some("CC(=O)[O-]")),
         make_aq("Fe+3", "Fe+3", 3, -48.5, -4.7, 150.0, None, Some("[Fe+3]")),
@@ -400,3 +404,16 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
     crate::db::seed_phases::attach_phase_data(&mut records);
     records
 }
+
+// ---- Roles of the aqueous medium and of complete-oxidation products ----------------------------------------------------
+// Electrochemistry balances half-reactions with the solvent and its ions, combustion closes its element balance with
+// the stable oxides, and both look the species up by these ids. Naming them once, here with the other seed tables, keeps
+// engine logic free of compound literals (the species themselves are ordinary records above).
+pub const WATER: &str = "H2O";
+pub const WATER_VAPOUR: &str = "H2O(g)";
+pub const PROTON: &str = "H+";
+pub const HYDROXIDE: &str = "OH-";
+pub const HYDROGEN_GAS: &str = "H2(g)";
+pub const OXYGEN_GAS: &str = "O2(g)";
+pub const CARBON_DIOXIDE_GAS: &str = "CO2(g)";
+pub const NITROGEN_GAS: &str = "N2(g)";

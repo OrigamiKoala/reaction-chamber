@@ -403,7 +403,8 @@ mod tests {
         let mut moved = 0.0;
         let mut lost_total = 0.0;
         let mut max_p = 0.0f64;
-        for _ in 0..1500 {
+        // (the CO2 leaves the liquid as bubbles from the wall and the crystals' surfaces, Stage 8: minutes, not seconds)
+        for _ in 0..6000 {
             src.step(0.1).unwrap();
             dst.step(0.1).unwrap();
             let (m, l) = step_link(&mut src, &mut dst, 0.1);
@@ -428,7 +429,7 @@ mod tests {
         assert!(dissolved < 1.3e-3, "dissolved carbonate species {} mol", dissolved);
         // the collector reads the volume of gas the flask pushed out: close to the CO2 volume produced
         let v = dst.collector_volume_ml();
-        assert!(v > 60.0 && v < 95.0, "collected {} mL (CO2 produced 86 mL, about 18 mL of it still dissolved)", v);
+        assert!(v > 45.0 && v < 95.0, "collected {} mL (CO2 produced 86 mL, a quarter of it still dissolved after 10 min: bubble release is slow from clean glass)", v);
         assert!(dst.collected_mol_of("N2(g)") > 0.0, "the displaced air is in the collector too");
         // the flask did not pressurise noticeably
         assert!(max_p < 1.06 + 0.04, "pressure peaked at {} atm", max_p);
@@ -468,7 +469,7 @@ mod tests {
         let mut moved = 0.0;
         let mut lost = 0.0;
         // 5 g of NaHCO3 added in 0.25 g portions (as a manual pour would): ~1.4 L of CO2 for a 100 mL syringe
-        for i in 0..800 {
+        for i in 0..3000 {
             if i % 5 == 0 && i < 100 {
                 src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.25), drops: None, temperature_k: None }).unwrap();
             }

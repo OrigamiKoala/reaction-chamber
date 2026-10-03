@@ -9,8 +9,32 @@ pub struct BasisReaction {
     pub nu: Vec<(usize, f64)>,
 }
 
-/// Builds the null-space stoichiometric basis for the given candidate species.
+/// Most distinct species lists whose bases are remembered before the memo is dropped (a bound on memory, not physics).
+const BASIS_MEMO_MAX: usize = 4096;
+
+thread_local! {
+    static BASIS_MEMO: std::cell::RefCell<std::collections::HashMap<Vec<String>, Vec<BasisReaction>>> = Default::default();
+}
+
+/// Builds the null-space stoichiometric basis for the given candidate species. The basis depends only on the ordered
+/// species ids (their formulas and charges), not on amounts, so the vessel loop, which asks for the same candidate sets
+/// every step, is served from a memo.
 pub fn build_reaction_basis(species: &[String]) -> Vec<BasisReaction> {
+    if let Some(hit) = BASIS_MEMO.with(|m| m.borrow().get(species).cloned()) {
+        return hit;
+    }
+    let basis = build_reaction_basis_uncached(species);
+    BASIS_MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.len() >= BASIS_MEMO_MAX {
+            m.clear();
+        }
+        m.insert(species.to_vec(), basis.clone());
+    });
+    basis
+}
+
+fn build_reaction_basis_uncached(species: &[String]) -> Vec<BasisReaction> {
     if species.is_empty() {
         return Vec::new();
     }

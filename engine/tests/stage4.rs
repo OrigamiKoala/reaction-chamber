@@ -307,6 +307,7 @@ fn s4_9_two_molal_sodium_chloride_boils_at_375_2_k() {
         aqueous_mol: [("H2O".to_string(), kg / 0.018_015_28), ("Na+".to_string(), 2.0 * kg), ("Cl-".to_string(), 2.0 * kg)].into(),
         organic_mol: HashMap::new(),
         solid_mol: HashMap::new(),
+        particles: HashMap::new(),
     };
     v.add_portion(portion).unwrap();
     let t = v.bubble_point_k(ATM).unwrap();
@@ -344,6 +345,7 @@ fn s4_10_open_carbonated_water_relaxes_toward_the_air_value() {
         aqueous_mol: [("CO2(aq)".to_string(), 0.003)].into(),
         organic_mol: HashMap::new(),
         solid_mol: HashMap::new(),
+        particles: HashMap::new(),
     };
     v.add_portion(portion).unwrap();
     let vol_l = v.aqueous_volume_ml() / 1000.0;

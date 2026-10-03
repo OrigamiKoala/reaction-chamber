@@ -125,7 +125,8 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   assert.ok(s[syr].gas.total_mol < 1e-12, 'nothing is collected without a tube');
   assert.ok(s[src].pressure_atm > 1.1 || s[src].gas.total_mol > 1e-3, 'gas stays in the stoppered flask');
   eng.vessel_gas_link(src, syr);
-  const s2 = run([src, syr], 20);
+  // (Stage 8: the supersaturated CO2 leaves the liquid over tens of seconds, not at once)
+  const s2 = run([src, syr], 60);
   assert.ok(s2[syr].gas.volume_ml > 50, 're-linked: the trapped gas flows into the syringe');
   const vented = eng.vessel_gas_vent(syr);
   assert.ok(vented > 0.002);
@@ -141,7 +142,8 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   const v = mk('erlenmeyer-250', 250, 105, 3.6, true);
   dose(v, { reagent_id: 'ch3cooh_5pct', volume_ml: 20 });
   dose(v, { reagent_id: 'nahco3_s', mass_g: 0.1 });
-  const s = run([v], 5)[v];
+  // (Stage 8: ~60 mM of supersaturated CO2 leaves the liquid over a minute or two, like a glass of soda, not within 5 s)
+  const s = run([v], 100)[v];
   assert.equal(s.gas.collector, null);
   assert.ok(s.gas.total_mol > 2e-4 && s.gas.species[0].species === 'CO2(g)', 'a plain flask reports the evolved gas, not its air');
   eng.vessel_free(v);

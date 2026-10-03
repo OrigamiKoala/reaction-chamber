@@ -33,6 +33,11 @@ fn weigh_in(id: &str, total_g: f64, n: usize, water_ml: f64) -> Vessel {
     for _ in 0..n {
         dose_g(&mut v, id, total_g / n as f64);
     }
+    // Stage 8: a solid dissolves at the rate its surface allows and CO2 hydration takes seconds, so "what the contents
+    // settle into" is the state after the transfers have run, not the instant of the last dose
+    for _ in 0..600 {
+        v.step(0.5).unwrap();
+    }
     v
 }
 
@@ -69,8 +74,9 @@ fn nahco3_conserves_sodium_and_carbon() {
     let v = weigh_in("nahco3_s", 2.5, 1, 50.0);
     let mol = 2.5 / 84.007;
     assert!((amount(&v, "Na+") - mol).abs() < 1e-9);
-    let carbon = amount(&v, "HCO3-") + amount(&v, "CO3-2") + amount(&v, "CO2(aq)");
-    assert!((carbon - mol).abs() < 1e-9, "carbon {} vs {}", carbon, mol);
+    let carbon = amount(&v, "HCO3-") + amount(&v, "CO3-2") + amount(&v, "CO2(aq)") + amount(&v, "H2CO3(aq)");
+    // (the open beaker has had 300 s to degas a trace of CO2)
+    assert!((carbon - mol).abs() < 1e-4 * mol.max(1.0) && carbon <= mol + 1e-12, "carbon {} vs {}", carbon, mol);
     // charge balance
     let q = amount(&v, "Na+") + amount(&v, "H+") - amount(&v, "OH-") - amount(&v, "HCO3-") - 2.0 * amount(&v, "CO3-2");
     assert!(q.abs() < 1e-9, "charge imbalance {}", q);

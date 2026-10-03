@@ -53,6 +53,10 @@ fn test_m5_demo1_copper_ammonia_complex() {
         drops: None,
         temperature_k: None,
     }).unwrap();
+    // (Stage 8: the precipitate dissolves at the rate its surface delivers it, not at the instant of the dose)
+    for _ in 0..240 {
+        v.step(0.5).unwrap();
+    }
     let snap3 = v.snapshot();
     let cu_oh2_excess = *v.solid_mol.get("Cu(OH)2(s)").unwrap_or(&0.0);
     assert_eq!(cu_oh2_excess, 0.0, "Precipitate dissolves completely in excess NH3");
