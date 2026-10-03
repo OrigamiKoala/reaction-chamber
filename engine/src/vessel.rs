@@ -3,7 +3,7 @@
 //! Fully generalized to support arbitrary reactions, minerals, and compounds from PubChem.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::types::ProvenanceTier;
@@ -221,6 +221,8 @@ pub struct VesselSnapshot {
     pub gas: crate::gas::GasInfo,
     /// The gas phase: the atmosphere an open vessel sits in, or the closed gas mixture of a sealed one.
     pub gas_phase: Option<crate::gas_phase::GasPhaseInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_cap_reached: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -332,6 +334,8 @@ pub struct Vessel {
     /// Particle populations for heterogeneous solid transfer (moments mu0-mu3).
     pub particle_populations: HashMap<String, crate::transfer::ParticlePopulation>,
     pub burning_fuel: Option<String>,
+    pub last_smiles_species: HashSet<String>,
+    pub network_cap_reached: bool,
 }
 
 impl Vessel {
@@ -388,6 +392,8 @@ impl Vessel {
             phases: crate::phases::PhaseState::new(temp_k),
             particle_populations: HashMap::new(),
             burning_fuel: None,
+            last_smiles_species: HashSet::new(),
+            network_cap_reached: false,
         };
         v.update_phases();
         let compounds: Vec<CompoundThermo> = v.compounds.values().cloned().collect();
@@ -435,11 +441,8 @@ impl Vessel {
         self.catalog.insert(entry.id.clone(), entry);
     }
 
-    /// Automatically expands and registers M6 reaction network based on species present
+    /// Automatically expands and registers Stage 9 reaction network based on species present
     pub fn update_network(&mut self) {
-        if !self.debug_network_generator {
-            return;
-        }
         let vol_l = self.reaction_volume_ml() / 1000.0;
         if vol_l <= 0.0 {
             return;
@@ -456,6 +459,7 @@ impl Vessel {
             crate::network_generator::NetworkGeneratorConfig::default()
         );
         let gen_net = generator.generate_network(&concs, self.temperature_k, ph);
+        self.network_cap_reached = gen_net.cap_reached;
         for rxn in gen_net.reactions {
             if !self.kinetic_reactions.iter().any(|r| r.id == rxn.id) {
                 // generated rate constants are written for first order in every reactant
@@ -467,9 +471,9 @@ impl Vessel {
                     products: rxn.products,
                     gas_products: rxn.gas_products,
                     orders: Some(orders),
-                    arrhenius_a: rxn.k_fwd,
+                    arrhenius_a: rxn.arrhenius_a,
                     arrhenius_n: 0.0,
-                    arrhenius_ea: 0.0,
+                    arrhenius_ea: rxn.arrhenius_ea,
                     delta_h_kj: rxn.delta_h_kj,
                     catalyst_species: None,
                     is_reversible: rxn.k_rev > 0.0,
@@ -828,6 +832,23 @@ impl Vessel {
         self.recent_reaction_heat_w = 0.0;
 
         let mut reaction_heat_joules = 0.0;
+
+        // Structure-based reaction network generator: triggers whenever organic/SMILES species set changes
+        let mut cur_smiles_species = HashSet::new();
+        for (sp, &mol) in &self.species_mol {
+            if mol > 1e-12 && crate::network_generator::resolve_molecule(sp).is_some() {
+                cur_smiles_species.insert(sp.clone());
+            }
+        }
+        for (sp, &mol) in &self.solid_mol {
+            if mol > 1e-12 && crate::network_generator::resolve_molecule(sp).is_some() {
+                cur_smiles_species.insert(sp.clone());
+            }
+        }
+        if !cur_smiles_species.is_empty() && cur_smiles_species != self.last_smiles_species {
+            self.last_smiles_species = cur_smiles_species;
+            self.update_network();
+        }
 
         // 1. Generalized chemical kinetics & combustion
         let q_kinetics = self.step_kinetics(dt_s);
@@ -1905,6 +1926,7 @@ impl Vessel {
             events: self.events.clone(),
             gas: self.gas_info(),
             gas_phase: Some(self.gas_phase_info()),
+            network_cap_reached: Some(self.network_cap_reached),
         }
     }
 

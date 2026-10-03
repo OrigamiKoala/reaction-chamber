@@ -232,8 +232,8 @@ impl Vessel {
                     continue;
                 }
                 let min = self.minerals[idx].clone();
-                let is_granular = self.particle_populations.get(&min.solid_species).map_or(false, |p| p.mean_diameter_m() >= 100e-6);
-                if y > 0.0 && is_granular {
+                let is_kinetic = self.particle_populations.contains_key(&min.solid_species);
+                if y > 0.0 && is_kinetic {
                     continue;
                 }
                 self.eq_moved = true;
@@ -374,7 +374,11 @@ impl Vessel {
                 if m.dissolved_products.is_empty() || !m.dissolved_products.keys().any(|k| eq_species.contains(&k)) {
                     continue;
                 }
-                let solid0 = self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0);
+                let solid0 = if self.particle_populations.contains_key(&m.solid_species) {
+                    0.0
+                } else {
+                    self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0)
+                };
                 let all_present = m.dissolved_products.keys().all(|i| self.species_mol.get(i).copied().unwrap_or(0.0) > present_mol);
                 if solid0 <= eps_mol && !all_present {
                     continue;
@@ -593,7 +597,11 @@ impl Vessel {
             if m.dissolved_products.is_empty() {
                 continue;
             }
-            let solid0 = self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0).max(0.0);
+            let solid0 = if self.particle_populations.contains_key(&m.solid_species) {
+                0.0
+            } else {
+                self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0).max(0.0)
+            };
             let all_present = m.dissolved_products.keys().all(|i| amount(self, i) > present_mol);
             if solid0 <= eps_mol && !all_present {
                 continue;

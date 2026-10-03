@@ -123,11 +123,21 @@ pub fn split_charge(species: &str) -> (&str, i32) {
 
 /// Charge of a species id, e.g. "PO4-3" -> -3.
 pub fn species_charge(species: &str) -> i32 {
-    let (body, q) = split_charge(species.trim().trim_end_matches("(aq)"));
-    match pseudo_species(body) {
-        Some((_, Some(c))) => c,
-        _ => q,
+    let (body, q) = split_charge(species.trim().trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)").trim_end_matches("(aq)"));
+    if let Some((_, Some(c))) = pseudo_species(body) {
+        return c;
     }
+    if q != 0 {
+        return q;
+    }
+    if let Some(global) = crate::db::SpeciesStore::try_global() {
+        if let Ok(store) = global.try_read() {
+            if let Some(rec) = store.get(body).or_else(|| store.get(species)) {
+                return rec.identity.charge;
+            }
+        }
+    }
+    q
 }
 
 /// Pseudo-species of the engine (indicator dyes, starch) and the molecular formula of each: id body (no charge) ->
@@ -165,7 +175,18 @@ fn species_elements_uncached(species: &str) -> Option<HashMap<String, f64>> {
     if let Some((formula, _)) = pseudo_species(body) {
         return parse_formula_strict(formula);
     }
-    parse_formula_strict(body)
+    if let Some(elems) = parse_formula_strict(body) {
+        return Some(elems);
+    }
+    if let Some(global) = crate::db::SpeciesStore::try_global() {
+        if let Ok(store) = global.try_read() {
+            if let Some(rec) = store.get(body).or_else(|| store.get(species)).or_else(|| store.get_by_name(species)) {
+                let (rec_body, _) = split_charge(&rec.identity.formula);
+                return parse_formula_strict(rec_body);
+            }
+        }
+    }
+    None
 }
 
 fn cached_species<R>(species: &str, f: impl FnOnce(&Option<(HashMap<String, f64>, Option<f64>)>) -> R) -> R {

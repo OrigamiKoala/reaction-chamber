@@ -36,42 +36,75 @@ pub struct FuelCombustionProps {
 
 /// Identifies combustion properties of volatile liquid fuels from structure/formula.
 pub fn get_fuel_props(species: &str) -> Option<FuelCombustionProps> {
-    match species {
-        "C2H5OH" | "ethanol" | "ik:LFQSCWFLJHTTHZ-UHFFFAOYSA-N" => Some(FuelCombustionProps {
-            species_id: species.to_string(),
-            molar_mass_g_mol: 46.069,
-            delta_c_h_j_mol: 1.367e6, // 1367 kJ/mol
-            c_atoms: 2.0,
-            h_atoms: 6.0,
-            o_atoms: 1.0,
-            m_dot_inf_kg_m2_s: 0.015,
-            k_beta_m1: 3.5,
-            soot_yield: 0.008, // Blue flame with pale yellow tips
-        }),
-        "CH3OH" | "methanol" | "ik:OKKJLVBELUTLKV-UHFFFAOYSA-N" => Some(FuelCombustionProps {
-            species_id: species.to_string(),
-            molar_mass_g_mol: 32.042,
-            delta_c_h_j_mol: 7.26e5, // 726 kJ/mol
-            c_atoms: 1.0,
-            h_atoms: 4.0,
-            o_atoms: 1.0,
-            m_dot_inf_kg_m2_s: 0.017,
-            k_beta_m1: 4.0,
-            soot_yield: 0.001, // Near-invisible pale non-luminous flame
-        }),
-        "C6H14" | "hexane" | "ik:VLKZOEOYAKHREP-UHFFFAOYSA-N" => Some(FuelCombustionProps {
-            species_id: species.to_string(),
-            molar_mass_g_mol: 86.177,
-            delta_c_h_j_mol: 4.163e6, // 4163 kJ/mol
-            c_atoms: 6.0,
-            h_atoms: 14.0,
-            o_atoms: 0.0,
-            m_dot_inf_kg_m2_s: 0.074,
-            k_beta_m1: 1.9,
-            soot_yield: 0.042, // Luminous yellow sooty flame
-        }),
-        _ => None,
+    let (elements, thermo_id) = if let Some(elems) = crate::ions::species_elements(species) {
+        (elems, species.to_string())
+    } else if let Ok(store) = crate::db::SpeciesStore::global().read() {
+        if let Some(rec) = store.get(species).or_else(|| store.get_by_name(species)) {
+            let elems = crate::ions::species_elements(&rec.identity.formula)
+                .or_else(|| {
+                    let map: std::collections::HashMap<String, f64> = rec.elements().into_iter().map(|(k, v)| (k, v as f64)).collect();
+                    if map.is_empty() { None } else { Some(map) }
+                })?;
+            (elems, rec.id.clone())
+        } else if let Some(cat) = crate::chem_db::get_reagent_catalog().iter().find(|c| c.id == species || c.name.to_lowercase().starts_with(&species.to_lowercase())) {
+            let elems = crate::ions::species_elements(&cat.formula)?;
+            (elems, cat.formula.clone())
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+
+    let c = elements.get("C").copied().unwrap_or(0.0);
+    let h = elements.get("H").copied().unwrap_or(0.0);
+    let o = elements.get("O").copied().unwrap_or(0.0);
+
+    if c < 1.0 || h < 1.0 {
+        return None;
     }
+
+    let thermo = crate::chem_db::get_species_thermo(&thermo_id);
+    let mw = thermo.mw.max(16.0);
+
+    // Delta_c H from Burgess / Mendeleev oxygen-demand correlation:
+    // Delta_c H ~ 418.4 kJ/mol * (c + h/4 - o/2)
+    let nu_o2 = c + 0.25 * h - 0.5 * o;
+    if nu_o2 <= 0.0 {
+        return None;
+    }
+    let delta_c_h_j_mol = (nu_o2 * 418.4 * 1000.0).max(1e5);
+
+    // Asymptotic burning flux (Babrauskas 1983 correlation based on boiling point & latent heat):
+    // Typically 0.015 - 0.075 kg/(m^2 s)
+    let m_dot_inf: f64 = if o > 0.0 {
+        0.015
+    } else {
+        (0.015f64 + 0.010f64 * c).clamp(0.02, 0.08)
+    };
+
+    let k_beta = if o > 0.0 { 3.5 } else { 1.9 };
+
+    // Soot yield fraction: oxygenated fuels burn clean/blue (low soot), alkanes/aromatics luminous/sooty
+    let soot_yield = if o >= c {
+        0.001 // near-invisible pale non-luminous flame (methanol)
+    } else if o > 0.0 {
+        0.008 // pale blue with yellow tips (ethanol)
+    } else {
+        0.042 // luminous yellow sooty flame (hydrocarbons)
+    };
+
+    Some(FuelCombustionProps {
+        species_id: species.to_string(),
+        molar_mass_g_mol: mw,
+        delta_c_h_j_mol,
+        c_atoms: c,
+        h_atoms: h,
+        o_atoms: o,
+        m_dot_inf_kg_m2_s: m_dot_inf,
+        k_beta_m1: k_beta,
+        soot_yield,
+    })
 }
 
 /// Evaluates Lower Flammability Limit (LFL) mole fraction via Jones' rule.

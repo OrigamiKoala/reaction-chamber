@@ -243,7 +243,10 @@ impl SpeciesRecord {
     }
 
     pub fn elements(&self) -> HashMap<String, f64> {
-        crate::ions::species_elements(&self.identity.formula).unwrap_or_default()
+        let (body, _) = crate::ions::split_charge(&self.identity.formula);
+        crate::ions::parse_formula_strict(body)
+            .or_else(|| crate::ions::species_elements(&self.identity.formula))
+            .unwrap_or_default()
     }
 
     pub fn has_phase(&self, phase_tag: &str) -> bool {

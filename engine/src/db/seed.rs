@@ -24,6 +24,13 @@ fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, 
         polymorph: None,
     });
 
+    let mut names = vec![id.to_string()];
+    if id == "CH3COO-" {
+        names.push("acetate".to_string());
+    } else if id == "CH3COOH" {
+        names.push("acetic_acid".to_string());
+    }
+
     SpeciesRecord {
         id: id.to_string(),
         identity: Identity {
@@ -33,7 +40,7 @@ fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, 
             charge,
             cas: None,
             cid: None,
-            names: vec![id.to_string()],
+            names,
             db_names: HashMap::new(),
         },
         phases,
@@ -69,6 +76,33 @@ fn make_liquid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: &s
         polymorph: None,
     });
 
+    let mut names = vec![id.to_string()];
+    if id == "C2H5OH" {
+        names.push("ethanol".to_string());
+    } else if id == "CH3OH" {
+        names.push("methanol".to_string());
+    } else if id == "H2O" {
+        names.push("water".to_string());
+    } else if id == "ethyl_acetate" {
+        names.push("CC(=O)OCC".to_string());
+        names.push("EtOAc".to_string());
+        names.push("CH3COOC2H5".to_string());
+    } else if id == "bromoethane" {
+        names.push("CCBr".to_string());
+        names.push("ethyl_bromide".to_string());
+    } else if id == "2-bromopropane" {
+        names.push("CH3CH(Br)CH3".to_string());
+        names.push("CC(Br)C".to_string());
+        names.push("isopropyl_bromide".to_string());
+    } else if id == "acetone" {
+        names.push("CH3COCH3".to_string());
+        names.push("CC(=O)C".to_string());
+    } else if id == "benzene" {
+        names.push("c1ccccc1".to_string());
+    } else if id == "cyclohexene" {
+        names.push("C1=CCCCC1".to_string());
+    }
+
     SpeciesRecord {
         id: id.to_string(),
         identity: Identity {
@@ -78,7 +112,7 @@ fn make_liquid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: &s
             charge: 0,
             cas: None,
             cid: None,
-            names: vec![id.to_string()],
+            names,
             db_names: HashMap::new(),
         },
         phases,
@@ -114,16 +148,22 @@ fn make_gas(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: Optio
         polymorph: None,
     });
 
+    let mut names = vec![id.to_string()];
+    if id == "ethene" {
+        names.push("ethylene".to_string());
+        names.push("C=C".to_string());
+    }
+
     SpeciesRecord {
         id: id.to_string(),
         identity: Identity {
             inchikey: inchi.map(|s| s.to_string()),
-            smiles: None,
+            smiles: if id == "ethene" { Some("C=C".to_string()) } else { None },
             formula: formula.to_string(),
             charge: 0,
             cas: None,
             cid: None,
-            names: vec![id.to_string()],
+            names,
             db_names: HashMap::new(),
         },
         phases,
@@ -205,6 +245,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("Zn+2", "Zn+2", 2, -153.89, -147.06, 46.0, None, Some("[Zn+2]")),
         make_aq("F-", "F-", -1, -332.63, -278.79, -106.7, None, Some("[F-]")),
         make_aq("Cl-", "Cl-", -1, -167.2, -131.23, -136.4, None, Some("[Cl-]")),
+        make_aq("Br-", "Br-", -1, -121.55, -103.96, 82.4, None, Some("[Br-]")),
         make_aq("SO4-2", "SO4-2", -2, -909.3, -744.53, -293.0, None, Some("[O-]S(=O)(=O)[O-]")),
         make_aq("NO3-", "NO3-", -1, -205.0, -108.74, -86.6, None, Some("[O-][N+](=O)[O-]")),
         make_aq("Cu+2", "Cu+2", 2, 64.8, 65.5, -99.6, None, Some("[Cu+2]")),
@@ -263,6 +304,13 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         // Liquids
         make_liquid("H2O", "H2O", -285.83, -237.13, 75.38, "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "O"),
         make_liquid("C2H5OH", "C2H6O", -277.69, -174.78, 112.3, "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "CCO"),
+        make_liquid("CH3OH", "CH4O", -239.2, -166.6, 81.1, "OKKJLVBELUTLKV-UHFFFAOYSA-N", "CO"),
+        make_liquid("ethyl_acetate", "C4H8O2", -480.0, -332.7, 170.0, "XEKOWRVHYACXOJ-UHFFFAOYSA-N", "CC(=O)OCC"),
+        make_liquid("bromoethane", "C2H5Br", -90.5, -26.9, 100.8, "RDHPKYGYEGBPIA-UHFFFAOYSA-N", "CCBr"),
+        make_liquid("2-bromopropane", "C3H7Br", -120.0, -45.0, 140.0, "XRHCAGNSDHCHF-UHFFFAOYSA-N", "CC(Br)C"),
+        make_liquid("acetone", "C3H6O", -248.4, -155.4, 126.0, "CSCPPACGZOOCGX-UHFFFAOYSA-N", "CC(=O)C"),
+        make_liquid("benzene", "C6H6", 49.0, 124.5, 136.0, "UHOVQNZJYSORNB-UHFFFAOYSA-N", "c1ccccc1"),
+        make_liquid("cyclohexene", "C6H10", -38.5, 52.0, 150.0, "XDRDYGQBUYVLNZ-UHFFFAOYSA-N", "C1=CCCCC1"),
 
         // Solids with PHREEQC llnl.dat analytic expressions
         make_solid_with_analytic("AgCl(s)", "AgCl", -127.07, -109.79, 50.8, 5.56, [2.671219, -0.007312, -3053.408327, 0.0, 0.0]),
@@ -312,6 +360,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_gas("H2O(g)", "H2O", -241.82, -228.57, 33.6, Some("XLYOFNOQVPJJNP-UHFFFAOYSA-N")),
         make_gas("C2H5OH(g)", "C2H6O", -235.3, -168.49, 65.4, Some("LFQSCWFLJHTTHZ-UHFFFAOYSA-N")),
         make_gas("H2S(g)", "H2S", -20.6, -33.4, 34.2, Some("RWSXRVCMGQZWBV-UHFFFAOYSA-N")),
+        make_gas("ethene", "C2H4", 52.4, 68.4, 42.9, Some("VGGSQFUCUMXWEO-UHFFFAOYSA-N")),
     ];
 
     // Attach optics to selected species

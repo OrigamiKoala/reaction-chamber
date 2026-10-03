@@ -40,6 +40,10 @@ impl SpeciesStore {
         GLOBAL_STORE.get_or_init(|| Arc::new(RwLock::new(SpeciesStore::default()))).clone()
     }
 
+    pub fn try_global() -> Option<Arc<RwLock<SpeciesStore>>> {
+        GLOBAL_STORE.get().cloned()
+    }
+
     /// Current registration generation (changes whenever any store registers a record).
     pub fn generation() -> u64 {
         GENERATION.load(Ordering::Relaxed)

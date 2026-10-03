@@ -387,6 +387,302 @@ impl Molecule {
         }
         n
     }
+
+    /// Returns the molecular formula in standard Hill system notation:
+    /// Carbon first, Hydrogen second, then all other elements in alphabetical order.
+    /// Trailing net charge suffix (+, -, +2, -2, etc.) is appended if non-zero.
+    pub fn formula(&self) -> String {
+        let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut net_charge: i32 = 0;
+        for (i, atom) in self.atoms.iter().enumerate() {
+            *counts.entry(atom.element.clone()).or_insert(0) += 1;
+            let h = self.hydrogens(i) as usize;
+            if h > 0 {
+                *counts.entry("H".to_string()).or_insert(0) += h;
+            }
+            net_charge += atom.charge;
+        }
+
+        let mut out = String::new();
+        if let Some(&c_count) = counts.get("C") {
+            out.push('C');
+            if c_count > 1 {
+                out.push_str(&c_count.to_string());
+            }
+            if let Some(&h_count) = counts.get("H") {
+                out.push('H');
+                if h_count > 1 {
+                    out.push_str(&h_count.to_string());
+                }
+            }
+            for (elem, count) in &counts {
+                if elem != "C" && elem != "H" {
+                    out.push_str(elem);
+                    if *count > 1 {
+                        out.push_str(&count.to_string());
+                    }
+                }
+            }
+        } else {
+            for (elem, count) in &counts {
+                out.push_str(elem);
+                if *count > 1 {
+                    out.push_str(&count.to_string());
+                }
+            }
+        }
+
+        if net_charge == 1 {
+            out.push('+');
+        } else if net_charge == -1 {
+            out.push('-');
+        } else if net_charge > 1 {
+            out.push('+');
+            out.push_str(&net_charge.to_string());
+        } else if net_charge < -1 {
+            out.push('-');
+            out.push_str(&net_charge.abs().to_string());
+        }
+
+        out
+    }
+
+    /// Serializes the molecular graph to a valid SMILES string.
+    pub fn to_smiles(&self) -> String {
+        let n = self.atoms.len();
+        if n == 0 {
+            return String::new();
+        }
+
+        let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+        for &(a, b, o) in &self.bonds {
+            adj[a].push((b, o));
+            adj[b].push((a, o));
+        }
+
+        let mut visited = vec![false; n];
+        let mut components: Vec<String> = Vec::new();
+
+        for start in 0..n {
+            if visited[start] {
+                continue;
+            }
+
+            let mut ring_map: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+            let mut next_ring = 1usize;
+            let mut tree_children: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+            let mut comp_visited = vec![false; n];
+
+            fn dfs_tree(
+                u: usize,
+                p: Option<usize>,
+                adj: &[Vec<(usize, f64)>],
+                comp_visited: &mut [bool],
+                tree_children: &mut [Vec<(usize, f64)>],
+                ring_map: &mut std::collections::HashMap<(usize, usize), usize>,
+                next_ring: &mut usize,
+            ) {
+                comp_visited[u] = true;
+                for &(v, o) in &adj[u] {
+                    if Some(v) == p {
+                        continue;
+                    }
+                    if comp_visited[v] {
+                        let key = if u < v { (u, v) } else { (v, u) };
+                        if !ring_map.contains_key(&key) {
+                            ring_map.insert(key, *next_ring);
+                            *next_ring += 1;
+                        }
+                    } else {
+                        tree_children[u].push((v, o));
+                        dfs_tree(v, Some(u), adj, comp_visited, tree_children, ring_map, next_ring);
+                    }
+                }
+            }
+
+            dfs_tree(start, None, &adj, &mut comp_visited, &mut tree_children, &mut ring_map, &mut next_ring);
+
+            for i in 0..n {
+                if comp_visited[i] {
+                    visited[i] = true;
+                }
+            }
+
+            fn write_atom_smiles(
+                u: usize,
+                mol: &Molecule,
+                adj: &[Vec<(usize, f64)>],
+                tree_children: &[Vec<(usize, f64)>],
+                ring_map: &std::collections::HashMap<(usize, usize), usize>,
+            ) -> String {
+                let atom = &mol.atoms[u];
+                let is_organic = ["B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"].contains(&atom.element.as_str());
+                let h_count = mol.hydrogens(u);
+
+                let atom_str = if is_organic && atom.charge == 0 && atom.explicit_h.is_none() {
+                    if atom.aromatic {
+                        atom.element.to_ascii_lowercase()
+                    } else {
+                        atom.element.clone()
+                    }
+                } else {
+                    let mut s = String::from("[");
+                    if atom.aromatic {
+                        s.push_str(&atom.element.to_ascii_lowercase());
+                    } else {
+                        s.push_str(&atom.element);
+                    }
+                    if h_count == 1 {
+                        s.push('H');
+                    } else if h_count > 1 {
+                        s.push_str(&format!("H{}", h_count));
+                    }
+                    if atom.charge == 1 {
+                        s.push('+');
+                    } else if atom.charge > 1 {
+                        s.push_str(&format!("+{}", atom.charge));
+                    } else if atom.charge == -1 {
+                        s.push('-');
+                    } else if atom.charge < -1 {
+                        s.push_str(&format!("-{}", atom.charge.abs()));
+                    }
+                    s.push(']');
+                    s
+                };
+
+                let mut out = atom_str;
+
+                for &(v, _) in &adj[u] {
+                    let key = if u < v { (u, v) } else { (v, u) };
+                    if let Some(&ring_id) = ring_map.get(&key) {
+                        if ring_id < 10 {
+                            out.push_str(&ring_id.to_string());
+                        } else {
+                            out.push_str(&format!("%{}", ring_id));
+                        }
+                    }
+                }
+
+                let children = &tree_children[u];
+                for (idx, &(v, bond_order)) in children.iter().enumerate() {
+                    let bond_str = if (bond_order - 2.0).abs() < 1e-9 {
+                        "="
+                    } else if (bond_order - 3.0).abs() < 1e-9 {
+                        "#"
+                    } else if (bond_order - 1.5).abs() < 1e-9 {
+                        ":"
+                    } else {
+                        ""
+                    };
+
+                    let child_s = write_atom_smiles(v, mol, adj, tree_children, ring_map);
+                    if idx + 1 == children.len() {
+                        out.push_str(bond_str);
+                        out.push_str(&child_s);
+                    } else {
+                        out.push('(');
+                        out.push_str(bond_str);
+                        out.push_str(&child_s);
+                        out.push(')');
+                    }
+                }
+
+                out
+            }
+
+            components.push(write_atom_smiles(start, self, &adj, &tree_children, &ring_map));
+        }
+
+        components.join(".")
+    }
+
+    /// Returns true if this molecular graph is isomorphic to `other`.
+    pub fn is_isomorphic(&self, other: &Molecule) -> bool {
+        if self.atoms.len() != other.atoms.len() || self.bonds.len() != other.bonds.len() {
+            return false;
+        }
+        if self.formula() != other.formula() {
+            return false;
+        }
+        let n = self.atoms.len();
+        if n == 0 {
+            return true;
+        }
+
+        let h_self: Vec<u32> = (0..n).map(|i| self.hydrogens(i)).collect();
+        let h_other: Vec<u32> = (0..n).map(|i| other.hydrogens(i)).collect();
+
+        let mut adj_self = vec![vec![0.0f64; n]; n];
+        for &(a, b, o) in &self.bonds {
+            adj_self[a][b] = o;
+            adj_self[b][a] = o;
+        }
+        let mut adj_other = vec![vec![0.0f64; n]; n];
+        for &(a, b, o) in &other.bonds {
+            adj_other[a][b] = o;
+            adj_other[b][a] = o;
+        }
+
+        let mut mapping = vec![None; n];
+        let mut used = vec![false; n];
+
+        fn backtrack(
+            u: usize,
+            n: usize,
+            mol_a: &Molecule,
+            mol_b: &Molecule,
+            h_a: &[u32],
+            h_b: &[u32],
+            adj_a: &[Vec<f64>],
+            adj_b: &[Vec<f64>],
+            mapping: &mut [Option<usize>],
+            used: &mut [bool],
+        ) -> bool {
+            if u == n {
+                return true;
+            }
+            let a_atom = &mol_a.atoms[u];
+            for v in 0..n {
+                if used[v] {
+                    continue;
+                }
+                let b_atom = &mol_b.atoms[v];
+                if a_atom.element != b_atom.element
+                    || a_atom.charge != b_atom.charge
+                    || a_atom.aromatic != b_atom.aromatic
+                    || h_a[u] != h_b[v]
+                {
+                    continue;
+                }
+
+                let mut consistent = true;
+                for prev_u in 0..u {
+                    if let Some(prev_v) = mapping[prev_u] {
+                        let order_a = adj_a[u][prev_u];
+                        let order_b = adj_b[v][prev_v];
+                        if (order_a - order_b).abs() > 1e-4 {
+                            consistent = false;
+                            break;
+                        }
+                    }
+                }
+                if !consistent {
+                    continue;
+                }
+
+                mapping[u] = Some(v);
+                used[v] = true;
+                if backtrack(u + 1, n, mol_a, mol_b, h_a, h_b, adj_a, adj_b, mapping, used) {
+                    return true;
+                }
+                used[v] = false;
+                mapping[u] = None;
+            }
+            false
+        }
+
+        backtrack(0, n, self, other, &h_self, &h_other, &adj_self, &adj_other, &mut mapping, &mut used)
+    }
 }
 
 #[cfg(test)]
@@ -450,5 +746,49 @@ mod tests {
         assert!(b.atoms.iter().enumerate().all(|(i, _)| b.hydrogens(i) == 1));
         assert!(parse("C(C").is_none());
         assert!(parse("C1CC").is_none());
+    }
+
+    #[test]
+    fn formula_generation_hill_system() {
+        assert_eq!(parse("CCO").unwrap().formula(), "C2H6O");
+        assert_eq!(parse("CC(=O)OCC").unwrap().formula(), "C4H8O2");
+        assert_eq!(parse("CC(=O)[O-]").unwrap().formula(), "C2H3O2-");
+        assert_eq!(parse("C=C").unwrap().formula(), "C2H4");
+        assert_eq!(parse("CCBr").unwrap().formula(), "C2H5Br");
+        assert_eq!(parse("O").unwrap().formula(), "H2O");
+        assert_eq!(parse("[OH-]").unwrap().formula(), "HO-");
+    }
+
+    #[test]
+    fn to_smiles_round_trip() {
+        for s in &["CCO", "CC(=O)O", "CCBr", "C=C", "C1CCCCC1"] {
+            let m = parse(s).unwrap();
+            let generated = m.to_smiles();
+            let reparsed = parse(&generated);
+            assert!(reparsed.is_some(), "Generated SMILES {} failed to reparse for input {}", generated, s);
+            assert_eq!(reparsed.unwrap().formula(), m.formula(), "Formula mismatch for {}", s);
+        }
+    }
+
+    #[test]
+    fn molecular_graph_isomorphism() {
+        let eth1 = parse("CCO").unwrap();
+        let eth2 = parse("OCC").unwrap();
+        let dme = parse("COC").unwrap();
+        assert!(eth1.is_isomorphic(&eth2));
+        assert!(eth2.is_isomorphic(&eth1));
+        assert!(!eth1.is_isomorphic(&dme));
+
+        let ac1 = parse("CC(=O)O").unwrap();
+        let ac2 = parse("OC(=O)C").unwrap();
+        assert!(ac1.is_isomorphic(&ac2));
+
+        let ethene1 = parse("C=C").unwrap();
+        let ethene2 = parse("C=C").unwrap();
+        assert!(ethene1.is_isomorphic(&ethene2));
+
+        let acetate1 = parse("CC(=O)[O-]").unwrap();
+        let acetate2 = parse("[O-]C(=O)C").unwrap();
+        assert!(acetate1.is_isomorphic(&acetate2));
     }
 }

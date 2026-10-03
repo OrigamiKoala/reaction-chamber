@@ -37,64 +37,41 @@ pub struct MetalCorrosionProps {
 
 /// Retrieves the general corrosion properties for a solid metal species.
 pub fn get_metal_corrosion_props(species: &str) -> Option<MetalCorrosionProps> {
-    match species {
-        "Mg(s)" | "Mg" => Some(MetalCorrosionProps {
-            metal_species: "Mg(s)".to_string(),
-            ion_species: "Mg+2".to_string(),
-            z_electrons: 2.0,
-            e0_volts: -2.372,
-            i0_her_a_m2: 1.0e-3,
-            i0_anodic_a_m2: 1.0,
-            passivated: false,
-            molar_mass_g_mol: 24.305,
-            density_g_ml: 1.738,
-        }),
-        "Zn(s)" | "Zn" => Some(MetalCorrosionProps {
-            metal_species: "Zn(s)".to_string(),
-            ion_species: "Zn+2".to_string(),
-            z_electrons: 2.0,
-            e0_volts: -0.762,
-            i0_her_a_m2: 1.0e-5,
-            i0_anodic_a_m2: 0.1,
-            passivated: false,
-            molar_mass_g_mol: 65.38,
-            density_g_ml: 7.14,
-        }),
-        "Fe(s)" | "Fe" => Some(MetalCorrosionProps {
-            metal_species: "Fe(s)".to_string(),
-            ion_species: "Fe+2".to_string(),
-            z_electrons: 2.0,
-            e0_volts: -0.440,
-            i0_her_a_m2: 1.0e-3,
-            i0_anodic_a_m2: 0.01,
-            passivated: false,
-            molar_mass_g_mol: 55.845,
-            density_g_ml: 7.874,
-        }),
-        "Cu(s)" | "Cu" => Some(MetalCorrosionProps {
-            metal_species: "Cu(s)".to_string(),
-            ion_species: "Cu+2".to_string(),
-            z_electrons: 2.0,
-            e0_volts: 0.342,
-            i0_her_a_m2: 1.0e-3,
-            i0_anodic_a_m2: 0.1,
-            passivated: false,
-            molar_mass_g_mol: 63.546,
-            density_g_ml: 8.96,
-        }),
-        "Al(s)" | "Al" => Some(MetalCorrosionProps {
-            metal_species: "Al(s)".to_string(),
-            ion_species: "Al+3".to_string(),
-            z_electrons: 3.0,
-            e0_volts: -1.662,
-            i0_her_a_m2: 1.0e-6,
-            i0_anodic_a_m2: 0.05,
-            passivated: true, // Native oxide passivation layer
-            molar_mass_g_mol: 26.982,
-            density_g_ml: 2.70,
-        }),
-        _ => None,
-    }
+    let elem = species.trim_end_matches("(s)").trim_end_matches("(cr)").trim_end_matches("(l)");
+
+    let thermo = crate::chem_db::get_species_thermo(species);
+    let mw = thermo.mw;
+
+    // Metal electrochemical parameters from elemental properties
+    let (z, e0, i0_her, i0_anodic, passivated, rho): (f64, f64, f64, f64, bool, f64) = match elem {
+        "Mg" => (2.0, -2.372, 1.0e-3, 1.0, false, 1.738),
+        "Zn" => (2.0, -0.762, 1.0e-5, 0.1, false, 7.14),
+        "Fe" => (2.0, -0.440, 1.0e-3, 0.01, false, 7.874),
+        "Cu" => (2.0, 0.342, 1.0e-3, 0.1, false, 8.96),
+        "Al" => (3.0, -1.662, 1.0e-6, 0.05, true, 2.70),
+        "Pb" => (2.0, -0.126, 1.0e-8, 0.01, false, 11.34),
+        "Ni" => (2.0, -0.257, 1.0e-3, 0.01, false, 8.90),
+        "Sn" => (2.0, -0.136, 1.0e-5, 0.01, false, 7.26),
+        _ => return None,
+    };
+
+    let ion_species = if (z - 1.0f64).abs() < 1e-6 {
+        format!("{}+", elem)
+    } else {
+        format!("{}+{}", elem, z as i32)
+    };
+
+    Some(MetalCorrosionProps {
+        metal_species: format!("{}(s)", elem),
+        ion_species,
+        z_electrons: z,
+        e0_volts: e0,
+        i0_her_a_m2: i0_her,
+        i0_anodic_a_m2: i0_anodic,
+        passivated,
+        molar_mass_g_mol: mw.max(10.0),
+        density_g_ml: rho,
+    })
 }
 
 /// Solves for the mixed corrosion potential E_corr and corrosion current density i_corr (A/m^2).

@@ -162,8 +162,8 @@ pub fn sherwood_number(
         let n_rev_s = (stir_rpm / 60.0).clamp(0.0, 50.0);
         let d_impeller = 0.025; // 2.5 cm magnetic stirrer bar
         let u_tip = PI * d_impeller * n_rev_s;
-        // Typical relative slip velocity at boundary layer ~ 15-25% of tip speed
-        let u_slip = (0.20 * u_tip).max(1e-4);
+        // Relative slip velocity for suspended particles in stirred vessel (Kolmogoroff eddy scale, Levins & Glastonbury 1972)
+        let u_slip = (0.015 * u_tip).max(1e-4);
         let re_p = (u_slip * dp / nu).clamp(1e-4, 1e4);
 
         2.0 + 0.6 * re_p.sqrt() * sc.cbrt()
@@ -196,7 +196,9 @@ pub fn dissolution_flux_mol_s(
         0.0
     } else {
         let driving_force = c_sat_mol_m3 - c_bulk_mol_m3;
-        k_l_m_s * area_m2 * driving_force
+        // Bed packing and boundary-layer shadowing factor ~ 0.15 for granular bed / slurry
+        let effective_area = area_m2 * 0.15;
+        k_l_m_s * effective_area * driving_force
     }
 }
 

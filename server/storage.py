@@ -166,8 +166,36 @@ def get_barrier_record(job_id: str, db_path: Path = DB_PATH) -> Optional[Dict[st
             pass
     return res
 
+def canonicalize_reaction_smiles(reaction: str) -> str:
+    if "->" not in reaction:
+        return reaction
+    parts = reaction.split("->")
+    if len(parts) != 2:
+        return reaction
+    try:
+        from rdkit import Chem
+    except ImportError:
+        return reaction
+
+    def canon_side(side_str: str) -> str:
+        tokens = [s.strip() for s in side_str.split("+") if s.strip()]
+        canon_tokens = []
+        for t in tokens:
+            try:
+                m = Chem.MolFromSmiles(t)
+                if m is not None:
+                    canon_tokens.append(Chem.MolToSmiles(m, canonical=True))
+                else:
+                    canon_tokens.append(t)
+            except Exception:
+                canon_tokens.append(t)
+        canon_tokens.sort()
+        return " + ".join(canon_tokens)
+
+    return f"{canon_side(parts[0])} -> {canon_side(parts[1])}"
+
 def get_precomputed_barrier_table(db_path: Path = DB_PATH) -> Dict[str, float]:
-    """Returns mapping of reaction/family to calibrated Delta G‡ (kcal/mol) for Provider 3."""
+    """Returns mapping of canonical reaction SMILES and family to calibrated Delta G‡ (kcal/mol) for Provider 3."""
     init_db(db_path)
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
@@ -178,6 +206,8 @@ def get_precomputed_barrier_table(db_path: Path = DB_PATH) -> Dict[str, float]:
     table = {}
     for rxn, fam, dg in rows:
         if rxn:
+            canon = canonicalize_reaction_smiles(rxn)
+            table[canon] = dg
             table[rxn] = dg
         if fam and fam not in table:
             table[fam] = dg
