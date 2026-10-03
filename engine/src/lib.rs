@@ -38,6 +38,9 @@ pub mod props;
 pub mod activity;
 pub mod transport;
 pub mod transfer;
+pub mod vessel_transfer;
+pub mod vessel_burn;
+pub mod vessel_electro;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;

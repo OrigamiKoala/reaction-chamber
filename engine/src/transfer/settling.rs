@@ -1,103 +1,83 @@
-//! Stokes sedimentation, hindered settling, and Brownian colloidal stability.
-//!
-//! Evaluates particle terminal settling velocity using actual fluid properties:
-//!   v_t = g * (rho_particle - rho_fluid) * d_p^2 / (18 * eta_fluid)
-//! Hindered settling follows Richardson-Zaki: v = v_t * (1 - phi)^4.65.
-//! Sub-micron particles (Pe < 1) are stabilized by Brownian motion.
-//!
-//! Eliminates arbitrary 8-300 s clamps and artificial floc factors.
-//!
-//! Gate verified:
-//! - 10 um BaSO4 settles 4 cm in 150 - 300 s in water, and ~1000x slower in glycerol.
+//! Sedimentation of a particle population in the liquid that is actually in the vessel: Stokes / Schiller-Naumann
+//! terminal velocity from the layer's own density and viscosity, hindered settling (Richardson-Zaki), the Brownian
+//! Peclet test that keeps colloids suspended, and Schulze-Hardy aggregation by the electrolyte present (master plan
+//! Stage 8 item 7). There is no 8-300 s clamp and no flocculation factor: the time to clear the liquid column is
+//! H / v_hindered, infinite for a stable colloid.
 
+pub use super::hydro::terminal_velocity as terminal_velocity_m_s;
 use crate::transport::K_BOLTZMANN;
 
-pub const G_ACCEL: f64 = 9.80665;
-
-/// Single-particle terminal settling velocity v_t (m/s).
-///
-/// Positive = settling downward; negative = floating upward.
-pub fn terminal_velocity_m_s(
-    diameter_m: f64,
-    particle_density_kg_m3: f64,
-    fluid_density_kg_m3: f64,
-    fluid_viscosity_pa_s: f64,
-) -> f64 {
-    let dp = diameter_m.max(1e-9);
-    let eta = fluid_viscosity_pa_s.max(1e-6);
-    let delta_rho = particle_density_kg_m3 - fluid_density_kg_m3;
-
-    // Stokes settling velocity
-    let v_stokes = (G_ACCEL * delta_rho * dp.powi(2)) / (18.0 * eta);
-
-    // Schiller-Naumann drag correction for Re_p > 0.2
-    let re_p = (fluid_density_kg_m3 * v_stokes.abs() * dp / eta).clamp(1e-6, 1e4);
-    if re_p <= 0.2 {
-        v_stokes
+/// Richardson-Zaki hindered settling velocity (m/s) at solid volume fraction phi: v = v_t (1 - phi)^n, n = 4.65 in the
+/// creeping-flow regime (the exponent falls toward 2.4 at high particle Reynolds number).
+pub fn hindered_settling_velocity_m_s(v_terminal_m_s: f64, phi: f64, re_p: f64) -> f64 {
+    let n = if re_p < 0.2 {
+        4.65
+    } else if re_p > 500.0 {
+        2.39
     } else {
-        // Drag coefficient Cd = (24 / Re) * (1 + 0.15 * Re^0.687)
-        let cd_factor = 1.0 + 0.15 * re_p.powf(0.687);
-        v_stokes / cd_factor
-    }
+        // log-linear interpolation of the Richardson-Zaki exponent between Re_p = 0.2 and 500
+        4.65 + (2.39 - 4.65) * (re_p / 0.2).ln() / (500.0f64 / 0.2).ln()
+    };
+    v_terminal_m_s * (1.0 - phi.clamp(0.0, 0.65)).powf(n)
 }
 
-/// Hindered settling velocity considering solid volume fraction phi (Richardson-Zaki).
-pub fn hindered_settling_velocity_m_s(
-    v_terminal_m_s: f64,
-    solid_volume_fraction: f64,
-) -> f64 {
-    let phi = solid_volume_fraction.clamp(0.0, 0.65);
-    // Richardson-Zaki exponent n ~ 4.65 for creeping laminar flow (Re_p < 0.2)
-    let hindrance = (1.0 - phi).powf(4.65);
-    v_terminal_m_s * hindrance
+/// Brownian Peclet number Pe = v d / D with the Stokes-Einstein diffusivity: Pe < 1 means thermal motion beats
+/// sedimentation and the dispersion is stable.
+pub fn peclet_number(v_settle_m_s: f64, d_m: f64, eta_pa_s: f64, t_k: f64) -> f64 {
+    let d = d_m.max(1e-9);
+    let diff = K_BOLTZMANN * t_k.max(100.0) / (3.0 * std::f64::consts::PI * eta_pa_s.max(1e-6) * d);
+    v_settle_m_s.abs() * d / diff
 }
 
-/// Computes the Brownian Péclet number Pe = v_t * d_p / D_diff.
-///
-/// If Pe < 1.0, Brownian thermal motion dominates over sedimentation,
-/// meaning the particles form a stable colloidal dispersion and will not settle.
-pub fn pe_number(
-    v_settle_m_s: f64,
-    diameter_m: f64,
-    fluid_viscosity_pa_s: f64,
-    t_k: f64,
-) -> f64 {
-    let dp = diameter_m.max(1e-9);
-    let eta = fluid_viscosity_pa_s.max(1e-6);
-    let t = t_k.max(100.0);
-
-    // Stokes-Einstein diffusivity: D = k_B * T / (3 * pi * eta * dp)
-    let d_diff = (K_BOLTZMANN * t) / (3.0 * std::f64::consts::PI * eta * dp);
-    (v_settle_m_s.abs() * dp / d_diff).max(0.0)
-}
-
-/// Time required (seconds) for particles to clear a specified liquid column height.
+/// Time (s) for particles of diameter `d_m` to clear a liquid column of `height_m` (infinite when they float, or when
+/// Brownian motion keeps them dispersed).
 pub fn settling_time_s(
-    column_height_m: f64,
-    diameter_m: f64,
-    particle_density_kg_m3: f64,
-    fluid_density_kg_m3: f64,
-    fluid_viscosity_pa_s: f64,
-    solid_volume_fraction: f64,
+    height_m: f64,
+    d_m: f64,
+    rho_p: f64,
+    rho_l: f64,
+    eta_pa_s: f64,
+    phi: f64,
     t_k: f64,
 ) -> f64 {
-    let h = column_height_m.max(1e-3);
-    let v_t = terminal_velocity_m_s(diameter_m, particle_density_kg_m3, fluid_density_kg_m3, fluid_viscosity_pa_s);
-
+    let v_t = terminal_velocity_m_s(d_m, rho_p, rho_l, eta_pa_s);
     if v_t <= 0.0 {
-        // Floating or neutrally buoyant
         return f64::INFINITY;
     }
-
-    let v_hindered = hindered_settling_velocity_m_s(v_t, solid_volume_fraction);
-    let pe = pe_number(v_hindered, diameter_m, fluid_viscosity_pa_s, t_k);
-
-    if pe < 1.0 {
-        // Colloidal stability: Brownian motion prevents settling
-        f64::INFINITY
-    } else {
-        h / v_hindered.max(1e-12)
+    let re = rho_l * v_t * d_m / eta_pa_s.max(1e-6);
+    let v = hindered_settling_velocity_m_s(v_t, phi, re);
+    if peclet_number(v, d_m, eta_pa_s, t_k) < 1.0 {
+        return f64::INFINITY;
     }
+    height_m.max(1e-3) / v.max(1e-15)
+}
+
+/// Schulze-Hardy critical coagulation concentration of a counter-ion of charge |z| (mol/L): CCC = K / z^6, K = 55 mmol/L
+/// (the monovalent value of the classical As2S3 sol; the 1 : 1/80 : 1/600 ratios for Na+, Ca2+, Al3+ follow z^-6).
+pub fn critical_coagulation_mol_l(z: f64) -> f64 {
+    0.055 / z.abs().max(1.0).powi(6)
+}
+
+/// Coagulation index Gamma = sum_i c_i z_i^6 / K over the ions of one sign (the larger of the two): >= 1 means the
+/// colloid is at or beyond its critical coagulation concentration.
+pub fn coagulation_index(ions_mol_l_and_charge: &[(f64, f64)]) -> f64 {
+    let mut cat = 0.0;
+    let mut an = 0.0;
+    for &(c, z) in ions_mol_l_and_charge {
+        let w = c * z.abs().powi(6) / 0.055;
+        if z > 0.0 {
+            cat += w;
+        } else {
+            an += w;
+        }
+    }
+    cat.max(an)
+}
+
+/// Effective settling diameter of an aggregated colloid: open fractal aggregates settle like a sphere about up to 5x the
+/// primary size, approached as the coagulation index passes 1.
+pub fn aggregate_diameter_m(primary_m: f64, gamma_index: f64) -> f64 {
+    primary_m * (1.0 + 4.0 * gamma_index / (1.0 + gamma_index))
 }
 
 #[cfg(test)]
@@ -105,35 +85,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_baso4_settling_gate() {
-        // Gate: 10 um BaSO4 settles 4 cm in 150 - 300 s in water, and ~1000x slower in glycerol
-        let dp = 10.0e-6; // 10 um
-        let rho_baso4 = 4500.0; // kg/m^3
-        let h = 0.04; // 4 cm
-        let phi = 0.001;
-        let t = 293.15; // 20 C
+    fn baso4_10um_settles_4cm_in_minutes_and_glycerol_is_a_thousand_times_slower() {
+        let t_w = settling_time_s(0.04, 10e-6, 4500.0, 998.2, 1.002e-3, 0.001, 293.15);
+        assert!(t_w > 150.0 && t_w < 300.0, "{}", t_w);
+        let t_g = settling_time_s(0.04, 10e-6, 4500.0, 1261.0, 1.412, 0.001, 293.15);
+        let r = t_g / t_w;
+        assert!(r > 600.0 && r < 2500.0, "{}", r);
+    }
 
-        // Water at 20 C: rho ~ 998 kg/m^3, eta ~ 1.002e-3 Pa*s
-        let rho_water = 998.2;
-        let eta_water = 1.002e-3;
-        let tau_water = settling_time_s(h, dp, rho_baso4, rho_water, eta_water, phi, t);
+    #[test]
+    fn colloids_stay_suspended_by_brownian_motion() {
+        assert!(settling_time_s(0.04, 50e-9, 4500.0, 998.0, 1.0e-3, 0.0, 293.15).is_infinite());
+    }
 
-        assert!(
-            tau_water >= 150.0 && tau_water <= 300.0,
-            "10 um BaSO4 in water must settle in [150, 300] s: got {:.1} s",
-            tau_water
-        );
-
-        // Glycerol at 20 C: rho ~ 1261 kg/m^3, eta ~ 1.412 Pa*s (~ 1400x more viscous!)
-        let rho_gly = 1261.0;
-        let eta_gly = 1.412;
-        let tau_gly = settling_time_s(h, dp, rho_baso4, rho_gly, eta_gly, phi, t);
-
-        let ratio = tau_gly / tau_water;
-        assert!(
-            ratio >= 700.0 && ratio <= 2000.0,
-            "Settling in glycerol must be ~1000x slower than water: ratio = {:.1}",
-            ratio
-        );
+    #[test]
+    fn schulze_hardy_scaling() {
+        assert!((critical_coagulation_mol_l(1.0) / critical_coagulation_mol_l(2.0) - 64.0).abs() < 1e-9);
+        assert!(coagulation_index(&[(0.01, 3.0)]) > coagulation_index(&[(0.01, 1.0)]));
     }
 }

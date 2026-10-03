@@ -1,26 +1,27 @@
-//! Heterogeneous and phase transfer kinetics (Stage 8).
+//! Heterogeneous and phase-transfer kinetics (Stage 8).
 //!
-//! Provides models for:
-//! - Solid dissolution and crystal growth (particle population moments mu0-mu3, Sherwood correlation)
-//! - Nucleation (Classical Nucleation Theory + Mersmann interfacial energy)
-//! - Electrochemical metal corrosion and cementation (Butler-Volmer mixed potential, Trasatti i0)
-//! - Gas-liquid interfacial exchange and CO2 hydration delay
-//! - Sub-boiling evaporation with natural-convection mass transfer and latent cooling
-//! - Sedimentation and hindered settling with actual layer properties and Brownian stability
-//! - Pool fire combustion with Babrauskas burning rates, flammability limits, and extinction
+//! Every model here takes intrinsic data (formula, thermodynamic records, solubility product, density) and the vessel's
+//! state (temperature, stirring, liquid properties) and returns a rate; nothing is keyed by compound:
+//!
+//! - `hydro`: stirring power, just-suspended speed, slip velocity, Sherwood numbers, gas-liquid k_L
+//! - `diffusion`: diffusivities from the formula (Hayduk-Laudie, Fuller-Schettler-Giddings, Nernst-Einstein)
+//! - `population`: particle population moments, area and mean size, the semi-implicit relaxation law
+//! - `nucleation`: Mersmann interfacial energy, classical nucleation theory, nucleation + growth precipitation
+//! - `electrochem`: discovered half-reactions, Butler-Volmer kinetics, mixed potential (corrosion, cementation) and
+//!   electrolysis
+//! - `gas_transfer`: dissolved-gas bubble release and surface exchange
+//! - `evaporation`: sub-boiling evaporation with natural / forced convection
+//! - `settling`: Stokes sedimentation, hindered settling, Brownian stability, Schulze-Hardy aggregation
+//! - `combustion`: flammability, pool burning rate, flame temperature and luminosity of any CHON fuel
 
-pub mod dissolution;
-pub mod nucleation;
-pub mod corrosion;
-pub mod gas_transfer;
-pub mod evaporation;
-pub mod settling;
 pub mod combustion;
+pub mod diffusion;
+pub mod electrochem;
+pub mod evaporation;
+pub mod gas_transfer;
+pub mod hydro;
+pub mod nucleation;
+pub mod population;
+pub mod settling;
 
-pub use dissolution::*;
-pub use nucleation::*;
-pub use corrosion::{get_metal_corrosion_props, metal_corrosion_rates_mol_s, solve_mixed_potential, MetalCorrosionProps, FARADAY_C_MOL};
-pub use gas_transfer::*;
-pub use evaporation::{fuller_gas_diffusivity_m2_s, natural_convection_evaporation_kg, sub_boiling_evaporation_rates};
-pub use settling::*;
-pub use combustion::*;
+pub use population::ParticlePopulation;

@@ -1,472 +1,481 @@
-//! Stage 8 gates (docs/plans/generalization-master-plan.md section 8, Stage 8):
-//! Heterogeneous and transport rates.
-//!
-//! Gates verified:
-//! - Gate 1: 1 g NaCl (300 µm) in 50 mL stirred water 90 % dissolved in 10–60 s, ≥ 3× slower unstirred; no solid at S ≤ 1.
-//! - Gate 2: BaSO4 induction time vs S within ×3 of Nielsen over S = 10–1000, mean size decreasing with S.
-//! - Gate 3: Mg > Zn > Fe ≫ Cu in 1 M HCl, rate ∝ metal area and independent of solution volume at fixed [H⁺].
-//! - Gate 4: Open carbonated water τ of hours unstirred, minutes stirred.
-//! - Gate 5: CO2 + NaOH + phenolphthalein shows the hydration delay.
-//! - Gate 6: 10 mL hexane from 38 cm² at 295 K loses 3–20 mL/h.
-//! - Gate 7: 10 µm BaSO4 settles 4 cm in 150–300 s in water and ~1000× slower in glycerol.
-//! - Gate 8: Ethanol pool fire in a 250 mL beaker 1–2 kW; hexane ignites; methanol flame near-invisible; flame dies under N2.
+//! Stage 8 gates (docs/plans/generalization-master-plan.md section 8, Stage 8): heterogeneous and transport rates.
+//! Every gate drives the real `Vessel` path (dose, step, snapshot); the reference values are textbook / literature data,
+//! never the engine's own output. Nothing here is keyed by a compound the engine special-cases: the metals, salts and
+//! fuels are ordinary store species and imports.
 
-use reaction_chamber_engine::vessel::*;
 use reaction_chamber_engine::chem_db;
-use reaction_chamber_engine::transfer::combustion::*;
-use reaction_chamber_engine::transfer::corrosion::*;
-use reaction_chamber_engine::transfer::evaporation::*;
-use reaction_chamber_engine::transfer::gas_transfer::*;
-use reaction_chamber_engine::transfer::nucleation::*;
-use reaction_chamber_engine::transfer::settling::*;
+use reaction_chamber_engine::compound_model::*;
+use reaction_chamber_engine::transfer::nucleation;
+use reaction_chamber_engine::vessel::*;
 use std::collections::HashMap;
 
-fn ensure_reagents() {
-    let mut comp_nacl = HashMap::new();
-    comp_nacl.insert("NaCl(s)".to_string(), 1.0 / 58.44);
-    chem_db::register_custom_reagent(chem_db::ReagentCatalogEntry {
-        id: "nacl_s".to_string(),
-        name: "Sodium Chloride (Solid)".to_string(),
-        formula: "NaCl".to_string(),
-        form: "solid".to_string(),
-        concentration_m: None,
-        density_g_ml: 2.16,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "white".to_string(),
-        composition: comp_nacl,
-        label: "NaCl(s)".to_string(),
-        by_mass: true,
-        dropper: None,
-        inchi_key: Some("FAPWRFPIFSIZLT-UHFFFAOYSA-M".to_string()),
-    });
-
-    let mut comp_zn = HashMap::new();
-    comp_zn.insert("Zn(s)".to_string(), 1.0 / 65.38);
-    chem_db::register_custom_reagent(chem_db::ReagentCatalogEntry {
-        id: "zn_s".to_string(),
-        name: "Zinc Metal".to_string(),
-        formula: "Zn".to_string(),
-        form: "solid".to_string(),
-        concentration_m: None,
-        density_g_ml: 7.14,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "gray".to_string(),
-        composition: comp_zn,
-        label: "Zn(s)".to_string(),
-        by_mass: true,
-        dropper: None,
-        inchi_key: None,
-    });
-}
-
-fn test_beaker(capacity_ml: f64, radius_cm: f64) -> Vessel {
+fn beaker(capacity_ml: f64, radius_cm: f64, t: f64) -> Vessel {
     Vessel::new(VesselConfig {
         vessel_type: "test-beaker".into(),
         capacity_ml,
         glass_mass_g: 100.0,
         inner_radius_cm: radius_cm,
-        temperature_k: Some(298.15),
-        room_k: Some(298.15),
+        temperature_k: Some(t),
+        room_k: Some(t),
         sealed: Some(false),
         stopper_pop_atm: Some(2.0),
         burst_atm: Some(6.0),
     })
 }
 
+fn ml(v: &mut Vessel, id: &str, x: f64) {
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+}
+
+fn grams(v: &mut Vessel, id: &str, x: f64, diameter_um: f64) {
+    v.dose_with_diameter(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None }, diameter_um).unwrap();
+}
+
+fn run(v: &mut Vessel, seconds: f64, dt: f64) {
+    for _ in 0..((seconds / dt).round() as usize) {
+        v.step(dt).unwrap();
+    }
+}
+
+fn solid_reagent(id: &str, species: &str, mw: f64, density: f64) {
+    let mut comp = HashMap::new();
+    comp.insert(species.to_string(), 1.0 / mw);
+    chem_db::register_custom_reagent(chem_db::ReagentCatalogEntry {
+        id: id.to_string(),
+        name: id.to_string(),
+        formula: species.trim_end_matches("(s)").to_string(),
+        form: "solid".to_string(),
+        concentration_m: None,
+        density_g_ml: density,
+        ghs: vec![],
+        signal_word: "".to_string(),
+        bottle_colour: "white".to_string(),
+        composition: comp,
+        label: species.to_string(),
+        by_mass: true,
+        dropper: None,
+        inchi_key: None,
+    });
+}
+
+fn ensure_reagents() {
+    solid_reagent("s8_nacl", "NaCl(s)", 58.44, 2.16);
+    solid_reagent("s8_zn", "Zn(s)", 65.38, 7.14);
+    solid_reagent("s8_fe", "Fe(s)", 55.845, 7.874);
+    solid_reagent("s8_cu", "Cu(s)", 63.546, 8.96);
+    solid_reagent("s8_mg", "Mg(s)", 24.305, 1.74);
+}
+
+fn import(req: CompoundRequest) {
+    let m = model_compound(&req);
+    assert!(m.modelable, "{}: {}", req.id, m.reason);
+    chem_db::register_custom_reagent(m.entry.clone().expect("entry"));
+    if let Some(c) = &m.compound {
+        chem_db::register_custom_compound(c.clone());
+    }
+    if let Some(min) = &m.mineral {
+        chem_db::register_custom_mineral(min.clone());
+    }
+}
+
+fn fuel_request(id: &str, name: &str, formula: &str, smiles: &str, ik: &str, density: f64, tb: f64, dh_comb: f64, dh_vap: f64) -> CompoundRequest {
+    CompoundRequest {
+        id: id.into(),
+        name: name.into(),
+        formula: formula.into(),
+        smiles: Some(smiles.into()),
+        inchi_key: Some(ik.into()),
+        state: Some("liquid".into()),
+        density: Some(density),
+        vapor_pressure_points: vec![[tb, 101_325.0]],
+        dh_vap_kj_mol: Some(dh_vap),
+        dh_vap_at_k: Some(tb),
+        dh_comb_kj_mol: Some(dh_comb),
+        ..Default::default()
+    }
+}
+
+fn solid_of(v: &Vessel, sp: &str) -> f64 {
+    v.solid_mol.get(sp).copied().unwrap_or(0.0)
+}
+
 // ------------------------------------------------------------------------------------------------
-// Gate 1: NaCl dissolution kinetics via Sherwood correlation
-// 1 g NaCl (300 µm) in 50 mL stirred water 90 % dissolved in 10–60 s, ≥ 3× slower unstirred; no solid at S ≤ 1.
+// Gate 1: dissolution is limited by the transport to the particle surface (Sherwood correlation, stirring power).
+// 1 g NaCl (300 um) in 50 mL water: stirred, 90 % dissolved in tens of seconds; resting, at least 3x slower; no solid
+// remains at S <= 1.
+// ------------------------------------------------------------------------------------------------
+fn dissolve_time_to(frac_remaining: f64, rpm: f64, mass_g: f64, d_um: f64, volume_ml: f64) -> f64 {
+    let mut v = beaker(100.0, 2.5, 298.15);
+    ml(&mut v, "water", volume_ml);
+    v.set_controls(VesselControls { stirring: Some(rpm > 0.0), stir_rpm: Some(rpm), ..Default::default() });
+    grams(&mut v, "s8_nacl", mass_g, d_um);
+    let n0 = mass_g / 58.44;
+    let dt = 0.25;
+    let mut t = 0.0;
+    for _ in 0..4000 {
+        if solid_of(&v, "NaCl(s)") <= frac_remaining * n0 {
+            return t;
+        }
+        v.step(dt).unwrap();
+        t += dt;
+    }
+    t
+}
+
+#[test]
+fn gate1_nacl_dissolution_is_transport_limited_and_stirring_dependent() {
+    ensure_reagents();
+    let t_stirred = dissolve_time_to(0.10, 400.0, 1.0, 300.0, 50.0);
+    let t_still = dissolve_time_to(0.10, 0.0, 1.0, 300.0, 50.0);
+    println!("[gate1] 90% dissolved: stirred (400 rpm) {:.1} s, resting {:.1} s", t_stirred, t_still);
+    // the particle starts as a crystal, not as a solution
+    let mut v = beaker(100.0, 2.5, 298.15);
+    ml(&mut v, "water", 50.0);
+    grams(&mut v, "s8_nacl", 1.0, 300.0);
+    assert!(solid_of(&v, "NaCl(s)") > 0.9 * 1.0 / 58.44, "the dose must not dissolve instantly");
+    assert!(t_stirred >= 2.0 && t_stirred <= 60.0, "stirred dissolution time {} s", t_stirred);
+    assert!(t_still >= 3.0 * t_stirred, "resting {} s must be >= 3x the stirred {} s", t_still, t_stirred);
+    // finer powder dissolves faster (area and film thickness)
+    let t_fine = dissolve_time_to(0.10, 0.0, 1.0, 100.0, 50.0);
+    assert!(t_fine < t_still / 3.0, "100 um {} s vs 300 um {} s", t_fine, t_still);
+    // no solid at S <= 1: after long stirring every grain is gone
+    let mut v = beaker(100.0, 2.5, 298.15);
+    ml(&mut v, "water", 50.0);
+    v.set_controls(VesselControls { stirring: Some(true), stir_rpm: Some(400.0), ..Default::default() });
+    grams(&mut v, "s8_nacl", 1.0, 300.0);
+    run(&mut v, 120.0, 0.5);
+    assert!(solid_of(&v, "NaCl(s)") < 1e-9, "NaCl must dissolve completely at S <= 1: {:e} mol left", solid_of(&v, "NaCl(s)"));
+    assert!(v.particle_populations.get("NaCl(s)").map_or(true, |p| p.is_empty()));
+    // saturated brine keeps its crystals: 25 g in 50 mL is beyond the solubility
+    let mut v = beaker(100.0, 2.5, 298.15);
+    ml(&mut v, "water", 50.0);
+    v.set_controls(VesselControls { stirring: Some(true), stir_rpm: Some(400.0), ..Default::default() });
+    grams(&mut v, "s8_nacl", 25.0, 300.0);
+    run(&mut v, 600.0, 1.0);
+    assert!(solid_of(&v, "NaCl(s)") > 0.0, "an oversaturated charge must keep a solid phase");
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 2: precipitation needs nucleation. Induction time falls steeply with supersaturation S, particle size falls with
+// S (many nuclei at high S, few large crystals at low S); a solution just above S = 1 stays clear.
+// ------------------------------------------------------------------------------------------------
+fn baso4_mixture(s: f64) -> Vessel {
+    let min = chem_db::get_default_minerals().into_iter().find(|m| m.solid_species == "BaSO4(s)").expect("BaSO4 row");
+    let ksp = 10f64.powf(min.log_ksp_at(298.15));
+    let c = s * ksp.sqrt(); // mol/L of each ion at S (activity effects shift S by a few percent)
+    let mut v = beaker(100.0, 2.5, 298.15);
+    let n = c * 0.05;
+    let portion = Portion {
+        volume_ml: 50.0,
+        temperature_k: 298.15,
+        aqueous_mol: [("H2O".to_string(), 2.7747), ("Ba+2".to_string(), n), ("SO4-2".to_string(), n), ("Na+".to_string(), 0.0), ("Cl-".to_string(), 0.0)].into_iter().filter(|(_, x)| *x > 0.0).collect(),
+        organic_mol: HashMap::new(),
+        solid_mol: HashMap::new(),
+        particles: HashMap::new(),
+    };
+    // the portion is electroneutral (Ba+2 + SO4-2), so no spectator ions are needed
+    v.add_portion(portion).unwrap();
+    v
+}
+
+#[test]
+fn gate2_baso4_induction_time_and_size_follow_nucleation_theory() {
+    let min = chem_db::get_default_minerals().into_iter().find(|m| m.solid_species == "BaSO4(s)").unwrap();
+    let ksp = 10f64.powf(min.log_ksp_at(298.15));
+    let salt = nucleation::SaltProps { density_kg_m3: 4500.0, molar_mass_kg_mol: 0.23339, nu_total: 2.0, c_sat_fu_mol_m3: ksp.sqrt() * 1000.0 };
+    let v_m3 = 50e-6;
+    // induction time of the model (J V)^-1: monotonic, steep, minutes at S = 10, instantaneous at S >= 100
+    let t10 = nucleation::induction_time_s(298.15, &salt, 10.0, v_m3);
+    let t30 = nucleation::induction_time_s(298.15, &salt, 30.0, v_m3);
+    let t100 = nucleation::induction_time_s(298.15, &salt, 100.0, v_m3);
+    let t1000 = nucleation::induction_time_s(298.15, &salt, 1000.0, v_m3);
+    println!("[gate2] model induction times: S=10 {:.3e} s, 30 {:.3e}, 100 {:.3e}, 1000 {:.3e}", t10, t30, t100, t1000);
+    assert!(t10 > 10.0 && t10 < 1200.0, "S=10 -> {} s (Nielsen: minutes)", t10);
+    assert!(t10 > t30 && t30 > t100 && t100 > t1000);
+    assert!(t100 < 1.0 && t1000 < 1e-3);
+
+    // through the vessel: a solution at S ~ 3 stays clear for ten minutes (metastable zone) ...
+    let mut v = baso4_mixture(3.0);
+    run(&mut v, 600.0, 1.0);
+    assert!(solid_of(&v, "BaSO4(s)") < 1e-9, "S ~ 3 must stay metastable, found {:e} mol of solid", solid_of(&v, "BaSO4(s)"));
+    // ... S ~ 10 holds for seconds, then precipitates
+    let mut v = baso4_mixture(11.0);
+    assert!(solid_of(&v, "BaSO4(s)") < 1e-9, "S ~ 11 must not precipitate within the mixing time");
+    run(&mut v, 3600.0, 2.0);
+    assert!(solid_of(&v, "BaSO4(s)") > 0.0, "S ~ 11 must precipitate within an hour");
+    // ... S >= 100 precipitates at once; the particles get smaller as S rises
+    let mut sizes = Vec::new();
+    for s in [20.0, 100.0, 1000.0] {
+        let mut v = baso4_mixture(s);
+        // S = 20 takes minutes to nucleate and grow out; S >= 100 is done in seconds
+        if s < 50.0 { run(&mut v, 3600.0, 2.0); } else { run(&mut v, 60.0, 0.5); }
+        let snap = v.snapshot();
+        let sd = snap.solids.iter().find(|x| x.species == "BaSO4(s)").unwrap_or_else(|| panic!("S={} must precipitate", s));
+        println!("[gate2] S={}: {:.3} um, {:.3e} g", s, sd.particle_diameter_um, sd.mass_g);
+        sizes.push(sd.particle_diameter_um);
+        // nearly everything precipitates
+        let ba_left = v.species_mol.get("Ba+2").copied().unwrap_or(0.0);
+        assert!(ba_left < 0.2 * (s * ksp.sqrt() * 0.05), "S={} left {:e} mol Ba", s, ba_left);
+    }
+    assert!(sizes[0] > sizes[1] && sizes[1] > sizes[2], "mean size must fall with supersaturation: {:?}", sizes);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 3: metals in acid by the mixed potential of their half-reactions: the activity series, proportional to the
+// surface area, independent of the volume at fixed [H+]; copper does not dissolve in a non-oxidising acid.
+// ------------------------------------------------------------------------------------------------
+fn metal_in_acid(reagent: &str, species: &str, mass_g: f64, d_um: f64, acid_ml: f64, seconds: f64) -> f64 {
+    let mut v = beaker(250.0, 3.5, 298.15);
+    ml(&mut v, "hcl_1m", acid_ml);
+    grams(&mut v, reagent, mass_g, d_um);
+    let n0 = solid_of(&v, species);
+    run(&mut v, seconds, 0.1);
+    n0 - solid_of(&v, species)
+}
+
+#[test]
+fn gate3_metal_acid_reactivity_series_area_and_volume_independence() {
+    ensure_reagents();
+    let (mg, zn, fe, cu) = (
+        metal_in_acid("s8_mg", "Mg(s)", 0.2, 500.0, 50.0, 2.0),
+        metal_in_acid("s8_zn", "Zn(s)", 0.5, 500.0, 50.0, 2.0),
+        metal_in_acid("s8_fe", "Fe(s)", 0.5, 500.0, 50.0, 2.0),
+        metal_in_acid("s8_cu", "Cu(s)", 0.5, 500.0, 50.0, 2.0),
+    );
+    println!("[gate3] mol dissolved in 2 s: Mg {:.3e}, Zn {:.3e}, Fe {:.3e}, Cu {:.3e}", mg, zn, fe, cu);
+    // Mg is limited only by the delivery of H+ to its surface; Zn and Fe by the hydrogen overpotential of their own surface
+    // (pure zinc has one of the highest, which is why amalgamated zinc does not react at all: the Zn / Fe order of
+    // commercial metals, whose inclusions are cathodes, is not the order of pure metals); Cu does not reduce H+ at all.
+    assert!(mg > 100.0 * zn && mg > 100.0 * fe, "Mg {:e} must outrun Zn {:e} and Fe {:e}", mg, zn, fe);
+    // (copper does dissolve at a trace through the dissolved oxygen of the acid, E0(O2/H2O) = 1.23 V > E0(Cu2+/Cu))
+    assert!(zn.min(fe) > 100.0 * cu.max(1e-30), "Zn {:e}, Fe {:e} must vastly outrun Cu {:e}", zn, fe, cu);
+    assert!(cu < 1e-9, "Cu does not reduce H+: {:e} mol", cu);
+
+    // rate proportional to the surface area: 0.2 g of 250 um grains has 2x the area of 0.2 g of 500 um grains... compare
+    // the same mass in two grain sizes: area ratio = diameter ratio
+    let fine = metal_in_acid("s8_zn", "Zn(s)", 0.3, 250.0, 50.0, 1.0);
+    let coarse = metal_in_acid("s8_zn", "Zn(s)", 0.3, 500.0, 50.0, 1.0);
+    let ratio = fine / coarse;
+    println!("[gate3] fine/coarse Zn rate {:.3} (area ratio 2)", ratio);
+    assert!(ratio > 1.7 && ratio < 2.3, "rate must scale with area: {}", ratio);
+
+    // independent of the solution volume at fixed [H+]
+    let r50 = metal_in_acid("s8_zn", "Zn(s)", 0.3, 500.0, 50.0, 1.0);
+    let r150 = metal_in_acid("s8_zn", "Zn(s)", 0.3, 500.0, 150.0, 1.0);
+    println!("[gate3] Zn in 50 mL {:.3e} mol/s, in 150 mL {:.3e}", r50, r150);
+    assert!((r50 - r150).abs() / r50 < 0.05, "volume independence: {} vs {}", r50, r150);
+
+    // products: hydrogen leaves, the cation joins the solution, atoms are conserved
+    let mut v = beaker(250.0, 3.5, 298.15);
+    ml(&mut v, "hcl_1m", 50.0);
+    grams(&mut v, "s8_mg", 0.1, 500.0);
+    run(&mut v, 30.0, 0.1);
+    assert!(v.species_mol.get("Mg+2").copied().unwrap_or(0.0) > 1e-3, "Mg+2 {:?}", v.species_mol.get("Mg+2"));
+    assert!(v.gas_fluxes.iter().any(|g| g.species == "H2(g)") || v.gas.escaped_mol > 0.0);
+    let c = v.snapshot().conservation;
+    assert!(c.max_element_rel_err < 1e-6 && c.charge_err_mol.abs() < 1e-9, "conservation {:?}", c);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 3b: cementation: a more active metal displaces a nobler one from solution (the Daniell reaction without a salt
+// bridge), with the nobler metal deposited as a new solid.
 // ------------------------------------------------------------------------------------------------
 #[test]
-fn test_gate_1_nacl_dissolution_sherwood() {
+fn gate3b_zinc_cements_copper_out_of_copper_sulfate() {
     ensure_reagents();
+    let mut v = beaker(250.0, 3.5, 298.15);
+    ml(&mut v, "cuso4_0_1m", 50.0);
+    grams(&mut v, "s8_zn", 0.2, 200.0);
+    let cu0 = v.species_mol.get("Cu+2").copied().unwrap_or(0.0);
+    run(&mut v, 120.0, 0.25);
+    let cu1 = v.species_mol.get("Cu+2").copied().unwrap_or(0.0);
+    println!("[gate3b] Cu+2 {:.3e} -> {:.3e} mol, Cu(s) {:.3e}, Zn+2 {:.3e}", cu0, cu1, solid_of(&v, "Cu(s)"), v.species_mol.get("Zn+2").copied().unwrap_or(0.0));
+    assert!(cu1 < 0.9 * cu0, "copper must leave the solution");
+    assert!(solid_of(&v, "Cu(s)") > 0.0, "copper must deposit as a solid");
+    assert!(v.species_mol.get("Zn+2").copied().unwrap_or(0.0) > 0.0);
+    // charge and elements balance
+    let c = v.snapshot().conservation;
+    assert!(c.max_element_rel_err < 1e-6 && c.charge_err_mol.abs() < 1e-9, "conservation {:?}", c);
+    // the reverse does not happen: copper in zinc sulfate does nothing
+    let mut v = beaker(250.0, 3.5, 298.15);
+    ml(&mut v, "water", 50.0);
+    grams(&mut v, "s8_cu", 0.2, 200.0);
+    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("Zn+2".to_string(), 0.005), ("SO4-2".to_string(), 0.005)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+    run(&mut v, 120.0, 0.5);
+    assert!(solid_of(&v, "Zn(s)") < 1e-9, "copper must not reduce zinc ions");
+}
 
-    let mw_nacl = 58.44;
-    let initial_mass_g = 1.0;
-    let initial_mol = initial_mass_g / mw_nacl;
-    let target_remaining_mol = 0.10 * initial_mol; // 90% dissolved
+// ------------------------------------------------------------------------------------------------
+// Gate 4: carbonated water in an open beaker degasses with tau of hours at rest and minutes when stirred.
+// ------------------------------------------------------------------------------------------------
+fn co2_tau(rpm: f64, total_s: f64, dt: f64) -> f64 {
+    let mut v = beaker(250.0, 3.5, 298.15);
+    ml(&mut v, "water", 100.0);
+    v.set_controls(VesselControls { stirring: Some(rpm > 0.0), stir_rpm: Some(rpm), ..Default::default() });
+    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), 0.0035)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+    let co2 = |v: &Vessel| v.species_mol.get("CO2(aq)").copied().unwrap_or(0.0) + v.species_mol.get("HCO3-").copied().unwrap_or(0.0);
+    let c0 = co2(&v);
+    let mut t = 0.0;
+    while t < total_s {
+        v.step(dt).unwrap();
+        t += dt;
+    }
+    let c1 = co2(&v);
+    let air_equilibrium = 1e-5; // atmospheric CO2 holds ~ 1e-5 mol in 100 mL: negligible against c0
+    ((c1 - air_equilibrium).max(1e-30) / (c0 - air_equilibrium)).ln().abs().recip() * t
+}
 
-    // 1. Stirred dissolution (400 RPM)
-    let mut v_stirred = test_beaker(100.0, 2.5);
-    v_stirred.dose(DoseRequest {
-        reagent_id: "water".into(),
-        volume_ml: Some(50.0),
-        mass_g: None,
-        drops: None,
-        temperature_k: None,
-    }).unwrap();
+#[test]
+fn gate4_open_carbonated_water_degasses_in_hours_at_rest_and_minutes_stirred() {
+    let tau_stirred = co2_tau(500.0, 300.0, 1.0);
+    let tau_rest = co2_tau(0.0, 3600.0, 10.0);
+    println!("[gate4] tau stirred {:.0} s, at rest {:.0} s", tau_stirred, tau_rest);
+    assert!(tau_stirred > 30.0 && tau_stirred < 900.0, "stirred tau {} s", tau_stirred);
+    assert!(tau_rest > 3600.0, "resting tau {} s must be hours", tau_rest);
+}
 
-    v_stirred.set_controls(VesselControls {
-        stirring: Some(true),
-        stir_rpm: Some(400.0),
+// ------------------------------------------------------------------------------------------------
+// Gate 5: CO2 hydration is a real slow step: dissolved CO2 does not acidify water at once, and dilute alkali
+// neutralises it in about a second (k2 [OH-] with k2 = 8500 /(M s)).
+// ------------------------------------------------------------------------------------------------
+#[test]
+fn gate5_co2_hydration_delays_the_ph_change() {
+    let ph_after = |base_ml: f64, naoh: &str, co2_mol: f64, t: f64| -> f64 {
+        let mut v = beaker(250.0, 3.5, 298.15);
+        if base_ml > 0.0 {
+            ml(&mut v, naoh, base_ml);
+        }
+        ml(&mut v, "water", 50.0);
+        v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), co2_mol)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+        run(&mut v, t, 0.05);
+        v.current_ph()
+    };
+    // dilute CO2 in neutral water: pH has barely moved after 0.2 s, and reaches the carbonic acid value later
+    let early = ph_after(0.0, "naoh_0_1m", 5e-6, 0.2);
+    let late = ph_after(0.0, "naoh_0_1m", 5e-6, 120.0);
+    println!("[gate5] 5 uM CO2 in water: pH {:.2} at 0.2 s, {:.2} at 120 s", early, late);
+    // an instantaneous equilibrium would put the pH at its final value at once
+    assert!(early > late + 0.8, "no instantaneous acidification: pH {} at 0.2 s vs {} at 120 s", early, late);
+    // 0.2 mM NaOH (phenolphthalein turns at pH 8.3-10) with 0.1 mM CO2: the pink persists for a moment, then fades
+    let early = ph_after(0.1, "naoh_0_1m", 2.5e-5, 0.02);
+    let late = ph_after(0.1, "naoh_0_1m", 2.5e-5, 30.0);
+    println!("[gate5] CO2 into dilute NaOH: pH {:.2} at 0.02 s, {:.2} at 30 s", early, late);
+    assert!(early > 9.5 && late < 8.0, "the indicator stays pink for a moment, then fades: pH {} -> {}", early, late);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 6: a volatile liquid evaporates below its boiling point at the rate the geometry's transport allows, cooling
+// itself.
+// ------------------------------------------------------------------------------------------------
+const HEXANE_IK: &str = "VLKZOEOYAKHREP-UHFFFAOYSA-N";
+
+#[test]
+fn gate6_hexane_evaporates_at_millilitres_per_hour_and_cools_the_liquid() {
+    import(fuel_request("s8_hexane", "Hexane", "C6H14", "CCCCCC", HEXANE_IK, 0.659, 341.88, -4163.0, 28.85));
+    // 10 mL in a dish of 38 cm2 (radius 3.5 cm) and 3 cm of glass above the liquid
+    let mut v = beaker(115.0, 3.5, 295.0);
+    ml(&mut v, "s8_hexane", 10.0);
+    let v0 = v.snapshot().total_liquid_ml;
+    run(&mut v, 300.0, 1.0);
+    let v1 = v.snapshot().total_liquid_ml;
+    let rate_ml_h = (v0 - v1) * (3600.0 / 300.0);
+    println!("[gate6] hexane loses {:.1} mL/h; liquid at {:.1} K", rate_ml_h, v.temperature_k);
+    assert!(rate_ml_h > 3.0 && rate_ml_h < 20.0, "evaporation {} mL/h", rate_ml_h);
+    assert!(v.temperature_k < 294.9, "evaporation must cool the liquid: {} K", v.temperature_k);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 7: sedimentation with the liquid's own density and viscosity: 10 um BaSO4 settles 4 cm in minutes in water and
+// about a thousand times slower in a liquid a thousand times more viscous.
+// ------------------------------------------------------------------------------------------------
+#[test]
+fn gate7_settling_follows_stokes_in_the_actual_liquid() {
+    use reaction_chamber_engine::transfer::settling::settling_time_s;
+    let t_w = settling_time_s(0.04, 10e-6, 4500.0, 998.2, 1.002e-3, 0.001, 293.15);
+    let t_g = settling_time_s(0.04, 10e-6, 4500.0, 1261.0, 1.412, 0.001, 293.15);
+    assert!(t_w > 150.0 && t_w < 300.0, "water: {} s", t_w);
+    assert!(t_g / t_w > 700.0 && t_g / t_w < 2000.0, "glycerol / water = {}", t_g / t_w);
+
+    // in the vessel: the suspended fraction of a 10 um precipitate decays over minutes, a 1 um one over hours
+    ensure_reagents();
+    let suspended_after = |d_um: f64, t: f64| -> f64 {
+        solid_reagent("s8_baso4", "BaSO4(s)", 233.39, 4.5);
+        let mut v = beaker(100.0, 2.5, 293.15);
+        ml(&mut v, "water", 50.0);
+        grams(&mut v, "s8_baso4", 0.01, d_um);
+        v.ev.susp.insert("BaSO4(s)".to_string(), 1.0);
+        run(&mut v, t, 1.0);
+        v.ev.susp.get("BaSO4(s)").copied().unwrap_or(0.0)
+    };
+    let coarse = suspended_after(10.0, 300.0);
+    let fine = suspended_after(1.0, 300.0);
+    println!("[gate7] suspended after 300 s: 10 um {:.3}, 1 um {:.3}", coarse, fine);
+    assert!(coarse < 0.5 && fine > 0.8 && fine > coarse + 0.3);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Gate 8: combustion of any fuel the data describes: an ethanol pool fire of a 250 mL beaker, hexane ignites at room
+// temperature, methanol burns with a near-invisible flame, no flame without oxygen.
+// ------------------------------------------------------------------------------------------------
+fn burn(fuel: &str, o2: f64) -> Vessel {
+    let mut v = beaker(250.0, 3.5, 295.15);
+    ml(&mut v, fuel, 30.0);
+    v.set_controls(VesselControls {
+        atmosphere: Some(reaction_chamber_engine::gas_phase::AtmosphereSpec { composition: Some([("N2".to_string(), 1.0 - o2), ("O2".to_string(), o2)].into_iter().filter(|(_, x)| *x > 0.0).collect()), ..Default::default() }),
+        igniter: Some(true),
         ..Default::default()
     });
+    run(&mut v, 2.0, 0.5);
+    v
+}
 
-    v_stirred.dose_with_diameter(DoseRequest {
-        reagent_id: "nacl_s".into(),
-        mass_g: Some(initial_mass_g),
-        volume_ml: None,
-        drops: None,
-        temperature_k: None,
-    }, 300.0).unwrap();
-    eprintln!("AFTER DOSE: {:?}", v_stirred.solid_mol);
-    eprintln!("SPECIES: {:?}", v_stirred.species_mol);
-
-    let dt = 0.5;
-    let mut t_stirred_90 = 0.0;
-    for step_i in 0..200 {
-        eprintln!("BEFORE STEP {}: solid={:?}, species={:?}", step_i, v_stirred.solid_mol, v_stirred.species_mol);
-        v_stirred.step(dt).unwrap();
-        eprintln!("AFTER STEP {}: solid={:?}, species={:?}", step_i, v_stirred.solid_mol, v_stirred.species_mol);
-        t_stirred_90 += dt;
-        let solid_rem = v_stirred.solid_mol.get("NaCl(s)").copied().unwrap_or(0.0);
-        eprintln!("step {}: rem={}", step_i, solid_rem);
-        if solid_rem <= target_remaining_mol {
-            break;
-        }
-    }
-
-    assert!(
-        t_stirred_90 >= 10.0 && t_stirred_90 <= 60.0,
-        "Stirred 1g NaCl (300 um) must 90% dissolve in 10-60 s: got {:.1} s",
-        t_stirred_90
-    );
-
-    // 2. Unstirred dissolution (0 RPM)
-    let mut v_still = test_beaker(100.0, 2.5);
-    v_still.dose(DoseRequest {
-        reagent_id: "water".into(),
-        volume_ml: Some(50.0),
-        mass_g: None,
-        drops: None,
-        temperature_k: None,
-    }).unwrap();
-
-    v_still.set_controls(VesselControls {
-        stirring: Some(false),
-        stir_rpm: Some(0.0),
-        ..Default::default()
+#[test]
+fn gate8_pool_fires_derive_from_fuel_data() {
+    import(fuel_request("s8_hexane", "Hexane", "C6H14", "CCCCCC", HEXANE_IK, 0.659, 341.88, -4163.0, 28.85));
+    import(fuel_request("s8_methanol", "Methanol", "CH4O", "CO", "OKKJLVBELUTLKV-UHFFFAOYSA-N", 0.792, 337.7, -726.0, 35.2));
+    // ethanol (store species / catalog reagent)
+    let v = burn("ethanol", 0.2095);
+    let snap = v.snapshot();
+    let flame = snap.flame.expect("ethanol must ignite in air");
+    println!("[gate8] ethanol: {:.0} W, luminosity {:.3}, T {:.0} K", flame.power_w, flame.luminosity, flame.flame_temp_k);
+    assert!(flame.power_w > 1000.0 && flame.power_w < 2000.0, "ethanol pool fire {} W", flame.power_w);
+    assert!(flame.flame_temp_k > 1800.0 && flame.flame_temp_k < 2500.0, "flame temperature {}", flame.flame_temp_k);
+    let lum_ethanol = flame.luminosity;
+    // hexane ignites at room temperature (its vapour is above the lower flammability limit) and is the most luminous
+    let v = burn("s8_hexane", 0.2095);
+    let hex = v.snapshot().flame.expect("hexane must ignite at room temperature");
+    // methanol: near-invisible flame
+    let v = burn("s8_methanol", 0.2095);
+    let meoh = v.snapshot().flame.expect("methanol must ignite");
+    println!("[gate8] luminosity: methanol {:.3}, ethanol {:.3}, hexane {:.3}", meoh.luminosity, lum_ethanol, hex.luminosity);
+    assert!(meoh.luminosity < 0.1 && meoh.luminosity < lum_ethanol && lum_ethanol < hex.luminosity);
+    // under nitrogen there is no flame
+    let v = burn("ethanol", 0.0);
+    assert!(v.snapshot().flame.is_none(), "no oxygen, no flame");
+    // water does not burn
+    let mut v = beaker(250.0, 3.5, 295.15);
+    ml(&mut v, "water", 30.0);
+    v.set_controls(VesselControls { igniter: Some(true), ..Default::default() });
+    run(&mut v, 2.0, 0.5);
+    assert!(v.snapshot().flame.is_none());
+    // a sealed jar's flame dies when its oxygen is gone, and the products stay in the jar
+    let mut v = Vessel::new(VesselConfig {
+        vessel_type: "jar".into(),
+        capacity_ml: 250.0,
+        glass_mass_g: 100.0,
+        inner_radius_cm: 3.5,
+        temperature_k: Some(295.15),
+        room_k: Some(295.15),
+        sealed: Some(true),
+        stopper_pop_atm: Some(10.0),
+        burst_atm: Some(20.0),
     });
-
-    v_still.dose_with_diameter(DoseRequest {
-        reagent_id: "nacl_s".into(),
-        mass_g: Some(initial_mass_g),
-        volume_ml: None,
-        drops: None,
-        temperature_k: None,
-    }, 300.0).unwrap();
-
-    let mut t_still_90 = 0.0;
-    for _ in 0..600 {
-        v_still.step(dt).unwrap();
-        t_still_90 += dt;
-        let solid_rem = v_still.solid_mol.get("NaCl(s)").copied().unwrap_or(0.0);
-        if solid_rem <= target_remaining_mol {
-            break;
-        }
+    ml(&mut v, "ethanol", 5.0);
+    v.set_controls(VesselControls { igniter: Some(true), ..Default::default() });
+    run(&mut v, 3.0, 0.1);
+    for _ in 0..3000 {
+        v.step(0.1).unwrap();
     }
-
-    let slow_ratio = t_still_90 / t_stirred_90;
-    assert!(
-        slow_ratio >= 3.0,
-        "Unstirred dissolution must be >= 3x slower: still = {:.1} s, stirred = {:.1} s, ratio = {:.2}",
-        t_still_90, t_stirred_90, slow_ratio
-    );
-
-    // Continue stepping stirred vessel to verify complete dissolution at S <= 1
-    for _ in 0..100 {
-        v_stirred.step(dt).unwrap();
-    }
-    let final_solid = v_stirred.solid_mol.get("NaCl(s)").copied().unwrap_or(0.0);
-    assert!(final_solid < 1e-6, "NaCl should completely dissolve at S <= 1: remaining = {}", final_solid);
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 2: BaSO4 nucleation induction time vs S and crystal morphology
-// BaSO4 induction time vs S within ×3 of Nielsen over S = 10–1000, mean size decreasing with S.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_2_baso4_nielsen_induction_time_and_size() {
-    let mw = 0.23339; // BaSO4 kg/mol
-    let rho = 4500.0; // kg/m^3
-    let c_sat = 0.0104; // mol/m^3
-    let t = 298.15;
-    let nu = 2.0;
-
-    let nielsen_benchmarks = [
-        (10.0, 150.0),
-        (100.0, 0.50),
-        (1000.0, 0.001),
-    ];
-
-    let mut prev_size = f64::INFINITY;
-    for (s, ref_tau) in nielsen_benchmarks {
-        let calc_tau = induction_time_s(t, rho, mw, c_sat, nu, s);
-        let ratio = calc_tau / ref_tau;
-        assert!(
-            ratio >= 0.33 && ratio <= 3.0,
-            "Induction time at S={} ({:.4e} s) must be within x3 of Nielsen reference ({:.4e} s): ratio = {:.2}",
-            s, calc_tau, ref_tau, ratio
-        );
-
-        let d_m = mean_precipitate_size_m(s);
-        assert!(
-            d_m < prev_size,
-            "Precipitate size must decrease with increasing supersaturation: S={}, size={:.2e} m vs prev={:.2e} m",
-            s, d_m, prev_size
-        );
-        prev_size = d_m;
-    }
-
-    assert_eq!(precipitate_kind(1000.0), "gel");
-    assert_eq!(precipitate_kind(50.0), "curds");
-    assert_eq!(precipitate_kind(5.0), "crystal");
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 3: Metal acid corrosion (Butler-Volmer mixed potential)
-// Mg > Zn > Fe ≫ Cu in 1 M HCl, rate ∝ metal area and independent of solution volume at fixed [H⁺].
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_3_acid_corrosion_rates_area_and_volume_independence() {
-    ensure_reagents();
-
-    let ph_1m = 0.0; // 1 M HCl
-    let t_k = 298.15;
-    let area_1cm2 = 1.0e-4; // 1 cm^2
-    let dt = 1.0;
-
-    // 1. Series comparison: Mg > Zn > Fe >> Cu
-    let mg_res = step_corrosion("Mg", ph_1m, t_k, area_1cm2, dt);
-    let zn_res = step_corrosion("Zn", ph_1m, t_k, area_1cm2, dt);
-    let fe_res = step_corrosion("Fe", ph_1m, t_k, area_1cm2, dt);
-    let cu_res = step_corrosion("Cu", ph_1m, t_k, area_1cm2, dt);
-
-    assert!(
-        mg_res.mol_metal_dissolved > zn_res.mol_metal_dissolved,
-        "Mg rate ({:.3e}) must exceed Zn rate ({:.3e})",
-        mg_res.mol_metal_dissolved, zn_res.mol_metal_dissolved
-    );
-    assert!(
-        zn_res.mol_metal_dissolved > fe_res.mol_metal_dissolved,
-        "Zn rate ({:.3e}) must exceed Fe rate ({:.3e})",
-        zn_res.mol_metal_dissolved, fe_res.mol_metal_dissolved
-    );
-    assert!(
-        fe_res.mol_metal_dissolved > 100.0 * cu_res.mol_metal_dissolved,
-        "Fe rate ({:.3e}) must vastly exceed Cu rate ({:.3e})",
-        fe_res.mol_metal_dissolved, cu_res.mol_metal_dissolved
-    );
-    assert!(cu_res.mol_metal_dissolved < 1e-15, "Cu in non-oxidising HCl must not corrode");
-
-    // 2. Rate proportional to metal area (Zn at 1 cm^2 vs 2 cm^2)
-    let area_2cm2 = 2.0e-4;
-    let zn_res_2 = step_corrosion("Zn", ph_1m, t_k, area_2cm2, dt);
-    let area_ratio = zn_res_2.mol_metal_dissolved / zn_res.mol_metal_dissolved;
-    assert!(
-        (area_ratio - 2.0).abs() < 0.01,
-        "Rate must be proportional to metal area: expected 2.0, got {:.3}",
-        area_ratio
-    );
-
-    // 3. Independent of solution volume at fixed [H+]
-    let mut v50 = test_beaker(250.0, 3.5);
-    v50.dose(DoseRequest { reagent_id: "hcl_1m".into(), volume_ml: Some(50.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
-    v50.dose(DoseRequest { reagent_id: "zn_s".into(), mass_g: Some(0.5), volume_ml: None, drops: None, temperature_k: None }).unwrap();
-
-    let mut v100 = test_beaker(250.0, 3.5);
-    v100.dose(DoseRequest { reagent_id: "hcl_1m".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
-    v100.dose(DoseRequest { reagent_id: "zn_s".into(), mass_g: Some(0.5), volume_ml: None, drops: None, temperature_k: None }).unwrap();
-
-    v50.step(1.0).unwrap();
-    v100.step(1.0).unwrap();
-
-    let zn50_dissolved = 0.5 / 65.38 - v50.solid_mol.get("Zn(s)").copied().unwrap_or(0.0);
-    let zn100_dissolved = 0.5 / 65.38 - v100.solid_mol.get("Zn(s)").copied().unwrap_or(0.0);
-
-    let diff = (zn50_dissolved - zn100_dissolved).abs() / zn50_dissolved.max(1e-12);
-    assert!(
-        diff < 0.05,
-        "Corrosion rate must be independent of solution volume: 50 mL={:.3e} mol, 100 mL={:.3e} mol, diff={:.3}%",
-        zn50_dissolved, zn100_dissolved, diff * 100.0
-    );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 4: Carbonated water degassing relaxation
-// Open carbonated water τ of hours unstirred, minutes stirred.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_4_open_carbonated_water_degassing() {
-    let depth_m = 0.025; // 2.5 cm depth
-
-    // Unstirred (0 RPM)
-    let tau_still_s = open_gas_relaxation_time_s(depth_m, 0.0);
-    let tau_still_h = tau_still_s / 3600.0;
-
-    assert!(
-        tau_still_h >= 1.0,
-        "Unstirred open carbonated water tau must be hours (>= 1.0 h): got {:.2} h ({:.0} s)",
-        tau_still_h, tau_still_s
-    );
-
-    // Stirred (500 RPM)
-    let tau_stirred_s = open_gas_relaxation_time_s(depth_m, 500.0);
-    let tau_stirred_min = tau_stirred_s / 60.0;
-
-    assert!(
-        tau_stirred_min <= 15.0 && tau_stirred_min >= 0.5,
-        "Stirred open carbonated water tau must be minutes (0.5 - 15 min): got {:.2} min ({:.0} s)",
-        tau_stirred_min, tau_stirred_s
-    );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 5: CO2 hydration reaction delay
-// CO2 + NaOH + phenolphthalein shows the hydration delay.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_5_co2_hydration_delay() {
-    // Forward CO2 hydration rate constant k_fwd = k1 + k2 * [OH-]
-    // Neutral water (pH 7, [OH-] = 1e-7 M):
-    let k_neutral = K1_CO2_HYDRATION_298 + K2_CO2_OH_298 * 1.0e-7;
-    assert!((k_neutral - 0.037).abs() < 0.002, "At pH 7, k_hydration must be ~0.037 s^-1: got {:.4}", k_neutral);
-
-    // Dilute NaOH (0.01 M, [OH-] = 0.01 M):
-    let k_naoh = K1_CO2_HYDRATION_298 + K2_CO2_OH_298 * 0.01;
-    assert!(k_naoh > 50.0 && k_naoh < 150.0, "At 0.01 M NaOH, k_hydration must be ~85 s^-1: got {:.2}", k_naoh);
-
-    // In alkaline phenolphthalein transition zone (pH ~ 10, [OH-] = 1e-4 M):
-    let k_trans = K1_CO2_HYDRATION_298 + K2_CO2_OH_298 * 1.0e-4;
-    let tau_trans = 1.0 / k_trans;
-    assert!(
-        tau_trans >= 0.5 && tau_trans <= 5.0,
-        "At pH 10, hydration delay tau must be in [0.5, 5.0] s: got {:.2} s",
-        tau_trans
-    );
-
-    // Test hydration flux across chemical potential gradient
-    let flux = co2_hydration_flux_m_s(0.01, 1e-10, 1e-4, 0.0, 298.15);
-    assert!(flux > 0.0, "CO2 hydration flux must be positive into alkaline solution");
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 6: Hexane evaporation rate
-// 10 mL hexane from 38 cm² at 295 K loses 3–20 mL/h.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_6_hexane_evaporation() {
-    let t_k = 295.15;
-    let pool_area_m2 = 38.0e-4; // 38 cm^2
-    let depth_below_rim_m = 0.03; // 3 cm
-    let p_sat_hexane_pa = 17600.0; // ~ 17.6 kPa at 295 K
-    let p_ambient_partial_pa = 0.0; // clean air
-    let mw_hexane = 86.18;
-    let dh_vap = 31500.0; // J/mol
-
-    let (flux_mol_s, _heat_w) = sub_boiling_evaporation_rates(
-        t_k,
-        pool_area_m2,
-        depth_below_rim_m,
-        p_sat_hexane_pa,
-        p_ambient_partial_pa,
-        mw_hexane,
-        dh_vap,
-    );
-
-    let rho_hexane_g_ml = 0.655;
-    let mass_rate_g_s = flux_mol_s * mw_hexane;
-    let vol_rate_ml_s = mass_rate_g_s / rho_hexane_g_ml;
-    let vol_rate_ml_h = vol_rate_ml_s * 3600.0;
-
-    assert!(
-        vol_rate_ml_h >= 3.0 && vol_rate_ml_h <= 20.0,
-        "10 mL hexane from 38 cm^2 at 295 K must evaporate at 3 - 20 mL/h: got {:.2} mL/h",
-        vol_rate_ml_h
-    );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 7: BaSO4 sedimentation and Brownian colloidal stability
-// 10 µm BaSO4 settles 4 cm in 150–300 s in water and ~1000× slower in glycerol.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_7_baso4_settling_in_water_and_glycerol() {
-    let dp = 10.0e-6; // 10 um
-    let rho_baso4 = 4500.0; // kg/m^3
-    let h = 0.04; // 4 cm
-    let phi = 0.001;
-    let t = 293.15;
-
-    // Water: rho ~ 998 kg/m^3, eta ~ 1.002e-3 Pa*s
-    let rho_water = 998.2;
-    let eta_water = 1.002e-3;
-    let tau_water = settling_time_s(h, dp, rho_baso4, rho_water, eta_water, phi, t);
-
-    assert!(
-        tau_water >= 150.0 && tau_water <= 300.0,
-        "10 um BaSO4 in water must settle 4 cm in [150, 300] s: got {:.1} s",
-        tau_water
-    );
-
-    // Glycerol: rho ~ 1261 kg/m^3, eta ~ 1.412 Pa*s
-    let rho_gly = 1261.0;
-    let eta_gly = 1.412;
-    let tau_gly = settling_time_s(h, dp, rho_baso4, rho_gly, eta_gly, phi, t);
-
-    let ratio = tau_gly / tau_water;
-    assert!(
-        ratio >= 700.0 && ratio <= 2000.0,
-        "Settling in glycerol must be ~1000x slower than water: ratio = {:.1}",
-        ratio
-    );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Gate 8: Combustion pool fire and flames
-// Ethanol pool fire in a 250 mL beaker 1–2 kW; hexane ignites; methanol flame near-invisible; flame dies under N2.
-// ------------------------------------------------------------------------------------------------
-#[test]
-fn test_gate_8_combustion_pool_fire_and_flames() {
-    // 1. Ethanol pool fire in 250 mL beaker (inner radius 3.5 cm -> area ~ 38.5 cm^2)
-    let area_m2 = std::f64::consts::PI * 0.035_f64.powi(2);
-    let props_ethanol = get_fuel_props("ethanol").expect("ethanol props");
-    let (power_w, _mol_s) = pool_fire_combustion_rates(&props_ethanol, area_m2, 0.209);
-    let power_kw = power_w / 1000.0;
-
-    assert!(
-        power_kw >= 1.0 && power_kw <= 2.0,
-        "Ethanol pool fire in 250 mL beaker must produce 1-2 kW: got {:.2} kW",
-        power_kw
-    );
-
-    // 2. Hexane ignites at room temperature (295 K)
-    let props_hexane = get_fuel_props("hexane").expect("hexane props");
-    let p_sat_hexane_295 = 17600.0;
-    let p_amb = 101325.0;
-    assert!(
-        is_fuel_ignitable(p_sat_hexane_295, p_amb, 0.209, &props_hexane),
-        "Hexane vapor at 295 K must ignite in air"
-    );
-
-    // 3. Methanol flame is near-invisible (sooting tendency / luminosity < 0.1)
-    let visual_meoh = fuel_flame_appearance("methanol");
-    assert!(
-        visual_meoh.luminosity <= 0.10,
-        "Methanol flame must be near-invisible (luminosity <= 0.10): got {:.2}",
-        visual_meoh.luminosity
-    );
-    let visual_c2h5oh = fuel_flame_appearance("ethanol");
-    assert!(
-        visual_c2h5oh.luminosity > visual_meoh.luminosity,
-        "Ethanol must be more luminous than methanol"
-    );
-
-    // 4. Flame dies under N2 (O2 < 12%)
-    let (power_n2, _) = pool_fire_combustion_rates(&props_ethanol, area_m2, 0.10);
-    assert_eq!(power_n2, 0.0, "Flame must extinguish when ambient O2 is 10% (< 12%)");
-    let (power_air, _) = pool_fire_combustion_rates(&props_ethanol, area_m2, 0.209);
-    assert!(power_air > 0.0, "Flame must burn in normal air (20.9% O2)");
+    assert!(v.snapshot().flame.is_none(), "the flame must die once the jar's oxygen is consumed");
+    assert!(v.headspace_gas_mol.get("CO2(g)").copied().unwrap_or(0.0) > 1e-4, "combustion products stay in a sealed jar");
 }

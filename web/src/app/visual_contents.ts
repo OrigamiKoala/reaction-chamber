@@ -1,13 +1,10 @@
 // Visual-only vessel contents, merged into the engine snapshot before it reaches the 3D scene / panels.
 //
-// Two generic uses (no per-compound data anywhere). Every compound the engine models (reacting, or inert with phases /
-// melting / boiling / dissolution) is drawn from the engine snapshot and must NOT be added here.
-//   1. Fallback only: PubChem imports whose formula the engine cannot model at all (`modelable: false`) still have to
-//      *show up* in the vessel: a powder bed / a coloured liquid, driven only by amount, density and the colour from PubChem.
-//   2. "Ghost" piles: the engine dissolves a soluble catalog solid instantly, so a spatula of powder would vanish
-//      the moment it landed. A ghost pile keeps the undissolved-looking powder on the vessel floor and shrinks it
-//      away (shrinking-core, faster when stirred) while the vessel holds liquid. The engine's own undissolved
-//      solid (if any) is subtracted, so nothing is ever drawn twice.
+// Fallback only: PubChem imports whose formula the engine cannot model at all (`modelable: false`) still have to
+// *show up* in the vessel: a powder bed / a coloured liquid, driven only by amount, density and the colour from PubChem.
+// Every compound the engine models (reacting, or inert with phases / melting / boiling / dissolution) is drawn from the
+// engine snapshot and must NOT be added here. (Stage 8: the engine keeps a dissolving solid as a particle population
+// until it has dissolved, so the old "ghost pile" that faked the undissolved powder is gone.)
 import * as THREE from 'three';
 import { BIN_NM0, BIN_STEP_NM, LiquidLayer, N_BINS, SolidVisual, SpeciesRow, VesselSnapshot } from '../types/sim';
 
@@ -25,8 +22,6 @@ export interface VisualItem {
   density_g_ml: number;
   /** g/mol, 0 if unknown. */
   mw: number;
-  /** Ghost pile of an engine-dissolved reagent (not a separate species): which engine solid species stand for it. */
-  ghost?: { species: string[] };
 }
 
 /** sRGB hex ('#rrggbb') to linear RGB. */
@@ -77,7 +72,7 @@ export class VisualContents {
     if (list.length === 0) return;
     const cur = this.items.get(vesselId) ?? [];
     for (const it of list) {
-      const same = cur.find((x) => x.key === it.key && x.kind === it.kind && !!x.ghost === !!it.ghost);
+      const same = cur.find((x) => x.key === it.key && x.kind === it.kind);
       if (same) {
         const m0 = same.mass_g;
         const m1 = it.mass_g;
@@ -175,7 +170,6 @@ export class VisualContents {
         remaining_fraction: 1,
       });
     }
-    // dissolved-away ghosts leave the list
     this.items.set(
       vesselId,
       list.filter((it) => (it.kind === 'liquid' ? it.volume_ml > 1e-4 : it.mass_g > 1e-5))

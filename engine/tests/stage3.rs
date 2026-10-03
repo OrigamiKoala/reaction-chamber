@@ -95,7 +95,8 @@ fn gate_2_agcl_solubility_ratio_in_kno3() {
     }).unwrap();
     // Add excess AgCl(s)
     v_pure.solid_mol.insert("AgCl(s)".into(), 0.001);
-    v_pure.step(0.1).unwrap();
+    // (Stage 8: a sparingly soluble solid dissolves through its particle surface over minutes, not at once)
+    for _ in 0..1200 { v_pure.step(0.5).unwrap(); }
     let s0 = v_pure.species_mol.get("Ag+").copied().unwrap_or(0.0);
 
     let mut v_kno3 = Vessel::new(VesselConfig {
@@ -121,7 +122,7 @@ fn gate_2_agcl_solubility_ratio_in_kno3() {
     *v_kno3.species_mol.entry("NO3-".into()).or_default() += 0.010;
     // Add same excess AgCl(s)
     v_kno3.solid_mol.insert("AgCl(s)".into(), 0.001);
-    v_kno3.step(0.1).unwrap();
+    for _ in 0..1200 { v_kno3.step(0.5).unwrap(); }
     let s_kno3 = v_kno3.species_mol.get("Ag+").copied().unwrap_or(0.0);
 
     let ratio = s_kno3 / s0.max(1e-12);

@@ -547,7 +547,7 @@ export class Lab {
 
   /**
    * The chemistry half of an addition (shared by the assisted Add card and manual pouring): dose the engine, or keep
-   * a visual-only import as visible contents; solids that the engine dissolves instantly leave a dissolving ghost pile.
+   * a visual-only import as visible contents.
    * `amount` is in the item's own unit (mL / g / drops).
    */
   public async commitAddition(item: ReagentItem, vesselId: string, amount: number): Promise<'dosed' | 'visual'> {

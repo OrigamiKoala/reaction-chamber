@@ -213,6 +213,8 @@ export class VesselEffects {
   private suspendedColor = new THREE.Color(1, 1, 1);
   private suspendedTargetCount = 0;
   private suspendedDiameterUm = 10;
+  /** Stokes settling velocity of the suspended solids (mm/s) from the engine's own liquid density and viscosity. */
+  private suspendedSettleMmS = 0.2;
   private settleFrac = 0;
   private time = 0;
   private appHex = '';
@@ -437,6 +439,7 @@ export class VesselEffects {
     let rough = 0.92;
     let metal: SolidVisual | null = null;
     let diam = 0;
+    let vel = 0;
     const lumpCol = new THREE.Color(1, 1, 1);
     for (const s of solids) {
       if (s.mass_g <= 1e-6) continue;
@@ -459,6 +462,7 @@ export class VesselEffects {
         sg += s.rgb[1] * susp;
         sb += s.rgb[2] * susp;
         diam += s.particle_diameter_um * susp;
+        vel += (s.settling_velocity_mm_s ?? 0) * susp;
       }
       if (s.kind === 'crystal') {
         crystalMass += s.mass_g * settled;
@@ -478,6 +482,7 @@ export class VesselEffects {
     if (suspMass > 1e-5) {
       this.suspendedColor.setRGB(sr / suspMass, sg / suspMass, sb / suspMass);
       this.suspendedDiameterUm = diam / suspMass;
+      this.suspendedSettleMmS = vel / suspMass;
       this.suspendedTargetCount = Math.min(this.precip.cap, Math.floor(30 + Math.sqrt(suspMass) * 520));
     } else {
       this.suspendedTargetCount = 0;
@@ -804,7 +809,8 @@ export class VesselEffects {
     pos[i3] = x * c - z * sn;
     pos[i3 + 2] = x * sn + z * c;
     // Brownian-ish jitter + Stokes settling (exaggerated)
-    const settle = Math.min(1.2, 0.02 + 0.00025 * this.suspendedDiameterUm * this.suspendedDiameterUm) * (this.stirRpm > 0 ? 0.15 : 1);
+    // the engine's settling velocity (mm/s, real physics) shown 30x faster so the cloud clears within an attention span
+    const settle = Math.min(1.2, 0.02 + 0.3 * this.suspendedSettleMmS) * (this.stirRpm > 0 ? 0.15 : 1);
     pos[i3 + 1] += (-settle + Math.sin(this.time * 1.3 + s) * 0.25) * dt;
     pos[i3] += Math.sin(this.time * 2.1 + s * 3.1) * 0.15 * dt;
     pos[i3 + 2] += Math.cos(this.time * 1.9 + s * 2.3) * 0.15 * dt;
