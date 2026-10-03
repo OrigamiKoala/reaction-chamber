@@ -113,6 +113,7 @@ pub fn step_equilibrium(parent: &str, base: &str, step: usize, pka: f64, class: 
         log_k_298: -pka,
         delta_h_kj: 0.0,
         log_k_analytic: None,
+        rate: None,
         tier: ProvenanceTier::Estimated,
         source: format!("Estimated pKa {:.2}: {}", pka, class),
     }

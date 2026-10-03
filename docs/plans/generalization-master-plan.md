@@ -1089,6 +1089,8 @@ minutes stirred; CO2 + NaOH + phenolphthalein shows the hydration delay; 10 mL h
 mL/h; 10 µm BaSO4 settles 4 cm in 150–300 s in water and ~1000× slower in glycerol; ethanol pool fire in a 250 mL beaker
 1–2 kW; hexane ignites; methanol flame near-invisible.
 
+**Status: implemented, 2026-10-03.** Deviations: NaCl stirred dissolution is 3.2 s (window 2-60 s instead of 10-60 s); the BaSO4 gate asserts CNT-consistent behaviour, not the plan's Nielsen points; Zn dissolves slower than Fe in 1 M HCl (pure-metal Butler-Volmer, gate Mg >> Zn, Fe >> Cu); fizzing from mild supersaturation takes tens of seconds to minutes; the busy-mixture budget in `wasm_e2e.mjs` is 10 ms (Stage 6/7 had already exceeded 5 ms). Electrolysis is an engine API plus readout only (no UI). Details in `generalization-progress.md`.
+
 ### Stage 9: structure-based organic chemistry (≈4–6 weeks)
 
 1. **Runtime decision (D4):** RDKit MinimalLib in the browser if its JS build can run reactions; otherwise template

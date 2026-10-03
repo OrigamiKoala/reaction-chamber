@@ -243,44 +243,58 @@ impl Vessel {
     /// Stokes-like sedimentation of suspended solids: a fresh precipitate is a cloud that settles over tens of
     /// seconds (faster for large/dense particles, aggregated 10x); stirring keeps solids suspended.
     pub fn update_suspension(&mut self, dt_s: f64) {
-        let stirring = self.controls.stirring.unwrap_or(false);
-        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
         let dust = self.dust_mol();
         let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > dust).map(|(k, _)| k.clone()).collect();
         self.ev.susp.retain(|k, _| live.contains(k));
+        if live.is_empty() {
+            return;
+        }
         let t_k = self.temperature_k;
+        let hyd = self.hydro_state();
         let r_cm = self.config.inner_radius_cm.max(0.5);
         let area_cm2 = std::f64::consts::PI * r_cm.powi(2);
         let liq_h_m = ((self.total_liquid_volume_ml() / area_cm2) * 0.01).max(0.01);
-        let rho_fluid = 1000.0;
-        let eta_fluid = crate::transport::viscosity_water_pa_s(t_k);
+        // the electrolyte decides whether a colloid coagulates (Schulze-Hardy, z^6)
+        let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-9);
+        let ions: Vec<(f64, f64)> = self
+            .species_mol
+            .iter()
+            .filter(|(sp, m)| **m > 0.0 && ions::species_charge(sp) != 0)
+            .map(|(sp, m)| (m / vol_l, ions::species_charge(sp) as f64))
+            .collect();
+        let gamma_index = crate::transfer::settling::coagulation_index(&ions);
 
         for sp in live {
             let props = self.solid_props(&sp);
-            let d_m = self.particle_populations.get(&sp)
-                .map(|p| p.mean_diameter_m())
-                .unwrap_or(props.particle_um * 1e-6);
+            let d_primary = self.particle_populations.get(&sp).map_or(props.particle_um * 1e-6, |p| p.sauter_diameter_m());
             let rho_p = props.density_g_ml * 1000.0;
             let solid_vol_m3 = self.solid_mol.get(&sp).copied().unwrap_or(0.0) * chem_db::get_species_thermo(&sp).mw * 1e-3 / rho_p.max(100.0);
-            let total_liq_m3 = (self.total_liquid_volume_ml() * 1e-6).max(1e-9);
-            let phi_solid = (solid_vol_m3 / total_liq_m3).clamp(0.0, 0.5);
-            let i_molal = self.ionic_strength_molal();
-            let ccc = 0.01; // critical coagulation concentration ~ 10 mM for 1:1 electrolytes
-            let agg_factor = if props.kind == SolidKind::Curds || props.kind == SolidKind::Gel {
-                1.0 + 7.0 * (i_molal / (i_molal + ccc))
-            } else {
-                1.0 + 3.0 * (i_molal / (i_molal + ccc))
-            };
-            let d_eff = d_m * agg_factor;
-            let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, rho_fluid, eta_fluid, phi_solid, t_k);
+            let phi_solid = (solid_vol_m3 / (self.total_liquid_volume_ml() * 1e-6).max(1e-9)).clamp(0.0, 0.5);
+            // a coagulating colloid (electrolyte at about its critical coagulation concentration or more) grows into flocs
+            // that outsize the Brownian limit (Pe = 1, d_Pe1 ~ 0.7 um for a dense salt) by an order of magnitude and settle
+            let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * t_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
+            let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
+            let d_eff = d_primary + w * ((20.0 * d_pe1).max(d_primary) - d_primary);
+            let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, hyd.rho_l, hyd.eta, phi_solid, t_k);
+            let n_js = crate::transfer::hydro::just_suspended_rps(
+                &hyd.st,
+                d_eff,
+                rho_p,
+                hyd.rho_l,
+                hyd.nu,
+                100.0 * solid_vol_m3 * rho_p / (self.total_liquid_volume_ml() * 1e-6 * hyd.rho_l).max(1e-12),
+            );
+            let target = crate::transfer::hydro::suspended_fraction(&hyd.st, n_js);
 
             let cur = self.ev.susp.entry(sp).or_insert(1.0);
-            if stirring || stir_rpm > 10.0 {
-                let target = (stir_rpm / 300.0).clamp(0.2, 0.95);
-                *cur += (target - *cur) * (1.0 - (-dt_s / 2.0).exp());
-            } else {
-                let floor = 0.02;
-                *cur = floor + (*cur - floor) * (-dt_s / tau).exp();
+            let floor = 0.02;
+            if hyd.st.is_stirred() && target > *cur {
+                // the stirring lifts the bed: faster than it settles
+                *cur += (target.max(floor) - *cur) * (1.0 - (-dt_s / 2.0).exp());
+            } else if tau.is_finite() {
+                // sedimentation toward the floor, held up by whatever the stirring still keeps suspended
+                let rest = floor.max(if hyd.st.is_stirred() { target } else { 0.0 });
+                *cur = rest + (*cur - rest) * (-dt_s / tau).exp();
             }
         }
     }

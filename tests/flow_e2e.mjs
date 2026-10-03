@@ -26,11 +26,16 @@ const pick = (pred, what) => {
 const relDiff = (a, b) => Math.abs(a - b) / Math.max(1e-12, Math.abs(a), Math.abs(b));
 const speciesAmt = (s, id) => s.species.find((x) => x.id === id)?.amount_mol ?? 0;
 
-function compare(name, label, runBig, runSmall, { checkPh = true, tolPh = 0.01, minMol = 1e-7 } = {}) {
+function compare(name, label, runBig, runSmall, { checkPh = true, tolPh = 0.01, minMol = 1e-7, settleS = 0 } = {}) {
   const a = vessel();
   const b = vessel();
   runBig(a);
   runSmall(b);
+  // Solids dissolve through their particle surface (Stage 8), so a lump and many fine portions agree at equilibrium, not at t = 0
+  for (let t = 0; t < settleS; t += 5) {
+    eng.vessel_step(a, 5);
+    eng.vessel_step(b, 5);
+  }
   const sa = snap(a);
   const sb = snap(b);
   near(`${label}: volume`, sa.total_liquid_ml, sb.total_liquid_ml, 0.01);
@@ -76,7 +81,7 @@ const [sa, sb] = compare(`250 x 10 mg ${solid.id}`, 'solid',
   (h) => { dose(h, { reagent_id: 'water', volume_ml: 50 }); dose(h, { reagent_id: solid.id, mass_g: 2.5 }); },
   (h) => { dose(h, { reagent_id: 'water', volume_ml: 50 }); for (let i = 0; i < 250; i++) dose(h, { reagent_id: solid.id, mass_g: 0.01 }); },
   // pH is compared too: the engine solves all equilibria jointly, so one 2.5 g dose and 250 x 10 mg both give ~8.2
-  { minMol: 1e-3 });
+  { minMol: 1e-3, settleS: 600 });
 // 0.6 M NaHCO3 reads ~8.0 on the activity scale (Debye-Hueckel slope now follows the dielectric constant of water at T)
 assert.ok(sa.ph > 7.9 && sa.ph < 8.5, `NaHCO3 pH ${sa.ph}`);
 near('weigh-in mass', sb.contents_mass_g - snap0Water, 2.5, 0.01);

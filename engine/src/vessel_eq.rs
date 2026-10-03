@@ -6,11 +6,14 @@
 //! combinations (CaCO3 in acid, AgCl in ammonia but not AgI, Mg(OH)2 buffering pH, ...) without any damped-Newton
 //! oscillation, and without special cases per compound.
 
+use std::collections::HashMap;
 use crate::chem_db::GeneralMineral;
 use crate::vessel::*;
 
 
 const LN10: f64 = std::f64::consts::LN_10;
+/// |ln(Q/K)| below which a slow equilibrium row counts as settled and is not relaxed (a numerical tolerance, not physics).
+const SLOW_ROW_EQUILIBRIUM_TOL: f64 = 1e-5;
 
 fn ln_c(amount_mol: f64, vol_l: f64) -> f64 {
     (amount_mol / vol_l).max(1e-300).ln()
@@ -139,9 +142,155 @@ impl EqSystem {
 }
 
 impl Vessel {
+    /// One equilibrium pass over the vessel's rows. Rows with a rate law (CO2 hydration, ...) are *slow*: the fast rows
+    /// (everything else) are solved to equilibrium with the slow rows frozen (the fast manifold); the state the slow rows
+    /// would reach with the fast rows following them is then found, and the vessel moves a fraction
+    /// 1 - exp(-lambda dt) of the way there, lambda being the net rate of each slow row at the fast-manifold state over its
+    /// distance to equilibrium (the exact solution of the linearised rate law; `kinetic_dt_s` is the time the slow rows
+    /// advance in this pass). A convex combination of two states that conserve every element and the charge conserves
+    /// them too; the fast rows are then settled again around it.
+    pub(crate) fn step_equilibria(&mut self, dt_s: f64) -> f64 {
+        let slow: Vec<usize> = (0..self.equilibria.len()).filter(|&i| self.equilibria[i].rate.is_some()).collect();
+        if slow.is_empty() {
+            self.slow_exclude = false;
+            return self.step_equilibria_core(dt_s);
+        }
+        let vol_l = self.solvent_volume_ml() / 1000.0;
+        let kin_dt = self.kinetic_dt_s;
+        self.slow_exclude = true;
+        let mut q = self.step_equilibria_core(dt_s);
+        // a slow row matters only when it has something to convert (every reactant or every product present)
+        let active: Vec<usize> = slow
+            .into_iter()
+            .filter(|&i| {
+                let eq = &self.equilibria[i];
+                let have = |sp: &String| sp == AQUEOUS_SOLVENT || self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * vol_l.max(1e-6);
+                eq.reactants.keys().all(have) || eq.products.keys().all(have)
+            })
+            .collect();
+        // A slow row that already sits at its equilibrium (the usual state of a settled vessel) has nothing to relax: the
+        // concentration quotient of the fast-manifold state is checked before paying for the full solve.
+        let off_equilibrium = |this: &Self, i: usize| -> bool {
+            let eq = &this.equilibria[i];
+            let conc = |sp: &str| this.species_mol.get(sp).copied().unwrap_or(0.0).max(0.0) / vol_l.max(1e-12);
+            let (mut ln_q, mut have_all) = (-eq.log_k_at(this.temperature_k) * std::f64::consts::LN_10, true);
+            for (sp, c) in eq.products.iter().filter(|(sp, _)| *sp != AQUEOUS_SOLVENT) {
+                let x = conc(sp);
+                if x <= 0.0 { have_all = false; break; }
+                ln_q += c * x.ln();
+            }
+            for (sp, c) in eq.reactants.iter().filter(|(sp, _)| *sp != AQUEOUS_SOLVENT) {
+                let x = conc(sp);
+                if x <= 0.0 { have_all = false; break; }
+                ln_q -= c * x.ln();
+            }
+            !have_all || ln_q.abs() > SLOW_ROW_EQUILIBRIUM_TOL
+        };
+        let active: Vec<usize> = active.into_iter().filter(|&i| off_equilibrium(self, i)).collect();
+        if kin_dt > 0.0 && !active.is_empty() && vol_l > 0.0 {
+            let m0_species = self.species_mol.clone();
+            let m0_solid = self.solid_mol.clone();
+            let t0 = self.temperature_k;
+            let moved0 = self.eq_moved;
+            self.slow_exclude = false;
+            let q_full = self.step_equilibria_core(dt_s);
+            let e_species = self.species_mol.clone();
+            let e_solid = self.solid_mol.clone();
+            let t_k = self.temperature_k;
+            // The slow rows move the species they share: the one that no fast row touches and that moved most between the
+            // fast-manifold state and the full equilibrium is the tracer of the slow subsystem, and
+            // lambda = |sum of the slow rows' net rates into the tracer| / |distance of the tracer to its equilibrium|.
+            let fast_species: std::collections::HashSet<&String> = self
+                .equilibria
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| !active.contains(j))
+                .flat_map(|(_, e)| e.reactants.keys().chain(e.products.keys()))
+                .collect();
+            let mut tracer: Option<(&String, f64)> = None; // (species, |distance|)
+            for &i in &active {
+                let eq = &self.equilibria[i];
+                for sp in eq.reactants.keys().chain(eq.products.keys()) {
+                    if sp == AQUEOUS_SOLVENT {
+                        continue;
+                    }
+                    let d = (e_species.get(sp).copied().unwrap_or(0.0) - m0_species.get(sp).copied().unwrap_or(0.0)).abs();
+                    let score = if fast_species.contains(sp) { d } else { 1e30 + d };
+                    if tracer.map_or(true, |(_, b)| score > b) {
+                        tracer = Some((sp, score));
+                    }
+                }
+            }
+            let mut frac = 1.0;
+            if let Some((tr, _)) = tracer {
+                let dist = e_species.get(tr).copied().unwrap_or(0.0) - m0_species.get(tr).copied().unwrap_or(0.0);
+                let mut rate_into_tracer = 0.0;
+                for &i in &active {
+                    let eq = &self.equilibria[i];
+                    let rate = eq.rate.as_ref().unwrap();
+                    let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / vol_l;
+                    let k_f = rate.k_forward(t_k, &conc);
+                    let k_eq = (eq.log_k_at(t_k) * std::f64::consts::LN_10).exp().max(1e-300);
+                    let (mut fwd, mut rev) = (1.0, 1.0);
+                    for (sp, c) in &eq.reactants {
+                        if sp != AQUEOUS_SOLVENT {
+                            fwd *= conc(sp).powf(*c);
+                        }
+                    }
+                    for (sp, c) in &eq.products {
+                        if sp != AQUEOUS_SOLVENT {
+                            rev *= conc(sp).powf(*c);
+                        }
+                    }
+                    let r0 = vol_l * (k_f * fwd - k_f / k_eq * rev); // mol/s, + = forward
+                    let nu = eq.products.get(tr).copied().unwrap_or(0.0) - eq.reactants.get(tr).copied().unwrap_or(0.0);
+                    rate_into_tracer += nu * r0;
+                }
+                if dist.abs() > 1e-18 {
+                    let lambda = (rate_into_tracer / dist).abs();
+                    frac = if lambda.is_finite() { 1.0 - (-lambda * kin_dt).exp() } else { 1.0 };
+                } else {
+                    frac = 0.0;
+                }
+            }
+            let frac = frac.clamp(0.0, 1.0);
+            let mix = |a: &HashMap<String, f64>, b: &HashMap<String, f64>| -> HashMap<String, f64> {
+                let mut out = HashMap::new();
+                for k in a.keys().chain(b.keys()) {
+                    let x = a.get(k).copied().unwrap_or(0.0);
+                    let y = b.get(k).copied().unwrap_or(0.0);
+                    let v = x + frac * (y - x);
+                    if v > 0.0 {
+                        out.insert(k.clone(), v);
+                    }
+                }
+                out
+            };
+            self.temperature_k = t0;
+            self.eq_moved = moved0 || frac > 0.0;
+            q += frac * q_full;
+            if frac >= 1.0 - 1e-9 {
+                // fully relaxed: the full equilibrium already satisfies the fast rows
+                self.species_mol = e_species;
+                self.solid_mol = e_solid;
+            } else if frac <= 1e-9 {
+                self.species_mol = m0_species;
+                self.solid_mol = m0_solid;
+            } else {
+                self.species_mol = mix(&m0_species, &e_species);
+                self.solid_mol = mix(&m0_solid, &e_solid);
+                // the fast rows follow the partial state
+                self.slow_exclude = true;
+                q += self.step_equilibria_core(dt_s);
+            }
+        }
+        self.slow_exclude = false;
+        q
+    }
+
     /// One relaxation sweep: every aqueous equilibrium is solved exactly, then every solid is saturated.
     /// Returns the reaction heat released (J).
-    pub(crate) fn step_equilibria(&mut self, dt_s: f64) -> f64 {
+    pub(crate) fn step_equilibria_core(&mut self, dt_s: f64) -> f64 {
         // Any cation/anion pair that has newly met gets its solubility controlled by the table / solubility rules.
         self.auto_minerals();
         // The solver's concentration basis is the volume of the aqueous solvent (water). Immiscible or miscible
@@ -164,6 +313,7 @@ impl Vessel {
             .enumerate()
             .filter(|(_, m)| {
                 !m.dissolved_products.is_empty()
+                    && !self.blocked_minerals.contains(&m.solid_species)
                     && (self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0) > eps_mol
                         || m.dissolved_products.keys().all(|i| self.species_mol.get(i).copied().unwrap_or(0.0) > present_mol))
             })
@@ -232,10 +382,6 @@ impl Vessel {
                     continue;
                 }
                 let min = self.minerals[idx].clone();
-                let is_granular = self.particle_populations.get(&min.solid_species).map_or(false, |p| p.mean_diameter_m() >= 100e-6);
-                if y > 0.0 && is_granular {
-                    continue;
-                }
                 self.eq_moved = true;
                 for (ion, &c) in &min.dissolved_products {
                     let m = self.species_mol.entry(ion.clone()).or_default();
@@ -264,6 +410,9 @@ impl Vessel {
         ln_aw: f64,
     ) -> f64 {
         let eq = &self.equilibria[e];
+        if eq.rate.is_some() && self.slow_exclude {
+            return 0.0;
+        }
 
         // Shortcut: with no active mineral touching this equilibrium it can only move forward (every reactant present)
         // or backward (every product present); otherwise there is nothing to solve.
@@ -452,21 +601,53 @@ impl Vessel {
         }
 
         // ln Q increases with xi; infeasible extents mean a reactant (xi>0) / product (xi<0) ran out.
+        // Safeguarded Illinois (regula falsi that halves the retained end's weight when the same end is kept twice) on
+        // f = ln Q - ln K, with a bisection step whenever the secant point is not inside the bracket or the bracket has not
+        // halved: the same bracket and tolerance as plain bisection, in a fraction of the evaluations.
         let (mut lo, mut hi) = (xi_lo, xi_hi);
-        for _ in 0..45 {
+        let (mut f_lo, mut f_hi): (Option<f64>, Option<f64>) = (None, None); // None: infeasible or not yet evaluated
+        let mut last_kept = 0i8;
+        let mut width_before = (hi - lo).abs();
+        for it in 0..80 {
             // 1e-10 relative is far below any observable and the coupled Newton solve that follows polishes the result
             if (hi - lo).abs() <= 1e-10 * lo.abs().max(hi.abs()).max(eps_mol) {
                 break;
             }
-            let mid = 0.5 * (lo + hi);
-            let above = match sys.eval(mid) {
-                Some(s) => s.ln_q > ln_k,
-                None => mid > 0.0,
+            let bisect = it % 3 == 2 && (hi - lo).abs() > 0.5 * width_before;
+            if it % 3 == 0 {
+                width_before = (hi - lo).abs();
+            }
+            let secant = match (f_lo, f_hi) {
+                (Some(fl), Some(fh)) if !bisect && fh > fl => {
+                    let x = hi - fh * (hi - lo) / (fh - fl);
+                    if x > lo && x < hi { Some(x) } else { None }
+                }
+                _ => None,
+            };
+            let x = secant.unwrap_or(0.5 * (lo + hi));
+            let f = sys.eval(x).map(|s| s.ln_q - ln_k);
+            let above = match f {
+                Some(v) => v > 0.0,
+                None => x > 0.0,
             };
             if above {
-                hi = mid;
+                hi = x;
+                f_hi = f;
+                if last_kept == 1 {
+                    if let Some(fl) = f_lo.as_mut() {
+                        *fl *= 0.5;
+                    }
+                }
+                last_kept = 1;
             } else {
-                lo = mid;
+                lo = x;
+                f_lo = f;
+                if last_kept == -1 {
+                    if let Some(fh) = f_hi.as_mut() {
+                        *fh *= 0.5;
+                    }
+                }
+                last_kept = -1;
             }
         }
         let xi = 0.5 * (lo + hi);
@@ -546,6 +727,8 @@ impl Vessel {
             ln_k: f64,
             dh_j: f64,
             upper: f64,
+            /// Largest extent of precipitation (a negative bound): a supersaturated mineral's kinetic amount.
+            lower: f64,
         }
         let mut names: Vec<String> = Vec::new();
         let mut idx_of: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -564,6 +747,9 @@ impl Vessel {
 
         let mut rxns: Vec<Rxn> = Vec::new();
         for (e, eq) in self.equilibria.iter().enumerate() {
+            if eq.rate.is_some() && self.slow_exclude {
+                continue; // a row with a rate law is not on the fast manifold (see `step_equilibria`)
+            }
             let mut nu: Vec<(usize, f64)> = Vec::new();
             let mut nu_solv: Vec<(usize, f64)> = Vec::new();
             let mut ok = true;
@@ -587,12 +773,21 @@ impl Vessel {
                 continue;
             }
             let dh_j = eq.delta_h_kj * 1000.0;
-            rxns.push(Rxn { eq: Some(e), min: None, nu, nu_solv, ln_k: eq.log_k_at(t_k) * LN10, dh_j, upper: f64::INFINITY });
+            rxns.push(Rxn { eq: Some(e), min: None, nu, nu_solv, ln_k: eq.log_k_at(t_k) * LN10, dh_j, upper: f64::INFINITY, lower: f64::NEG_INFINITY });
         }
         for (mi, m) in self.minerals.iter().enumerate() {
             if m.dissolved_products.is_empty() {
                 continue;
             }
+            // a supersaturated mineral forms only up to its kinetic amount (see `step_equilibria_limited`)
+            let lower = if self.blocked_minerals.contains(&m.solid_species) {
+                match self.precip_cap.get(&m.solid_species) {
+                    Some(&c) if c > 0.0 => -c,
+                    _ => continue,
+                }
+            } else {
+                f64::NEG_INFINITY
+            };
             let solid0 = self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0).max(0.0);
             let all_present = m.dissolved_products.keys().all(|i| amount(self, i) > present_mol);
             if solid0 <= eps_mol && !all_present {
@@ -606,7 +801,7 @@ impl Vessel {
                 nu.push((get_idx(ion, &mut names), c));
             }
             let (ln_ksp, dh_j) = Self::mineral_ln_ksp(m, t_k);
-            rxns.push(Rxn { eq: None, min: Some(mi), nu, nu_solv: Vec::new(), ln_k: ln_ksp, dh_j, upper: solid0 });
+            rxns.push(Rxn { eq: None, min: Some(mi), nu, nu_solv: Vec::new(), ln_k: ln_ksp, dh_j, upper: solid0, lower });
         }
         let nr = rxns.len();
         if nr == 0 {
@@ -660,7 +855,12 @@ impl Vessel {
         };
         // Bound-aware merit: a dissolving solid already fully consumed whose residual still wants more is satisfied.
         let free_mask = |x: &[f64], f: &[f64]| -> Vec<bool> {
-            (0..nr).map(|r| !(rxns[r].upper.is_finite() && x[r] >= rxns[r].upper - 1e-3 * eps_mol && f[r] < 0.0)).collect()
+            (0..nr)
+                .map(|r| {
+                    !(rxns[r].upper.is_finite() && x[r] >= rxns[r].upper - 1e-3 * eps_mol && f[r] < 0.0)
+                        && !(rxns[r].lower.is_finite() && x[r] <= rxns[r].lower + 1e-3 * eps_mol && f[r] > 0.0)
+                })
+                .collect()
         };
         let merit = |f: &[f64], free: &[bool]| -> f64 {
             (0..nr).filter(|r| free[*r]).map(|r| f[r].abs()).fold(0.0, f64::max)
@@ -677,13 +877,15 @@ impl Vessel {
             return 0.0;
         }
         let mut cur = merit_start;
+        // reactions held at a bound by the coupling with the others (an active set): solved around, not through
+        let mut pinned = vec![false; nr];
 
         for _outer in 0..2 {
             for _iter in 0..30 {
                 if cur < 1e-7 {
                     break;
                 }
-                let fidx: Vec<usize> = (0..nr).filter(|r| free[*r]).collect();
+                let fidx: Vec<usize> = (0..nr).filter(|r| free[*r] && !pinned[*r]).collect();
                 let m = fidx.len();
                 if m == 0 {
                     break;
@@ -762,17 +964,33 @@ impl Vessel {
                         alpha = alpha.min(0.9 * n[i] / -dn[i]);
                     }
                 }
+                let mut bound_is_lower = false;
                 for r in 0..nr {
                     if rxns[r].upper.is_finite() && d[r] > 0.0 {
                         let a_max = (rxns[r].upper - x[r]) / d[r];
                         if a_max <= alpha {
                             alpha = a_max;
                             bound_hit = Some(r);
+                            bound_is_lower = false;
+                        }
+                    }
+                    if rxns[r].lower.is_finite() && d[r] < 0.0 {
+                        let a_max = (rxns[r].lower - x[r]) / d[r];
+                        if a_max <= alpha {
+                            alpha = a_max;
+                            bound_hit = Some(r);
+                            bound_is_lower = true;
                         }
                     }
                 }
                 if !(alpha > 0.0) {
-                    break;
+                    match bound_hit {
+                        Some(r) if !pinned[r] => {
+                            pinned[r] = true;
+                            continue;
+                        }
+                        _ => break,
+                    }
                 }
 
                 // backtrack until the residual does not grow
@@ -787,7 +1005,11 @@ impl Vessel {
                         x_try[r] = x[r] + alpha * d[r];
                     }
                     if let Some(r) = bound_hit {
-                        if alpha == (rxns[r].upper - x[r]) / d[r] {
+                        if bound_is_lower {
+                            if alpha == (rxns[r].lower - x[r]) / d[r] {
+                                x_try[r] = rxns[r].lower;
+                            }
+                        } else if alpha == (rxns[r].upper - x[r]) / d[r] {
                             x_try[r] = rxns[r].upper;
                         }
                     }
@@ -804,7 +1026,8 @@ impl Vessel {
                     for (r, rx) in rxns.iter().enumerate() {
                         let f_val = rx.nu.iter().map(|(i, c)| c * ln_c_try[*i]).sum::<f64>() + act_corr[r] - rx.ln_k;
                         f_try[r] = f_val;
-                        let is_free = !(rx.upper.is_finite() && x_try[r] >= rx.upper - 1e-3 * eps_mol && f_val < 0.0);
+                        let is_free = !(rx.upper.is_finite() && x_try[r] >= rx.upper - 1e-3 * eps_mol && f_val < 0.0)
+                            && !(rx.lower.is_finite() && x_try[r] <= rx.lower + 1e-3 * eps_mol && f_val > 0.0);
                         free_try[r] = is_free;
                         if is_free && f_val.abs() > mer {
                             mer = f_val.abs();

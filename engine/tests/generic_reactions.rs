@@ -50,13 +50,15 @@ fn two_solutions(a: (&str, &str), b: (&str, &str), sp: &str, expect_mol: f64, co
     assert!(got > expect_mol && got > 2.0 * before, "{} should precipitate: found {} mol", sp, got);
     let snap = v.snapshot();
     assert!(snap.solids.iter().any(|s| s.species == sp && s.mass_g > 0.0), "snapshot lists {}", sp);
-    let ev: Vec<_> = snap.events.iter().filter(|e| e.kind == VesselEventKind::PrecipitateFormed).collect();
-    assert_eq!(ev.len(), 1, "exactly one precipitate event, got {:?}", snap.events);
+    // (Stage 8: precipitation is kinetic, so a metastable solid may form first, e.g. Cu(OH)2 in alkaline sulfide before CuS; each
+    // solid is announced once)
+    let ev: Vec<_> = snap.events.iter().filter(|e| e.kind == VesselEventKind::PrecipitateFormed && e.species.as_deref() == Some(sp)).collect();
+    assert_eq!(ev.len(), 1, "exactly one precipitate event for {}, got {:?}", sp, snap.events);
     let text = ev[0].detail.clone().unwrap().to_lowercase();
     assert!(text.contains("precipitate formed") && text.contains(colour_word), "event text {:?}", text);
     // Stepping must not repeat the event
     for _ in 0..200 { v.step(0.1).unwrap(); }
-    let n = v.snapshot().events.iter().filter(|e| e.kind == VesselEventKind::PrecipitateFormed).count();
+    let n = v.snapshot().events.iter().filter(|e| e.kind == VesselEventKind::PrecipitateFormed && e.species.as_deref() == Some(sp)).count();
     assert_eq!(n, 1, "precipitate event must not be replayed every tick");
 }
 

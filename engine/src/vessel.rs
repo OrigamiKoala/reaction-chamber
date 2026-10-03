@@ -23,10 +23,6 @@ pub(crate) const GLASS_THERMAL_FRACTION: f64 = 0.15;
 pub(crate) const GLASS_CP_J_G_K: f64 = 0.84;
 /// Below this amount of water (mol, ~18 ng) no aqueous phase exists. Every other aqueous tolerance scales with volume.
 pub(crate) const MIN_AQUEOUS_H2O_MOL: f64 = 1e-9;
-/// Pool-fire burning rate of volatile organic liquid fuels at infinite diameter, kg m-2 s-1, and the extinction-absorption product k*beta,
-/// m-1 (Babrauskas, SFPE Handbook of Fire Protection Engineering).
-pub(crate) const POOL_BURN_MASS_FLUX_INF_KG_M2_S: f64 = 0.015;
-pub(crate) const POOL_BURN_KBETA_PER_M: f64 = 100.0;
 /// Species id of the aqueous solvent (the species the aqueous equilibria, pH and ionic activities are written for).
 pub(crate) const AQUEOUS_SOLVENT: &str = "H2O";
 
@@ -77,6 +73,12 @@ pub struct SolidVisual {
     pub floating: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining_fraction: Option<f64>,
+    /// Stokes settling velocity of the particles in the liquid that is in the vessel, mm/s (0: floats or stays colloidal).
+    #[serde(default)]
+    pub settling_velocity_mm_s: f64,
+    /// Total particle surface, cm2.
+    #[serde(default)]
+    pub surface_area_cm2: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -209,6 +211,9 @@ pub struct VesselSnapshot {
     pub condensation: f64,
     pub fumes: Vec<FumeVisual>,
     pub flame: Option<FlameVisual>,
+    /// Electrolysis cell readout (current, voltage, electrode potentials, reactions); absent without electrodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub electrolysis: Option<crate::vessel_electro::ElectroReadout>,
     pub contents_mass_g: f64,
     pub mass_lost_g: f64,
     pub heat_input_w: f64,
@@ -253,6 +258,9 @@ pub struct Portion {
     pub aqueous_mol: HashMap<String, f64>,
     pub organic_mol: HashMap<String, f64>,
     pub solid_mol: HashMap<String, f64>,
+    /// The particle populations of the solids drawn off with the liquid (they keep their size).
+    #[serde(default)]
+    pub particles: HashMap<String, crate::transfer::ParticlePopulation>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -270,6 +278,12 @@ pub struct VesselControls {
     /// Partial update of the atmosphere an open vessel exchanges with (pressure, dry composition, humidity).
     #[serde(default)]
     pub atmosphere: Option<crate::gas_phase::AtmosphereSpec>,
+    /// Two electrodes and a supply (electrolysis); replaces any earlier setup.
+    #[serde(default)]
+    pub electrolysis: Option<crate::vessel_electro::ElectrolysisSpec>,
+    /// Takes the electrodes out of the vessel.
+    #[serde(default)]
+    pub remove_electrodes: Option<bool>,
 }
 
 pub struct Vessel {
@@ -331,7 +345,20 @@ pub struct Vessel {
     pub phases: crate::phases::PhaseState,
     /// Particle populations for heterogeneous solid transfer (moments mu0-mu3).
     pub particle_populations: HashMap<String, crate::transfer::ParticlePopulation>,
-    pub burning_fuel: Option<String>,
+    /// How the current flame looks (fuel, power, luminosity, temperature, emission colour); None when nothing burns.
+    pub flame_visual: Option<FlameVisual>,
+    /// Expected-nuclei clock of each supersaturated solid that has no particle yet (the induction timer).
+    pub nuc_clock: HashMap<String, f64>,
+    /// Minerals the equilibrium solver must leave alone in this pass (supersaturated: their precipitation is kinetic).
+    pub blocked_minerals: std::collections::HashSet<String>,
+    /// Formula units a blocked (supersaturated) mineral may still form in this pass: its kinetic precipitation.
+    pub(crate) precip_cap: HashMap<String, f64>,
+    /// Seconds the slow (rate-limited) equilibrium rows advance in the current equilibrium pass; set by the caller.
+    pub(crate) kinetic_dt_s: f64,
+    /// True while the equilibrium solvers must leave the slow rows alone (they are on the slow manifold).
+    pub(crate) slow_exclude: bool,
+    /// Electrolysis cell and the last electrode solution (see `vessel_electro`).
+    pub electro: crate::vessel_electro::ElectroState,
 }
 
 impl Vessel {
@@ -387,7 +414,13 @@ impl Vessel {
             ev: crate::vessel_ext::EventState::default(),
             phases: crate::phases::PhaseState::new(temp_k),
             particle_populations: HashMap::new(),
-            burning_fuel: None,
+            flame_visual: None,
+            nuc_clock: HashMap::new(),
+            blocked_minerals: Default::default(),
+            precip_cap: HashMap::new(),
+            kinetic_dt_s: 0.0,
+            slow_exclude: false,
+            electro: Default::default(),
         };
         v.update_phases();
         let compounds: Vec<CompoundThermo> = v.compounds.values().cloned().collect();
@@ -520,12 +553,7 @@ impl Vessel {
                 if species.ends_with("(s)") {
                     *self.solid_mol.entry(species.clone()).or_insert(0.0) += mol;
                     *self.initial_solids.entry(species.clone()).or_insert(0.0) += mol;
-                    let props = self.solid_props(species);
-                    let d_m = override_diameter_um.map(|u| u * 1e-6).unwrap_or(props.particle_um * 1e-6);
-                    let solid_mass_g = mol * chem_db::get_species_thermo(species).mw;
-                    self.particle_populations.entry(species.clone())
-                        .and_modify(|p| p.add_solid(solid_mass_g, props.density_g_ml, d_m))
-                        .or_insert_with(|| crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mass_g, props.density_g_ml, d_m));
+                    self.add_solid_particles(species, mol, override_diameter_um.map(|u| u * 1e-6));
                 } else {
                     // Non-solid components of a solid reagent (water of crystallisation, instantly dissolving
                     // ions of multi-ion salts) go straight into solution.
@@ -595,26 +623,33 @@ impl Vessel {
         }
     }
 
-    /// Solves fast speciation / solubility equilibria right after an addition and records what happened in the log.
+    /// Solves fast speciation equilibria right after an addition and records what happened in the log. The addition is
+    /// mixed in over `DOSE_MIXING_TIME_S`: solids dissolve and precipitate only as far as that much time allows
+    /// (transport-limited dissolution, nucleation and growth), so a fine precipitate appears at once while a coarse
+    /// crystal is still a crystal.
     fn settle_after_addition(&mut self) {
         // Whatever solid is in the vessel now was put there by the user: only *new* solids count as precipitates.
         self.sync_known_solids();
-        // solids dissolve or melt, liquids split into their phases, at conserved enthalpy
+        // solids melt (heat-limited) and liquids split into their phases, at conserved enthalpy
         self.phase_flash();
         self.auto_minerals();
-        for _ in 0..40 {
+        const MIX_SLICES: usize = 6;
+        for it in 0..40 {
             let (sp0, so0) = (self.species_mol.clone(), self.solid_mol.clone());
-            let q_eq = self.step_equilibria(0.001);
+            let dt_it = if it < MIX_SLICES { crate::vessel_transfer::DOSE_MIXING_TIME_S / MIX_SLICES as f64 } else { 0.0 };
+            // (slow chemistry such as CO2 hydration does not advance while an addition is being mixed in)
+            let q_eq = self.step_equilibria_limited(0.001, dt_it, 0.0);
             let cp_tot = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
             self.temperature_k += q_eq / cp_tot;
             // stop as soon as a sweep no longer moves anything (the coupled solve normally gets there in one pass)
             let moved = |a: &HashMap<String, f64>, b: &HashMap<String, f64>| {
                 a.len() != b.len() || a.iter().any(|(k, v)| (b.get(k).copied().unwrap_or(f64::NAN) - v).abs() > 1e-14 * v.abs().max(1e-6))
             };
-            if !moved(&sp0, &self.species_mol) && !moved(&so0, &self.solid_mol) {
+            if it >= MIX_SLICES && !moved(&sp0, &self.species_mol) && !moved(&so0, &self.solid_mol) {
                 break;
             }
         }
+        self.sync_populations();
         self.phase_flash();
         self.update_network();
         self.detect_events(true);
@@ -646,12 +681,16 @@ impl Vessel {
         for (sp, mol) in portion.solid_mol {
             *self.solid_mol.entry(sp.clone()).or_insert(0.0) += mol;
             *self.initial_solids.entry(sp.clone()).or_insert(0.0) += mol;
-            let props = self.solid_props(&sp);
-            let d_m = props.particle_um * 1e-6;
-            let solid_mass_g = mol * chem_db::get_species_thermo(&sp).mw;
-            self.particle_populations.entry(sp.clone())
-                .and_modify(|p| p.add_solid(solid_mass_g, props.density_g_ml, d_m))
-                .or_insert_with(|| crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mass_g, props.density_g_ml, d_m));
+            match portion.particles.get(&sp) {
+                Some(pop) if !pop.is_empty() => {
+                    let e = self.particle_populations.entry(sp.clone()).or_default();
+                    e.mu0 += pop.mu0;
+                    e.mu1 += pop.mu1;
+                    e.mu2 += pop.mu2;
+                    e.mu3 += pop.mu3;
+                }
+                _ => self.add_solid_particles(&sp, mol, None),
+            }
         }
         for (sp, mol) in book {
             self.ledger.book_in(&sp, mol);
@@ -683,6 +722,7 @@ impl Vessel {
                 aqueous_mol: HashMap::new(),
                 organic_mol: HashMap::new(),
                 solid_mol: HashMap::new(),
+                particles: HashMap::new(),
             });
         }
         let frac = (volume_ml / total_vol).clamp(0.0, 1.0);
@@ -721,18 +761,22 @@ impl Vessel {
         self.extra_liquids.retain(|m| !m.is_empty());
 
         let mut s_mol = HashMap::new();
+        let mut s_pop = HashMap::new();
         if solid_fraction > 0.0 {
             for (sp, mol) in self.solid_mol.iter_mut() {
                 let removed = *mol * solid_fraction;
                 *mol -= removed;
                 s_mol.insert(sp.clone(), removed);
+                if let Some(p) = self.particle_populations.get_mut(sp) {
+                    s_pop.insert(sp.clone(), p.take_fraction(solid_fraction));
+                }
             }
         }
         for (sp, mol) in aq_mol.iter().chain(org_mol.iter()).chain(s_mol.iter()) {
             self.ledger.book_out(sp, *mol);
         }
         self.update_phases();
-        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol }
+        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol, particles: s_pop }
     }
 
     /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first, then the next one, in the order
@@ -813,6 +857,12 @@ impl Vessel {
         if let Some(dbg) = controls.debug_network_generator {
             self.debug_network_generator = dbg;
         }
+        if let Some(spec) = controls.electrolysis {
+            self.set_electrolysis(Some(spec));
+        }
+        if controls.remove_electrodes == Some(true) {
+            self.set_electrolysis(None);
+        }
     }
 
     pub fn step(&mut self, dt_s: f64) -> Result<(), String> {
@@ -833,6 +883,9 @@ impl Vessel {
         let q_kinetics = self.step_kinetics(dt_s);
         reaction_heat_joules += q_kinetics;
 
+        // 1a. Combustion of any fuel present (flash point, limiting oxygen, pool burning rate)
+        reaction_heat_joules += self.step_combustion(dt_s);
+
         // 1b. Generalized redox reactions (electron transfer between couples via GEM driving force)
         let q_redox = self.step_redox(dt_s);
         reaction_heat_joules += q_redox;
@@ -841,24 +894,22 @@ impl Vessel {
         let q_decomp = self.step_thermal_decomposition(dt_s);
         reaction_heat_joules += q_decomp;
 
-        // 1d. Heterogeneous metal acid corrosion (Butler-Volmer mixed potential)
-        let q_corrosion = self.step_corrosion(dt_s);
-        reaction_heat_joules += q_corrosion;
+        // 1d. Electrode reactions of the conducting solids (corrosion, cementation) and of an electrolysis cell
+        let q_electro = self.step_electrochemistry(dt_s);
+        reaction_heat_joules += q_electro;
 
-        // 1e. Heterogeneous solid dissolution and growth (Sherwood transport)
-        let q_dissolution = self.step_dissolution_and_growth(dt_s);
-        reaction_heat_joules += q_dissolution;
-        eprintln!("AFTER 1e: solid={:?}, species={:?}", self.solid_mol, self.species_mol);
-
-        // 2. Generalized aqueous equilibria & mineral precipitation
-        for _ in 0..5 {
+        // 2. Generalized aqueous equilibria; solids dissolve, nucleate and grow only as fast as transport and nucleation allow
+        for sweep in 0..5 {
             self.eq_moved = false;
-            let q_eq = self.step_equilibria(dt_s * 0.2);
+            // only the first sweep may move solid across the interface; later ones just re-settle the speciation
+            let first = if sweep == 0 { dt_s } else { 0.0 };
+            let q_eq = self.step_equilibria_limited(dt_s * 0.2, first, first);
             reaction_heat_joules += q_eq;
             if !self.eq_moved || self.eq_converged {
                 break;
             }
         }
+        self.sync_populations();
 
         // 2b. Dissolved gases exchange with the gas phase through Henry's constant (every gas of the species store with an
         // aqueous twin: CO2, O2, NH3, ...), and supersaturated gas leaves as bubbles.
@@ -890,8 +941,6 @@ impl Vessel {
         let mut gas_out: Vec<(String, f64)> = Vec::new();
 
         if vol_l <= 0.0 || self.kinetic_reactions.is_empty() {
-            // General pool fire combustion of volatile liquid fuels with atmospheric oxygen
-            q_joules += self.step_combustion(dt_s);
             return q_joules;
         }
 
@@ -1053,303 +1102,11 @@ impl Vessel {
             self.ledger.book_out(&sp, mol);
         }
 
-        // General pool fire combustion of volatile liquid fuels with atmospheric oxygen
-        q_joules += self.step_combustion(dt_s);
-
-        q_joules
-    }
-
-    /// General pool fire combustion of any volatile organic liquid fuels present (C_x H_y O_z).
-    /// Requires oxygen (y_O2 >= 0.12); extinguishes under N2, vacuum, or when fuel is exhausted.
-    pub(crate) fn step_combustion(&mut self, dt_s: f64) -> f64 {
-        let igniter_active = self.controls.igniter.unwrap_or(false);
-        let t_k = self.temperature_k;
-
-        // Limiting Oxygen Concentration (LOC): hydrocarbons and alcohols need y_O2 >= 0.12 to ignite/burn
-        const MIN_O2_MOL_FRAC: f64 = 0.12;
-        let y_o2 = if self.sealed {
-            let total_head: f64 = self.headspace_gas_mol.values().sum();
-            if total_head > 1e-12 {
-                self.headspace_gas_mol.get("O2(g)").or_else(|| self.headspace_gas_mol.get("O2")).copied().unwrap_or(0.0) / total_head
-            } else {
-                0.0
-            }
-        } else {
-            self.atmosphere.composition.iter().find(|(k, _)| k == "O2" || k == "O2(g)").map(|(_, v)| *v).unwrap_or(0.0)
-        };
-
-        // Extinguish flame if oxygen is depleted (e.g. under N2 atmosphere or vacuum)
-        if self.flame_active && y_o2 < MIN_O2_MOL_FRAC {
-            self.flame_active = false;
-            self.flame_power_w = 0.0;
-            self.push_event(VesselEventKind::FlameOut, "Flame extinguished: oxygen starved".to_string(), 0.3);
-            return 0.0;
-        }
-
-        // Find all combustible volatile liquid species (contain C and H)
-        let mut combustible_fuels: Vec<(String, f64, f64, f64)> = Vec::new(); // (species_id, amount_mol, mw, delta_c_h_j_mol)
-        let keys: Vec<String> = self.species_mol.keys().cloned().collect();
-        for sp in &keys {
-            let mol = self.liquid_total(sp);
-            if mol <= 1e-6 {
-                continue;
-            }
-            if let Some(elems) = crate::ions::species_elements(sp) {
-                let c_count = elems.get("C").copied().unwrap_or(0.0);
-                let h_count = elems.get("H").copied().unwrap_or(0.0);
-                if c_count > 0.0 && h_count > 0.0 {
-                    let mw = chem_db::get_species_thermo(sp).mw;
-                    // General combustion enthalpy ~ 29-45 kJ/g for volatile organics
-                    let dh_c_j_mol = mw * 30000.0;
-                    combustible_fuels.push((sp.clone(), mol, mw, dh_c_j_mol));
-                }
-            }
-        }
-
-        let total_fuel_mol: f64 = combustible_fuels.iter().map(|f| f.1).sum();
-
-        if igniter_active && y_o2 >= MIN_O2_MOL_FRAC && total_fuel_mol > 1e-5 && t_k >= 286.0 {
-            if !self.flame_active {
-                self.flame_active = true;
-                self.push_event(VesselEventKind::Ignition, "Flammable vapour ignited".to_string(), 0.6);
-            }
-        }
-
-        if !self.flame_active {
-            return 0.0;
-        }
-
-        if total_fuel_mol <= 1e-6 {
-            self.flame_active = false;
-            self.flame_power_w = 0.0;
-            self.push_event(VesselEventKind::FlameOut, "Combustion fuel exhausted".to_string(), 0.2);
-            return 0.0;
-        }
-
-        // Babrauskas pool fire model
-        let area_cm2 = std::f64::consts::PI * self.config.inner_radius_cm.powi(2);
-        let diameter_m = 2.0 * self.config.inner_radius_cm / 100.0;
-        let m_flux_kg_m2_s = POOL_BURN_MASS_FLUX_INF_KG_M2_S * (1.0 - (-POOL_BURN_KBETA_PER_M * diameter_m).exp());
-        let burn_g_s = m_flux_kg_m2_s * 1000.0 * area_cm2 / 1.0e4;
-
-        let mut q_joules = 0.0;
-        let mut total_heat_w = 0.0;
-
-        let mut main_fuel = None;
-        let mut max_fuel_mol = 0.0;
-        for (fuel, mol, mw, dh_c) in combustible_fuels {
-            if mol > max_fuel_mol {
-                max_fuel_mol = mol;
-                main_fuel = Some(fuel.clone());
-            }
-            let frac = mol / total_fuel_mol;
-            let fuel_burn_g_s = burn_g_s * frac;
-            let fuel_burn_mol_s = fuel_burn_g_s / mw.max(1.0);
-            let mol_burned = (fuel_burn_mol_s * dt_s).min(mol);
-
-            let left = mol - mol_burned;
-            self.set_liquid_total(&fuel, left);
-            self.mass_lost_g += mol_burned * mw;
-            self.ledger.book_out(&fuel, mol_burned);
-
-            let heat_w = fuel_burn_mol_s * dh_c;
-            total_heat_w += heat_w;
-            q_joules += heat_w * 0.15 * dt_s;
-        }
-
-        self.burning_fuel = main_fuel;
-        self.flame_power_w = total_heat_w;
         q_joules
     }
 
     pub fn set_particle_population(&mut self, species: &str, pop: crate::transfer::ParticlePopulation) {
         self.particle_populations.insert(species.to_string(), pop);
-    }
-
-    /// Heterogeneous metal acid corrosion via Butler-Volmer mixed potential model.
-    pub(crate) fn step_corrosion(&mut self, dt_s: f64) -> f64 {
-        if dt_s <= 0.0 || self.solid_mol.is_empty() || self.aqueous_volume_ml() <= 1e-6 {
-            return 0.0;
-        }
-        let ph = self.current_ph();
-        let t_k = self.temperature_k;
-        let mut q_joules = 0.0;
-        let solid_keys: Vec<String> = self.solid_mol.keys().cloned().collect();
-
-        for sp in solid_keys {
-            let solid_mol = match self.solid_mol.get(&sp).copied() {
-                Some(m) if m > 1e-12 => m,
-                _ => continue,
-            };
-            let base_name = sp.trim_end_matches("(s)").trim();
-            if !crate::transfer::corrosion::is_corrodible_metal(base_name) {
-                continue;
-            }
-
-            let area_m2 = if let Some(pop) = self.particle_populations.get(&sp) {
-                pop.surface_area_m2().max(1e-4)
-            } else {
-                0.001
-            };
-
-            let res = crate::transfer::corrosion::step_corrosion(base_name, ph, t_k, area_m2, dt_s);
-
-            if res.mol_metal_dissolved > 0.0 {
-                let actual_diss = res.mol_metal_dissolved.min(solid_mol);
-                let ratio = if res.mol_metal_dissolved > 0.0 { actual_diss / res.mol_metal_dissolved } else { 0.0 };
-
-                let props = self.solid_props(&sp);
-                if let Some(sm) = self.solid_mol.get_mut(&sp) {
-                    *sm = (*sm - actual_diss).max(0.0);
-                }
-                if let Some(pop) = self.particle_populations.get_mut(&sp) {
-                    let mw = chem_db::get_species_thermo(&sp).mw;
-                    pop.scale_to_mass((solid_mol - actual_diss).max(0.0) * mw, props.density_g_ml);
-                }
-
-                let cation = format!("{}+2", base_name);
-                *self.species_mol.entry(cation).or_insert(0.0) += actual_diss;
-
-                let h_cons = res.mol_h_consumed * ratio;
-                if let Some(h) = self.species_mol.get_mut("H+") {
-                    *h = (*h - h_cons).max(0.0);
-                }
-
-                let h2_mol = res.mol_h2_gas * ratio;
-                if h2_mol > 0.0 {
-                    if self.sealed {
-                        *self.headspace_gas_mol.entry("H2(g)".to_string()).or_insert(0.0) += h2_mol;
-                    } else {
-                        let ml_s = (h2_mol / dt_s) * 24400.0;
-                        self.gas_fluxes.push(GasFlux {
-                            species: "H2(g)".to_string(),
-                            rate_ml_s: ml_s,
-                            bubble_diameter_mm: 1.5,
-                            nucleation: "solid".to_string(),
-                        });
-                        self.gas.escaped_mol += h2_mol;
-                    }
-                    self.ledger.book_out("H2(g)", h2_mol);
-                    self.push_event(VesselEventKind::GasEvolved, format!("Hydrogen gas evolved from {} corrosion", base_name), 0.4);
-                }
-
-                q_joules += res.heat_j * ratio;
-            }
-        }
-
-        self.solid_mol.retain(|_, m| *m > 1e-12);
-        q_joules
-    }
-
-    /// Rate-limited heterogeneous solid dissolution and growth via Sherwood mass-transfer correlation.
-    pub(crate) fn step_dissolution_and_growth(&mut self, dt_s: f64) -> f64 {
-        if dt_s <= 0.0 || self.solid_mol.is_empty() || self.total_liquid_volume_ml() <= 1e-6 {
-            return 0.0;
-        }
-        let vol_l = (self.reaction_volume_ml() / 1000.0).max(1e-9);
-        let t_k = self.temperature_k;
-        let stirring = self.controls.stirring.unwrap_or(false);
-        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
-        let eta_fluid = crate::transport::viscosity_water_pa_s(t_k);
-        let rho_fluid = 1000.0;
-        let nu_fluid = eta_fluid / rho_fluid;
-        let diff_fluid = 1.5e-9 * (t_k / 298.15) * (crate::transport::viscosity_water_pa_s(298.15) / eta_fluid);
-
-        let mut q_joules = 0.0;
-        let solid_keys: Vec<String> = self.solid_mol.keys().cloned().collect();
-
-        for sp in solid_keys {
-            let solid_mol = match self.solid_mol.get(&sp).copied() {
-                Some(m) if m > 1e-12 => m,
-                _ => continue,
-            };
-            let props = self.solid_props(&sp);
-            let mw = chem_db::get_species_thermo(&sp).mw.max(10.0);
-            let rho_g_ml = props.density_g_ml.max(0.1);
-
-            let mut pop = self.particle_populations.remove(&sp).unwrap_or_else(|| {
-                crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mol * mw, rho_g_ml, props.particle_um * 1e-6)
-            });
-
-            let mut c_sat_mol_m3 = 0.0;
-            let mut c_bulk_mol_m3 = 0.0;
-            let mut dh_diss_j = 0.0;
-            let mut ions_produced: Vec<(String, f64)> = Vec::new();
-
-            if let Some(min) = self.minerals.iter().find(|m| m.solid_species == sp).cloned() {
-                if !min.dissolved_products.is_empty() {
-                    let log_ksp = min.log_ksp_at(t_k);
-                    let ksp = 10.0_f64.powf(log_ksp);
-                    let nu_sum: f64 = min.dissolved_products.values().sum();
-                    let nu_prod: f64 = min.dissolved_products.values().map(|c| c.powf(*c)).product();
-                    let s_sat_mol_l = (ksp / nu_prod.max(1e-30)).powf(1.0 / nu_sum.max(1.0));
-                    c_sat_mol_m3 = s_sat_mol_l * 1000.0;
-
-                    let mut s_bulk_mol_l = f64::INFINITY;
-                    for (ion, &coeff) in &min.dissolved_products {
-                        let amt = self.species_mol.get(ion).copied().unwrap_or(0.0);
-                        let conc = (amt / vol_l) / coeff;
-                        s_bulk_mol_l = s_bulk_mol_l.min(conc);
-                        ions_produced.push((ion.clone(), coeff));
-                    }
-                    if s_bulk_mol_l.is_infinite() {
-                        s_bulk_mol_l = 0.0;
-                    }
-                    c_bulk_mol_m3 = (s_bulk_mol_l.max(0.0)) * 1000.0;
-                    dh_diss_j = min.delta_h_kj * 1000.0;
-                }
-            } else if let Some(c) = self.compound_for(&sp) {
-                let aq_key = self.liquid_key_of_solid(&sp).unwrap_or_else(|| sp.trim_end_matches("(s)").to_string());
-                let is_partitionable = self.molecule(&aq_key).map_or(false, |m| m.partitionable());
-                if !is_partitionable {
-                    let sol_g_l = c.solubility_g_per_l.unwrap_or(10.0);
-                    let s_sat_mol_l = sol_g_l / mw;
-                    c_sat_mol_m3 = s_sat_mol_l * 1000.0;
-                    let amt = self.species_mol.get(&aq_key).copied().unwrap_or(0.0);
-                    c_bulk_mol_m3 = (amt / vol_l) * 1000.0;
-                    ions_produced.push((aq_key, 1.0));
-                    dh_diss_j = c.dh_fus_kj_mol.map(|d| d * 1000.0).unwrap_or(15000.0);
-                }
-            }
-
-            if c_sat_mol_m3 > 0.0 && c_bulk_mol_m3 < c_sat_mol_m3 {
-                let res = crate::transfer::dissolution::step_particle_dissolution(
-                    &mut pop,
-                    solid_mol,
-                    mw,
-                    rho_g_ml,
-                    diff_fluid,
-                    nu_fluid,
-                    stir_rpm,
-                    c_sat_mol_m3,
-                    c_bulk_mol_m3,
-                    dt_s,
-                );
-
-                if res.moles_dissolved > 0.0 {
-                    let dm = res.moles_dissolved;
-                    for (prod, coeff) in ions_produced {
-                        *self.species_mol.entry(prod).or_insert(0.0) += coeff * dm;
-                    }
-                    if let Some(sm) = self.solid_mol.get_mut(&sp) {
-                        *sm = (*sm - dm).max(0.0);
-                    }
-                    q_joules -= dm * dh_diss_j;
-                }
-
-                if res.fully_depleted {
-                    self.solid_mol.remove(&sp);
-                    self.push_event(VesselEventKind::SolidDissolved, format!("{} dissolved completely", props.name), 0.3);
-                } else {
-                    self.particle_populations.insert(sp, pop);
-                }
-            } else {
-                self.particle_populations.insert(sp, pop);
-            }
-        }
-
-        self.solid_mol.retain(|_, m| *m > 1e-12);
-        q_joules
     }
 
     /// Thermal decomposition and dehydration of solids (solid -> solid + gas), driven by GEM thermodynamics.
@@ -1461,12 +1218,15 @@ impl Vessel {
             if !matches!(rxn.kind, crate::gem::discovery::DiscoveredRxnKind::Redox { .. }) {
                 continue;
             }
+            // a conducting solid (a metal) reacts through its electrode reactions (`step_electrochemistry`)
+            if rxn.nu.iter().any(|&(idx, c)| c < 0.0 && crate::vessel_electro::is_conducting_solid(&rxn.species_names[idx])) {
+                continue;
+            }
 
             // Find limiting reactant
             let mut max_xi = f64::INFINITY;
             let mut can_react = true;
             let mut has_solid_reactant = false;
-            let mut solid_area_scale = 1.0;
 
             for &(idx, coeff) in &rxn.nu {
                 if coeff < 0.0 {
@@ -1488,9 +1248,6 @@ impl Vessel {
                     if avail < max_xi {
                         max_xi = avail;
                     }
-                    if sp.ends_with("(s)") {
-                        solid_area_scale = (amt * 100.0).clamp(0.05, 5.0);
-                    }
                 }
             }
 
@@ -1503,13 +1260,22 @@ impl Vessel {
                 continue;
             }
 
-            // Rate: active metals (Na) react vigorously; heterogeneous rates scale with solid surface contact;
-            // homogeneous electron transfer couples are fast
-            let is_alkali = rxn.species_names.iter().any(|s| s.starts_with("Na") || s.starts_with("K"));
-            let base_rate = if is_alkali {
-                5.0
-            } else if has_solid_reactant {
-                0.2 * solid_area_scale
+            // Rate: a reaction with a (non-conducting) solid reactant proceeds through the surface of the solid: the film
+            // relaxation rate k A / V of its particle population; a homogeneous electron transfer between labile couples
+            // is limited by the encounter of its reactants, relaxation rate ~ 1 / s here (Stage 7 refines it)
+            let base_rate = if has_solid_reactant {
+                let hyd = self.hydro_state();
+                let mut lam = 0.0;
+                for &(idx, coeff) in &rxn.nu {
+                    let sp = &rxn.species_names[idx];
+                    if coeff < 0.0 && sp.ends_with("(s)") {
+                        if let Some(pop) = self.particle_populations.get(sp) {
+                            let k = crate::transfer::population::effective_transfer_coefficient(self.film_coefficient(sp, pop.sauter_diameter_m(), self.solid_diffusivity(sp), &hyd));
+                            lam += k * pop.surface_area_m2() / hyd.liquid_m3.max(1e-12);
+                        }
+                    }
+                }
+                lam
             } else {
                 1.0
             };
@@ -1671,6 +1437,7 @@ impl Vessel {
         layers.sort_by(|a, b| b.density_g_ml.partial_cmp(&a.density_g_ml).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut solids = Vec::new();
+        let hyd = self.hydro_state();
         let dust = self.dust_mol();
         for (sp, &mol) in &self.solid_mol {
             if mol <= dust {
@@ -1679,17 +1446,35 @@ impl Vessel {
             let thermo = chem_db::get_species_thermo(sp);
             let mass_g = mol * thermo.mw;
             let props = self.solid_props(sp);
-            let kind = props.kind;
             let density = props.density_g_ml;
 
             let settled_vol = (mass_g / density) * 1.6;
             let init_mol = *self.initial_solids.get(sp).unwrap_or(&mol);
             let rem_frac = (mol / init_mol.max(1e-9)).clamp(0.0, 1.0);
 
-            let d_um = if let Some(pop) = self.particle_populations.get(sp) {
-                pop.mean_diameter_m() * 1e6
+            let pop = self.particle_populations.get(sp);
+            let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
+            // morphology follows the particle size (fine precipitates are gels and curds, coarse ones crystals), except
+            // for metals, which keep their lustre
+            let kind = if props.kind == SolidKind::Metal {
+                SolidKind::Metal
+            } else if pop.is_none() {
+                props.kind
+            } else if d_um < 0.5 {
+                SolidKind::Gel
+            } else if d_um < 5.0 {
+                SolidKind::Curds
+            } else if d_um < 40.0 {
+                SolidKind::Powder
             } else {
-                props.particle_um
+                SolidKind::Crystal
+            };
+            let (settle_mm_s, area_cm2) = {
+                let rho_p = density * 1000.0;
+                let d_m = d_um * 1e-6;
+                let v = crate::transfer::hydro::terminal_velocity(d_m, rho_p, hyd.rho_l, hyd.eta);
+                let pe = crate::transfer::settling::peclet_number(v, d_m, hyd.eta, self.temperature_k);
+                (if v > 0.0 && pe >= 1.0 { v * 1e3 } else { 0.0 }, pop.map_or(0.0, |p| p.surface_area_m2() * 1e4))
             };
 
             solids.push(SolidVisual {
@@ -1703,6 +1488,8 @@ impl Vessel {
                 kind,
                 floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
                 remaining_fraction: Some(rem_frac),
+                settling_velocity_mm_s: settle_mm_s,
+                surface_area_cm2: area_cm2,
             });
         }
 
@@ -1742,19 +1529,7 @@ impl Vessel {
             }
         }
 
-        let flame = if self.flame_active {
-            let fuel_name = self.burning_fuel.clone().unwrap_or_else(|| "Ethanol".to_string());
-            let app = crate::transfer::combustion::fuel_flame_appearance(&fuel_name);
-            Some(FlameVisual {
-                fuel: fuel_name,
-                power_w: self.flame_power_w,
-                luminosity: app.luminosity,
-                flame_temp_k: 1200.0,
-                emitter_rgb: app.emitter_rgb,
-            })
-        } else {
-            None
-        };
+        let flame = if self.flame_active { self.flame_visual.clone() } else { None };
 
         let solvent_vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-9);
         let gamma_cache: HashMap<String, f64> = if self.has_aqueous_phase() {
@@ -1895,6 +1670,7 @@ impl Vessel {
             condensation,
             fumes,
             flame,
+            electrolysis: self.electrolysis_snapshot(),
             contents_mass_g: self.contents_mass_g(),
             mass_lost_g: self.mass_lost_g,
             heat_input_w: self.controls.heater_w.unwrap_or(0.0) + self.controls.burner_w.unwrap_or(0.0),
