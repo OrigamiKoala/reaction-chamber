@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { SimController } from '../sim/sim_controller';
 import type { UvVisScan } from '../types/sim';
-import { roundedBox } from './lcd';
+import { frontPlate, roundedBox } from './lcd';
+import { Control3D, Knob, PushButton, ScreenPanel, place, textLegend } from '../bench/controls3d';
 
 export interface SpectrumPoint {
   lambda: number;
@@ -32,99 +33,324 @@ export const CUVETTE_PATH_CM = 1;
 
 export class Spectrophotometer {
   public group = new THREE.Group();
-  public sampleLid: THREE.Mesh;
+  /** Front-panel controls (wavelength knob, BLANK, SCAN); the scene registers them with its control rig. */
+  public readonly controls: Control3D[] = [];
+  /** BLANK was pressed / SCAN was pressed (the app decides what is scanned: the selected vessel). */
+  public onBlank?: () => void;
+  public onScan?: () => void;
+  /** Wavelength the knob is set to, nm (the instrument panel reads the absorbance there). */
+  public wavelengthNm = 500;
+  private lidPivot = new THREE.Group();
+  private cuvette = new THREE.Group();
+  private screen: ScreenPanel;
   private statusLedMat: THREE.MeshBasicMaterial;
   private beamLedMat: THREE.MeshBasicMaterial;
   private isScanning = false;
   private currentSampleName: string | null = null;
   private lastScan: SpectrumScanResult | null = null;
   private blankActive = false;
+  private scanId = 0;
+  private lidT = 0;
+  private lidTarget = 0;
+  private lidHold = 0;
+  private time = 0;
 
   constructor() {
     this.group.name = 'instrument_spectrophotometer';
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.35, metalness: 0.1 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x22262b, roughness: 0.5, metalness: 0.2 });
-    const blueTrim = new THREE.MeshStandardMaterial({ color: 0x0066cc, roughness: 0.4, metalness: 0.2 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdcdfe2, roughness: 0.35, metalness: 0.1 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1d2126, roughness: 0.5, metalness: 0.2 });
+    const blueTrim = new THREE.MeshStandardMaterial({ color: 0x0b66c3, roughness: 0.4, metalness: 0.2 });
 
-    // Main spectrometer unit: 26cm W x 13cm H x 24cm D
-    const base = new THREE.Mesh(roundedBox(26, 11, 24, 1.2), bodyMat);
-    base.position.y = 5.5;
+    // Main spectrometer unit: 28cm W x 11cm H x 24cm D
+    const base = new THREE.Mesh(roundedBox(28, 11, 24, 1.2), bodyMat);
     base.castShadow = true;
     base.receiveShadow = true;
     this.group.add(base);
 
-    // Front angled display section
-    const frontPanel = new THREE.Mesh(roundedBox(24.5, 9, 8, 0.8), darkMat);
-    frontPanel.position.set(0, 5.0, 9.0);
-    frontPanel.rotation.x = 0.22;
-    this.group.add(frontPanel);
-
-    // Color LCD graphic display screen (dummy visual representation on mesh)
-    const screenMat = new THREE.MeshBasicMaterial({ color: 0x0a1a2a });
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(12, 6.5), screenMat);
-    screen.position.set(-4.5, 5.5, 13.1);
-    screen.rotation.x = 0.22;
-    this.group.add(screen);
-
-    // Sample compartment on top-right
-    const lidMat = new THREE.MeshStandardMaterial({ color: 0x30353c, roughness: 0.4, metalness: 0.3 });
-    this.sampleLid = new THREE.Mesh(roundedBox(9, 2.0, 10, 0.6), lidMat);
-    this.sampleLid.position.set(6.5, 11.5, -2.0);
-    this.sampleLid.castShadow = true;
-    this.group.add(this.sampleLid);
-
-    // Cuvette slot cutout indicator
-    const slotRim = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.4, 2.4), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-    slotRim.position.set(6.5, 11.0, -2.0);
-    this.group.add(slotRim);
-
-    // Brand accent line
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(26.2, 0.6, 24.2), blueTrim);
-    stripe.position.y = 7.0;
+    // Brand accent band (a hair proud of the bevelled body so it shows)
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(29.5, 0.5, 25.5), blueTrim);
+    stripe.position.y = 9.9;
     this.group.add(stripe);
 
+    // ---------------------------------------------------------------- sample compartment (top right) with a hinged lid
+    const well = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.3, 11.6), new THREE.MeshStandardMaterial({ color: 0x0d0f11, roughness: 0.8 }));
+    well.position.set(7.2, 11.0, -1.0);
+    this.group.add(well);
+    // cuvette holder: a black block with a window, the cuvette stands in it
+    const holder = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.8, 2.6), new THREE.MeshStandardMaterial({ color: 0x25292e, roughness: 0.6 }));
+    holder.position.set(7.2, 11.4, -1.0);
+    this.group.add(holder);
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xe9f2f7, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0 });
+    const cuv = new THREE.Mesh(new THREE.BoxGeometry(1.25, 4.6, 1.25), glass);
+    cuv.position.y = 2.3;
+    const liquid = new THREE.Mesh(new THREE.BoxGeometry(1.05, 3.0, 1.05), new THREE.MeshStandardMaterial({ color: 0x9cc8e6, transparent: true, opacity: 0.7, roughness: 0.2 }));
+    liquid.position.y = 1.7;
+    const cuvCap = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.3, 1.3), new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.5 }));
+    cuvCap.position.y = 4.7;
+    this.cuvette.add(cuv, liquid, cuvCap);
+    this.cuvette.position.set(7.2, 11.8, -1.0);
+    this.cuvette.visible = false;
+    this.group.add(this.cuvette);
+    // lid: hinged at the back edge of the well
+    this.lidPivot.position.set(7.2, 11.2, -6.8);
+    const lid = new THREE.Mesh(roundedBox(10.8, 2.0, 12.0, 0.8), new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.4, metalness: 0.3 }));
+    lid.position.set(0, 0, 6.0);
+    lid.castShadow = true;
+    const handle = new THREE.Mesh(roundedBox(5, 0.5, 1.0, 0.3), new THREE.MeshStandardMaterial({ color: 0x9aa2a8, metalness: 0.8, roughness: 0.3 }));
+    handle.position.set(0, 1.9, 11.0);
+    this.lidPivot.add(lid, handle);
+    this.group.add(this.lidPivot);
+
+    // ---------------------------------------------------------------- sloped front console (a wedge in front of the body)
+    const prof = new THREE.Shape();
+    prof.moveTo(11.5, 1.0);
+    prof.lineTo(15.0, 1.0);
+    prof.lineTo(13.2, 9.4);
+    prof.lineTo(11.5, 9.4);
+    prof.closePath();
+    const wedgeGeo = new THREE.ExtrudeGeometry(prof, { depth: 27, bevelEnabled: false });
+    wedgeGeo.rotateY(-Math.PI / 2); // profile (z, y), extruded along x
+    wedgeGeo.translate(13.5, 0, 0);
+    const wedge = new THREE.Mesh(wedgeGeo, darkMat);
+    wedge.castShadow = true;
+    this.group.add(wedge);
+    // the plate lies on the wedge's sloped face: centre of the face line, tilted back by atan(1.8 / 8.4)
+    const panel = new THREE.Group();
+    panel.position.set(0, 5.2, 14.1);
+    panel.rotation.x = -0.2113;
+    this.group.add(panel);
+    const plate = frontPlate(25, 8.2, 0.5, 0.6, new THREE.MeshStandardMaterial({ color: 0x14171a, roughness: 0.5, metalness: 0.2 }));
+    plate.position.z = 0;
+    panel.add(plate);
+
+    // colour LCD with the live spectrum
+    this.screen = new ScreenPanel(12.4, 7.0);
+    this.screen.mesh.position.set(-5.9, 0.0, 0.72);
+    panel.add(this.screen.mesh);
+    const bezel = frontPlate(13.0, 7.6, 0.2, 0.5, new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.6 }));
+    bezel.position.set(-5.9, 0.0, 0.5);
+    panel.add(bezel);
+
+    // wavelength knob
+    const knob = new Knob({
+      id: 'spectro.lambda',
+      caption: 'WAVELENGTH',
+      min: 350,
+      max: 750,
+      step: 5,
+      value: this.wavelengthNm,
+      radius: 1.3,
+      accent: 0x62d2ff,
+      ticks: 9,
+      labels: [
+        { at: 0, text: '350' },
+        { at: 1, text: '750' },
+      ],
+      format: (v) => `${v} nm`,
+      onChange: (v) => {
+        this.wavelengthNm = v;
+      },
+    });
+    place(knob, panel, [6.4, 1.4, 0.52]);
+    const blankBtn = new PushButton({
+      id: 'spectro.blank',
+      label: 'BLANK',
+      size: [3.7, 1.5],
+      color: 0x3a444c,
+      hintText: 'Blank: zero the absorbance on the solvent reference (100 % T)',
+      onPress: () => this.onBlank?.(),
+    });
+    const scanBtn = new PushButton({
+      id: 'spectro.scan',
+      label: 'SCAN',
+      size: [3.7, 1.5],
+      color: 0x1f6b3a,
+      hintText: 'Scan 350-750 nm on the selected vessel\'s liquid (click the vessel first); the cuvette goes in the sample compartment',
+      onPress: () => this.onScan?.(),
+    });
+    place(blankBtn, panel, [4.2, -2.9, 0.52]);
+    place(scanBtn, panel, [8.7, -2.9, 0.52]);
+    this.controls.push(knob, blankBtn, scanBtn);
+
     // Status LEDs
-    this.statusLedMat = new THREE.MeshBasicMaterial({ color: 0x228822 });
-    const statusLed = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16), this.statusLedMat);
-    statusLed.position.set(8.5, 8.5, 12.0);
-    statusLed.rotation.x = 0.22;
-    this.group.add(statusLed);
-
+    this.statusLedMat = new THREE.MeshBasicMaterial({ color: 0x22ee44 });
+    const statusLed = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.2, 16), this.statusLedMat);
+    statusLed.rotation.x = Math.PI / 2;
+    statusLed.position.set(9.3, 3.5, 0.56);
+    panel.add(statusLed);
     this.beamLedMat = new THREE.MeshBasicMaterial({ color: 0x111122 });
-    const beamLed = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16), this.beamLedMat);
-    beamLed.position.set(10.0, 8.5, 12.0);
-    beamLed.rotation.x = 0.22;
-    this.group.add(beamLed);
+    const beamLed = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.2, 16), this.beamLedMat);
+    beamLed.rotation.x = Math.PI / 2;
+    beamLed.position.set(10.7, 3.5, 0.56);
+    panel.add(beamLed);
+    const lg = textLegend('READY', 1.9, 0.5, { ink: '#8d979f', weight: 700 });
+    lg.rotation.x = 0;
+    lg.position.set(9.3, 2.7, 0.54);
+    const lg2 = textLegend('LAMP', 1.9, 0.5, { ink: '#8d979f', weight: 700 });
+    lg2.rotation.x = 0;
+    lg2.position.set(10.7, 2.7, 0.54);
+    panel.add(lg, lg2);
 
-    // Keypad buttons
-    const btnMat = new THREE.MeshStandardMaterial({ color: 0x707880, roughness: 0.5 });
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 3; c++) {
-        const btn = new THREE.Mesh(roundedBox(1.5, 0.4, 1.2, 0.2), btnMat);
-        btn.position.set(4.5 + c * 2.2, 4.0 + r * 2.0, 12.5);
-        btn.rotation.x = 0.22;
-        this.group.add(btn);
-      }
+    // feet
+    const footMat = new THREE.MeshStandardMaterial({ color: 0x1d1d1d, roughness: 0.9 });
+    for (const [x, z] of [[-12, -10], [12, -10], [-12, 10], [12, 10]]) {
+      const f = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.9, 0.4, 12), footMat);
+      f.position.set(x, -0.1, z);
+      this.group.add(f);
     }
+    this.drawScreen();
+  }
+
+  /** Per-frame: lid animation and the screen. */
+  public animate(dt: number) {
+    this.time += dt;
+    if (this.lidHold > 0) {
+      this.lidHold -= dt;
+      if (this.lidHold <= 0) this.lidTarget = 0;
+    }
+    if (this.lidT !== this.lidTarget) {
+      this.lidT += Math.sign(this.lidTarget - this.lidT) * Math.min(Math.abs(this.lidTarget - this.lidT), dt * 3.2);
+      const k = this.lidT * this.lidT * (3 - 2 * this.lidT);
+      this.lidPivot.rotation.x = -1.25 * k;
+    }
+    this.drawScreen();
+  }
+
+  /** Open the lid for a moment (sample change), then close it. */
+  public pulseLid(seconds = 0.9) {
+    this.lidTarget = 1;
+    this.lidHold = seconds;
+  }
+
+  /** Absorbance / transmittance of the last scan at `nm` (blank: 0 / 100). */
+  public readingAt(nm: number): { abs: number; trans: number } {
+    const scan = this.lastScan;
+    if (scan && scan.points.length > 0) {
+      const pt = scan.points.find((p) => Math.abs(p.lambda - nm) < 3);
+      if (pt) return { abs: pt.absorbance, trans: pt.transmittance };
+    }
+    return { abs: 0, trans: 100 };
+  }
+
+  private drawScreen() {
+    const nm = this.wavelengthNm;
+    const key = `${this.scanId}|${nm}|${this.isScanning}|${this.currentSampleName}|${this.blankActive}|${this.isScanning ? Math.floor(this.time * 6) % 4 : 0}`;
+    this.screen.draw(key, (ctx, w, h) => {
+      ctx.fillStyle = '#071521';
+      ctx.fillRect(0, 0, w, h);
+      // header
+      ctx.fillStyle = '#0d2a40';
+      ctx.fillRect(0, 0, w, h * 0.13);
+      ctx.fillStyle = '#7fd6ff';
+      ctx.font = `700 ${Math.round(h * 0.085)}px Arial, sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText('UV-VIS  350-750 nm', w * 0.03, h * 0.065);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = this.isScanning ? '#ffc233' : '#5df08a';
+      ctx.fillText(this.isScanning ? 'SCANNING' + '.'.repeat(Math.floor(this.time * 6) % 4) : this.blankActive && !this.lastScan?.points.some((p) => p.absorbance > 0) ? 'BLANKED' : 'READY', w * 0.97, h * 0.065);
+      // plot area
+      const px0 = w * 0.1;
+      const px1 = w * 0.96;
+      const py0 = h * 0.2;
+      const py1 = h * 0.7;
+      ctx.strokeStyle = '#1d4560';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#4f89aa';
+      ctx.font = `${Math.round(h * 0.06)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      for (let l = 400; l <= 700; l += 100) {
+        const x = px0 + ((l - SCAN_NM_MIN) / (SCAN_NM_MAX - SCAN_NM_MIN)) * (px1 - px0);
+        ctx.beginPath();
+        ctx.moveTo(x, py0);
+        ctx.lineTo(x, py1);
+        ctx.stroke();
+        ctx.fillText(String(l), x, py1 + h * 0.06);
+      }
+      const scan = this.lastScan;
+      const amax = Math.max(1, Math.ceil((scan?.maxAbsorbance ?? 0) * 1.1 * 2) / 2);
+      ctx.textAlign = 'right';
+      for (const a of [0, amax / 2, amax]) {
+        const y = py1 - (a / amax) * (py1 - py0);
+        ctx.beginPath();
+        ctx.moveTo(px0, y);
+        ctx.lineTo(px1, y);
+        ctx.stroke();
+        ctx.fillText(a.toFixed(1), px0 - 3, y);
+      }
+      // spectrum
+      if (scan && scan.points.length > 1) {
+        const grad = ctx.createLinearGradient(px0, 0, px1, 0);
+        grad.addColorStop(0, '#8a4bff');
+        grad.addColorStop(0.2, '#3f7bff');
+        grad.addColorStop(0.4, '#34e0c0');
+        grad.addColorStop(0.55, '#7be04a');
+        grad.addColorStop(0.7, '#ffd23a');
+        grad.addColorStop(1, '#ff4a3a');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = Math.max(2, h * 0.012);
+        ctx.beginPath();
+        scan.points.forEach((p, i) => {
+          const x = px0 + ((p.lambda - SCAN_NM_MIN) / (SCAN_NM_MAX - SCAN_NM_MIN)) * (px1 - px0);
+          const y = py1 - (Math.min(p.absorbance, amax) / amax) * (py1 - py0);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      // wavelength cursor
+      const cx = px0 + ((nm - SCAN_NM_MIN) / (SCAN_NM_MAX - SCAN_NM_MIN)) * (px1 - px0);
+      ctx.strokeStyle = '#ffd34a';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(cx, py0);
+      ctx.lineTo(cx, py1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // read-out line
+      const r = this.readingAt(nm);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffd34a';
+      ctx.font = `700 ${Math.round(h * 0.085)}px "Courier New", monospace`;
+      ctx.fillText(`${nm} nm`, w * 0.03, h * 0.83);
+      ctx.fillStyle = '#7fe8b0';
+      ctx.fillText(`A ${r.abs.toFixed(3)}`, w * 0.3, h * 0.83);
+      ctx.fillStyle = '#9ad7ff';
+      ctx.fillText(`${r.trans.toFixed(1)} %T`, w * 0.62, h * 0.83);
+      ctx.fillStyle = '#6f93a8';
+      ctx.font = `${Math.round(h * 0.065)}px Arial, sans-serif`;
+      ctx.fillText(this.currentSampleName ? `Sample: ${this.currentSampleName}` : 'No sample in the compartment', w * 0.03, h * 0.94);
+    });
   }
 
   public setSample(vesselName: string | null) {
     this.currentSampleName = vesselName;
+    this.cuvette.visible = !!vesselName;
+    this.scanId++;
   }
 
   public get sampleName(): string | null {
     return this.currentSampleName;
   }
 
+  public get scanning(): boolean {
+    return this.isScanning;
+  }
+
   public setScanning(scanning: boolean) {
     this.isScanning = scanning;
     this.statusLedMat.color.setHex(scanning ? 0xffaa00 : 0x22ee44);
     this.beamLedMat.color.setHex(scanning ? 0x88bbff : 0x111122);
+    if (scanning) this.pulseLid(0.8);
+    this.scanId++;
   }
 
   public blank() {
     this.blankActive = true;
+    this.scanId++;
+    this.setSample(null);
+    this.pulseLid(0.7);
     this.lastScan = {
       sampleName: 'Blank (Deionized H2O)',
       points: Array.from({ length: 81 }, (_, i) => ({
@@ -185,6 +411,7 @@ export class Spectrophotometer {
       }
     }
 
+    this.scanId++;
     this.lastScan = {
       sampleName: vesselName,
       points,

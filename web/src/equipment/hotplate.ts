@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { VesselSnapshot, VesselControls } from '../types/sim';
 import { GlasswareMeshBundle } from '../bench/glassware';
 import { hotplateGlowTexture, hotplateTopTexture } from '../render/textures';
-import { roundedBox } from './lcd';
+import { LcdDisplay, roundedBox } from './lcd';
+import { Control3D, Knob, Selector, place, textLegend } from '../bench/controls3d';
 
 /**
  * Hot plate / magnetic stirrer (18 × 18 cm glass-ceramic top, 10 cm tall). The top glows with a thermal lag
@@ -15,8 +16,15 @@ export class HotPlate {
   public readonly topLocal = new THREE.Vector3(0, HOTPLATE_TOP_Y, -2.0);
   private ceramicTop: THREE.Mesh;
   private topMat: THREE.MeshStandardMaterial;
-  private heaterKnob: THREE.Group;
-  private stirKnob: THREE.Group;
+  /** Front-panel controls (HEAT knob, STIR switch); the scene registers them with its control rig. */
+  public readonly controls: Control3D[] = [];
+  private heatKnob: Knob;
+  private stirSwitch: Selector;
+  private lcd: LcdDisplay;
+  /** The user turned the HEAT knob. Return false to refuse (the knob snaps back to its previous value). */
+  public onHeat?: (watts: number) => boolean | void;
+  /** The user flipped the STIR switch. Return false to refuse. */
+  public onStir?: (on: boolean) => boolean | void;
   private heatLed: THREE.MeshStandardMaterial;
   private stirLed: THREE.MeshStandardMaterial;
   private glow = 0;
@@ -50,22 +58,65 @@ export class HotPlate {
     this.ceramicTop.position.set(0, HOTPLATE_TOP_Y - 0.32, -2.0);
     this.ceramicTop.receiveShadow = true;
     this.group.add(this.ceramicTop);
-    // front control panel
-    const panel = new THREE.Mesh(roundedBox(17, 0.3, 3.6, 0.4), new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.6 }));
-    panel.position.set(0, 9.38, 9.6);
-    this.group.add(panel);
-    this.heaterKnob = this.makeKnob(0xd84315);
-    this.heaterKnob.position.set(-4.5, 9.7, 9.6);
-    this.stirKnob = this.makeKnob(0x1e88e5);
-    this.stirKnob.position.set(4.5, 9.7, 9.6);
-    this.group.add(this.heaterKnob, this.stirKnob);
+    // front control panel: a dark fascia on the vertical front face, controls facing the user
+    const fascia = new THREE.Mesh(roundedBox(17.4, 0.5, 7.4, 0.8), new THREE.MeshStandardMaterial({ color: 0x15181b, roughness: 0.55 }));
+    fascia.rotation.x = Math.PI / 2;
+    fascia.position.set(0, 4.7, 12.7); // chassis front face = 12 + bevel 0.7
+    this.group.add(fascia);
+    this.heatKnob = new Knob({
+      id: 'hotplate.heat',
+      caption: 'HEAT',
+      min: 0,
+      max: 1000,
+      step: 50,
+      value: 0,
+      radius: 1.45,
+      accent: 0xff6a3d,
+      ticks: 11,
+      labels: [
+        { at: 0, text: 'OFF' },
+        { at: 1, text: '1000W' },
+      ],
+      format: (v) => (v <= 0 ? 'off' : `${v} W`),
+      onChange: (v) => {
+        const prev = this.heaterWatts;
+        this.setPower(v);
+        if (this.onHeat?.(v) === false) this.setPower(prev);
+      },
+    });
+    place(this.heatKnob, this.group, [-5.4, 4.5, 13.2], [0, 0, 1]);
+    this.stirSwitch = new Selector({
+      id: 'hotplate.stir',
+      caption: 'STIR',
+      labels: ['OFF', 'ON'],
+      radius: 1.3,
+      accent: 0x4aa8ff,
+      describe: (i) => (i === 1 ? 'magnetic stirrer on' : 'stirrer off'),
+      onChange: (i) => {
+        const prev = this.isStirring;
+        const prevRpm = this.stirRpm;
+        this.setStir(i === 1);
+        if (this.onStir?.(i === 1) === false) this.setStir(prev, prevRpm);
+      },
+    });
+    place(this.stirSwitch, this.group, [5.4, 4.5, 13.2], [0, 0, 1]);
+    this.controls.push(this.heatKnob, this.stirSwitch);
+    // power read-out between the controls
+    this.lcd = new LcdDisplay(5.4, 2.4, { bg: '#1b0f0b', fg: '#ff6a2a', ghost: 'rgba(255,106,42,0.08)', unit: 'W', caption: 'SET' });
+    this.lcd.mesh.position.set(0, 5.5, 13.22);
+    this.group.add(this.lcd.mesh);
+    this.updateLcd(0);
+    const cap = textLegend('HOT PLATE / STIRRER', 6.4, 0.62, { ink: '#9aa4ab', weight: 700 });
+    cap.rotation.x = 0; // the legend is printed on the vertical face
+    cap.position.set(0, 3.2, 13.22);
+    this.group.add(cap);
     this.heatLed = new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff2a10, emissiveIntensity: 0 });
     this.stirLed = new THREE.MeshStandardMaterial({ color: 0x002a00, emissive: 0x30ff60, emissiveIntensity: 0 });
     const ledGeo = new THREE.SphereGeometry(0.22, 10, 8);
     const l1 = new THREE.Mesh(ledGeo, this.heatLed);
-    l1.position.set(-1.2, 9.6, 9.6);
+    l1.position.set(-1.5, 3.7, 13.25);
     const l2 = new THREE.Mesh(ledGeo, this.stirLed);
-    l2.position.set(1.2, 9.6, 9.6);
+    l2.position.set(1.5, 3.7, 13.25);
     this.group.add(l1, l2);
     const feet = new THREE.MeshStandardMaterial({ color: 0x1d1d1d, roughness: 0.9 });
     for (const [x, z] of [[-8, -10], [8, -10], [-8, 10], [8, 10]]) {
@@ -74,17 +125,6 @@ export class HotPlate {
       this.group.add(f);
     }
     this.group.traverse((o) => (o.raycast = () => {}));
-  }
-
-  private makeKnob(accent: number): THREE.Group {
-    const g = new THREE.Group();
-    const k = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 1.2, 28), new THREE.MeshStandardMaterial({ color: 0x1f2226, roughness: 0.35 }));
-    k.position.y = 0.6;
-    k.castShadow = true;
-    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.9), new THREE.MeshStandardMaterial({ color: accent, roughness: 0.4 }));
-    mark.position.set(0, 1.22, -0.6);
-    g.add(k, mark);
-    return g;
   }
 
   /** Legacy helper: snaps a vessel onto the plate (the scene animates placement instead). */
@@ -98,15 +138,20 @@ export class HotPlate {
 
   public setPower(watts: number) {
     this.heaterWatts = Math.max(0.0, Math.min(1000.0, watts));
-    this.heaterKnob.rotation.y = -(this.heaterWatts / 1000.0) * Math.PI * 1.5;
+    this.heatKnob.setValue(this.heaterWatts);
     this.heatLed.emissiveIntensity = this.heaterWatts > 0 ? 2.5 : 0;
+    this.updateLcd(this.heaterWatts);
   }
 
   public setStir(stir: boolean, rpm: number = 400.0) {
     this.isStirring = stir;
     this.stirRpm = stir ? rpm : 0.0;
-    this.stirKnob.rotation.y = stir ? -(rpm / 1500.0) * Math.PI * 1.5 : 0.0;
+    this.stirSwitch.setIndex(stir ? 1 : 0);
     this.stirLed.emissiveIntensity = stir ? 2.0 : 0;
+  }
+
+  private updateLcd(watts: number) {
+    this.lcd.set(String(Math.round(watts)), watts > 0 ? 'HEATING' : 'SET');
   }
 
   public getControls(): VesselControls {

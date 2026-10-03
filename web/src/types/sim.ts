@@ -152,6 +152,74 @@ export interface UvVisScan {
   contributors: UvVisContributor[];
 }
 
+/** NMR spectrum of a liquid layer in a deuterated solvent (engine `vessel_nmr_spectrum`). */
+export interface NmrSignalData {
+  ppm: number;
+  multiplicity: string;
+  j_hz: number[];
+  /** 1H: protons relative to the most abundant C-H species; 13C: carbons likewise. */
+  integration: number;
+  nuclei: number;
+  assignment: string;
+  species: string;
+  species_id: string;
+  exchangeable: boolean;
+  solvent: boolean;
+  width_hz: number;
+  snr: number;
+  ppm_lo: number;
+  ppm_hi: number;
+}
+export interface NmrSpectrumData {
+  nucleus: '1H' | '13C';
+  solvent: string;
+  frequency_mhz: number;
+  scans: number;
+  ppm_start: number;
+  ppm_step: number;
+  /** Digitised spectrum normalised to the tallest peak, ascending in ppm from `ppm_start`. */
+  intensity: number[];
+  signals: NmrSignalData[];
+  /** Noise sigma relative to the tallest peak. */
+  noise_sigma: number;
+  unobserved: string[];
+  notes: string[];
+  tier: string;
+  method: string;
+}
+
+/** Mass spectrum of a liquid layer (engine `vessel_ms_spectrum`). */
+export interface MsPeakData {
+  mz: number;
+  intensity: number;
+  assignment: string;
+  molecular: boolean;
+}
+export interface MsComponentData {
+  id: string;
+  name: string;
+  formula: string;
+  mw: number;
+  rt_min: number | null;
+  share_pct: number;
+  peaks: MsPeakData[];
+  base_mz: number;
+  notes: string[];
+}
+export interface MsSpectrumData {
+  mode: string;
+  components: MsComponentData[];
+  summed: MsPeakData[];
+  chrom_t0: number;
+  chrom_dt: number;
+  tic: number[];
+  oven: number[];
+  not_analysed: string[];
+  notes: string[];
+  tier: string;
+  method: string;
+}
+
 export type VesselEventKind =
   | 'burst'            // sealed vessel over-pressured: stopper ejected or glass shattered
   | 'stopper_pop'
@@ -472,6 +540,8 @@ export type SimRequest =
   | { type: 'STEP_ALL'; payload: { handles: number[]; dt_s: number }; requestId: string }
   | { type: 'OPTICS_TABLES'; payload: {}; requestId: string }
   | { type: 'UVVIS_SCAN'; payload: { handle: number; layer?: number; nm_min: number; nm_max: number; step_nm: number; path_cm: number }; requestId: string }
+  | { type: 'NMR_SPECTRUM'; payload: { handle: number; layer?: number; nucleus: string; solvent: string; scans: number; seed: number }; requestId: string }
+  | { type: 'MS_SPECTRUM'; payload: { handle: number; layer?: number; mode: string; seed: number }; requestId: string }
   | { type: 'FLAME_TEST'; payload: { handle: number; t_flame_k: number }; requestId: string }
   | { type: 'COLOUR_TO_ABSORBANCE'; payload: { r: number; g: number; b: number; path_cm: number }; requestId: string }
   | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string }

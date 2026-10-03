@@ -1524,6 +1524,45 @@ kbd {
   scrollbar-width: thin;
 }
 
+.peak-list.tall {
+  max-height: 280px;
+}
+
+.peak-list .dim td {
+  opacity: 0.55;
+}
+
+.peak-list tbody tr {
+  cursor: default;
+}
+
+.ms-comps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ms-comp {
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ms-comp.on {
+  border-color: #ffd34a;
+  background: rgba(255, 211, 74, 0.1);
+}
+
+.small {
+  font-size: 11px;
+}
+
 .stat-row {
   display: flex;
   flex-wrap: wrap;

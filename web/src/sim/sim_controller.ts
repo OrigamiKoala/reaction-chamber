@@ -12,6 +12,8 @@ import {
   MineralData,
   MineralResolution,
   UvVisScan,
+  NmrSpectrumData,
+  MsSpectrumData,
   FlameTestResult,
 } from '../types/sim';
 
@@ -67,6 +69,20 @@ export class SimController {
     const handle = this.vesselHandles.get(id);
     if (handle === undefined) throw new Error(`Vessel ${id} not found`);
     return this.sendRequest<UvVisScan>('UVVIS_SCAN', { handle, layer: opts.layer ?? 0, nm_min: opts.nmMin, nm_max: opts.nmMax, step_nm: opts.stepNm, path_cm: opts.pathCm });
+  }
+
+  /** NMR spectrum of liquid layer `layer` (or the solids of a dry vessel) dissolved in a deuterated solvent (engine `vessel_nmr_spectrum`). */
+  public async nmrSpectrum(id: string, opts: { layer?: number; nucleus: '1H' | '13C'; solvent: string; scans: number }): Promise<NmrSpectrumData> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<NmrSpectrumData>('NMR_SPECTRUM', { handle, layer: opts.layer ?? 0, nucleus: opts.nucleus, solvent: opts.solvent, scans: opts.scans, seed: Math.floor(Math.random() * 2 ** 31) });
+  }
+
+  /** GC/EI-MS ("EI") or ESI ("ESI+" / "ESI-") of liquid layer `layer` (engine `vessel_ms_spectrum`). */
+  public async msSpectrum(id: string, opts: { layer?: number; mode: string }): Promise<MsSpectrumData> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<MsSpectrumData>('MS_SPECTRUM', { handle, layer: opts.layer ?? 0, mode: opts.mode, seed: Math.floor(Math.random() * 2 ** 31) });
   }
 
   /** Flame-test colour of a vessel's liquid held in a gas flame at `tFlameK` (engine `vessel_flame_test`). */

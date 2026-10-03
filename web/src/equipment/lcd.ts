@@ -115,3 +115,10 @@ export function setWorldPose(obj: THREE.Object3D, pos: THREE.Vector3, quat: THRE
   const s = new THREE.Vector3();
   m.decompose(obj.position, obj.quaternion, s);
 }
+
+/** Thin rounded plate standing on a vertical front: centred in x / y, back face at z = 0, front face at z = t. */
+export function frontPlate(w: number, h: number, t: number, r: number, mat: THREE.Material): THREE.Mesh {
+  const m = new THREE.Mesh(roundedBox(w, t, h, r), mat);
+  m.rotation.x = Math.PI / 2;
+  return m;
+}

@@ -42,6 +42,8 @@ pub mod vessel_transfer;
 pub mod vessel_burn;
 pub mod vessel_appearance;
 pub mod vessel_uvvis;
+pub mod analytical;
+pub mod vessel_analytical;
 pub mod vessel_electro;
 
 use wasm_bindgen::prelude::*;
@@ -362,6 +364,28 @@ pub fn vessel_uvvis_scan(handle: u32, layer: u32, nm_min: f64, nm_max: f64, step
     with_vessels(|map| {
         let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
         serde_wasm_bindgen_to_val(&v.uvvis_scan(layer as usize, nm_min, nm_max, step_nm, path_cm))
+    })
+}
+
+/// NMR spectrum (1H or 13C) of a liquid layer (or the solids of a dry vessel) in a deuterated solvent: signals with
+/// multiplicity / J / integral / assignment per species, the digitised spectrum and the species that could not be simulated.
+#[wasm_bindgen]
+pub fn vessel_nmr_spectrum(handle: u32, layer: u32, nucleus: &str, solvent: &str, scans: u32, seed: u32) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        let s = v.nmr_spectrum(layer as usize, nucleus, solvent, scans, seed as u64).map_err(|e| JsValue::from_str(&e))?;
+        serde_wasm_bindgen_to_val(&s)
+    })
+}
+
+/// Mass spectrum of a liquid layer: GC/EI-MS ("EI": chromatogram + one 70 eV spectrum per eluting component) or
+/// direct-infusion ESI ("ESI+", "ESI-").
+#[wasm_bindgen]
+pub fn vessel_ms_spectrum(handle: u32, layer: u32, mode: &str, seed: u32) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        let s = v.ms_spectrum(layer as usize, mode, seed as u64).map_err(|e| JsValue::from_str(&e))?;
+        serde_wasm_bindgen_to_val(&s)
     })
 }
 

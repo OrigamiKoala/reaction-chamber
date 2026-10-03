@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ElectroReadout, ElectrolysisSpec } from '../types/sim';
-import { LcdDisplay, roundedBox, setWorldPose } from './lcd';
+import { LcdDisplay, frontPlate, roundedBox, setWorldPose } from './lcd';
+import { Control3D, Knob, PushButton, Rocker, Selector, place } from '../bench/controls3d';
 
 export const ELECTRODE_MATERIALS = ['Pt', 'C', 'Cu', 'Zn', 'Ag', 'Fe', 'Al', 'Ni'] as const;
 export type ElectrodeMaterial = (typeof ELECTRODE_MATERIALS)[number];
@@ -16,7 +17,42 @@ const MATERIAL_COLORS: Record<ElectrodeMaterial, number> = {
   Ni: 0xa8b0b5,
 };
 
+/** Electrode materials on the front-panel selectors (the engine supports these six). */
+export const PANEL_MATERIALS = ['Pt', 'C', 'Cu', 'Zn', 'Ag', 'Fe'] as const;
+const RED_POST = new THREE.Vector3(-4, 1.9, 9.8);
+const BLACK_POST = new THREE.Vector3(4, 1.9, 9.8);
+
+/** Complete state of the console's controls (pushed from the lab, read by the instrument panel). */
+export interface PotentiostatPanel {
+  mode: 'voltage' | 'current';
+  volts: number;
+  amps: number;
+  anode: ElectrodeMaterial;
+  cathode: ElectrodeMaterial;
+  on: boolean;
+  dipped: boolean;
+  bridged: boolean;
+}
+
 export class ElectrochemStation {
+  /** Front-panel controls; the scene registers them with its control rig. */
+  public readonly controls: Control3D[] = [];
+  public onVoltage?: (v: number) => void;
+  public onCurrent?: (a: number) => void;
+  public onMode?: (mode: 'voltage' | 'current') => void;
+  public onMaterials?: (anode: ElectrodeMaterial, cathode: ElectrodeMaterial) => void;
+  public onPower?: (on: boolean) => void;
+  public onDip?: () => void;
+  public onBridge?: () => void;
+  private voltKnob!: Knob;
+  private currKnob!: Knob;
+  private modeSel!: Selector;
+  private anodeSel!: Selector;
+  private cathodeSel!: Selector;
+  private powerRocker!: Rocker;
+  private dipBtn!: PushButton;
+  private bridgeBtn!: PushButton;
+
   public group = new THREE.Group();
   public electrodesGroup = new THREE.Group();
   public saltBridgeGroup = new THREE.Group();
@@ -46,77 +82,140 @@ export class ElectrochemStation {
     // ---------------------------------------------------------------- Power Supply / Potentiostat Chassis
     const chassisMat = new THREE.MeshStandardMaterial({ color: 0x22262a, roughness: 0.45, metalness: 0.15 });
     const faceMat = new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.5, metalness: 0.1 });
-    const bezelMat = new THREE.MeshStandardMaterial({ color: 0x5a626a, roughness: 0.3, metalness: 0.8 });
 
-    // Main box: 20cm wide, 11cm high, 18cm deep
-    const chassis = new THREE.Mesh(roundedBox(20, 11, 18, 1.0), chassisMat);
-    chassis.position.y = 5.5;
+    // Main box: 28 cm wide, 12 cm high, 18 cm deep
+    const chassis = new THREE.Mesh(roundedBox(28, 12, 18, 1.0), chassisMat);
     chassis.castShadow = true;
     chassis.receiveShadow = true;
     this.group.add(chassis);
 
-    // Inset front faceplate
-    const face = new THREE.Mesh(roundedBox(18.5, 9.6, 0.6, 0.4), faceMat);
-    face.position.set(0, 5.5, 9.1);
+    // Front faceplate (front at z = 9.6)
+    const face = frontPlate(26.6, 10.6, 0.6, 0.5, faceMat);
+    face.position.set(0, 6, 9.0);
     this.group.add(face);
 
-    // Bezel border
-    const bezel = new THREE.Mesh(roundedBox(19, 10, 0.4, 0.5), bezelMat);
-    bezel.position.set(0, 5.5, 8.9);
-    this.group.add(bezel);
-
     // Dual digital LCDs: Voltage (red/orange) and Current (green/cyan)
-    this.vLcd = new LcdDisplay(7.5, 3.2, {
-      bg: '#181008',
-      fg: '#ff3a20',
-      ghost: 'rgba(255,58,32,0.08)',
-      unit: 'V',
-      caption: 'VOLTAGE',
-    });
-    this.vLcd.mesh.position.set(-4.5, 7.2, 9.45);
+    this.vLcd = new LcdDisplay(9.4, 3.4, { bg: '#181008', fg: '#ff3a20', ghost: 'rgba(255,58,32,0.08)', unit: 'V', caption: 'VOLTAGE' });
+    this.vLcd.mesh.position.set(-6.8, 9.2, 9.65);
     this.group.add(this.vLcd.mesh);
 
-    this.aLcd = new LcdDisplay(7.5, 3.2, {
-      bg: '#081812',
-      fg: '#20e880',
-      ghost: 'rgba(32,232,128,0.08)',
-      unit: 'A',
-      caption: 'CURRENT',
-    });
-    this.aLcd.mesh.position.set(4.5, 7.2, 9.45);
+    this.aLcd = new LcdDisplay(9.4, 3.4, { bg: '#081812', fg: '#20e880', ghost: 'rgba(32,232,128,0.08)', unit: 'A', caption: 'CURRENT' });
+    this.aLcd.mesh.position.set(6.8, 9.2, 9.65);
     this.group.add(this.aLcd.mesh);
 
-    // Adjustment knobs
-    const knobMat = new THREE.MeshStandardMaterial({ color: 0x33383e, roughness: 0.35, metalness: 0.6 });
-    for (let i = 0; i < 3; i++) {
-      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.9, 20), knobMat);
-      knob.rotation.x = Math.PI / 2;
-      knob.position.set(-5.5 + i * 5.5, 3.5, 9.5);
-      this.group.add(knob);
-    }
-
-    // Power LED indicator
+    // Power LED indicator between the displays
     this.powerLedMat = new THREE.MeshBasicMaterial({ color: 0x203020 });
-    this.powerLed = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.3, 16), this.powerLedMat);
+    this.powerLed = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16), this.powerLedMat);
     this.powerLed.rotation.x = Math.PI / 2;
-    this.powerLed.position.set(-7.5, 9.0, 9.45);
+    this.powerLed.position.set(0, 9.2, 9.7);
     this.group.add(this.powerLed);
 
+    // ---------------------------------------------------------------- front-panel controls
+    this.voltKnob = new Knob({
+      id: 'electrochem.volts',
+      caption: 'SET V',
+      min: 0,
+      max: 12,
+      step: 0.05,
+      value: 2.5,
+      radius: 1.15,
+      accent: 0xff5a36,
+      ticks: 13,
+      labels: [
+        { at: 0, text: '0' },
+        { at: 1, text: '12' },
+      ],
+      format: (v) => `${v.toFixed(2)} V (constant-voltage target)`,
+      onChange: (v) => this.onVoltage?.(v),
+    });
+    this.currKnob = new Knob({
+      id: 'electrochem.amps',
+      caption: 'LIMIT I',
+      min: 0.01,
+      max: 5,
+      step: 0.05,
+      value: 1,
+      radius: 1.15,
+      accent: 0x2ee88a,
+      ticks: 11,
+      labels: [
+        { at: 0, text: '0' },
+        { at: 1, text: '5A' },
+      ],
+      format: (v) => `${v.toFixed(2)} A (constant-current target)`,
+      onChange: (v) => this.onCurrent?.(v),
+    });
+    this.modeSel = new Selector({
+      id: 'electrochem.mode',
+      caption: 'MODE',
+      labels: ['V', 'I'],
+      radius: 1.05,
+      accent: 0xffd34a,
+      describe: (i) => (i === 0 ? 'potentiostatic: holds the voltage' : 'galvanostatic: holds the current'),
+      onChange: (i) => this.onMode?.(i === 0 ? 'voltage' : 'current'),
+    });
+    this.anodeSel = new Selector({
+      id: 'electrochem.anode',
+      caption: 'ANODE +',
+      labels: [...PANEL_MATERIALS],
+      radius: 1.05,
+      accent: 0xff6b5a,
+      describe: (_i, l) => `${l} electrode on the + lead`,
+      onChange: () => this.emitMaterials(),
+    });
+    this.cathodeSel = new Selector({
+      id: 'electrochem.cathode',
+      caption: 'CATHODE -',
+      labels: [...PANEL_MATERIALS],
+      radius: 1.05,
+      accent: 0x5ab4ff,
+      describe: (_i, l) => `${l} electrode on the - lead`,
+      onChange: () => this.emitMaterials(),
+    });
+    this.powerRocker = new Rocker({
+      id: 'electrochem.power',
+      caption: 'OUTPUT',
+      hintOn: 'Output ON · click to switch the cell off',
+      hintOff: 'Output OFF · click to apply the set voltage / current to the cell (electrodes dip into the selected vessel)',
+      onChange: (on) => this.onPower?.(on),
+    });
+    this.dipBtn = new PushButton({
+      id: 'electrochem.dip',
+      label: 'DIP',
+      size: [3.8, 1.6],
+      color: 0x4a4232,
+      lamp: 0xffc233,
+      hintText: 'Dip / lift the electrode pair: they go into the selected vessel (click it first)',
+      onPress: () => this.onDip?.(),
+    });
+    this.bridgeBtn = new PushButton({
+      id: 'electrochem.bridge',
+      label: 'BRIDGE',
+      size: [3.8, 1.6],
+      color: 0x32424a,
+      lamp: 0x62d2ff,
+      hintText: 'Salt bridge: click to join the selected vessel to the next nearest one, again to step on, then off',
+      onPress: () => this.onBridge?.(),
+    });
+    place(this.voltKnob, this.group, [-11.2, 5.4, 9.62]);
+    place(this.currKnob, this.group, [-6.7, 5.4, 9.62]);
+    place(this.modeSel, this.group, [-2.2, 5.4, 9.62]);
+    place(this.anodeSel, this.group, [2.3, 5.4, 9.62]);
+    place(this.cathodeSel, this.group, [6.8, 5.4, 9.62]);
+    place(this.powerRocker, this.group, [11.3, 5.2, 9.62]);
+    place(this.dipBtn, this.group, [-10.4, 1.9, 9.62]);
+    place(this.bridgeBtn, this.group, [10.4, 1.9, 9.62]);
+    this.controls.push(this.voltKnob, this.currKnob, this.modeSel, this.anodeSel, this.cathodeSel, this.powerRocker, this.dipBtn, this.bridgeBtn);
+
     // Binding Posts: Red (+ / Anode) and Black (- / Cathode)
-    const redTerminal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.5, 1.2, 16),
-      new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.3, metalness: 0.3 })
-    );
+    const redTerminal = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 16), new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.3, metalness: 0.3 }));
     redTerminal.rotation.x = Math.PI / 2;
-    redTerminal.position.set(-3.5, 2.0, 9.7);
+    redTerminal.position.set(RED_POST.x, RED_POST.y, RED_POST.z - 0.1);
     this.group.add(redTerminal);
 
-    const blackTerminal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.5, 1.2, 16),
-      new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3, metalness: 0.3 })
-    );
+    const blackTerminal = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 16), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3, metalness: 0.3 }));
     blackTerminal.rotation.x = Math.PI / 2;
-    blackTerminal.position.set(3.5, 2.0, 9.7);
+    blackTerminal.position.set(BLACK_POST.x, BLACK_POST.y, BLACK_POST.z - 0.1);
     this.group.add(blackTerminal);
 
     // ---------------------------------------------------------------- Connecting Leads
@@ -174,6 +273,45 @@ export class ElectrochemStation {
     this.updateDisplay(0, 0, false);
   }
 
+  private emitMaterials() {
+    this.onMaterials?.(PANEL_MATERIALS[this.anodeSel.index], PANEL_MATERIALS[this.cathodeSel.index]);
+  }
+
+  /** The console's own state (what the knobs, switches and lamps show). Does not notify. */
+  public get panel(): PotentiostatPanel {
+    return {
+      mode: this.modeSel.index === 0 ? 'voltage' : 'current',
+      volts: this.voltKnob.value,
+      amps: this.currKnob.value,
+      anode: PANEL_MATERIALS[this.anodeSel.index],
+      cathode: PANEL_MATERIALS[this.cathodeSel.index],
+      on: this.powerRocker.on,
+      dipped: this.dipLit,
+      bridged: this.bridgeLit,
+    };
+  }
+
+  private dipLit = false;
+  private bridgeLit = false;
+
+  /** Push state into the controls without firing their callbacks. */
+  public setPanel(p: Partial<PotentiostatPanel>) {
+    if (p.volts !== undefined) this.voltKnob.setValue(p.volts);
+    if (p.amps !== undefined) this.currKnob.setValue(p.amps);
+    if (p.mode !== undefined) this.modeSel.setIndex(p.mode === 'voltage' ? 0 : 1);
+    if (p.anode !== undefined) this.anodeSel.setIndex(Math.max(0, PANEL_MATERIALS.indexOf(p.anode as (typeof PANEL_MATERIALS)[number])));
+    if (p.cathode !== undefined) this.cathodeSel.setIndex(Math.max(0, PANEL_MATERIALS.indexOf(p.cathode as (typeof PANEL_MATERIALS)[number])));
+    if (p.on !== undefined) this.powerRocker.setOn(p.on);
+    if (p.dipped !== undefined) {
+      this.dipLit = p.dipped;
+      this.dipBtn.setLit(p.dipped);
+    }
+    if (p.bridged !== undefined) {
+      this.bridgeLit = p.bridged;
+      this.bridgeBtn.setLit(p.bridged);
+    }
+  }
+
   public setMaterials(anode: ElectrodeMaterial, cathode: ElectrodeMaterial) {
     this.anodeMat.color.setHex(MATERIAL_COLORS[anode] ?? 0xd8dde2);
     this.cathodeMat.color.setHex(MATERIAL_COLORS[cathode] ?? 0xd8dde2);
@@ -223,15 +361,19 @@ export class ElectrochemStation {
     const targetWorld = new THREE.Vector3(worldPos.x, targetY, worldPos.z);
     setWorldPose(this.electrodesGroup, targetWorld, new THREE.Quaternion());
 
-    // Route Red Cable from (-3.5, 2.0, 9.7) in meter local space to Anode clip
-    const redStartWorld = new THREE.Vector3(-3.5, 2.0, 9.7).applyMatrix4(this.group.matrixWorld);
+    // Route Red Cable from the + post to the Anode clip
+    const redStartWorld = RED_POST.clone().applyMatrix4(this.group.matrixWorld);
     const redEndWorld = new THREE.Vector3(-1.4, 4.2, 0).applyMatrix4(this.electrodesGroup.matrixWorld);
     this.routeCable(this.redCable, redStartWorld, redEndWorld, 'red', -3.0);
 
-    // Route Black Cable from (3.5, 2.0, 9.7) to Cathode clip
-    const blackStartWorld = new THREE.Vector3(3.5, 2.0, 9.7).applyMatrix4(this.group.matrixWorld);
+    // Route Black Cable from the - post to the Cathode clip
+    const blackStartWorld = BLACK_POST.clone().applyMatrix4(this.group.matrixWorld);
     const blackEndWorld = new THREE.Vector3(1.4, 4.2, 0).applyMatrix4(this.electrodesGroup.matrixWorld);
     this.routeCable(this.blackCable, blackStartWorld, blackEndWorld, 'black', 3.0);
+  }
+
+  public get hasSaltBridge(): boolean {
+    return this.saltBridgeGroup.visible;
   }
 
   public detach() {

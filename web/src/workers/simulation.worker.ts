@@ -23,6 +23,8 @@ import init, {
   step_all,
   optics_tables_json,
   vessel_uvvis_scan,
+  vessel_nmr_spectrum,
+  vessel_ms_spectrum,
   vessel_flame_test,
   colour_to_absorbance,
   reagent_catalog_json,
@@ -311,6 +313,18 @@ self.onmessage = async (e: MessageEvent) => {
       case 'UVVIS_SCAN': {
         const res = vessel_uvvis_scan(payload.handle, payload.layer ?? 0, payload.nm_min, payload.nm_max, payload.step_nm, payload.path_cm);
         self.postMessage({ type: 'UVVIS_SCAN_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'NMR_SPECTRUM': {
+        const res = vessel_nmr_spectrum(payload.handle, payload.layer ?? 0, payload.nucleus, payload.solvent, payload.scans, payload.seed >>> 0);
+        self.postMessage({ type: 'NMR_SPECTRUM_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'MS_SPECTRUM': {
+        const res = vessel_ms_spectrum(payload.handle, payload.layer ?? 0, payload.mode, payload.seed >>> 0);
+        self.postMessage({ type: 'MS_SPECTRUM_RESPONSE', payload: JSON.parse(res), requestId });
         break;
       }
 

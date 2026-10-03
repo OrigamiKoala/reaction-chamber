@@ -38,6 +38,7 @@ import {
 import { GasTubes, GasHost } from './gas_collection';
 import { FilterRigs } from './filtration';
 import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
+import { ControlRig } from './controls3d';
 
 /** Bench instruments the user can click (right panel shows their controls). */
 export type InstrumentId =
@@ -52,7 +53,7 @@ export type InstrumentId =
   | 'nmr'
   | 'mass_spec';
 
-type PickHit = { type: 'vessel' | 'bottle' | 'balance-tare' | 'stopcock' | 'stirknob' | 'instrument'; id: string };
+type PickHit = { type: 'vessel' | 'bottle' | 'balance-tare' | 'stopcock' | 'stirknob' | 'instrument' | 'control'; id: string };
 
 /** Bench instruments owned by the scene. UI reads `readout()` values; never decides chemistry. */
 export interface BenchInstruments {
@@ -97,9 +98,20 @@ const BALANCE_POS = new THREE.Vector3(80, 0, -4);
 const BURNER_POS = new THREE.Vector3(-80, 0, -12);
 const ELECTROCHEM_POS = new THREE.Vector3(-44, 0, -14);
 const SPECTRO_POS = new THREE.Vector3(-65, 0, 105);
-const MASS_SPEC_POS = new THREE.Vector3(15, 0, 105);
-const NMR_POS = new THREE.Vector3(65, 0, 105);
-const NMR_CRYO_POS = new THREE.Vector3(125, -90, 105);
+const MASS_SPEC_POS = new THREE.Vector3(17, 0, 105);
+const NMR_POS = new THREE.Vector3(74, 0, 105);
+/** Magnet stands on the floor (y = -90) just past the end of the analytical bench. */
+const NMR_CRYO_POS = new THREE.Vector3(126, -90, 105);
+
+/** Instrument that owns a control, from the control id prefix ('hotplate.heat' -> 'hotplate'). */
+const CONTROL_OWNER: Record<string, InstrumentId> = {
+  hotplate: 'hotplate',
+  burner: 'burner',
+  electrochem: 'electrochem',
+  spectro: 'spectrophotometer',
+  nmr: 'nmr',
+  ms: 'mass_spec',
+};
 
 /**
  * Photoreal-leaning lab bench. 1 unit = 1 cm. Bench top at y = 0.
@@ -112,6 +124,8 @@ export class BenchScene {
   public controls: OrbitControls;
   /** 'bottle' ids are catalog reagent ids (addReagentBottle) or PubChem BottleState ids (addBottle). */
   public onSelectObject?: (type: 'vessel' | 'bottle' | 'instrument', id: string) => void;
+  /** A knob / switch / button on an instrument was used: the instrument panel should show that instrument (no camera move). */
+  public onControlUsed?: (id: InstrumentId) => void;
   /** Click on empty bench / background (not a drag). */
   public onDeselect?: () => void;
   public instruments: BenchInstruments;
@@ -157,6 +171,8 @@ export class BenchScene {
   private vesselSlot = new Map<string, number>();
   private hotPlateVessel: string | null = null;
   private instrumentProxies: THREE.Mesh[] = [];
+  private controlRig!: ControlRig;
+  private rigPressed = false;
   private panVessel: string | null = null;
   private pan: { center: THREE.Vector3; radius: number; topY: number } | null = null;
   private handling!: HandlingController;
@@ -279,8 +295,13 @@ export class BenchScene {
       this.addInstrumentProxy('electrochem', electrochem.group, electrochem.electrodesGroup),
       this.addInstrumentProxy('spectrophotometer', spectrophotometer.group, null),
       this.addInstrumentProxy('nmr', nmr.group, null),
-      this.addInstrumentProxy('mass_spec', massSpec.group, null),
+      this.addInstrumentProxy('nmr', nmr.cryoMagnet, null),
+      this.addInstrumentProxy('mass_spec', massSpec.group, null, new THREE.Box3(new THREE.Vector3(-28, 0, -18), new THREE.Vector3(28, 48, 19))),
     ];
+    // physical controls on the instruments (knobs, switches, buttons): picked and dragged by the rig
+    this.controlRig = new ControlRig({ container, orbit: this.controls, setHint: (t) => this.onHint?.(t) });
+    this.controlRig.register([...hotPlate.controls, ...burner.controls, ...electrochem.controls, ...spectrophotometer.controls, ...nmr.controls, ...massSpec.controls]);
+    nmr.routeCables();
     this.instruments = {
       thermometer,
       phMeter,
@@ -301,8 +322,8 @@ export class BenchScene {
       { x0: -9.5, x1: 9.5, z0: HOTPLATE_POS.z - 12, z1: HOTPLATE_POS.z + 12 },
       { x0: 36, x1: 57, z0: -26, z1: -2 },
       { x0: 67, x1: 93, z0: -19, z1: 11 },
-      { x0: -97, x1: -73, z0: -18, z1: 10 },
-      { x0: -56, x1: -32, z0: -24, z1: -4 },
+      { x0: -97, x1: -73, z0: -18, z1: 22 },
+      { x0: -60, x1: -28, z0: -25, z1: -2 },
       STATION_FOOTPRINT,
     ];
     this.buildSlots();
@@ -1325,16 +1346,20 @@ export class BenchScene {
   }
 
   public focusStation(station: string): void {
-    if (station === 'bench' || station === 'hotplate' || station === 'balance' || station === 'phmeter' || station === 'thermometer' || station === 'gauge' || station === 'burner') {
+    if (station === 'bench' || station === 'balance' || station === 'phmeter' || station === 'thermometer' || station === 'gauge') {
       this.focusPoint(new THREE.Vector3(0, 10, 0), 65, true);
+    } else if (station === 'hotplate') {
+      this.focusPoint(new THREE.Vector3(0, 8, 4), 46, true);
+    } else if (station === 'burner') {
+      this.focusPoint(BURNER_POS.clone().add(new THREE.Vector3(-4, 11, 8)), 52, true);
     } else if (station === 'spectrophotometer') {
       this.focusPoint(SPECTRO_POS.clone().add(new THREE.Vector3(0, 8, 0)), 42, true);
     } else if (station === 'mass_spec') {
-      this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(0, 10, 0)), 45, true);
+      this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(0, 23, 0)), 72, true);
     } else if (station === 'nmr') {
-      this.focusPoint(NMR_POS.clone().add(new THREE.Vector3(0, 12, 0)), 48, true);
+      this.focusPoint(new THREE.Vector3(100, 26, 105), 100, true);
     } else if (station === 'electrochem') {
-      this.focusPoint(ELECTROCHEM_POS.clone().add(new THREE.Vector3(0, 8, 0)), 38, true);
+      this.focusPoint(ELECTROCHEM_POS.clone().add(new THREE.Vector3(0, 6, 0)), 40, true);
     }
   }
 
@@ -1390,6 +1415,7 @@ export class BenchScene {
     if (key) proxies.push(key);
     proxies.push(...this.titration.pickMeshes()); // stopcock levers + stirrer knob
     for (const o of this.instrumentProxies) if (o.parent?.visible) proxies.push(o); // gauge only while sealed
+    proxies.push(...this.controlRig.hitMeshes()); // knobs, switches and buttons on the instruments
     for (const o of proxies) o.updateWorldMatrix(true, false);
     const hits = this.raycaster.intersectObjects(proxies, false);
     const picks: PickHit[] = [];
@@ -1397,6 +1423,9 @@ export class BenchScene {
       const p = h.object.userData.pick as PickHit | undefined;
       if (p) picks.push(p);
     }
+    // a control protrudes from its instrument's box: it wins over the instrument (unless a vessel / bottle is in front)
+    const ci = picks.findIndex((p) => p.type === 'control');
+    if (ci > 0 && picks.slice(0, ci).every((p) => p.type === 'instrument')) picks.unshift(...picks.splice(ci, 1));
     const first = picks[0];
     // the TARE key sits inside the balance's box: it wins over the balance body
     if (first?.type === 'instrument' && first.id === 'balance') {
@@ -1409,6 +1438,18 @@ export class BenchScene {
   /** Capture-phase press: arm a grab when the press lands on a bottle / vessel (keeps OrbitControls from starting). */
   private onPointerDownCapture = (e: PointerEvent) => {
     try {
+      if (e.button === 0 && !this.controlRig.pressing && !this.handling.holding) {
+        this.setPointer(e);
+        const first = this.pickAll()[0];
+        const ctl = first?.type === 'control' ? this.controlRig.get(first.id) : undefined;
+        if (ctl) {
+          this.rigPressed = true;
+          this.controlRig.begin(ctl, e);
+          const owner = CONTROL_OWNER[first.id.split('.')[0]];
+          if (owner) this.onControlUsed?.(owner);
+          return; // a knob / switch / button press: no grab, no orbit
+        }
+      }
       if (this.titration.pointerDown(e)) return; // a stopcock lever / stirrer knob press: no grab, no orbit
       this.handling.pointerDown(e);
     } catch (err) {
@@ -1423,6 +1464,10 @@ export class BenchScene {
   private onPointerUp = (e: PointerEvent) => {
     const d = this.downPos;
     this.downPos = null;
+    if (this.rigPressed) {
+      this.rigPressed = false; // the release of a control press is not a click on the instrument
+      return;
+    }
     if (!d || d.button !== 0 || e.button !== 0) return;
     if (this.handling.holding) return; // a carried object is being released, not clicked
     const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
@@ -1439,7 +1484,7 @@ export class BenchScene {
       this.instruments.balance.tare();
       return;
     }
-    if (hit?.type === 'stopcock' || hit?.type === 'stirknob') return; // handled by the titration rig
+    if (hit?.type === 'stopcock' || hit?.type === 'stirknob' || hit?.type === 'control') return; // handled by the titration rig / control rig
     if (hit) {
       if (hit.type === 'bottle') this.shelf.touch(hit.id);
       this.onSelectObject?.(hit.type, hit.id);
@@ -1464,6 +1509,7 @@ export class BenchScene {
     this.hoverDirty = false;
     const dragging = !!this.downPos || this.handling.holding;
     const hit = this.pointerInside && !dragging ? this.pick() : null;
+    this.controlRig.setHovered(hit?.type === 'control' ? hit.id : null);
     const key = hit ? `${hit.type}:${hit.id}` : null;
     if (key === this.hoverKey) return;
     this.hoverKey = key;
@@ -1474,10 +1520,11 @@ export class BenchScene {
       this.titration.hover(null);
       return;
     }
-    const grabbable = hit && hit.type !== 'balance-tare' && hit.type !== 'instrument' && !rigHit ? { type: hit.type as 'vessel' | 'bottle', id: hit.id } : null;
+    const grabbable = hit && hit.type !== 'balance-tare' && hit.type !== 'instrument' && hit.type !== 'control' && !rigHit ? { type: hit.type as 'vessel' | 'bottle', id: hit.id } : null;
     this.handling.hoverHint(grabbable);
     this.titration.hover(rigHit); // after the handling hint: a lever's own hint wins
-    this.renderer.domElement.style.cursor = !hit ? '' : rigHit?.type === 'stopcock' ? 'ns-resize' : hit.type === 'balance-tare' || hit.type === 'instrument' || rigHit ? 'pointer' : 'grab';
+    this.controlRig.refreshHint(); // and a control's hint wins over both
+    this.renderer.domElement.style.cursor = !hit ? '' : rigHit?.type === 'stopcock' ? 'ns-resize' : hit.type === 'balance-tare' || hit.type === 'instrument' || hit.type === 'control' || rigHit ? 'pointer' : 'grab';
   }
 
   private onResize = () => {
@@ -1566,9 +1613,20 @@ export class BenchScene {
         }
       }
     }
-    const { hotPlate, burner } = this.instruments;
+    const { hotPlate, burner, spectrophotometer, nmr, massSpec } = this.instruments;
     hotPlate.animate(dt);
     burner.animate(dt);
+    this.controlRig.update(dt);
+    try {
+      spectrophotometer.animate(dt);
+      nmr.animate(dt);
+      massSpec.animate(dt);
+    } catch (e) {
+      if (!this.tickWarned.has('analytical')) {
+        this.tickWarned.add('analytical');
+        console.warn('[bench] analytical instrument update failed', e);
+      }
+    }
     const bf = burner.brightness();
     if (bf > fire) {
       fire = bf;
@@ -1596,6 +1654,7 @@ export class BenchScene {
     window.removeEventListener('resize', this.onResize);
     this.container.removeEventListener('pointerdown', this.onPointerDownCapture, true);
     this.handling.dispose();
+    this.controlRig.dispose();
     this.titration.dispose();
     this.gas.dispose();
     this.filters.dispose();

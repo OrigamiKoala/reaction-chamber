@@ -35,6 +35,7 @@ import { registerGasKits } from './app/gas_kit';
 import { registerFilterKits } from './app/filter_kit';
 import { registerTitrationKits } from './app/titration_kit';
 import { registerElectroKits } from './app/electro_kit';
+import { wireInstrumentControls } from './app/instrument_controls';
 import { TitrationHud } from './ui/titration_hud';
 import type { PourState } from './bench/handling';
 
@@ -181,7 +182,6 @@ async function initApp() {
   const instLog = new InstrumentLog();
   const instrumentPanel = new InstrumentPanel({
     lab,
-    sim,
     instruments: () => bench.instruments,
     panVesselId: () => bench.getPanVesselId(),
     log: instLog,
@@ -189,17 +189,25 @@ async function initApp() {
     onClose: () => setInstrument(null),
   });
   /** Instrument mode of the right panel: shows the instrument instead of the vessel panel (null = vessel mode). */
-  const setInstrument = (id: InstrumentId | null) => {
+  const setInstrument = (id: InstrumentId | null, focus = true) => {
     if (id === instrumentPanel.instrumentId) return;
     instrumentPanel.show(id);
     vesselPanel.el.hidden = !!id;
-    if (id) {
+    if (id && focus) {
       bench.focusStation(id);
     }
   };
+  // knobs, switches and buttons live on the 3D instruments; the right panel keeps the readings, charts and tables
+  const instControls = wireInstrumentControls({
+    lab,
+    sim,
+    instruments: () => bench.instruments,
+    vesselPosition: (id) => bench.getGlassware(id)?.group.position ?? null,
+  });
+  bench.onControlUsed = (id) => setInstrument(id, false);
   topBar.onSelectStation = (station) => {
     if (station === 'bench') {
-      bench.focusStation('hotplate');
+      bench.focusStation('bench');
       setInstrument(null);
     } else {
       setInstrument(station as InstrumentId);
@@ -387,6 +395,7 @@ async function initApp() {
   // ------------------------------------------------------------------ selection
   lab.onSelectionChanged = (id) => {
     if (id) setInstrument(null); // picking a vessel leaves instrument mode
+    instControls.sync(); // the potentiostat console follows the selected vessel's cell
     reagentPanel.setBench(lab.list(), id);
     vesselPanel.show(id);
     addCard.setDefaultVessel(id);
@@ -407,7 +416,6 @@ async function initApp() {
   };
   lab.onControlsChanged = (id) => {
     if (id === lab.selectedId) vesselPanel.syncControls();
-    instrumentPanel.syncControls(); // hot plate heat / stir follows lifted, displaced or re-placed vessels
   };
   lab.onVesselRemoved = (id) => instLog.forgetSource(id);
   bench.onSelectObject = (type, id) => {
