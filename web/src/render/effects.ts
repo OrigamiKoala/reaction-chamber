@@ -1010,7 +1010,7 @@ export class VesselEffects {
         const h = Math.min(24, 3.5 + Math.sqrt(fl.power_w) * 1.6);
         const w = Math.max(1.5, surfR * 1.5);
         const em = fl.emitter_rgb ? new THREE.Color(fl.emitter_rgb[0], fl.emitter_rgb[1], fl.emitter_rgb[2]) : undefined;
-        this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), emitter: em, emitterAmount: em ? 0.75 : 0 });
+        this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), emitter: em, emitterAmount: em ? Math.min(0.9, fl.metal_share ?? 0) : 0 });
         this.flame.setTarget(Math.min(1.6, 0.6 + fl.power_w / 300));
         this.flame.group.position.y = hasLiquid ? fill : p.innerBottomY + 0.2;
       } else {

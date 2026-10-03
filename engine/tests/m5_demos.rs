@@ -269,7 +269,7 @@ fn test_m5_demo5_agcl_precipitation() {
     let snap = v.snapshot();
     let agcl_s = *v.solid_mol.get("AgCl(s)").unwrap_or(&0.0);
     assert!((agcl_s - 0.0010).abs() < 1e-4, "0.0010 mol AgCl should precipitate");
-    assert!(snap.layers[0].scatter_per_cm > 1.0, "AgCl suspension must be turbid");
+    assert!(snap.layers[0].scatter_per_cm.iter().sum::<f64>() > 1.0, "AgCl suspension must be turbid");
 
     // Dissolves in excess NH3 as [Ag(NH3)2]+
     v.dose(DoseRequest {

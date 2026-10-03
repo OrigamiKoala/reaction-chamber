@@ -10,7 +10,6 @@ use crate::types::ProvenanceTier;
 use crate::chem_db::{self, GeneralEquilibrium, GeneralMineral, GeneralKineticRxn, ReagentCatalogEntry};
 use crate::compound_thermo::CompoundThermo;
 use crate::optics::{self};
-use crate::spectra;
 use crate::ions;
 use crate::conservation::{self, ElementError, ElementLedger};
 use crate::physics::R_GAS;
@@ -38,10 +37,23 @@ pub struct LiquidLayer {
     pub phase: PhaseKind,
     pub volume_ml: f64,
     pub density_g_ml: f64,
+    /// Refractive index of the layer (Lorentz-Lorenz from the molar refractions of its species).
     pub refractive_index: f64,
+    /// Decadic absorbance per cm per bin of the engine grid (`optics::N_BINS`, 380-780 nm).
     pub absorbance_per_cm: Vec<f64>,
-    pub scatter_per_cm: f64,
-    pub scatter_rgb: [f64; 3],
+    /// Extinction coefficient (1/cm, natural) of the suspended solids per bin (Mie / Rayleigh-Gans), absorption included.
+    pub scatter_per_cm: Vec<f64>,
+    /// Single-scattering albedo of the suspended solids per bin (scattered / extinguished).
+    pub scatter_albedo: Vec<f64>,
+    /// Weakest provenance tier of the optical data that colour the layer (a species with no data adds none).
+    #[serde(default)]
+    pub colour_tier: ProvenanceTier,
+    /// Where the colour comes from ("PubChem UV/Vis text", "ligand-field model ...", "neat colour of ... (speculative)").
+    #[serde(default)]
+    pub colour_sources: Vec<String>,
+    /// Solvent class the absorption was evaluated in ("water", "alkane", "aromatic", "alcohol", "other").
+    #[serde(default)]
+    pub solvent_class: String,
     /// Species id of the main component of a non-aqueous layer; absent for the water-containing layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub species: Option<String>,
@@ -76,6 +88,12 @@ pub struct SolidVisual {
     #[serde(default)]
     pub particle_sigma_g: f64,
     pub rgb: [f64; 3],
+    /// Provenance tier and basis of the colour (measured phrase, band edge, inherited chromophore, mixed valence, or the
+    /// Speculative hand colour / hue rules).
+    #[serde(default)]
+    pub colour_tier: ProvenanceTier,
+    #[serde(default)]
+    pub colour_source: String,
     pub kind: SolidKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub floating: Option<bool>,
@@ -100,10 +118,19 @@ pub struct GasFlux {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FumeVisual {
     pub species: String,
+    /// 0-1 strength (optical depth of a coloured gas, opacity of an aerosol).
     pub intensity: f64,
+    /// Hue of the fume (transmitted colour of a gas, tint of an aerosol).
     pub rgb: [f64; 3],
     pub opacity: f64,
+    /// Derived from the plume's molar mass and temperature (`density_ratio > 1`), never stored per species.
     pub denser_than_air: bool,
+    /// Plume density relative to the room air, `(M / T) / (M_air / T_room)`.
+    #[serde(default)]
+    pub density_ratio: f64,
+    /// "gas" (absorbing gas) | "aerosol" (droplets or smoke).
+    #[serde(default)]
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -114,6 +141,12 @@ pub struct FlameVisual {
     pub flame_temp_k: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emitter_rgb: Option<[f64; 3]>,
+    /// Share (0-1) of the flame's visible light that comes from emitting metals (flame-test colours); 0 for a plain flame.
+    #[serde(default)]
+    pub metal_share: f64,
+    /// The strongest emitters, e.g. "Na atom 589 nm", "SrOH 606 nm".
+    #[serde(default)]
+    pub emitters: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -339,6 +372,12 @@ pub struct Vessel {
     /// True when the last coupled solve reached its tolerance (the sequential relaxation sweeps are then not needed).
     pub(crate) eq_converged: bool,
     pub gas_fluxes: Vec<GasFlux>,
+    /// Gas pooled in the free column of an open vessel (species id "X(g)", plus smoke solids "X(s)"), mol: the plume.
+    pub plume_mol: HashMap<String, f64>,
+    /// Aerosol mass concentration of the plume by source species, g/m3 (droplets of a soluble gas, smoke of a gas-phase solid).
+    pub plume_aerosol: HashMap<String, f64>,
+    /// Vapour that left the liquid by evaporation or sublimation this step (gas id, mol); drained by `step_plume`.
+    pub(crate) vapour_sources: Vec<(String, f64)>,
     pub active_reactions: Vec<ReactionRow>,
     pub catalog: HashMap<String, ReagentCatalogEntry>,
     /// Physical data of every imported compound, keyed by base species id (see `compound_thermo`).
@@ -416,6 +455,9 @@ impl Vessel {
             eq_moved: false,
             eq_converged: false,
             gas_fluxes: Vec::new(),
+            plume_mol: HashMap::new(),
+            plume_aerosol: HashMap::new(),
+            vapour_sources: Vec::new(),
             active_reactions: Vec::new(),
             catalog,
             compounds: chem_db::get_compound_registry().into_iter().map(|c| (c.species.clone(), c)).collect(),
@@ -953,6 +995,9 @@ impl Vessel {
         // 4. Headspace pressure & gas accumulation / venting
         self.step_headspace(dt_s);
 
+        // 4b. The plume of gas above an open vessel (what leaves the liquid pools in the free column or rises out of it)
+        self.step_plume(dt_s);
+
         self.update_suspension(dt_s);
 
         // 5. Generic reaction log
@@ -1093,15 +1138,12 @@ impl Vessel {
             for (gas_sp, &coeff) in &rxn.gas_products {
                 let gas_mol = extent * coeff;
                 let vol_gas_ml = gas_mol * r_ideal * t_k / (self.pressure_atm * 101325.0) * 1e6;
+                let nucleation = if rxn.reactants.keys().any(|k| k.ends_with("(s)")) { "solid" } else { "wall" };
                 self.gas_fluxes.push(GasFlux {
                     species: gas_sp.clone(),
                     rate_ml_s: vol_gas_ml / dt_s,
-                    bubble_diameter_mm: if gas_sp.contains("CO2") { 2.0 } else { 1.0 },
-                    nucleation: if rxn.reactants.keys().any(|k| k.ends_with("(s)")) {
-                        "solid".to_string()
-                    } else {
-                        "bulk".to_string()
-                    },
+                    bubble_diameter_mm: self.bubble_diameter_mm(nucleation),
+                    nucleation: nucleation.to_string(),
                 });
 
                 if self.sealed {
@@ -1444,21 +1486,26 @@ impl Vessel {
                 continue;
             }
             let aqueous = self.phase_is_aqueous(&v.species_mol);
-            let (scatter, sc_rgb) = if idx == 0 { self.calc_turbidity_and_scatter_rgb() } else { (0.0, [1.0, 1.0, 1.0]) };
             // the dominant molecule names a non-aqueous layer
             let lead = if aqueous {
                 None
             } else {
                 v.species_mol.iter().filter(|(k, _)| ions::species_charge(k) == 0).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(k, _)| k.clone())
             };
+            let n_layer = crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml);
+            let po = self.phase_optics(&v.species_mol, v.volume_ml, lead.as_deref());
+            let (scatter, albedo) = if idx == 0 { self.suspension_optics(n_layer) } else { (vec![0.0; optics::N_BINS], vec![1.0; optics::N_BINS]) };
             layers.push(LiquidLayer {
                 phase: if aqueous { PhaseKind::Aqueous } else { PhaseKind::Organic },
                 volume_ml: v.volume_ml,
                 density_g_ml: if v.volume_ml > 1e-9 { v.mass_g / v.volume_ml } else { 1.0 },
-                refractive_index: crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml),
-                absorbance_per_cm: self.phase_absorbance(&v.species_mol, v.volume_ml),
+                refractive_index: n_layer,
+                absorbance_per_cm: po.a_per_cm,
                 scatter_per_cm: scatter,
-                scatter_rgb: sc_rgb,
+                scatter_albedo: albedo,
+                colour_tier: po.tier,
+                colour_sources: po.sources,
+                solvent_class: po.solvent.to_string(),
                 name: lead.as_ref().map(|k| self.display_name(k)),
                 species: lead,
             });
@@ -1524,6 +1571,8 @@ impl Vessel {
                 suspended_diameter_um: view.suspended_d_m * 1e6,
                 particle_sigma_g: view.sigma_g,
                 rgb: props.rgb,
+                colour_tier: props.colour_tier.clone(),
+                colour_source: props.colour_source.clone(),
                 kind,
                 floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
                 remaining_fraction: Some(rem_frac),
@@ -1532,41 +1581,7 @@ impl Vessel {
             });
         }
 
-        let mut fumes = Vec::new();
-        // a sealed vessel's fumes are its evolved gas (not the air it was closed on, nor the vapour of its own liquids)
-        for (sp, mol) in self.evolved_headspace() {
-            if mol > 1e-5 {
-                let sp = &sp;
-                if let Some(fo) = spectra::fume_optics(sp) {
-                    if fo.opacity > 0.01 {
-                        fumes.push(FumeVisual {
-                            species: sp.clone(),
-                            intensity: (mol * 100.0).clamp(0.0, 1.0),
-                            rgb: fo.rgb_linear,
-                            opacity: fo.opacity,
-                            denser_than_air: fo.denser_than_air,
-                        });
-                    }
-                }
-            }
-        }
-        // An open vessel keeps no headspace gas: its fumes are the gases leaving right now (the step's gas fluxes).
-        for g in &self.gas_fluxes {
-            if g.species == "H2O(g)" || g.rate_ml_s <= 0.0 || fumes.iter().any(|f| f.species == g.species) {
-                continue;
-            }
-            if let Some(fo) = spectra::fume_optics(&g.species) {
-                if fo.opacity > 0.01 {
-                    fumes.push(FumeVisual {
-                        species: g.species.clone(),
-                        intensity: (g.rate_ml_s / 25.0).clamp(0.05, 1.0),
-                        rgb: fo.rgb_linear,
-                        opacity: fo.opacity,
-                        denser_than_air: fo.denser_than_air,
-                    });
-                }
-            }
-        }
+        let fumes = self.fume_visuals();
 
         let flame = if self.flame_active { self.flame_visual.clone() } else { None };
 
@@ -1644,23 +1659,17 @@ impl Vessel {
         let is_boiling = has_liquid && self.boil_vapour_ml_s > 0.0;
         // bubbling vigour from the vapour flow: a gentle simmer (~20 mL/s of vapour) to a hard boil (500+ mL/s)
         let boil_intensity = if is_boiling { (1.0 - (-self.boil_vapour_ml_s / 150.0).exp()).clamp(0.12, 1.0) } else { 0.0 };
-        let vap_visibility = if !has_liquid {
-            0.0
-        } else {
-            let hot = if self.temperature_k > 330.0 { ((self.temperature_k - 330.0) / 43.15).clamp(0.0, 1.0) } else { 0.0 };
-            if is_boiling { hot.max(boil_intensity) } else { hot }
-        };
-        let condensation = if has_liquid && self.temperature_k > self.room_k + 5.0 {
-            ((self.temperature_k - self.room_k) / 40.0).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        // visible vapour and wall condensation come from the mixing-line supersaturation of whatever evaporates (a dry vessel, a
+        // cold liquid or a sealed vessel shows none)
+        let mist = self.mist_state();
+        let vap_visibility = if has_liquid { mist.visibility.max(if is_boiling { boil_intensity * mist.visibility } else { 0.0 }) } else { 0.0 };
+        let condensation = if has_liquid { mist.condensation } else { 0.0 };
 
         let mut total_gas_rate = 0.0;
         for g in &self.gas_fluxes {
             total_gas_rate += g.rate_ml_s;
         }
-        let foam = (total_gas_rate / 50.0).clamp(0.0, 0.95);
+        let foam = self.foam_level(total_gas_rate);
 
         let (current_elements, mut unparsed_now) = self.element_inventory();
         let (element_errors, max_rel, max_abs, elements_ok) = conservation::audit_elements(&self.ledger, &current_elements);
@@ -1934,47 +1943,51 @@ impl Vessel {
         sum.abs()
     }
 
-    fn calc_turbidity_and_scatter_rgb(&self) -> (f64, [f64; 3]) {
-        let mut total_scatter = 0.0;
-        let mut rgb_weighted = [0.0_f64; 3];
-        let rgb = [1.0, 1.0, 1.0];
+    /// Extinction (1/cm) and single-scattering albedo per bin of the suspended solids in a medium of index `n_medium`: every
+    /// size class of every solid is a Mie / Rayleigh-Gans population with the solid's own refractive index and absorption.
+    /// Solids are summed in sorted order, so the result never depends on hash order.
+    pub(crate) fn suspension_optics(&self, n_medium: f64) -> (Vec<f64>, Vec<f64>) {
+        let n = optics::N_BINS;
         let vol_ml = self.reaction_volume_ml();
+        let mut ext = vec![0.0; n];
+        let mut sca = vec![0.0; n];
         if vol_ml <= 0.0 {
-            return (total_scatter, rgb);
+            return (ext, vec![1.0; n]);
         }
         let dust = self.dust_mol();
-
-        for (sp, &mol) in &self.solid_mol {
-            if mol > dust {
-                let thermo = chem_db::get_species_thermo(sp);
-                let mass_g = mol * thermo.mw;
-                let mass_conc = (mass_g / vol_ml) * self.ev.susp.get(sp).copied().unwrap_or(0.8).clamp(0.0, 1.0);
-                let props = self.solid_props(sp);
-                // every equal-mass size class scatters with its own cross-section per gram, weighted by its own suspended
-                // fraction (`mass_conc` already carries the mean one)
-                let view = self.solid_size_view(sp, &props);
-                let susp_mean = (view.class_susp.iter().sum::<f64>() / view.class_susp.len() as f64).max(1e-9);
-                let mut sc = 0.0;
-                for (d_m, s_k) in view.class_d_m.iter().zip(view.class_susp.iter()) {
-                    sc += optics::scatter_extinction_per_cm(
-                        mass_conc * (s_k / susp_mean) / view.class_d_m.len() as f64,
-                        d_m * 1e6,
-                        props.density_g_ml,
-                        props.refractive_index,
-                        1.333,
-                    );
-                }
-                total_scatter += sc;
-                // the scattered colour is the scattering-weighted mean of the suspended solids (order independent)
-                for k in 0..3 {
-                    rgb_weighted[k] += sc * props.rgb[k];
-                }
+        let mut keys: Vec<&String> = self.solid_mol.keys().collect();
+        keys.sort();
+        for sp in keys {
+            let mol = self.solid_mol[sp];
+            if mol <= dust {
+                continue;
+            }
+            let thermo = chem_db::get_species_thermo(sp);
+            let mass_g = mol * thermo.mw;
+            let mass_conc = (mass_g / vol_ml) * self.ev.susp.get(sp).copied().unwrap_or(0.8).clamp(0.0, 1.0);
+            let props = self.solid_props(sp);
+            // every equal-mass size class scatters with its own cross-section per gram, weighted by its own suspended
+            // fraction (`mass_conc` already carries the mean one)
+            let view = self.solid_size_view(sp, &props);
+            let susp_mean = (view.class_susp.iter().sum::<f64>() / view.class_susp.len() as f64).max(1e-9);
+            let classes: Vec<optics::scatter::Class> = view
+                .class_d_m
+                .iter()
+                .zip(view.class_susp.iter())
+                .map(|(d_m, s_k)| optics::scatter::Class {
+                    mass_conc_g_ml: mass_conc * (s_k / susp_mean) / view.class_d_m.len() as f64,
+                    diameter_um: d_m * 1e6,
+                    density_g_ml: props.density_g_ml,
+                })
+                .collect();
+            let (e, s) = optics::scatter::suspension_spectra(&classes, &optics::scatter::Material { n: props.refractive_index, alpha_per_cm: &props.alpha_per_cm }, n_medium);
+            for i in 0..n {
+                ext[i] += e[i];
+                sca[i] += s[i];
             }
         }
-        if total_scatter > 0.0 {
-            return (total_scatter, [rgb_weighted[0] / total_scatter, rgb_weighted[1] / total_scatter, rgb_weighted[2] / total_scatter]);
-        }
-        (total_scatter, rgb)
+        let albedo = (0..n).map(|i| if ext[i] > 1e-12 { (sca[i] / ext[i]).clamp(0.0, 1.0) } else { 1.0 }).collect();
+        (ext, albedo)
     }
 
     /// Provenance of the data actually used for a species: the mineral record for a solid, the import record for an

@@ -77,9 +77,36 @@ pub struct CompoundRequest {
     /// Shomate / NASA heat-capacity coefficients as supplied; stored, not consumed yet.
     #[serde(default)]
     pub cp_coefficients: Vec<f64>,
-    /// Linear (not sRGB) colour.
+    /// Linear (not sRGB) colour of the compound as a *solid or neat liquid* (a parsed colour phrase). Never an absorptivity.
     #[serde(default)]
     pub color_linear_rgb: Option<[f64; 3]>,
+    /// What the colour phrase was about and how sure the parser is (subject solid / solution / vapour, hydrate or not).
+    #[serde(default)]
+    pub color_meta: Option<ColourMeta>,
+    /// Absorption bands of the compound in solution `[nm, eps L/(mol cm), fwhm nm or null, solvent class or null]`, from the
+    /// PubChem UV text (or any measured set): the only way a dissolved import gets a colour.
+    #[serde(default)]
+    pub uv_bands: Vec<(f64, f64, Option<f64>, Option<String>)>,
+    /// Refractive index n_D of the pure compound, when measured.
+    #[serde(default)]
+    pub refractive_index: Option<f64>,
+    /// Surface tension of the neat liquid, mN/m at ~20-25 C, when measured.
+    #[serde(default)]
+    pub surface_tension_mn_m: Option<f64>,
+}
+
+/// Provenance of a parsed colour phrase.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ColourMeta {
+    /// "solid" | "solution" | "vapour" | "liquid"
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub hydrate: Option<bool>,
+    #[serde(default)]
+    pub confidence: Option<f64>,
+    #[serde(default)]
+    pub phrase: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

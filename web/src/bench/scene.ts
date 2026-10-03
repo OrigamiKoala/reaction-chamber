@@ -3,7 +3,18 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GlasswareMeshBundle, VesselBundle, createGlassware, setDefaultOpticsTables } from './glassware';
 import { VesselState, BottleState } from '../types';
 import { OpticsTables, ReagentCatalogEntry, VesselSnapshot } from '../types/sim';
-import { Thermometer, PHMeter, Balance, PressureGauge, HotPlate, Burner } from '../equipment';
+import {
+  Thermometer,
+  PHMeter,
+  Balance,
+  PressureGauge,
+  HotPlate,
+  Burner,
+  ElectrochemStation,
+  Spectrophotometer,
+  NmrMachine,
+  MassSpectrometer,
+} from '../equipment';
 import { THERMOMETER_RADIUS } from '../equipment/thermometer';
 import { PH_PROBE_RADIUS } from '../equipment/ph_meter';
 import { HOTPLATE_TOP_Y } from '../equipment/hotplate';
@@ -29,7 +40,17 @@ import { FilterRigs } from './filtration';
 import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
 
 /** Bench instruments the user can click (right panel shows their controls). */
-export type InstrumentId = 'hotplate' | 'balance' | 'phmeter' | 'thermometer' | 'gauge' | 'burner';
+export type InstrumentId =
+  | 'hotplate'
+  | 'balance'
+  | 'phmeter'
+  | 'thermometer'
+  | 'gauge'
+  | 'burner'
+  | 'electrochem'
+  | 'spectrophotometer'
+  | 'nmr'
+  | 'mass_spec';
 
 type PickHit = { type: 'vessel' | 'bottle' | 'balance-tare' | 'stopcock' | 'stirknob' | 'instrument'; id: string };
 
@@ -41,6 +62,10 @@ export interface BenchInstruments {
   pressureGauge: PressureGauge;
   hotPlate: HotPlate;
   burner: Burner;
+  electrochem: ElectrochemStation;
+  spectrophotometer: Spectrophotometer;
+  nmr: NmrMachine;
+  massSpec: MassSpectrometer;
 }
 
 interface Footprint {
@@ -70,6 +95,11 @@ const HOTPLATE_POS = new THREE.Vector3(0, 0, 6);
 const PH_METER_POS = new THREE.Vector3(46, 0, -14);
 const BALANCE_POS = new THREE.Vector3(80, 0, -4);
 const BURNER_POS = new THREE.Vector3(-80, 0, -12);
+const ELECTROCHEM_POS = new THREE.Vector3(-44, 0, -14);
+const SPECTRO_POS = new THREE.Vector3(-65, 0, 105);
+const MASS_SPEC_POS = new THREE.Vector3(15, 0, 105);
+const NMR_POS = new THREE.Vector3(65, 0, 105);
+const NMR_CRYO_POS = new THREE.Vector3(125, -90, 105);
 
 /**
  * Photoreal-leaning lab bench. 1 unit = 1 cm. Bench top at y = 0.
@@ -187,11 +217,9 @@ export class BenchScene {
     this.controls.dampingFactor = 0.08;
     this.controls.enablePan = false;
     this.controls.minDistance = 16;
-    this.controls.maxDistance = 190;
-    this.controls.minPolarAngle = 0.12;
-    this.controls.maxPolarAngle = 1.38;
-    this.controls.minAzimuthAngle = -1.35;
-    this.controls.maxAzimuthAngle = 1.35;
+    this.controls.maxDistance = 240;
+    this.controls.minPolarAngle = 0.08;
+    this.controls.maxPolarAngle = 1.45;
     this.controls.rotateSpeed = 0.6;
     this.controls.zoomSpeed = 0.9;
     this.controls.update();
@@ -207,6 +235,11 @@ export class BenchScene {
     const pressureGauge = new PressureGauge();
     const hotPlate = new HotPlate();
     const burner = new Burner();
+    const electrochem = new ElectrochemStation();
+    const spectrophotometer = new Spectrophotometer();
+    const nmr = new NmrMachine();
+    const massSpec = new MassSpectrometer();
+
     hotPlate.group.position.copy(HOTPLATE_POS);
     phMeter.group.position.copy(PH_METER_POS);
     phMeter.group.rotation.y = -0.35;
@@ -214,7 +247,27 @@ export class BenchScene {
     balance.group.rotation.y = -0.3;
     burner.group.position.copy(BURNER_POS);
     burner.group.rotation.y = 0.4;
-    this.scene.add(thermometer.group, phMeter.group, balance.group, pressureGauge.group, hotPlate.group, burner.group);
+    electrochem.group.position.copy(ELECTROCHEM_POS);
+    electrochem.group.rotation.y = 0.25;
+
+    spectrophotometer.group.position.copy(SPECTRO_POS);
+    massSpec.group.position.copy(MASS_SPEC_POS);
+    nmr.group.position.copy(NMR_POS);
+    nmr.cryoMagnet.position.copy(NMR_CRYO_POS);
+
+    this.scene.add(
+      thermometer.group,
+      phMeter.group,
+      balance.group,
+      pressureGauge.group,
+      hotPlate.group,
+      burner.group,
+      electrochem.group,
+      spectrophotometer.group,
+      nmr.group,
+      nmr.cryoMagnet,
+      massSpec.group
+    );
     this.instrumentProxies = [
       this.addInstrumentProxy('hotplate', hotPlate.group, null),
       this.addInstrumentProxy('balance', balance.group, null),
@@ -223,8 +276,23 @@ export class BenchScene {
       this.addInstrumentProxy('thermometer', thermometer.group, null),
       this.addInstrumentProxy('gauge', pressureGauge.group, null),
       this.addInstrumentProxy('burner', burner.group, null, new THREE.Box3(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, BURNER_TOP_Y, 5))),
+      this.addInstrumentProxy('electrochem', electrochem.group, electrochem.electrodesGroup),
+      this.addInstrumentProxy('spectrophotometer', spectrophotometer.group, null),
+      this.addInstrumentProxy('nmr', nmr.group, null),
+      this.addInstrumentProxy('mass_spec', massSpec.group, null),
     ];
-    this.instruments = { thermometer, phMeter, balance, pressureGauge, hotPlate, burner };
+    this.instruments = {
+      thermometer,
+      phMeter,
+      balance,
+      pressureGauge,
+      hotPlate,
+      burner,
+      electrochem,
+      spectrophotometer,
+      nmr,
+      massSpec,
+    };
     this.thermoMotion = { bundle: null, t: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion() };
     this.phMotion = { bundle: null, t: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion() };
     this.updateProbes(0, true);
@@ -234,6 +302,7 @@ export class BenchScene {
       { x0: 36, x1: 57, z0: -26, z1: -2 },
       { x0: 67, x1: 93, z0: -19, z1: 11 },
       { x0: -97, x1: -73, z0: -18, z1: 10 },
+      { x0: -56, x1: -32, z0: -24, z1: -4 },
       STATION_FOOTPRINT,
     ];
     this.buildSlots();
@@ -1246,14 +1315,27 @@ export class BenchScene {
     const r = new THREE.Vector3(-f.z, 0, f.x); // right-hand side of the view direction
     const step = WALK_SPEED * dt * (this.moveKeys.has('ShiftLeft') || this.moveKeys.has('ShiftRight') ? 2.5 : 1);
     const d = f.multiplyScalar(fwd).addScaledVector(r, right);
-    d.normalize().multiplyScalar(step);
     const t = this.controls.target;
-    const nx = THREE.MathUtils.clamp(t.x + d.x, BENCH.xMin + 10, BENCH.xMax - 10);
-    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, BENCH.zMax);
+    const nx = THREE.MathUtils.clamp(t.x + d.x, -130, 130);
+    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, 140);
     d.set(nx - t.x, 0, nz - t.z);
     t.add(d);
     this.camera.position.add(d);
     this.cameraTween = null; // walking takes over from any glide
+  }
+
+  public focusStation(station: string): void {
+    if (station === 'bench' || station === 'hotplate' || station === 'balance' || station === 'phmeter' || station === 'thermometer' || station === 'gauge' || station === 'burner') {
+      this.focusPoint(new THREE.Vector3(0, 10, 0), 65, true);
+    } else if (station === 'spectrophotometer') {
+      this.focusPoint(SPECTRO_POS.clone().add(new THREE.Vector3(0, 8, 0)), 42, true);
+    } else if (station === 'mass_spec') {
+      this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(0, 10, 0)), 45, true);
+    } else if (station === 'nmr') {
+      this.focusPoint(NMR_POS.clone().add(new THREE.Vector3(0, 12, 0)), 48, true);
+    } else if (station === 'electrochem') {
+      this.focusPoint(ELECTROCHEM_POS.clone().add(new THREE.Vector3(0, 8, 0)), 38, true);
+    }
   }
 
   // ---------------------------------------------------------------- input

@@ -4,9 +4,9 @@
 
 import type { ProvenanceTier, VesselType } from './index';
 
-/** Number of wavelength bins in every spectrum: 400..710 nm in 10 nm steps (bin i centre = 400 + 10*i). */
-export const N_BINS = 32;
-export const BIN_NM0 = 400;
+/** Number of wavelength bins in every spectrum: 380..780 nm in 10 nm steps (bin i centre = 380 + 10*i). */
+export const N_BINS = 41;
+export const BIN_NM0 = 380;
 export const BIN_STEP_NM = 10;
 
 /** Returned once by WASM `optics_tables()`; consumed by the liquid shader (and nothing else needs CMFs). */
@@ -14,7 +14,7 @@ export interface OpticsTables {
   n_bins: number;
   /** length N_BINS*3. Linear-sRGB weights per bin (illuminant D65, white-balanced so a bin-wise T=1 gives rgb=(1,1,1)). */
   rgb_weights: number[];
-  /** Hash of the engine's absorption-band data: caches of derived colours (bottle colours) key on it. */
+  /** Hash of the engine's optical data and models: caches of derived colours (bottle colours) key on it. */
   data_version?: string;
 }
 
@@ -27,15 +27,27 @@ export interface LiquidLayer {
   refractive_index: number;
   /** Decadic absorbance per cm of path, per bin (A = sum eps_i * c_i). Beer–Lambert: T_bin = 10^(-a * pathCm). length N_BINS */
   absorbance_per_cm: number[];
-  /** Turbidity of suspended solid, 1/cm (natural-log extinction by scattering). 0 = optically clear. */
-  scatter_per_cm: number;
-  /** Linear-RGB colour of light scattered by the suspended solid (its body/reflectance colour). */
-  scatter_rgb: [number, number, number];
+  /** Extinction of the suspended solids per bin, 1/cm (natural log; Mie, absorption included). All 0 = optically clear. length N_BINS */
+  scatter_per_cm: number[];
+  /** Single-scattering albedo of the suspended solids per bin (scattered / extinguished). length N_BINS */
+  scatter_albedo: number[];
+  /** Weakest provenance tier of the optical data behind the layer's colour. */
+  colour_tier?: ProvenanceTier;
+  /** Where the colour comes from (data source / model), for the Details drawer. */
+  colour_sources?: string[];
+  /** Solvent class the absorption was evaluated in: water | alkane | aromatic | alcohol | other. */
+  solvent_class?: string;
+  /** Species id / display name of the main component of a non-aqueous layer. */
+  species?: string;
+  name?: string;
 }
 
 export type SolidKind = 'powder' | 'crystal' | 'metal' | 'gel' | 'curds';
 
 export interface SolidVisual {
+  /** Provenance tier / basis of the solid's colour (measured phrase, band edge, inherited chromophore, mixed valence, hand colour). */
+  colour_tier?: ProvenanceTier;
+  colour_source?: string;
   species: string;
   name: string;
   mass_g: number;
@@ -82,8 +94,12 @@ export interface FumeVisual {
   /** Linear-RGB colour of the visible fume (NO2 brown, Cl2 pale yellow-green, I2 violet, white HCl mist...). */
   rgb: [number, number, number];
   opacity: number;
-  /** Heavier than air → rolls over the lip and falls (Cl2, NO2, I2). */
+  /** Derived from the plume's molar mass and temperature (density_ratio > 1): rolls over the lip and falls (Cl2, NO2, Br2). */
   denser_than_air: boolean;
+  /** Plume density relative to the room air. */
+  density_ratio?: number;
+  /** 'gas' = absorbing gas (hue from cross-sections); 'aerosol' = droplets / smoke (white haze). */
+  kind?: 'gas' | 'aerosol';
 }
 
 export interface FlameVisual {
@@ -94,8 +110,46 @@ export interface FlameVisual {
   luminosity: number;
   /** Colour temperature of the emitting zone, K (for blackbody tint of yellow part). */
   flame_temp_k: number;
-  /** Optional flame-test emitter (Na yellow, Cu green, Li red...). */
+  /** Colour of the whole flame (own light + the emission of dissolved metals), linear RGB. */
   emitter_rgb?: [number, number, number];
+  /** 0..1: share of the visible light that comes from emitting metals (flame test); 0 = plain flame. */
+  metal_share?: number;
+  /** Strongest emitters, e.g. "Na atom 589 nm". */
+  emitters?: string[];
+}
+
+/** Result of the burner's flame test (engine `vessel_flame_test`). */
+export interface FlameTestResult {
+  emitter_rgb: [number, number, number];
+  metal_share: number;
+  emitters: string[];
+}
+
+/** UV-vis scan of a liquid layer (engine `vessel_uvvis_scan`). */
+export interface UvVisPoint {
+  nm: number;
+  /** Decadic absorbance of the dissolved species over the path. */
+  a_species: number;
+  /** Apparent absorbance from the extinction of suspended solids. */
+  a_turbidity: number;
+}
+export interface UvVisContributor {
+  species: string;
+  name: string;
+  peak_nm: number;
+  peak_a_per_cm: number;
+  /** Absorbance per cm of this species at every scanned point (aligned with `UvVisScan.points`). */
+  a_per_cm: number[];
+  tier: ProvenanceTier;
+  source: string;
+  solvent_matched: boolean;
+}
+export interface UvVisScan {
+  layer: number;
+  solvent_class: string;
+  path_cm: number;
+  points: UvVisPoint[];
+  contributors: UvVisContributor[];
 }
 
 export type VesselEventKind =
@@ -280,6 +334,41 @@ export interface VesselSnapshot {
   gas?: GasInfo;
   /** The gas phase: the atmosphere of an open vessel or the closed gas mixture (air + vapour + evolved gas) of a sealed one. */
   gas_phase?: GasPhaseInfo;
+  /** Electrochemistry / electrolysis cell readout if electrodes are present. */
+  electrolysis?: ElectroReadout | null;
+}
+
+export interface ElectrodeSpec {
+  material: string;
+  area_cm2: number;
+}
+
+export interface ElectrolysisSpec {
+  anode: ElectrodeSpec;
+  cathode: ElectrodeSpec;
+  mode: 'voltage' | 'current';
+  value: number;
+  spacing_cm?: number;
+  on?: boolean;
+}
+
+export interface ElectrodeReactionRow {
+  electrode: string;
+  equation: string;
+  current_a: number;
+  faradaic_fraction: number;
+  e0_v: number;
+}
+
+export interface ElectroReadout {
+  current_a: number;
+  cell_voltage_v: number;
+  anode_potential_v: number;
+  cathode_potential_v: number;
+  ohmic_drop_v: number;
+  resistance_ohm: number;
+  charge_c: number;
+  rows: ElectrodeReactionRow[];
 }
 
 // ------------------------------------------------------------------ commands
@@ -335,6 +424,10 @@ export interface VesselControls {
   debug_network_generator?: boolean;
   /** Atmosphere an open vessel exchanges with: pressure, dry composition, humidity (vacuum, pressurised, inert, O2-rich all possible). */
   atmosphere?: AtmosphereSpec;
+  /** Electrochemistry / electrolysis setup. */
+  electrolysis?: ElectrolysisSpec | null;
+  /** Remove electrodes from vessel. */
+  remove_electrodes?: boolean;
 }
 
 export interface ReagentCatalogEntry {
@@ -378,6 +471,9 @@ export type SimRequest =
   | { type: 'VESSEL_EQUILIBRATE'; payload: { handle: number; max_sim_s?: number }; requestId: string }
   | { type: 'STEP_ALL'; payload: { handles: number[]; dt_s: number }; requestId: string }
   | { type: 'OPTICS_TABLES'; payload: {}; requestId: string }
+  | { type: 'UVVIS_SCAN'; payload: { handle: number; layer?: number; nm_min: number; nm_max: number; step_nm: number; path_cm: number }; requestId: string }
+  | { type: 'FLAME_TEST'; payload: { handle: number; t_flame_k: number }; requestId: string }
+  | { type: 'COLOUR_TO_ABSORBANCE'; payload: { r: number; g: number; b: number; path_cm: number }; requestId: string }
   | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string }
   | { type: 'TAKE_MINERAL_LOOKUPS'; payload: {}; requestId: string }
   | { type: 'RESOLVE_MINERAL'; payload: MineralData; requestId: string };
@@ -425,8 +521,16 @@ export interface CompoundRequest {
   cp_j_mol_k?: number;
   /** Heat capacity polynomial coefficients. */
   cp_coefficients?: number[];
-  /** LINEAR (not sRGB) rgb, 0..1. */
+  /** LINEAR (not sRGB) rgb, 0..1: the compound's colour as a solid / neat liquid (a parsed colour phrase, never an absorptivity). */
   color_linear_rgb?: [number, number, number];
+  /** What the colour phrase was about (solid / solution / liquid / vapour), hydrate flag and parser confidence. */
+  color_meta?: { subject: string; hydrate?: boolean; confidence: number; phrase: string };
+  /** Solution absorption bands from the PubChem UV text: `[nm, eps, fwhm | null, solvent class | null]`. */
+  uv_bands?: Array<[number, number, number | null, string | null]>;
+  /** Measured refractive index n_D of the neat compound. */
+  refractive_index?: number;
+  /** Surface tension of the neat liquid, mN/m. */
+  surface_tension_mn_m?: number;
 }
 
 /** Derived thermodynamic record of a compound (engine response). */

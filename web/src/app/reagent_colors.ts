@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SimController } from '../sim/sim_controller';
 import { DoseRequest, OpticsTables, ReagentCatalogEntry, VesselSnapshot } from '../types/sim';
-import { computeSpectralColor } from '../render/liquid_shader';
+import { computeSpectralColor, scatterSummary } from '../render/liquid_shader';
 import { loadJSON, saveJSON } from './storage';
 
 /**
@@ -60,13 +60,13 @@ function colourFromSnapshot(snap: VesselSnapshot, optics: OpticsTables | null): 
   }
   const layer = snap.layers[snap.layers.length - 1];
   if (!layer) return null;
-  const [r, g, b] = computeSpectralColor(optics, layer.absorbance_per_cm, BOTTLE_PATH_CM);
-  const tau = Math.exp(-layer.scatter_per_cm * BOTTLE_PATH_CM);
-  return toHex(
-    r * tau + layer.scatter_rgb[0] * (1 - tau),
-    g * tau + layer.scatter_rgb[1] * (1 - tau),
-    b * tau + layer.scatter_rgb[2] * (1 - tau)
-  );
+  // the same derivation as the liquid in a vessel: spectral absorption at the bottle path, plus the in-scattered light of
+  // any suspended solid (chromatic extinction included)
+  const wl = layer.absorbance_per_cm.map((a, i) => a * BOTTLE_PATH_CM + ((layer.scatter_per_cm?.[i] ?? 0) * BOTTLE_PATH_CM) / Math.LN10);
+  const [r, g, b] = computeSpectralColor(optics, wl.map((x) => x / BOTTLE_PATH_CM), BOTTLE_PATH_CM);
+  const sc = scatterSummary(optics, layer);
+  const tau = Math.exp(-sc.w * BOTTLE_PATH_CM);
+  return toHex(r + sc.rgb[0] * (1 - tau) * 0.5, g + sc.rgb[1] * (1 - tau) * 0.5, b + sc.rgb[2] * (1 - tau) * 0.5);
 }
 
 function probeDose(entry: ReagentCatalogEntry): DoseRequest {

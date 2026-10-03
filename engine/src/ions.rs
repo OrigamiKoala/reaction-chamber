@@ -345,7 +345,7 @@ pub fn anion_def(id: &str) -> Option<&'static IonDef> {
 }
 
 /// Polyatomic cations: (id, formula, charge).
-static POLY_CATIONS: &[(&str, &str, i32)] = &[("NH4+", "NH4", 1), ("H3O+", "H3O", 1), ("Hg2+2", "Hg2", 2)];
+static POLY_CATIONS: &[(&str, &str, i32)] = &[("NH4+", "NH4", 1), ("H3O+", "H3O", 1), ("Hg2+2", "Hg2", 2), ("VO+2", "VO", 2), ("UO2+2", "UO2", 2)];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IonCount {
@@ -400,7 +400,7 @@ fn cation_solutions(rest: &Elems, target: i32) -> Option<Vec<IonCount>> {
 
 fn poly_cations(idx: usize, rest: &Elems, target: i32, chosen: Vec<IonCount>) -> Option<Vec<IonCount>> {
     // H3O+ is deliberately absent: acid hydrogens are handled as H+ by the monatomic table.
-    const POLY_USED: [usize; 2] = [0, 2];
+    const POLY_USED: [usize; 4] = [0, 2, 3, 4];
     if idx >= POLY_USED.len() {
         return mono_cations(rest, target, chosen);
     }

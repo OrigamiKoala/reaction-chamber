@@ -5,8 +5,8 @@ pub mod physics;
 pub mod conservation;
 pub mod benchmark;
 pub mod optics;
-pub mod spectra;
 pub mod ions;
+pub mod crystal;
 pub mod acid_estimate;
 pub mod smiles;
 pub mod smarts;
@@ -40,6 +40,8 @@ pub mod transport;
 pub mod transfer;
 pub mod vessel_transfer;
 pub mod vessel_burn;
+pub mod vessel_appearance;
+pub mod vessel_uvvis;
 pub mod vessel_electro;
 
 use wasm_bindgen::prelude::*;
@@ -353,6 +355,37 @@ pub fn step_all(handles_json: &str, dt: f64) -> Result<JsValue, JsValue> {
     })
 }
 
+/// UV-vis scan of a liquid layer (see `vessel_uvvis`): per-wavelength species absorbance and turbidity plus the contributing
+/// species with their data tier and source.
+#[wasm_bindgen]
+pub fn vessel_uvvis_scan(handle: u32, layer: u32, nm_min: f64, nm_max: f64, step_nm: f64, path_cm: f64) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        serde_wasm_bindgen_to_val(&v.uvvis_scan(layer as usize, nm_min, nm_max, step_nm, path_cm))
+    })
+}
+
+/// The burner's flame test: the colour a gas flame at `t_flame_k` takes when a loop dipped in this vessel's liquid is held in it.
+#[wasm_bindgen]
+pub fn vessel_flame_test(handle: u32, t_flame_k: f64) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        let fc = v.flame_test(t_flame_k);
+        serde_wasm_bindgen_to_val(&serde_json::json!({
+            "emitter_rgb": fc.emitter_rgb,
+            "metal_share": fc.metal_share,
+            "emitters": fc.top.iter().filter(|e| e.3 > 0.05).map(|e| format!("{} {} {:.0} nm", e.0, e.1, e.2)).collect::<Vec<_>>(),
+        }))
+    })
+}
+
+/// Speculative absorbance spectrum (per cm, engine grid) whose transmission over `path_cm` has the given linear-sRGB colour:
+/// the single RGB -> spectrum inversion, for visual-only liquids known only by a colour.
+#[wasm_bindgen]
+pub fn colour_to_absorbance(r: f64, g: f64, b: f64, path_cm: f64) -> Vec<f64> {
+    optics::fallback::absorbance_for_colour([r, g, b], path_cm)
+}
+
 #[wasm_bindgen]
 pub fn optics_tables_json() -> String {
     optics::tables_json()
@@ -361,7 +394,7 @@ pub fn optics_tables_json() -> String {
 /// Hash of the engine's optics data (absorption bands): a cache key for anything derived from solution colours.
 #[wasm_bindgen]
 pub fn optics_data_version() -> String {
-    format!("{:016x}", spectra::data_hash())
+    format!("{:016x}", optics::records::data_hash())
 }
 
 #[wasm_bindgen]

@@ -6,7 +6,7 @@
 // engine snapshot and must NOT be added here. (Stage 8: the engine keeps a dissolving solid as a particle population
 // until it has dissolved, so the old "ghost pile" that faked the undissolved powder is gone.)
 import * as THREE from 'three';
-import { BIN_NM0, BIN_STEP_NM, LiquidLayer, N_BINS, SolidVisual, SpeciesRow, VesselSnapshot } from '../types/sim';
+import { LiquidLayer, N_BINS, SolidVisual, SpeciesRow, VesselSnapshot } from '../types/sim';
 
 export interface VisualItem {
   key: string;
@@ -22,32 +22,14 @@ export interface VisualItem {
   density_g_ml: number;
   /** g/mol, 0 if unknown. */
   mw: number;
+  /** Liquids: decadic absorbance per cm (engine grid) from the engine's Speculative RGB inversion (`colourToAbsorbance`). */
+  absorbance_per_cm?: number[];
 }
 
 /** sRGB hex ('#rrggbb') to linear RGB. */
 export function hexToLinear(hex: string): [number, number, number] {
   const c = new THREE.Color(hex);
   return [c.r, c.g, c.b];
-}
-
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
-
-/** Decadic absorbance spectrum (per cm, N_BINS) whose transmittance over `pathCm` approximates the given colour. */
-export function absorbanceFromRgb(rgb: [number, number, number], pathCm = 3): number[] {
-  const a = rgb.map((c) => -Math.log10(Math.min(1, Math.max(0.02, c))) / pathCm);
-  const out: number[] = [];
-  for (let i = 0; i < N_BINS; i++) {
-    const nm = BIN_NM0 + BIN_STEP_NM * i;
-    const wB = 1 - smooth(470, 530, nm);
-    const wR = smooth(560, 620, nm);
-    const wG = Math.max(0, 1 - Math.abs(nm - 545) / 65);
-    const sum = wB + wG + wR || 1;
-    out.push((wR * a[0] + wG * a[1] + wB * a[2]) / sum);
-  }
-  return out;
 }
 
 export class VisualContents {
@@ -124,13 +106,13 @@ export class VisualContents {
     // ---- liquids: dilute-mix into the aqueous layer (or start one)
     for (const it of list) {
       if (it.kind !== 'liquid' || it.volume_ml <= 1e-4) continue;
-      const a = absorbanceFromRgb(it.rgb);
+      const a = it.absorbance_per_cm ?? new Array(N_BINS).fill(0);
       const aq = layers.find((l) => l.phase === 'aqueous');
       if (aq) {
         const v0 = aq.volume_ml;
         const v1 = it.volume_ml;
         aq.absorbance_per_cm = aq.absorbance_per_cm.map((x, i) => (x * v0 + a[i] * v1) / (v0 + v1));
-        aq.scatter_per_cm = (aq.scatter_per_cm * v0) / (v0 + v1);
+        aq.scatter_per_cm = aq.scatter_per_cm.map((x) => (x * v0) / (v0 + v1));
         aq.volume_ml = v0 + v1;
       } else {
         layers.unshift({
@@ -139,8 +121,9 @@ export class VisualContents {
           density_g_ml: it.density_g_ml,
           refractive_index: 1.333,
           absorbance_per_cm: a,
-          scatter_per_cm: 0,
-          scatter_rgb: [1, 1, 1],
+          scatter_per_cm: new Array(N_BINS).fill(0),
+          scatter_albedo: new Array(N_BINS).fill(1),
+          solvent_class: 'water',
         });
       }
       total += it.volume_ml;

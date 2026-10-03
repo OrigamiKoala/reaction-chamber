@@ -25,7 +25,8 @@ use crate::db::SpeciesStore;
 use crate::ions;
 use crate::lle;
 use crate::molecule::{self, IonEnv, Mixture, Molecule, SolidModel};
-use crate::optics::{self, BIN_NM0, BIN_STEP_NM, N_BINS};
+use crate::optics::{self, N_BINS};
+use crate::types::ProvenanceTier;
 use crate::physics::R_GAS;
 use crate::vessel::*;
 
@@ -48,37 +49,63 @@ pub(crate) struct MolCache {
     minerals_len: usize,
 }
 
+/// A readable form of an engine species id for the log: charges as superscripts ("Fe+3" -> "Fe³⁺"), digits of the formula as
+/// subscripts, the phase tag dropped ("AgCl(s)" -> "AgCl").
+pub fn prettify_species_id(sp: &str) -> String {
+    let base = sp.trim_end_matches("(s)").trim_end_matches("(aq)").trim_end_matches("(g)").trim_end_matches("(l)");
+    let (body, z) = ions::split_charge(base);
+    let sub = |c: char| match c {
+        '0'..='9' => char::from_u32('₀' as u32 + (c as u32 - '0' as u32)).unwrap_or(c),
+        _ => c,
+    };
+    let sup = |c: char| match c {
+        '0' => '⁰', '1' => '¹', '2' => '²', '3' => '³', '4' => '⁴', '5' => '⁵', '6' => '⁶', '7' => '⁷', '8' => '⁸', '9' => '⁹',
+        '+' => '⁺', '-' => '⁻',
+        _ => c,
+    };
+    let mut out = String::new();
+    for c in body.chars() {
+        out.push(sub(c));
+    }
+    if z != 0 {
+        let mag = z.abs();
+        let digits = if mag > 1 { mag.to_string() } else { String::new() };
+        let sign = if z > 0 { '+' } else { '-' };
+        for c in digits.chars().chain(std::iter::once(sign)) {
+            out.push(sup(c));
+        }
+    }
+    out
+}
+
 fn base_id(sp: &str) -> &str {
     sp.strip_suffix("(s)").or_else(|| sp.strip_suffix("(l)")).or_else(|| sp.strip_suffix("(g)")).or_else(|| sp.strip_suffix("(aq)")).unwrap_or(sp)
 }
 
-/// Decadic absorbance per cm per bin whose 2 cm transmission approximates the linear colour `target`.
-fn absorbance_for_colour(target: [f64; 3]) -> Vec<f64> {
-    let path = 2.0;
-    let share = |i: usize| -> [f64; 3] {
-        let l = BIN_NM0 + i as f64 * BIN_STEP_NM;
-        let w = [((l - 560.0) / 70.0).clamp(0.0, 1.0), (1.0 - (l - 545.0).abs() / 80.0).clamp(0.0, 1.0), ((510.0 - l) / 70.0).clamp(0.0, 1.0)];
-        let s = (w[0] + w[1] + w[2]).max(1e-9);
-        [w[0] / s, w[1] / s, w[2] / s]
-    };
-    let tgt = target.map(|x| x.clamp(0.02, 1.0));
-    let mut a_ch = tgt.map(|t| -t.log10() / path);
-    let mut bins = [0.0; N_BINS];
-    for _ in 0..10 {
-        for (i, b) in bins.iter_mut().enumerate() {
-            let w = share(i);
-            *b = w[0] * a_ch[0] + w[1] * a_ch[1] + w[2] * a_ch[2];
-        }
-        let got = optics::transmitted_linear_rgb(&bins, path);
-        for c in 0..3 {
-            a_ch[c] = (a_ch[c] + (got[c].max(1e-3).log10() - tgt[c].log10()) / path).clamp(0.0, 6.0);
-        }
+/// The optical state of one liquid phase (see `Vessel::phase_optics`).
+pub(crate) struct PhaseOptics {
+    pub a_per_cm: Vec<f64>,
+    pub tier: ProvenanceTier,
+    pub sources: Vec<String>,
+    pub solvent: &'static str,
+}
+
+fn tier_rank(t: &ProvenanceTier) -> u8 {
+    match t {
+        ProvenanceTier::Tabulated | ProvenanceTier::Refined | ProvenanceTier::UserSet => 0,
+        ProvenanceTier::Imported => 1,
+        ProvenanceTier::Estimated => 2,
+        ProvenanceTier::Speculative => 3,
     }
-    for (i, b) in bins.iter_mut().enumerate() {
-        let w = share(i);
-        *b = w[0] * a_ch[0] + w[1] * a_ch[1] + w[2] * a_ch[2];
+}
+
+/// The weaker (less trusted) of two provenance tiers.
+pub(crate) fn weaker(a: &ProvenanceTier, b: &ProvenanceTier) -> ProvenanceTier {
+    if tier_rank(b) > tier_rank(a) {
+        b.clone()
+    } else {
+        a.clone()
     }
-    bins.to_vec()
 }
 
 /// One liquid phase as the snapshot sees it.
@@ -168,7 +195,13 @@ impl Vessel {
                 }
             }
         }
-        sp.to_string()
+        // a mineral's registered name (resolved from PubChem when it formed), else a readable formula
+        if let Some(m) = self.minerals.iter().find(|m| m.solid_species == sp) {
+            if !m.mineral.is_empty() && m.mineral != m.formula {
+                return m.mineral.clone();
+            }
+        }
+        prettify_species_id(sp)
     }
 
     // ------------------------------------------------------------------------------------------------ liquid inventory
@@ -887,24 +920,82 @@ impl Vessel {
         w > 0.0 && w >= 0.5 * molecules.max(1e-300)
     }
 
-    /// Absorbance of one liquid phase per cm (the band tables for its species, plus the neat colour of a coloured liquid
-    /// compound in proportion to its volume fraction).
-    pub(crate) fn phase_absorbance(&self, map: &HashMap<String, f64>, volume_ml: f64) -> Vec<f64> {
-        let mut a = optics::absorbance_per_cm_from_mol(map, volume_ml / 1000.0).to_vec();
+    /// Optics of one liquid phase: the absorbance per cm of its species *in this phase's solvent*, and where the data came
+    /// from. A species contributes through (in order) the UV bands of its import, the species store's optical record, the seed
+    /// row, the ligand-field estimate; a pure liquid with a colour phrase also carries its neat colour in proportion to its
+    /// volume fraction (a Speculative colour, never an absorptivity of a solute). `lead` is the main component of a
+    /// non-aqueous phase (it names the solvent class).
+    pub(crate) fn phase_optics(&self, map: &HashMap<String, f64>, volume_ml: f64, lead: Option<&str>) -> PhaseOptics {
+        let aqueous = self.phase_is_aqueous(map);
+        let smiles: Option<String> = lead.and_then(|k| {
+            self.compound_for(k)
+                .and_then(|c| c.smiles.clone())
+                .or_else(|| crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(k).and_then(|r| r.identity.smiles.clone())))
+        });
+        let solvent = optics::solution::solvent_class(aqueous, smiles.as_deref());
+        let mut a = vec![0.0; N_BINS];
+        let vol_l = volume_ml / 1000.0;
+        // (peak absorbance of the species, tier, source, solvent matched)
+        let mut used: Vec<(f64, ProvenanceTier, String, bool)> = Vec::new();
+        if vol_l > 1e-9 {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            for sp in keys {
+                let conc = map[sp] / vol_l;
+                if conc <= 1e-12 {
+                    continue;
+                }
+                let extra: &[crate::db::record::OpticsBand] = self.compound_for(sp).map_or(&[], |c| c.uv_bands.as_slice());
+                if let Some(r) = optics::solution::resolve_with(sp, solvent, extra) {
+                    let mut one = vec![0.0; N_BINS];
+                    optics::solution::accumulate(&mut one, &r.bands, conc);
+                    let peak = optics::solution::peak(&one).0;
+                    if peak > 0.0 {
+                        for (x, y) in a.iter_mut().zip(&one) {
+                            *x += y;
+                        }
+                        used.push((peak, r.tier.clone(), r.source.clone(), r.solvent_matched));
+                    }
+                }
+            }
+        }
         let t = self.temperature_k;
         for (sp, &mol) in map {
             if let Some(c) = self.compound_for(sp) {
                 if let (Some(rgb), true) = (c.color_linear_rgb, c.state_at_room() == "liquid") {
-                    if let Some(m) = self.molecule(sp) {
-                        let phi = (mol * m.v_liquid_m3_mol(t) * 1e6 / volume_ml.max(1e-12)).clamp(0.0, 1.0);
-                        for (x, y) in a.iter_mut().zip(absorbance_for_colour(rgb)) {
-                            *x += phi * y;
+                    if c.solid_colour.as_ref().map_or(true, |m| m.subject != "solution") {
+                        if let Some(m) = self.molecule(sp) {
+                            let phi = (mol * m.v_liquid_m3_mol(t) * 1e6 / volume_ml.max(1e-12)).clamp(0.0, 1.0);
+                            let neat = optics::fallback::absorbance_for_colour(rgb, 2.0);
+                            for (x, y) in a.iter_mut().zip(neat) {
+                                *x += phi * y;
+                            }
+                            let peak = a.iter().cloned().fold(0.0, f64::max).max(1e-9);
+                            used.push((peak * phi, ProvenanceTier::Speculative, format!("neat colour phrase of {} (speculative inversion)", c.name), true));
                         }
                     }
                 }
             }
         }
-        a
+        // weakest tier among the species that matter (>= 5 % of the strongest contribution)
+        let max_peak = used.iter().map(|u| u.0).fold(0.0, f64::max);
+        let mut tier = ProvenanceTier::Tabulated;
+        let mut sources: Vec<String> = Vec::new();
+        for (peak, ti, src, matched) in &used {
+            if *peak < 0.05 * max_peak {
+                continue;
+            }
+            let ti = if *matched { ti.clone() } else { weaker(ti, &ProvenanceTier::Estimated) };
+            tier = weaker(&tier, &ti);
+            let label = if *matched { src.clone() } else { format!("{} (solvent not matched)", src) };
+            if !sources.contains(&label) {
+                sources.push(label);
+            }
+        }
+        if used.is_empty() {
+            tier = ProvenanceTier::Tabulated;
+        }
+        PhaseOptics { a_per_cm: a, tier, sources, solvent }
     }
 
     // ------------------------------------------------------------------------------------------------ sublimation

@@ -4,7 +4,7 @@ Assembles:
 1. PHREEQC Aqueous Core (master species, equilibria, Ksp)
 2. IUPAC pKa Dataset
 3. Joback Group Contribution Table
-4. Curated Color and Absorbance Table
+4. (removed in Stage 10: optical data are the engine's optical records, engine/data/optics_seed.json)
 5. 500+ Curated Species mapped by InChIKey
 6. Conflict Report
 Emits to web/public/data/bundle.json and conflict_report.json.
@@ -15,7 +15,6 @@ from pathlib import Path
 from phreeqc_parser import get_phreeqc_data
 from pka_parser import get_pka_records
 from joback_estimator import JOBACK_GROUPS
-from curated_colors import get_color_table
 from species_curation import build_curated_database
 from conflict_checker import analyze_conflicts
 
@@ -25,13 +24,11 @@ def build_data_bundle():
     # 1. Collect sources
     phreeqc = get_phreeqc_data()
     pka_list = get_pka_records()
-    colors = get_color_table()
     species_db = build_curated_database()
     
     print(f"Loaded {len(species_db)} curated species keyed by InChIKey.")
     print(f"Loaded {len(phreeqc['aqueous_equilibria'])} aqueous equilibria and {len(phreeqc['mineral_solubilities'])} mineral solubilities.")
     print(f"Loaded {len(pka_list)} IUPAC pKa records.")
-    print(f"Loaded {len(colors)} color/absorbance spectra.")
     
     # 2. Conflict Report
     conflict_report = analyze_conflicts(species_db)
@@ -49,7 +46,6 @@ def build_data_bundle():
         "phreeqc": phreeqc,
         "pka": pka_list,
         "joback_groups": JOBACK_GROUPS,
-        "colors": colors,
         "species": species_db
     }
     

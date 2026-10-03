@@ -25,10 +25,18 @@ const CROWDING_AREA_FACTOR: f64 = 1.0;
 /// Fritz departure diameter.
 pub const BUBBLE_CONTACT_ANGLE_DEG: f64 = 15.0;
 
-/// Fritz (1935) departure diameter of a bubble (m) from a wall: d = 0.0208 theta sqrt(sigma / (g (rho_l - rho_g))),
-/// theta in degrees.
+/// Contact angle (degrees) of the vapour bubbles of boiling at a heated surface (Fritz's boiling correlation uses ~45 degrees,
+/// the surface being only partly wetted by the nucleating vapour).
+pub const BOILING_CONTACT_ANGLE_DEG: f64 = 45.0;
+
+/// Fritz (1935) departure diameter of a bubble (m): d = 0.0208 theta sqrt(sigma / (g (rho_l - rho_g))), theta in degrees.
+pub fn departure_diameter_m(theta_deg: f64, sigma_n_m: f64, rho_l: f64, rho_g: f64) -> f64 {
+    0.0208 * theta_deg * (sigma_n_m / (super::hydro::G_ACCEL * (rho_l - rho_g).max(1.0))).sqrt()
+}
+
+/// Fritz departure diameter of a gas bubble on wet glass or a crystal face.
 pub fn fritz_departure_diameter_m(sigma_n_m: f64, rho_l: f64, rho_g: f64) -> f64 {
-    0.0208 * BUBBLE_CONTACT_ANGLE_DEG * (sigma_n_m / (super::hydro::G_ACCEL * (rho_l - rho_g).max(1.0))).sqrt()
+    departure_diameter_m(BUBBLE_CONTACT_ANGLE_DEG, sigma_n_m, rho_l, rho_g)
 }
 
 /// Liquid-side mass-transfer coefficient (m/s) of a rising bubble of diameter `d_b` (Ranz-Marshall with the bubble's

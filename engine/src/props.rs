@@ -8,43 +8,10 @@
 
 use std::collections::HashMap;
 
-/// Molar refraction R_M (cm^3/mol) of pure substances and ions.
+/// Molar refraction R_M (cm^3/mol) of a species: from its optical record (`optics::records`), else the additive sum of
+/// atomic refractions of its formula.
 pub fn molar_refraction_cm3_mol(species: &str) -> f64 {
-    match species {
-        "H2O" => 3.712,
-        "C2H5OH" | "ik:LFQSCWFLJHTTHZ-UHFFFAOYSA-N" => 12.96,
-        "C3H6O" | "acetone" | "ik:CSCPPACGZOOCGX-UHFFFAOYSA-N" => 16.14,
-        "C6H14" | "hexane" => 29.90,
-        "C7H8" | "toluene" => 31.06,
-        "H+" => 0.00,
-        "OH-" => 4.70,
-        "Na+" => 0.65,
-        "K+" => 2.25,
-        "Li+" => 0.20,
-        "NH4+" => 4.40,
-        "Ag+" => 4.30,
-        "Ca+2" | "Ca2+" => 1.33,
-        "Mg+2" | "Mg2+" => 0.45,
-        "Ba+2" | "Ba2+" => 3.80,
-        "Fe+2" | "Fe2+" => 2.20,
-        "Fe+3" | "Fe3+" => 1.80,
-        "Cu+2" | "Cu2+" => 1.60,
-        "Zn+2" | "Zn2+" => 1.25,
-        "Cl-" => 9.00,
-        "Br-" => 12.60,
-        "I-" => 19.20,
-        "F-" => 2.50,
-        "NO3-" => 11.00,
-        "SO4-2" | "SO42-" => 14.80,
-        "HCO3-" => 12.80,
-        "CO3-2" | "CO32-" => 11.50,
-        "CH3COO-" | "acetate" => 13.30,
-        _ => {
-            let thermo = crate::chem_db::get_species_thermo(species);
-            let mw = if thermo.mw > 1.0 { thermo.mw } else { 40.0 };
-            (mw * 0.25).max(1.0)
-        }
-    }
+    crate::optics::records::molar_refraction(species).0
 }
 
 /// Refractive index n computed via the Lorentz-Lorenz equation:

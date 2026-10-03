@@ -15,6 +15,7 @@ import {
  * the back wall at z = -45. The reagent shelf stands at the back of the bench (3 tiers × 9 slots).
  */
 export const BENCH = { xMin: -120, xMax: 120, zMin: -45, zMax: 32, thickness: 3.2, floorY: -90 };
+export const ANALYTICAL_BENCH = { xMin: -95, xMax: 95, zMin: 85, zMax: 125, thickness: 3.2, floorY: -90 };
 export const SHELF = {
   tiers: [1.6, 21.6, 41.6], // standing heights of the tiers
   slots: 9,
@@ -270,6 +271,7 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
 
   // a few static props for context (wash bottle, paper towels)
   addProps(scene);
+  buildAnalyticalBench(scene);
 
   return {
     keyLight: key,
@@ -317,3 +319,94 @@ function addProps(scene: THREE.Scene) {
   holder.position.set(104, 0.5, -32);
   scene.add(holder);
 }
+
+function buildAnalyticalBench(scene: THREE.Scene) {
+  const W = ANALYTICAL_BENCH.xMax - ANALYTICAL_BENCH.xMin;
+  const D = ANALYTICAL_BENCH.zMax - ANALYTICAL_BENCH.zMin;
+
+  const top = countertopTextures();
+  const topMap = top.map.clone();
+  topMap.repeat.set(1.8, 0.5);
+  topMap.needsUpdate = true;
+  const topRough = top.roughnessMap.clone();
+  topRough.repeat.set(1.8, 0.5);
+  topRough.needsUpdate = true;
+  const benchMat = new THREE.MeshPhysicalMaterial({
+    map: topMap,
+    roughnessMap: topRough,
+    roughness: 0.52,
+    metalness: 0,
+    clearcoat: 0.22,
+    envMapIntensity: 0.45,
+  });
+
+  const benchShape = new THREE.Shape();
+  const r = 1.0;
+  benchShape.moveTo(ANALYTICAL_BENCH.xMin, ANALYTICAL_BENCH.zMin);
+  benchShape.lineTo(ANALYTICAL_BENCH.xMax, ANALYTICAL_BENCH.zMin);
+  benchShape.lineTo(ANALYTICAL_BENCH.xMax, ANALYTICAL_BENCH.zMax - r);
+  benchShape.quadraticCurveTo(ANALYTICAL_BENCH.xMax, ANALYTICAL_BENCH.zMax, ANALYTICAL_BENCH.xMax - r, ANALYTICAL_BENCH.zMax);
+  benchShape.lineTo(ANALYTICAL_BENCH.xMin + r, ANALYTICAL_BENCH.zMax);
+  benchShape.quadraticCurveTo(ANALYTICAL_BENCH.xMin, ANALYTICAL_BENCH.zMax, ANALYTICAL_BENCH.xMin, ANALYTICAL_BENCH.zMax - r);
+  benchShape.lineTo(ANALYTICAL_BENCH.xMin, ANALYTICAL_BENCH.zMin);
+
+  const benchGeo = new THREE.ExtrudeGeometry(benchShape, {
+    depth: ANALYTICAL_BENCH.thickness - 0.8,
+    bevelEnabled: true,
+    bevelThickness: 0.4,
+    bevelSize: 0.4,
+    bevelSegments: 3,
+    curveSegments: 4,
+  });
+  benchGeo.rotateX(Math.PI / 2);
+  benchGeo.translate(0, -0.4, 0);
+
+  const benchMesh = new THREE.Mesh(benchGeo, benchMat);
+  benchMesh.receiveShadow = true;
+  scene.add(benchMesh);
+
+  // Cabinets
+  const cabTex = cabinetTexture().clone();
+  cabTex.repeat.set(2.5, 1);
+  cabTex.needsUpdate = true;
+  const cabMat = new THREE.MeshStandardMaterial({ map: cabTex, roughness: 0.6, metalness: 0 });
+  const cabH = -ANALYTICAL_BENCH.floorY - ANALYTICAL_BENCH.thickness - 10;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(W - 4, cabH, D - 6), [
+    new THREE.MeshStandardMaterial({ color: 0xc9cdcb, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: 0xc9cdcb, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: 0xc9cdcb, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: 0xc9cdcb, roughness: 0.7 }),
+    cabMat,
+    new THREE.MeshStandardMaterial({ color: 0xc9cdcb, roughness: 0.7 }),
+  ]);
+  cab.position.set(0, -ANALYTICAL_BENCH.thickness - cabH / 2, (ANALYTICAL_BENCH.zMin + ANALYTICAL_BENCH.zMax) / 2);
+  cab.receiveShadow = true;
+  scene.add(cab);
+
+  const kick = new THREE.Mesh(new THREE.BoxGeometry(W - 6, 10, D - 10), new THREE.MeshStandardMaterial({ color: 0x2d3033, roughness: 0.8 }));
+  kick.position.set(0, ANALYTICAL_BENCH.floorY + 5, (ANALYTICAL_BENCH.zMin + ANALYTICAL_BENCH.zMax) / 2);
+  scene.add(kick);
+
+  // Electrical raceway bar on back edge
+  const raceway = new THREE.Mesh(new THREE.BoxGeometry(W - 2, 6, 4), new THREE.MeshStandardMaterial({ color: 0xd8dde2, metalness: 0.7, roughness: 0.3 }));
+  raceway.position.set(0, 3, ANALYTICAL_BENCH.zMin + 2.5);
+  scene.add(raceway);
+
+  // Computer monitor & workstation at x = -20
+  const monStand = new THREE.Mesh(new THREE.BoxGeometry(3, 10, 3), new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.4 }));
+  monStand.position.set(-20, 5, 96);
+  scene.add(monStand);
+
+  const monScreen = new THREE.Mesh(new THREE.BoxGeometry(16, 11, 1), new THREE.MeshStandardMaterial({ color: 0x1a1c20, roughness: 0.4 }));
+  monScreen.position.set(-20, 14, 96);
+  scene.add(monScreen);
+
+  const screenDisp = new THREE.Mesh(new THREE.PlaneGeometry(15, 10), new THREE.MeshBasicMaterial({ color: 0x0f2b3c }));
+  screenDisp.position.set(-20, 14, 96.6);
+  scene.add(screenDisp);
+
+  const kbd = new THREE.Mesh(new THREE.BoxGeometry(12, 0.6, 4.5), new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.6 }));
+  kbd.position.set(-20, 0.3, 107);
+  scene.add(kbd);
+}
+

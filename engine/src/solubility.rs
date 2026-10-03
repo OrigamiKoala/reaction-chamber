@@ -126,8 +126,10 @@ fn make_mineral(cation: &str, anion: &str, log_ksp: f64, tier: ProvenanceTier, s
     let mut dissolved = HashMap::new();
     dissolved.insert(cation.to_string(), n_c as f64);
     dissolved.insert(anion.to_string(), n_a as f64);
-    // Density from molar mass with a typical ionic-solid packing density when nothing better is known.
-    let density = ions::species_mass(&formula).map(|m| (m / 38.0).clamp(1.5, 8.0)).unwrap_or(3.0);
+    // Density from the ions' sizes at a typical ionic-crystal packing fraction (`crystal.rs`) when nothing better is known.
+    let density = ions::species_mass(&formula)
+        .and_then(|m| crate::crystal::estimate_density_g_ml(&[(cation.to_string(), n_c as f64), (anion.to_string(), n_a as f64)], m))
+        .map_or(2.5, |d| d.clamp(1.0, 12.0));
     Some(GeneralMineral {
         id: format!("{}_auto", formula),
         mineral: formula.clone(),

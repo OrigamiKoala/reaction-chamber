@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::types::ProvenanceTier;
 use crate::db::record::{
-    Datum, Identity, Optics, OpticsBand, PhaseData, PhaseThermo, SpeciesRecord,
+    Datum, Identity, PhaseData, PhaseThermo, SpeciesRecord,
 };
 
 fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, inchi: Option<&str>, smiles: Option<&str>) -> SpeciesRecord {
@@ -367,38 +367,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_gas("ethene", "C2H4", 52.4, 68.4, 42.9, Some("VGGSQFUCUMXWEO-UHFFFAOYSA-N")),
     ];
 
-    // Attach optics to selected species
-    for rec in records.iter_mut() {
-        if rec.id == "Cu+2" {
-            rec.optics = Some(Optics {
-                bands: vec![OpticsBand { solvent: Some("water".to_string()), nm: 800.0, eps: 12.0, fwhm: Some(250.0) }],
-                ..Default::default()
-            });
-        } else if rec.id == "Cu(NH3)4+2" {
-            rec.optics = Some(Optics {
-                bands: vec![OpticsBand { solvent: Some("water".to_string()), nm: 610.0, eps: 55.0, fwhm: Some(120.0) }],
-                ..Default::default()
-            });
-        } else if rec.id == "In_phph-" {
-            rec.optics = Some(Optics {
-                bands: vec![OpticsBand { solvent: Some("water".to_string()), nm: 552.0, eps: 31000.0, fwhm: Some(50.0) }],
-                ..Default::default()
-            });
-        } else if rec.id == "Fe(SCN)+2" {
-            rec.optics = Some(Optics {
-                bands: vec![OpticsBand { solvent: Some("water".to_string()), nm: 460.0, eps: 4500.0, fwhm: Some(90.0) }],
-                ..Default::default()
-            });
-        } else if rec.id == "MnO4-" {
-            rec.optics = Some(Optics {
-                bands: vec![
-                    OpticsBand { solvent: Some("water".to_string()), nm: 525.0, eps: 2400.0, fwhm: Some(50.0) },
-                    OpticsBand { solvent: Some("water".to_string()), nm: 545.0, eps: 2400.0, fwhm: Some(50.0) },
-                ],
-                ..Default::default()
-            });
-        }
-    }
+    // Optical records are the seed rows of `optics/records.rs` (data/optics_seed.json), looked up by species id.
 
     crate::db::seed_vle::attach_vle_data(&mut records);
     crate::db::seed_phases::attach_phase_data(&mut records);

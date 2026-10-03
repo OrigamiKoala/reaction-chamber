@@ -22,6 +22,9 @@ import init, {
   vessel_equilibrate,
   step_all,
   optics_tables_json,
+  vessel_uvvis_scan,
+  vessel_flame_test,
+  colour_to_absorbance,
   reagent_catalog_json,
   register_compound,
   register_reaction,
@@ -302,6 +305,24 @@ self.onmessage = async (e: MessageEvent) => {
           payload: JSON.parse(res),
           requestId,
         });
+        break;
+      }
+
+      case 'UVVIS_SCAN': {
+        const res = vessel_uvvis_scan(payload.handle, payload.layer ?? 0, payload.nm_min, payload.nm_max, payload.step_nm, payload.path_cm);
+        self.postMessage({ type: 'UVVIS_SCAN_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'FLAME_TEST': {
+        const res = vessel_flame_test(payload.handle, payload.t_flame_k);
+        self.postMessage({ type: 'FLAME_TEST_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'COLOUR_TO_ABSORBANCE': {
+        const a = colour_to_absorbance(payload.r, payload.g, payload.b, payload.path_cm);
+        self.postMessage({ type: 'COLOUR_TO_ABSORBANCE_RESPONSE', payload: Array.from(a), requestId });
         break;
       }
 

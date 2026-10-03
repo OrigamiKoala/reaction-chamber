@@ -12,7 +12,7 @@ def test_m2_bundle_structure_and_species_count():
     assert "phreeqc" in bundle
     assert "pka" in bundle
     assert "joback_groups" in bundle
-    assert "colors" in bundle
+    assert "colors" not in bundle  # Stage 10: optical data live in the engine optical records, not in the bundle
     assert "species" in bundle
     
     # Stage 0: the bundle holds only hand-checked species. The generated homologous series and salt matrix that padded it

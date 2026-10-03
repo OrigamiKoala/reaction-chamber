@@ -3,7 +3,8 @@
 // (tests/pubchem_solid_live.mjs). Only imports pure modules.
 import type { SpeciesRecord } from '../types';
 import type { MineralData, MineralLookup } from '../types/sim';
-import { collectPugViewStrings, parseColourWord } from './parser';
+import { collectPugViewStrings } from './parser';
+import { parseColourHex } from './colour_lexicon';
 import { buildSpeciesRecord, PUG_PROPERTIES } from './record_builder';
 import {
   parseWaterSolubilityGPerL,
@@ -73,7 +74,7 @@ function factsFrom(view: any, molarMass: number): Facts {
   const solTexts = [...get('Solubility'), ...get('Physical Description')];
   const kspTexts = [...get('Solubility Product'), ...get('Dissociation Constants'), ...get('Solubility')];
   const looks = [...get('Color/Form'), ...get('Physical Description')];
-  const hex = parseColourWord(looks);
+  const hex = parseColourHex(looks);
   return {
     solubility: parseWaterSolubilityGPerL(solTexts, molarMass),
     logKsp: parseKsp(kspTexts),

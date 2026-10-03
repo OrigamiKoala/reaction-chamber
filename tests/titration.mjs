@@ -118,14 +118,14 @@ const optics = J(eng.optics_tables_json());
 const wl = optics.wavelengths_nm ?? optics.wavelengths ?? null;
 const catalog = J(eng.reagent_catalog_json());
 
-/** Mean visible absorbance (per cm) of the aqueous layer between lo and hi nm (falls back to bin indexes 400..710 / 32 bins). */
+/** Mean visible absorbance (per cm) of the aqueous layer between lo and hi nm (bins are 380..780 nm in 10 nm steps, 41 bins). */
 function absorbance(s, lo, hi) {
   const a = s.layers.find((l) => l.phase === 'aqueous')?.absorbance_per_cm ?? [];
   const nb = a.length || 32;
   let sum = 0;
   let cnt = 0;
   for (let i = 0; i < a.length; i++) {
-    const nm = wl ? wl[i] : 400 + 10 * i; // 32 bins, 400-710 nm
+    const nm = wl ? wl[i] : 380 + 10 * i; // 41 bins, 380-780 nm
     if (nm >= lo && nm <= hi) {
       sum += a[i];
       cnt++;

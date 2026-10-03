@@ -121,6 +121,18 @@ pub struct CompoundThermo {
     /// Enthalpy of solution (kJ/mol) for the temperature dependence of the solubility; None = constant.
     pub dh_sol_kj_mol: Option<f64>,
     pub color_linear_rgb: Option<[f64; 3]>,
+    /// The colour with its provenance (subject, hydrate flag, confidence): `color_linear_rgb` as a solid-colour datum.
+    #[serde(default)]
+    pub solid_colour: Option<crate::db::record::SolidColour>,
+    /// Solution absorption bands of the compound (imported UV text): the only source of a dissolved import's colour.
+    #[serde(default)]
+    pub uv_bands: Vec<crate::db::record::OpticsBand>,
+    /// Measured refractive index of the neat compound.
+    #[serde(default)]
+    pub refractive_index: Option<f64>,
+    /// Measured surface tension of the neat liquid, mN/m.
+    #[serde(default)]
+    pub surface_tension_mn_m: Option<f64>,
     /// Names of the values above that are estimates (not from the supplied data).
     pub estimated: Vec<String>,
     /// SMILES of the compound (UNIFAC groups are decomposed from it).
@@ -411,6 +423,30 @@ impl CompoundThermo {
             solubility_ref_k: ROOM_REF_K,
             dh_sol_kj_mol: req.dh_sol_kj_mol.filter(|x| x.is_finite()),
             color_linear_rgb: req.color_linear_rgb.map(|c| c.map(|x| x.clamp(0.0, 1.0))),
+            solid_colour: req.color_linear_rgb.map(|c| {
+                let m = req.color_meta.clone().unwrap_or_default();
+                crate::db::record::SolidColour {
+                    rgb_linear: c.map(|x| x.clamp(0.0, 1.0)),
+                    subject: m.subject.unwrap_or_else(|| "solid".to_string()),
+                    hydrate: m.hydrate,
+                    confidence: m.confidence.unwrap_or(0.6).clamp(0.0, 1.0),
+                    phrase: m.phrase,
+                }
+            }),
+            uv_bands: req
+                .uv_bands
+                .iter()
+                .filter(|(nm, eps, _, _)| nm.is_finite() && eps.is_finite() && *nm > 150.0 && *nm < 2500.0 && *eps > 0.0)
+                .map(|(nm, eps, fwhm, solvent)| crate::db::record::OpticsBand {
+                    solvent: solvent.clone(),
+                    nm: *nm,
+                    eps: *eps,
+                    fwhm: fwhm.filter(|w| w.is_finite() && *w > 1.0),
+                    kind: None,
+                })
+                .collect(),
+            refractive_index: req.refractive_index.filter(|n| n.is_finite() && *n > 1.0 && *n < 4.0),
+            surface_tension_mn_m: req.surface_tension_mn_m.filter(|s| s.is_finite() && *s > 1.0 && *s < 600.0),
             estimated,
             smiles: req.smiles.clone(),
             inchi_key: req.inchi_key.clone(),

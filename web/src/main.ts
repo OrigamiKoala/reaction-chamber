@@ -34,6 +34,7 @@ import { SETUPS } from './app/setups';
 import { registerGasKits } from './app/gas_kit';
 import { registerFilterKits } from './app/filter_kit';
 import { registerTitrationKits } from './app/titration_kit';
+import { registerElectroKits } from './app/electro_kit';
 import { TitrationHud } from './ui/titration_hud';
 import type { PourState } from './bench/handling';
 
@@ -82,6 +83,7 @@ async function initApp() {
   registerGasKits(); // 'Setups' at the top of the Glassware menu
   registerFilterKits();
   registerTitrationKits(); // titration station + separatory funnel stand
+  registerElectroKits(); // electrolysis, electroplating, Daniell galvanic cell
   let optics: OpticsTables | null = null;
 
   // ------------------------------------------------------------------ UI
@@ -140,6 +142,8 @@ async function initApp() {
         cp_j_mol_k: phys.cp_j_mol_k,
         cp_coefficients: phys.cp_coefficients,
         color_linear_rgb: b.sourcedProperties?.known?.color && /^#[0-9a-f]{6}$/i.test(b.color) ? srgbHexToLinear(b.color) : undefined,
+        color_meta: phys.colour_meta,
+        uv_bands: phys.uv_bands && phys.uv_bands.length > 0 ? phys.uv_bands : undefined,
       });
       lib.setModel(b.id, model);
       return model;
@@ -177,6 +181,7 @@ async function initApp() {
   const instLog = new InstrumentLog();
   const instrumentPanel = new InstrumentPanel({
     lab,
+    sim,
     instruments: () => bench.instruments,
     panVesselId: () => bench.getPanVesselId(),
     log: instLog,
@@ -188,6 +193,17 @@ async function initApp() {
     if (id === instrumentPanel.instrumentId) return;
     instrumentPanel.show(id);
     vesselPanel.el.hidden = !!id;
+    if (id) {
+      bench.focusStation(id);
+    }
+  };
+  topBar.onSelectStation = (station) => {
+    if (station === 'bench') {
+      bench.focusStation('hotplate');
+      setInstrument(null);
+    } else {
+      setInstrument(station as InstrumentId);
+    }
   };
   const time = new TimeControls(sim);
   // Reaction timer of the selected vessel: waits for a real reaction; Start/Stop/Reset are a manual stopwatch.

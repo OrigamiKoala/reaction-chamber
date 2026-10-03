@@ -127,9 +127,11 @@ fn turbidity_of_a_polydisperse_suspension_follows_the_size_classes() {
     let mono = lognormal_slurry(1.0, 1.0).snapshot();
     let poly = lognormal_slurry(1.0, 2.0).snapshot();
     // same mass and the same volume-mean-ish size scale; the broad distribution scatters differently per gram
-    assert!(mono.layers[0].scatter_per_cm > 0.0 && poly.layers[0].scatter_per_cm > 0.0);
-    assert!(mono.layers[0].scatter_per_cm.is_finite() && poly.layers[0].scatter_per_cm.is_finite());
-    assert!((mono.layers[0].scatter_per_cm - poly.layers[0].scatter_per_cm).abs() > 1e-6);
+    let m_s = mono.layers[0].scatter_per_cm.iter().sum::<f64>();
+    let p_s = poly.layers[0].scatter_per_cm.iter().sum::<f64>();
+    assert!(m_s > 0.0 && p_s > 0.0);
+    assert!(m_s.is_finite() && p_s.is_finite());
+    assert!((m_s - p_s).abs() > 1e-6);
 }
 
 #[test]

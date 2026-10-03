@@ -59,11 +59,31 @@ export class TopBar {
       if (!this.menu.hidden && !this.menu.contains(e.target as Node) && !this.moreBtn.contains(e.target as Node)) this.closeMenu(false);
     });
 
+    const center = h('div', { class: 'topbar-center' });
+    const stations = [
+      { id: 'bench', label: 'Wet Bench' },
+      { id: 'electrochem', label: 'Electrochem' },
+      { id: 'spectrophotometer', label: 'UV-Vis' },
+      { id: 'nmr', label: 'NMR 400 MHz' },
+      { id: 'mass_spec', label: 'Mass Spec' },
+    ] as const;
+    for (const s of stations) {
+      const btn = h('button', { class: 'btn btn-bar btn-station', type: 'button', text: s.label });
+      btn.addEventListener('click', () => {
+        for (const b of center.querySelectorAll('.btn-station')) b.setAttribute('aria-pressed', 'false');
+        btn.setAttribute('aria-pressed', 'true');
+        this.onSelectStation?.(s.id);
+      });
+      center.append(btn);
+    }
+
     const moreWrap = h('div', { class: 'menu-wrap' }, this.moreBtn, this.menu);
     right.append(this.statusDot, this.detailsBtn, moreWrap);
-    this.el.append(brand, right);
+    this.el.append(brand, center, right);
     this.paintStatus();
   }
+
+  public onSelectStation?: (station: 'bench' | 'electrochem' | 'spectrophotometer' | 'nmr' | 'mass_spec') => void;
 
   public setDetailsOpen(open: boolean) {
     this.detailsBtn.setAttribute('aria-pressed', String(open));

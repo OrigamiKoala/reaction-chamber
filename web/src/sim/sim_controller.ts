@@ -11,6 +11,8 @@ import {
   MineralLookup,
   MineralData,
   MineralResolution,
+  UvVisScan,
+  FlameTestResult,
 } from '../types/sim';
 
 export class SimController {
@@ -58,6 +60,25 @@ export class SimController {
 
   public async getOpticsTables(): Promise<OpticsTables> {
     return this.sendRequest<OpticsTables>('OPTICS_TABLES');
+  }
+
+  /** UV-vis scan of liquid layer `layer` of a vessel (engine `vessel_uvvis_scan`): species absorbance, turbidity, contributors. */
+  public async uvvisScan(id: string, opts: { layer?: number; nmMin: number; nmMax: number; stepNm: number; pathCm: number }): Promise<UvVisScan> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<UvVisScan>('UVVIS_SCAN', { handle, layer: opts.layer ?? 0, nm_min: opts.nmMin, nm_max: opts.nmMax, step_nm: opts.stepNm, path_cm: opts.pathCm });
+  }
+
+  /** Flame-test colour of a vessel's liquid held in a gas flame at `tFlameK` (engine `vessel_flame_test`). */
+  public async flameTest(id: string, tFlameK: number): Promise<FlameTestResult> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<FlameTestResult>('FLAME_TEST', { handle, t_flame_k: tFlameK });
+  }
+
+  /** The engine's single (Speculative) RGB -> spectrum inversion: absorbance per cm whose transmission over `pathCm` has this colour. */
+  public async colourToAbsorbance(rgb: [number, number, number], pathCm: number): Promise<number[]> {
+    return this.sendRequest<number[]>('COLOUR_TO_ABSORBANCE', { r: rgb[0], g: rgb[1], b: rgb[2], path_cm: pathCm });
   }
 
   public async getReagentCatalog(): Promise<ReagentCatalogEntry[]> {

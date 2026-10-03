@@ -677,18 +677,28 @@ fn s0_14_any_boiling_liquid_boils_on_screen_and_a_dry_vessel_has_no_steam() {
 
 #[test]
 fn s0_14_open_vessel_fumes_come_from_the_gas_leaving() {
+    // Stage 10: fumes are the plume of gas that left the liquid. A gas is visible because of its absorption (chlorine) or
+    // because it condenses into droplets in humid air (hydrogen chloride); nitrogen leaving is invisible. Heavy gas pools.
     let mut v = beaker();
     ml(&mut v, "water", 20.0);
     assert!(v.snapshot().fumes.is_empty());
-    v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 12.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+    v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+    v.gas_fluxes.push(GasFlux { species: "N2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+    v.gas_fluxes.push(GasFlux { species: "Cl2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+    v.step_plume(1.0);
     let f = v.snapshot().fumes;
-    assert_eq!(f.len(), 1, "{:?}", f);
-    assert_eq!(f[0].species, "HCl(g)");
-    assert!(f[0].intensity > 0.2);
+    let find = |id: &str| f.iter().find(|x| x.species == id);
+    assert!(find("HCl(g)").map_or(false, |x| x.kind == "aerosol" && x.opacity > 0.2), "{:?}", f);
+    let cl = find("Cl2(g)").expect("chlorine is coloured");
+    assert!(cl.kind == "gas" && cl.denser_than_air, "{:?}", cl);
+    assert!(cl.rgb[0] > cl.rgb[2], "chlorine transmits red/green, absorbs blue: {:?}", cl.rgb);
+    assert!(find("N2(g)").is_none(), "nitrogen has no absorption: {:?}", f);
 }
 
 #[test]
-fn s0_14_scatter_colour_is_deterministic_and_mass_weighted() {
+fn s0_14_scatter_spectrum_is_deterministic() {
+    // Stage 10: the turbidity is a per-bin extinction and albedo spectrum summed over solids in sorted order, so two solids never
+    // give a hash-order-dependent result
     let build = |order: &[&str]| {
         let mut v = beaker();
         ml(&mut v, "water", 20.0);
@@ -697,18 +707,18 @@ fn s0_14_scatter_colour_is_deterministic_and_mass_weighted() {
         for id in order {
             ml(&mut v, id, 12.0);
         }
-        v.snapshot().layers.iter().find(|l| l.phase == PhaseKind::Aqueous).unwrap().scatter_rgb
+        let l = v.snapshot().layers.into_iter().find(|l| l.phase == PhaseKind::Aqueous).unwrap();
+        (l.scatter_per_cm, l.scatter_albedo)
     };
-    // the same recipe on fresh vessels (hash maps iterate in a different order each time): identical colours
     let a = build(&["nacl_0_1m", "naoh_0_1m"]);
+    assert!(a.0.iter().any(|e| *e > 0.0), "two precipitates must make the liquid turbid");
     for _ in 0..8 {
         let b = build(&["nacl_0_1m", "naoh_0_1m"]);
-        for k in 0..3 {
-            assert!((a[k] - b[k]).abs() < 1e-12, "non-deterministic scatter colour {:?} vs {:?}", a, b);
+        for k in 0..a.0.len() {
+            assert!((a.0[k] - b.0[k]).abs() < 1e-12 && (a.1[k] - b.1[k]).abs() < 1e-12, "non-deterministic scatter spectrum");
         }
     }
-    // two solids with different colours: the result lies between them (it is a weighted mean, not the last one)
-    assert!(a.iter().all(|c| *c > 0.0 && *c <= 1.0));
+    assert!(a.1.iter().all(|w| (0.0..=1.0).contains(w)));
 }
 
 #[test]
@@ -726,9 +736,9 @@ fn s0_14_ionic_import_keeps_its_own_density_and_colour() {
 
 #[test]
 fn s0_14_bottle_colour_cache_key_changes_with_the_optics_data() {
-    let h = reaction_chamber_engine::spectra::data_hash();
+    let h = reaction_chamber_engine::optics::records::data_hash();
     assert_ne!(h, 0);
-    assert_eq!(h, reaction_chamber_engine::spectra::data_hash());
+    assert_eq!(h, reaction_chamber_engine::optics::records::data_hash());
 }
 
 #[test]

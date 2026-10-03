@@ -9,9 +9,10 @@ import {
   parseGHSCodes,
   collectPugViewStrings,
   parsePhysicalState,
-  parseColourWord,
   type ParsedProperty,
 } from './parser';
+import { parseColourPhrase } from './colour_lexicon';
+import { UV_HEADINGS, parseUvBands } from './uv_parser';
 import { parseWaterSolubilityGPerL } from './solubility_parser';
 import {
   COMBUSTION_HEADINGS,
@@ -75,6 +76,7 @@ export function buildSpeciesRecord(
       'Boiling Point',
       'Density',
       'Solubility',
+      ...UV_HEADINGS,
       ...FUSION_HEADINGS,
       ...VAPORIZATION_HEADINGS,
       ...COMBUSTION_HEADINGS,
@@ -83,7 +85,13 @@ export function buildSpeciesRecord(
     const all = (keys: string[]) => keys.flatMap((k) => props[k] ?? []);
     const look = [...(props['Physical Description'] ?? []), ...(props['Color/Form'] ?? [])];
     physicalState = parsePhysicalState(look);
-    colour = parseColourWord(look);
+    // the colour phrase of the compound itself (Color/Form first), with its subject, hydrate flag and confidence
+    const phrase = parseColourPhrase([...(props['Color/Form'] ?? []), ...(props['Physical Description'] ?? [])]);
+    colour = phrase?.hex;
+    if (phrase) physical.colour_meta = { subject: phrase.subject, hydrate: phrase.hydrate, confidence: phrase.confidence, phrase: phrase.phrase };
+    // solution absorption bands (never derived from a colour word)
+    const uv = parseUvBands(all(UV_HEADINGS));
+    if (uv.length > 0) physical.uv_bands = uv;
     const temps = (key: string) => (props[key] ?? []).map((t) => parseTemperatureString(t)).filter((x): x is ParsedProperty => !!x);
     const dens = (props['Density'] ?? []).map((t) => parseDensityString(t)).filter((x): x is ParsedProperty => !!x);
     const mps = temps('Melting Point');

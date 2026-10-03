@@ -157,11 +157,9 @@ impl Vessel {
             .filter(|(sp, m)| **m > 1e-12 && is_conducting_solid(sp))
             .map(|(sp, _)| sp.clone())
             .collect();
-        if !powered && metals.is_empty() {
+        if !powered && metals.is_empty() && self.electro.spec.is_none() {
             self.electro.mixed_potential_v = None;
-            if self.electro.spec.is_none() {
-                self.electro.readout = None;
-            }
+            self.electro.readout = None;
             return 0.0;
         }
 
@@ -174,12 +172,10 @@ impl Vessel {
         present.extend(self.solid_mol.iter().filter(|(_, m)| **m > 1e-15).map(|(k, _)| k.clone()));
         let mut extra: Vec<String> = metals.iter().map(|m| m.trim_end_matches("(s)").to_string()).collect();
         if let Some(spec) = &self.electro.spec {
-            if powered {
-                for e in [&spec.anode, &spec.cathode] {
-                    let el = material_element(&e.material);
-                    if is_metal_element(&el) {
-                        extra.push(el);
-                    }
+            for e in [&spec.anode, &spec.cathode] {
+                let el = material_element(&e.material);
+                if is_metal_element(&el) {
+                    extra.push(el);
                 }
             }
         }
@@ -251,7 +247,7 @@ impl Vessel {
         if powered {
             q_total += self.step_electrolysis_cell(&halves, &gamma, &hyd, &activity, &conc, &available, dt_s, vol_l);
         } else if self.electro.spec.is_some() {
-            self.electro.readout = Some(ElectroReadout::default());
+            self.update_open_circuit_cell(&halves, &gamma, &hyd, &activity, &conc, &available, dt_s, vol_l);
         }
         q_total
     }
@@ -350,6 +346,93 @@ impl Vessel {
         });
         let _ = &mut q;
         q
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update_open_circuit_cell(
+        &mut self,
+        halves: &[HalfReaction],
+        gamma: &HashMap<String, f64>,
+        hyd: &crate::vessel_transfer::Hydro,
+        activity: &dyn Fn(&str) -> f64,
+        conc: &dyn Fn(&str) -> f64,
+        available: &dyn Fn(&str) -> bool,
+        dt_s: f64,
+        vol_l: f64,
+    ) {
+        let spec = match self.electro.spec.clone() {
+            Some(s) => s,
+            None => return,
+        };
+        let t_k = self.temperature_k;
+        let p_pa = self.pressure_atm * 101_325.0;
+        let mk = |e: &ElectrodeSpec| -> Electrode {
+            let el = material_element(&e.material);
+            let active = if is_metal_element(&el) && crate::db::SpeciesStore::global().read().map_or(false, |s| s.get(&format!("{}(s)", el)).is_some()) {
+                Some(format!("{}(s)", el))
+            } else {
+                None
+            };
+            let passive = active.is_some() && self.metal_is_passive(&el, gamma);
+            Electrode { id: e.material.clone(), element: el, area_m2: (e.area_cm2 * 1e-4).max(1e-8), active_species: active, passive }
+        };
+        let anode = mk(&spec.anode);
+        let cathode = mk(&spec.cathode);
+        let km = |sp: &str| -> f64 {
+            let d = species_diffusivity_water_m2_s(sp, t_k);
+            let sc = hyd.nu / d.max(1e-14);
+            let k_nc = d / 3.0e-4;
+            let k_eddy = if hyd.eps > 0.0 { 0.4 * (hyd.eps * hyd.nu).powf(0.25) / sc.sqrt() } else { 0.0 };
+            k_nc.max(k_eddy)
+        };
+        let solid_map = self.solid_mol.clone();
+        let solid_amount = |sp: &str, el: &Electrode| -> f64 { if el.active_species.as_deref() == Some(sp) { f64::INFINITY } else { solid_map.get(sp).copied().unwrap_or(0.0) } };
+        let ctx = ElectroCtx { t_k, p_pa, activity, conc_mol_m3: conc, k_m: &km, available, solid_mol: &solid_amount, dt_s, total_area_m2: anode.area_m2 + cathode.area_m2 };
+        let ions: Vec<(String, f64)> = self
+            .species_mol
+            .iter()
+            .filter(|(sp, m)| **m > 0.0 && crate::ions::species_charge(sp) != 0)
+            .map(|(sp, m)| (sp.clone(), m / vol_l * 1000.0))
+            .collect();
+        let kappa = ec::solution_conductivity_s_m(&ions, self.ionic_strength_molal(), t_k).max(1e-6);
+        let a_eff = anode.area_m2.min(cathode.area_m2);
+        let resistance = (spec.spacing_cm * 1e-2) / (kappa * a_eff);
+
+        let a_ref = [&anode];
+        let c_ref = [&cathode];
+        let ea = ec::potential_for_current(&a_ref, halves, &ctx, 0.0);
+        let ec = ec::potential_for_current(&c_ref, halves, &ctx, 0.0);
+        let cell_v = (ec - ea).abs();
+
+        let mut rows: Vec<ElectrodeReactionRow> = Vec::new();
+        for (role, el) in [("anode", &anode), ("cathode", &cathode)] {
+            for h in halves.iter() {
+                let e0 = h.e0(t_k, p_pa);
+                let matches_el = h.ox.iter().any(|(s, _)| s.starts_with(&el.element)) || h.red.iter().any(|(s, _)| s.starts_with(&el.element));
+                let matches_water = h.ox.iter().any(|(s, _)| s == "H+" || s == "O2(g)") || h.red.iter().any(|(s, _)| s == "H2(g)" || s == "OH-");
+                if matches_el || matches_water {
+                    rows.push(ElectrodeReactionRow {
+                        electrode: role.to_string(),
+                        equation: if role == "anode" { reverse_equation(h) } else { h.equation() },
+                        current_a: 0.0,
+                        faradaic_fraction: 0.0,
+                        e0_v: e0,
+                    });
+                }
+            }
+        }
+        rows.truncate(6);
+
+        self.electro.readout = Some(ElectroReadout {
+            current_a: 0.0,
+            cell_voltage_v: cell_v,
+            anode_potential_v: ea,
+            cathode_potential_v: ec,
+            ohmic_drop_v: 0.0,
+            resistance_ohm: resistance,
+            charge_c: self.electro.charge_c,
+            rows,
+        });
     }
 
     /// Applies the Faraday stoichiometry of the channel flows over `dt_s`. `electrical_j` is the energy the supply put in
@@ -489,7 +572,7 @@ impl Vessel {
                     *self.headspace_gas_mol.entry(sp.to_string()).or_default() += d_mol;
                 } else {
                     let ml_s = d_mol / dt_s * crate::physics::R_GAS * self.temperature_k / self.p_ext_pa().max(1.0) * 1e6;
-                    self.gas_fluxes.push(GasFlux { species: sp.to_string(), rate_ml_s: ml_s, bubble_diameter_mm: 0.5, nucleation: "solid".to_string() });
+                    self.gas_fluxes.push(GasFlux { species: sp.to_string(), rate_ml_s: ml_s, bubble_diameter_mm: self.bubble_diameter_mm("solid"), nucleation: "solid".to_string() });
                     self.mass_lost_g += d_mol * chem_db::get_species_thermo(sp).mw;
                     self.ledger.book_out(sp, d_mol);
                     self.gas.escaped_mol += d_mol;

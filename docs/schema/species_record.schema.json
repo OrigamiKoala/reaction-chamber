@@ -3,7 +3,11 @@
   "title": "SpeciesRecord",
   "description": "Standard intrinsic species record for Reaction Chamber (Stage 1 generalization)",
   "type": "object",
-  "required": ["id", "identity", "phases"],
+  "required": [
+    "id",
+    "identity",
+    "phases"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -11,21 +15,40 @@
     },
     "identity": {
       "type": "object",
-      "required": ["formula", "charge"],
+      "required": [
+        "formula",
+        "charge"
+      ],
       "properties": {
-        "inchikey": { "type": "string" },
-        "smiles": { "type": "string" },
-        "formula": { "type": "string" },
-        "charge": { "type": "integer" },
-        "cas": { "type": "string" },
-        "cid": { "type": "integer" },
+        "inchikey": {
+          "type": "string"
+        },
+        "smiles": {
+          "type": "string"
+        },
+        "formula": {
+          "type": "string"
+        },
+        "charge": {
+          "type": "integer"
+        },
+        "cas": {
+          "type": "string"
+        },
+        "cid": {
+          "type": "integer"
+        },
         "names": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "db_names": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": true
@@ -33,72 +56,142 @@
     "phases": {
       "type": "object",
       "properties": {
-        "g": { "$ref": "#/definitions/PhaseData" },
-        "l": { "$ref": "#/definitions/PhaseData" },
-        "s": { "$ref": "#/definitions/PhaseData" },
-        "aq": { "$ref": "#/definitions/PhaseData" }
+        "g": {
+          "$ref": "#/definitions/PhaseData"
+        },
+        "l": {
+          "$ref": "#/definitions/PhaseData"
+        },
+        "s": {
+          "$ref": "#/definitions/PhaseData"
+        },
+        "aq": {
+          "$ref": "#/definitions/PhaseData"
+        }
       },
       "additionalProperties": false
     },
     "critical": {
       "type": "object",
       "properties": {
-        "Tc": { "$ref": "#/definitions/Datum" },
-        "Pc": { "$ref": "#/definitions/Datum" },
-        "Vc": { "$ref": "#/definitions/Datum" },
-        "omega": { "$ref": "#/definitions/Datum" }
+        "Tc": {
+          "$ref": "#/definitions/Datum"
+        },
+        "Pc": {
+          "$ref": "#/definitions/Datum"
+        },
+        "Vc": {
+          "$ref": "#/definitions/Datum"
+        },
+        "omega": {
+          "$ref": "#/definitions/Datum"
+        }
       },
       "additionalProperties": false
     },
     "points": {
       "type": "array",
-      "items": { "$ref": "#/definitions/CurvePoint" }
+      "items": {
+        "$ref": "#/definitions/CurvePoint"
+      }
     },
     "vapor_pressure": {
       "type": "object",
       "description": "Reference-quality saturation-pressure curve of the liquid (a labelled curve, never a stored boiling point). `model` names an equation (iapws-if97-region4, wagner, antoine), not a compound. Without it the vapour pressure comes from `points` (kind psat/tb) plus `critical` (Lee-Kesler, acentric factor fitted to the point) or a Clausius-Clapeyron fit.",
-      "required": ["model", "tier", "source"],
+      "required": [
+        "model",
+        "tier",
+        "source"
+      ],
       "properties": {
-        "model": { "type": "string" },
-        "params": { "type": "object" },
-        "t_min_k": { "type": "number" },
-        "t_max_k": { "type": "number" },
-        "tier": { "type": "string", "enum": ["tabulated", "imported", "estimated", "speculative", "refined", "user-set"] },
-        "source": { "type": "string" }
+        "model": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        },
+        "t_min_k": {
+          "type": "number"
+        },
+        "t_max_k": {
+          "type": "number"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "tabulated",
+            "imported",
+            "estimated",
+            "speculative",
+            "refined",
+            "user-set"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "unifac_groups": {
       "type": "array",
       "description": "Explicit UNIFAC subgroup counts, e.g. [[\"CH3\", 1], [\"CH2\", 1], [\"OH\", 1]]; when absent they are derived from identity.smiles (engine/src/groups.rs).",
-      "items": { "type": "array", "minItems": 2, "maxItems": 2 }
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2
+      }
     },
     "acid_base": {
       "type": "array",
-      "items": { "$ref": "#/definitions/AcidBaseSite" }
+      "items": {
+        "$ref": "#/definitions/AcidBaseSite"
+      }
     },
     "redox": {
       "type": "array",
-      "items": { "$ref": "#/definitions/RedoxCouple" }
+      "items": {
+        "$ref": "#/definitions/RedoxCouple"
+      }
     },
     "optics": {
       "type": "object",
       "properties": {
         "bands": {
           "type": "array",
-          "items": { "$ref": "#/definitions/OpticsBand" }
+          "items": {
+            "$ref": "#/definitions/OpticsBand"
+          }
         },
-        "molar_refraction": { "$ref": "#/definitions/Datum" },
-        "band_gap_eV": { "$ref": "#/definitions/Datum" },
-        "gas_xsec": {
-          "type": "array",
-          "items": { "type": "number" }
+        "tier": {
+          "type": "string"
         },
-        "flame_rgb": {
+        "source": {
+          "type": "string"
+        },
+        "molar_refraction": {
+          "$ref": "#/definitions/Datum"
+        },
+        "refractive_index": {
+          "$ref": "#/definitions/Datum"
+        },
+        "band_gap_eV": {
+          "$ref": "#/definitions/Datum"
+        },
+        "solid_bands": {
           "type": "array",
-          "items": { "type": "number" },
-          "minItems": 3,
-          "maxItems": 3
+          "items": {
+            "$ref": "#/definitions/OpticsBand"
+          }
+        },
+        "colour": {
+          "$ref": "#/definitions/SolidColour"
+        },
+        "gas_bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GasBand"
+          }
         }
       },
       "additionalProperties": false
@@ -106,53 +199,115 @@
     "transport": {
       "type": "object",
       "properties": {
-        "eta_l": { "type": "object" },
-        "sigma": { "$ref": "#/definitions/Datum" }
+        "eta_l": {
+          "type": "object"
+        },
+        "sigma": {
+          "$ref": "#/definitions/Datum"
+        }
       },
       "additionalProperties": false
     },
     "kinetics_refs": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "rejected": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "properties": {
-          "datum": { "type": "object" },
-          "reason": { "type": "string" }
+          "datum": {
+            "type": "object"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       }
     }
   },
   "not": {
     "anyOf": [
-      { "required": ["mp"] },
-      { "required": ["bp"] },
-      { "required": ["mp_c"] },
-      { "required": ["bp_c"] },
-      { "required": ["solubility"] },
-      { "required": ["density"] },
-      { "required": ["phase"] }
+      {
+        "required": [
+          "mp"
+        ]
+      },
+      {
+        "required": [
+          "bp"
+        ]
+      },
+      {
+        "required": [
+          "mp_c"
+        ]
+      },
+      {
+        "required": [
+          "bp_c"
+        ]
+      },
+      {
+        "required": [
+          "solubility"
+        ]
+      },
+      {
+        "required": [
+          "density"
+        ]
+      },
+      {
+        "required": [
+          "phase"
+        ]
+      }
     ]
   },
   "additionalProperties": false,
   "definitions": {
     "Datum": {
       "type": "object",
-      "required": ["value", "unit", "tier", "source"],
+      "required": [
+        "value",
+        "unit",
+        "tier",
+        "source"
+      ],
       "properties": {
-        "value": { "type": "number" },
-        "unit": { "type": "string" },
-        "T_K": { "type": "number" },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "T_K": {
+          "type": "number"
+        },
         "tier": {
           "type": "string",
-          "enum": ["tabulated", "imported", "estimated", "speculative", "refined", "user-set"]
+          "enum": [
+            "tabulated",
+            "imported",
+            "estimated",
+            "speculative",
+            "refined",
+            "user-set"
+          ]
         },
-        "source": { "type": "string" },
-        "uncertainty": { "type": "number" }
+        "source": {
+          "type": "string"
+        },
+        "uncertainty": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
@@ -161,89 +316,242 @@
       "properties": {
         "thermo": {
           "type": "object",
-          "required": ["model", "tier", "source"],
+          "required": [
+            "model",
+            "tier",
+            "source"
+          ],
           "properties": {
-            "model": { "type": "string" },
+            "model": {
+              "type": "string"
+            },
             "tier": {
               "type": "string",
-              "enum": ["tabulated", "imported", "estimated", "speculative", "refined", "user-set"]
+              "enum": [
+                "tabulated",
+                "imported",
+                "estimated",
+                "speculative",
+                "refined",
+                "user-set"
+              ]
             },
-            "source": { "type": "string" },
-            "dfH": { "$ref": "#/definitions/Datum" },
-            "dfG": { "$ref": "#/definitions/Datum" },
-            "S": { "$ref": "#/definitions/Datum" },
-            "cp": { "$ref": "#/definitions/Datum" },
-            "ranges": { "type": "array" },
-            "params": { "type": "object" }
+            "source": {
+              "type": "string"
+            },
+            "dfH": {
+              "$ref": "#/definitions/Datum"
+            },
+            "dfG": {
+              "$ref": "#/definitions/Datum"
+            },
+            "S": {
+              "$ref": "#/definitions/Datum"
+            },
+            "cp": {
+              "$ref": "#/definitions/Datum"
+            },
+            "ranges": {
+              "type": "array"
+            },
+            "params": {
+              "type": "object"
+            }
           },
           "additionalProperties": true
         },
         "volume": {
           "type": "object",
           "properties": {
-            "model": { "type": "string" },
-            "zra": { "$ref": "#/definitions/Datum" },
-            "v0": { "$ref": "#/definitions/Datum" }
+            "model": {
+              "type": "string"
+            },
+            "zra": {
+              "$ref": "#/definitions/Datum"
+            },
+            "v0": {
+              "$ref": "#/definitions/Datum"
+            }
           },
           "additionalProperties": true
         },
-        "rho": { "$ref": "#/definitions/Datum" },
-        "polymorph": { "type": "string" }
+        "rho": {
+          "$ref": "#/definitions/Datum"
+        },
+        "polymorph": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "CurvePoint": {
       "type": "object",
-      "required": ["kind", "tier", "source"],
+      "required": [
+        "kind",
+        "tier",
+        "source"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["psat", "tm", "tb", "dhfus", "solubility", "density"]
+          "enum": [
+            "psat",
+            "tm",
+            "tb",
+            "dhfus",
+            "solubility",
+            "density"
+          ]
         },
-        "T_K": { "type": "number" },
-        "P_Pa": { "type": "number" },
-        "solvent": { "type": "string" },
-        "value": { "type": "number" },
-        "unit": { "type": "string" },
+        "T_K": {
+          "type": "number"
+        },
+        "P_Pa": {
+          "type": "number"
+        },
+        "solvent": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
         "tier": {
           "type": "string",
-          "enum": ["tabulated", "imported", "estimated", "speculative", "refined", "user-set"]
+          "enum": [
+            "tabulated",
+            "imported",
+            "estimated",
+            "speculative",
+            "refined",
+            "user-set"
+          ]
         },
-        "source": { "type": "string" },
-        "uncertainty": { "type": "number" }
+        "source": {
+          "type": "string"
+        },
+        "uncertainty": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
     "AcidBaseSite": {
       "type": "object",
-      "required": ["pKa"],
+      "required": [
+        "pKa"
+      ],
       "properties": {
-        "site": { "type": "string" },
-        "pKa": { "$ref": "#/definitions/Datum" },
-        "dH": { "$ref": "#/definitions/Datum" },
-        "T_K": { "type": "number" },
-        "I": { "type": "number" }
+        "site": {
+          "type": "string"
+        },
+        "pKa": {
+          "$ref": "#/definitions/Datum"
+        },
+        "dH": {
+          "$ref": "#/definitions/Datum"
+        },
+        "T_K": {
+          "type": "number"
+        },
+        "I": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
     "RedoxCouple": {
       "type": "object",
-      "required": ["partner", "E0"],
+      "required": [
+        "partner",
+        "E0"
+      ],
       "properties": {
-        "partner": { "type": "string" },
-        "E0": { "$ref": "#/definitions/Datum" },
-        "n_electrons": { "type": "integer" }
+        "partner": {
+          "type": "string"
+        },
+        "E0": {
+          "$ref": "#/definitions/Datum"
+        },
+        "n_electrons": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false
     },
     "OpticsBand": {
       "type": "object",
-      "required": ["nm", "eps"],
+      "required": [
+        "nm",
+        "eps"
+      ],
       "properties": {
-        "solvent": { "type": "string" },
-        "nm": { "type": "number" },
-        "eps": { "type": "number" },
-        "fwhm": { "type": "number" }
+        "solvent": {
+          "type": "string"
+        },
+        "nm": {
+          "type": "number"
+        },
+        "eps": {
+          "type": "number"
+        },
+        "fwhm": {
+          "type": "number"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GasBand": {
+      "type": "object",
+      "required": [
+        "nm",
+        "sigma_cm2",
+        "fwhm"
+      ],
+      "properties": {
+        "nm": {
+          "type": "number"
+        },
+        "sigma_cm2": {
+          "type": "number"
+        },
+        "fwhm": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SolidColour": {
+      "type": "object",
+      "required": [
+        "rgb_linear"
+      ],
+      "properties": {
+        "rgb_linear": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "subject": {
+          "type": "string"
+        },
+        "hydrate": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "phrase": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     }

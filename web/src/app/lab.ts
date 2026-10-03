@@ -3,7 +3,8 @@
 import type { BenchScene } from '../bench/scene';
 import type { SimController } from '../sim/sim_controller';
 import { VesselState } from '../types';
-import { VesselConfig, VesselSnapshot, ReagentCatalogEntry, Portion } from '../types/sim';
+import { VesselConfig, VesselSnapshot, ReagentCatalogEntry, Portion, ElectrolysisSpec, DoseRequest } from '../types/sim';
+import { ElectrodeMaterial } from '../equipment/electrochem';
 import { ReagentItem, amountMode, streamColour } from './reagent_library';
 import type { FlowForm } from '../bench/handling';
 import { DROP_ML, DrainSink, LabFlowSink, LabFlowSource, ReagentFlowSink, VesselFlowSink } from './flow';
@@ -15,6 +16,7 @@ import { looksLikeMetal } from '../equipment/bottle';
 import { glasswareSpec } from './glassware_catalog';
 import { ReactionClock, ClockInfo } from './reaction_clock';
 import { canReceiveFiltrate, filterMode, filtrateStep, filtrationRateMlS, isFunnelType } from '../bench/filtration_math';
+import { getProfile, vesselHeight } from '../render/glass_profiles';
 
 export type VesselType = VesselState['type'];
 
@@ -27,6 +29,7 @@ export interface VesselControlState {
   stirring: boolean;
   stirRpm: number;
   iceBath: boolean;
+  electrolysis?: ElectrolysisSpec | null;
 }
 
 const STIR_RPM = 400;
@@ -147,6 +150,9 @@ export class Lab {
       amountMol: s.amount_mol,
       concentrationM: s.conc_m !== null ? s.conc_m : 0,
     }));
+    if (snap.electrolysis && id === this.selectedId) {
+      this.bench.instruments.electrochem?.updateReadout(snap.electrolysis, this.ctl(id).electrolysis?.on ?? false);
+    }
     // Stopper popped (or sealed from elsewhere): re-attach the gauge for the selected vessel.
     if (sealedChanged && id === this.selectedId) this.bench.setSelectedVessel(id);
     return snap;
@@ -260,6 +266,8 @@ export class Lab {
     if (id !== null && !this.vessels.has(id)) return;
     this.selectedId = id;
     this.bench.setSelectedVessel(id);
+    if (id) this.updateElectroVisuals(id);
+    else this.bench.instruments?.electrochem?.detach();
     this.onSelectionChanged?.(id);
   }
 
@@ -331,6 +339,71 @@ export class Lab {
   /** Slide a vessel next to another one on the bench (setups). */
   public placeBeside(id: string, nearId: string, dx = 14) {
     if (this.vessels.has(id) && this.vessels.has(nearId)) this.bench.placeBeside(id, nearId, dx);
+  }
+
+  // ------------------------------------------------------------------ electrochemistry
+  public async setElectrolysis(id: string, spec: ElectrolysisSpec | null) {
+    const c = this.ctl(id);
+    c.electrolysis = spec;
+    if (spec) {
+      await this.sim.control(id, { electrolysis: spec });
+    } else {
+      await this.sim.control(id, { remove_electrodes: true });
+    }
+    this.updateElectroVisuals(id);
+    this.onControlsChanged?.(id);
+  }
+
+  public async removeElectrodes(id: string) {
+    await this.setElectrolysis(id, null);
+  }
+
+  public setElectrochemMaterials(anode: ElectrodeMaterial, cathode: ElectrodeMaterial) {
+    this.bench.instruments?.electrochem?.setMaterials(anode, cathode);
+  }
+
+  public async dose(vesselId: string, req: DoseRequest) {
+    if (!this.vessels.has(vesselId)) return;
+    await this.sim.dose(vesselId, req);
+  }
+
+  public async setGalvanicCell(anodeVesselId: string, cathodeVesselId: string, anodeMat: ElectrodeMaterial = 'Zn', cathodeMat: ElectrodeMaterial = 'Cu') {
+    const specA: ElectrolysisSpec = {
+      anode: { material: anodeMat, area_cm2: 6.0 },
+      cathode: { material: cathodeMat, area_cm2: 6.0 },
+      mode: 'voltage',
+      value: 0.0,
+      on: false,
+    };
+    await this.setElectrolysis(anodeVesselId, specA);
+
+    const bA = this.bench.getGlassware(anodeVesselId);
+    const bB = this.bench.getGlassware(cathodeVesselId);
+    if (bA && bB && this.bench.instruments.electrochem) {
+      this.bench.instruments.electrochem.setSaltBridge(
+        bA.group.position,
+        bB.group.position,
+        vesselHeight(getProfile(bA.vesselState.type)),
+        vesselHeight(getProfile(bB.vesselState.type)),
+      );
+      this.bench.instruments.electrochem.setMaterials(anodeMat, cathodeMat);
+    }
+  }
+
+  public updateElectroVisuals(id: string) {
+    const c = this.ctl(id);
+    const ec = this.bench.instruments?.electrochem;
+    if (!ec) return;
+    if (c.electrolysis) {
+      const b = this.bench.getGlassware(id);
+      if (b) {
+        ec.attachToVessel(b.group.position, vesselHeight(getProfile(b.vesselState.type)), b.vesselState.currentVolumeMl);
+        ec.setMaterials(c.electrolysis.anode.material as any, c.electrolysis.cathode.material as any);
+      }
+    } else {
+      ec.detach();
+      ec.removeSaltBridge();
+    }
   }
 
   // ------------------------------------------------------------------ filtration
@@ -572,6 +645,14 @@ export class Lab {
         density_g_ml: rho,
         mw: b.mw || 0,
       };
+      // a liquid known only by a colour gets the engine's single (Speculative) RGB -> spectrum inversion
+      if (vis.kind === 'liquid') {
+        try {
+          vis.absorbance_per_cm = await this.sim.colourToAbsorbance(vis.rgb, 2);
+        } catch {
+          /* rendered colourless without the engine inversion */
+        }
+      }
       this.visual.add(vesselId, vis);
       await this.sim.fetchSnapshot(vesselId);
       return 'visual';

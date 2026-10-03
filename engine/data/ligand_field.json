@@ -1,0 +1,176 @@
+{
+  "_comment": "Small parameter tables of the ligand-field model (optics/ligand_field.rs). Spectrochemical factors f of ligands and g of metal ions (Jorgensen 1962: Delta_o = f * g * 1000 cm-1), nephelauxetic factors h (ligand) and k (metal ion) (beta = 1 - h k), free-ion Racah B (cm-1) and the mean spin-pairing energy P (cm-1, Lever, Inorganic Electronic Spectroscopy, 2nd ed., 1984 and Jorgensen). All values are recalled from those references (tier estimated) and are intrinsic parameters of ligands and metal ions, not of any reaction; a spot check against the printed tables is outstanding.",
+  "ligands": {
+    "I": {
+      "f": 0.78,
+      "h": 2.7,
+      "charge": -1,
+      "halide": true
+    },
+    "Br": {
+      "f": 0.72,
+      "h": 2.3,
+      "charge": -1,
+      "halide": true
+    },
+    "Cl": {
+      "f": 0.8,
+      "h": 2.0,
+      "charge": -1,
+      "halide": true
+    },
+    "F": {
+      "f": 0.9,
+      "h": 0.8,
+      "charge": -1,
+      "halide": true
+    },
+    "SCN": {
+      "f": 0.73,
+      "h": 2.1,
+      "charge": -1
+    },
+    "NCS": {
+      "f": 1.02,
+      "h": 2.1,
+      "charge": -1
+    },
+    "OH": {
+      "f": 0.94,
+      "h": 1.0,
+      "charge": -1
+    },
+    "C2O4": {
+      "f": 0.99,
+      "h": 1.5,
+      "charge": -2
+    },
+    "H2O": {
+      "f": 1.0,
+      "h": 1.0,
+      "charge": 0
+    },
+    "NH3": {
+      "f": 1.25,
+      "h": 1.4,
+      "charge": 0
+    },
+    "en": {
+      "f": 1.28,
+      "h": 1.5,
+      "charge": 0
+    },
+    "NO2": {
+      "f": 1.4,
+      "h": 1.5,
+      "charge": -1
+    },
+    "CN": {
+      "f": 1.7,
+      "h": 2.1,
+      "charge": -1
+    }
+  },
+  "metals": {
+    "Ti+3": {
+      "g": 20.3,
+      "B": 720,
+      "k": 0.1
+    },
+    "V+2": {
+      "g": 12.3,
+      "B": 766,
+      "k": 0.08
+    },
+    "V+3": {
+      "g": 18.0,
+      "B": 861,
+      "k": 0.1
+    },
+    "Cr+2": {
+      "g": 13.9,
+      "B": 830,
+      "k": 0.1,
+      "P": 23500
+    },
+    "Cr+3": {
+      "g": 17.4,
+      "B": 918,
+      "k": 0.21
+    },
+    "Mn+2": {
+      "g": 8.0,
+      "B": 960,
+      "k": 0.07,
+      "P": 25500
+    },
+    "Mn+3": {
+      "g": 21.0,
+      "B": 1140,
+      "k": 0.2,
+      "P": 28000
+    },
+    "Fe+2": {
+      "g": 10.4,
+      "B": 1058,
+      "k": 0.16,
+      "P": 17600
+    },
+    "Fe+3": {
+      "g": 14.0,
+      "B": 1130,
+      "k": 0.24,
+      "P": 30000
+    },
+    "Co+2": {
+      "g": 9.3,
+      "B": 1115,
+      "k": 0.12,
+      "P": 22500
+    },
+    "Co+3": {
+      "g": 18.2,
+      "B": 1100,
+      "k": 0.35,
+      "P": 21000
+    },
+    "Ni+2": {
+      "g": 8.9,
+      "B": 1041,
+      "k": 0.12
+    },
+    "Cu+2": {
+      "g": 12.0,
+      "B": 1240,
+      "k": 0.1
+    }
+  },
+  "group_numbers": {
+    "Ti": 4,
+    "V": 5,
+    "Cr": 6,
+    "Mn": 7,
+    "Fe": 8,
+    "Co": 9,
+    "Ni": 10,
+    "Cu": 11,
+    "Zn": 12
+  },
+  "aqua_ligand": "H2O",
+  "anion_ligands": {
+    "F-": "F",
+    "Cl-": "Cl",
+    "Br-": "Br",
+    "I-": "I",
+    "OH-": "OH",
+    "CN-": "CN",
+    "SCN-": "NCS",
+    "NO2-": "NO2",
+    "C2O4-2": "C2O4"
+  },
+  "anion_without_ligand": [
+    "S-2",
+    "HS-"
+  ],
+  "_comment2": "anion_ligands: the ligand a solid's anion offers a cation (halides, hydroxide, cyanide... as themselves); other oxyanions bind through oxygen like the aqua ligand; anion_without_ligand have no tabulated field strength."
+}

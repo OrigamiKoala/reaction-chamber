@@ -68,6 +68,18 @@ export class Burner {
     this.flame.setTarget(1.0);
   }
 
+  /**
+   * Flame test: the colour the flame takes when a loop dipped in a sample is held in it (engine `vessel_flame_test`, from
+   * emission lines and bands). `null` clears it. `share` is the fraction of the flame's light that comes from the metals.
+   */
+  public setFlameTest(rgb: [number, number, number] | null, share = 0) {
+    this.flame.configure(0, 2.0, 9.0, {
+      luminosity: 0.0,
+      emitter: rgb ? new THREE.Color(rgb[0], rgb[1], rgb[2]) : undefined,
+      emitterAmount: rgb ? Math.min(0.9, Math.max(0, share)) : 0,
+    });
+  }
+
   public extinguish() {
     this.isActive = false;
     this.powerWatts = 0.0;

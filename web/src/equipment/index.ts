@@ -5,3 +5,7 @@ export * from './pressure_gauge';
 export * from './hotplate';
 export * from './burner';
 export * from './bottle';
+export * from './electrochem';
+export * from './spectrophotometer';
+export * from './nmr';
+export * from './mass_spec';

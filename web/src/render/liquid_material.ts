@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LiquidLayer, OpticsTables } from '../types/sim';
-import { computeSpectralColor } from './liquid_shader';
+import { computeSpectralColor, buildOdLut, scatterSummary, LUT_N, LUT_LMAX_CM } from './liquid_shader';
 import { VesselProfile, heightForVolume, innerRadiusAt } from './glass_profiles';
 
 /**
@@ -34,10 +34,22 @@ uniform vec3 uUpObj;
 uniform vec4 uImpact;
 uniform int uLayerCount;
 uniform float uLayerTop[${MAX_LAYERS}];
-uniform vec3 uKOld[${MAX_LAYERS}];
-uniform vec3 uKNew[${MAX_LAYERS}];
+uniform sampler2D uLut;
 uniform vec4 uScat[${MAX_LAYERS}];
 uniform float uMix;
+uniform float uEdge;
+
+// optical depth (rgb) of layer i over a chord of length len, read from the layer's spectral look-up table (old and new
+// states blended by the swirl progress m): the hue follows the path length, it is not a single per-channel coefficient
+vec3 lqLayerOd( int i, float len, float m ) {
+  float u = sqrt( clamp( len / ${LUT_LMAX_CM.toFixed(1)}, 0.0, 1.0 ) );
+  float x = ( u * ${(LUT_N - 1).toFixed(1)} + 0.5 ) / ${LUT_N.toFixed(1)};
+  float rows = ${(MAX_LAYERS * 2).toFixed(1)};
+  float yOld = ( float( i ) + 0.5 ) / rows;
+  float yNew = ( float( i + ${MAX_LAYERS} ) + 0.5 ) / rows;
+  vec3 od = mix( texture2D( uLut, vec2( x, yOld ) ).rgb, texture2D( uLut, vec2( x, yNew ) ).rgb, m );
+  return od * max( len / ${LUT_LMAX_CM.toFixed(1)}, 1.0 );
+}
 
 float lqSurf( vec2 xz ) {
   float rr = length( xz );
@@ -155,21 +167,21 @@ vec3 lqOptics( out vec3 scatterCol, out float scatterAmt ) {
     if ( i >= uLayerCount ) break;
     float hi = ( i == uLayerCount - 1 ) ? 1e3 : uLayerTop[ i ];
     float len = lqSeg( p, d, tExit, lo, hi );
-    vec3 k = mix( uKOld[ i ], uKNew[ i ], m );
+    vec3 lod = len > 0.0 ? lqLayerOd( i, len, m ) : vec3( 0.0 );
     float s = uScat[ i ].w;
     float before = exp( -sod );
     float added = before * ( 1.0 - exp( -s * len ) );
-    // scattered light is itself tinted by the dissolved absorber over ~1 cm
-    scatterCol += uScat[ i ].rgb * exp( -k * 0.6 ) * added;
+    // scattered light is itself tinted by the dissolved absorber over ~0.6 cm of the layer's own path
+    scatterCol += uScat[ i ].rgb * exp( -lqLayerOd( i, min( len, 0.6 ), m ) ) * added;
     scatterAmt += added;
-    od += k * len;
+    od += lod;
     sod += s * len;
     lo = hi;
   }
   // Even "clear" water is not invisible: a blue-green absorption over the chord (plus ~1 cm of "free" path so thin
   // films still read) gives the liquid body a readable tint at bench distance, without any per-reagent data.
   od += vec3( 0.09, 0.05, 0.026 ) * ( 1.0 + min( tExit, 6.0 ) );
-  return od + vec3( sod );
+  return od;
 }
 `;
 
@@ -248,14 +260,26 @@ export interface LiquidUniforms {
   uImpact: U<THREE.Vector4>;
   uLayerCount: U<number>;
   uLayerTop: U<number[]>;
-  uKOld: U<THREE.Vector3[]>;
-  uKNew: U<THREE.Vector3[]>;
+  uLut: U<THREE.DataTexture>;
   uScat: U<THREE.Vector4[]>;
   uMix: U<number>;
+  uEdge: U<number>;
+}
+
+/** Backing store of the spectral LUT texture: rows 0..MAX_LAYERS-1 hold each layer's previous state, the next rows its current one. */
+function makeLutTexture(): THREE.DataTexture {
+  const data = new Uint16Array(LUT_N * MAX_LAYERS * 2 * 4);
+  const tex = new THREE.DataTexture(data, LUT_N, MAX_LAYERS * 2, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 function makeUniforms(): LiquidUniforms {
-  const v3 = () => Array.from({ length: MAX_LAYERS }, () => new THREE.Vector3());
   return {
     uFill: { value: 0 },
     uYb: { value: 0 },
@@ -272,8 +296,8 @@ function makeUniforms(): LiquidUniforms {
     uImpact: { value: new THREE.Vector4(0, 0, -100, 0) },
     uLayerCount: { value: 1 },
     uLayerTop: { value: new Array(MAX_LAYERS).fill(0) },
-    uKOld: { value: v3() },
-    uKNew: { value: v3() },
+    uLut: { value: makeLutTexture() },
+    uEdge: { value: 0.45 },
     uScat: { value: Array.from({ length: MAX_LAYERS }, () => new THREE.Vector4(1, 1, 1, 0)) },
     uMix: { value: 1 },
   };
@@ -306,7 +330,7 @@ function makeAbsorbMaterial(u: LiquidUniforms): THREE.ShaderMaterial {
           // refraction hint: a liquid column bends light away at its silhouette, so edges read darker
           vec3 nrm = normalize( vec3( vObj.x, 0.0, vObj.z ) + vec3( 1e-4 ) );
           float edge = 1.0 - abs( dot( nrm, normalize( vRay ) ) );
-          T *= mix( 1.0, 0.45, pow( edge, 2.2 ) );
+          T *= mix( 1.0, uEdge, pow( edge, 2.2 ) );
         }
         gl_FragColor = vec4( pow( T, vec3( 1.0 / 2.2 ) ), 1.0 );
       }`,
@@ -414,8 +438,11 @@ function linearToHex(r: number, g: number, b: number): string {
 
 interface LayerTarget {
   topMl: number; // cumulative volume at the layer's top
-  k: THREE.Vector3;
+  /** Optical depth (rgb) against path length, LUT_N samples (see `buildOdLut`). */
+  od: Float32Array;
   scat: THREE.Vector4;
+  /** Refractive index of the layer. */
+  n: number;
 }
 
 /**
@@ -436,9 +463,13 @@ export class LiquidBody {
   private targetCount = 1;
   private targets: LayerTarget[] = Array.from({ length: MAX_LAYERS }, () => ({
     topMl: 0,
-    k: new THREE.Vector3(),
+    od: new Float32Array(LUT_N * 3),
     scat: new THREE.Vector4(1, 1, 1, 0),
+    n: 1.333,
   }));
+  /** The LUT states the shader blends (previous / current) per layer. */
+  private lutOld: Float32Array[] = Array.from({ length: MAX_LAYERS }, () => new Float32Array(LUT_N * 3));
+  private lutNew: Float32Array[] = Array.from({ length: MAX_LAYERS }, () => new Float32Array(LUT_N * 3));
   private curTopMl: number[] = new Array(MAX_LAYERS).fill(0);
   private totalMlTarget = 0;
   private totalMl = 0;
@@ -509,19 +540,19 @@ export class LiquidBody {
       acc += Math.max(0, L.volume_ml || 0) * scale;
       const t = this.targets[i];
       t.topMl = acc;
-      const T = computeSpectralColor(optics, L.absorbance_per_cm ?? [], this.Lref);
-      const kx = -Math.log(Math.max(T[0], 1e-3)) / this.Lref;
-      const ky = -Math.log(Math.max(T[1], 1e-3)) / this.Lref;
-      const kz = -Math.log(Math.max(T[2], 1e-3)) / this.Lref;
-      if (this.kChange(t.k, kx, ky, kz)) bigChange = true;
-      t.k.set(kx, ky, kz);
-      const sc = L.scatter_rgb ?? [1, 1, 1];
-      t.scat.set(sc[0], sc[1], sc[2], Math.max(0, L.scatter_per_cm || 0));
+      const prev = this.scratch;
+      prev.set(t.od);
+      buildOdLut(optics, L, t.od);
+      if (this.odChange(prev, t.od)) bigChange = true;
+      const sc = scatterSummary(optics, L);
+      t.scat.set(sc.rgb[0], sc.rgb[1], sc.rgb[2], sc.w);
+      t.n = L.refractive_index > 1 ? L.refractive_index : 1.333;
     }
     if (n === 0) {
       this.targets[0].topMl = totalMl; // volume with no layer data: render it as clear liquid
-      this.targets[0].k.set(0, 0, 0);
+      this.targets[0].od.fill(0);
       this.targets[0].scat.set(1, 1, 1, 0);
+      this.targets[0].n = 1.333;
     }
     this.commitTargets(Math.max(1, n), totalMl, bigChange);
   }
@@ -534,17 +565,53 @@ export class LiquidBody {
     const ky = (-Math.log(Math.max(c.g, 0.02)) / this.Lref) * strength;
     const kz = (-Math.log(Math.max(c.b, 0.02)) / this.Lref) * strength;
     const t = this.targets[0];
-    const big = this.kChange(t.k, kx, ky, kz);
-    t.k.set(kx, ky, kz);
+    const prev = this.scratch;
+    prev.set(t.od);
+    for (let j = 0; j < LUT_N; j++) {
+      const u = j / (LUT_N - 1);
+      const L = LUT_LMAX_CM * u * u;
+      t.od[3 * j] = kx * L;
+      t.od[3 * j + 1] = ky * L;
+      t.od[3 * j + 2] = kz * L;
+    }
+    const big = this.odChange(prev, t.od);
     t.scat.set(1, 1, 1, 0);
     t.topMl = volMl;
+    t.n = 1.333;
     this.commitTargets(1, volMl, big);
   }
 
-  private kChange(old: THREE.Vector3, x: number, y: number, z: number): boolean {
-    const d = Math.max(Math.abs(old.x - x), Math.abs(old.y - y), Math.abs(old.z - z));
-    const ref = Math.max(old.x, old.y, old.z, x, y, z, 0.05);
-    return d > 0.04 && d / ref > 0.18;
+  private scratch = new Float32Array(LUT_N * 3);
+
+  /** A change of a layer's optical-depth LUT large enough to deserve a swirl of the new colour into the old. */
+  private odChange(old: Float32Array, now: Float32Array): boolean {
+    let d = 0;
+    let ref = 0.05;
+    for (let i = 0; i < old.length; i++) {
+      d = Math.max(d, Math.abs(old[i] - now[i]));
+      ref = Math.max(ref, old[i], now[i]);
+    }
+    return d > 0.04 * LUT_LMAX_CM * 0.25 && d / ref > 0.18;
+  }
+
+  /** Writes the previous / current LUT states into the texture the shader samples. */
+  private uploadLut() {
+    const tex = this.uniforms.uLut.value;
+    const data = tex.image.data as unknown as Uint16Array;
+    const put = (row: number, src: Float32Array) => {
+      for (let j = 0; j < LUT_N; j++) {
+        const o = (row * LUT_N + j) * 4;
+        data[o] = THREE.DataUtils.toHalfFloat(Math.min(60000, src[3 * j]));
+        data[o + 1] = THREE.DataUtils.toHalfFloat(Math.min(60000, src[3 * j + 1]));
+        data[o + 2] = THREE.DataUtils.toHalfFloat(Math.min(60000, src[3 * j + 2]));
+        data[o + 3] = THREE.DataUtils.toHalfFloat(1);
+      }
+    };
+    for (let i = 0; i < MAX_LAYERS; i++) {
+      put(i, this.lutOld[i]);
+      put(i + MAX_LAYERS, this.lutNew[i]);
+    }
+    tex.needsUpdate = true;
   }
 
   private commitTargets(count: number, totalMl: number, bigChange: boolean) {
@@ -555,8 +622,8 @@ export class LiquidBody {
     if (first) {
       // first fill: no swirl, start from the poured colour
       for (let i = 0; i < MAX_LAYERS; i++) {
-        u.uKOld.value[i].copy(this.targets[i].k);
-        u.uKNew.value[i].copy(this.targets[i].k);
+        this.lutOld[i].set(this.targets[i].od);
+        this.lutNew[i].set(this.targets[i].od);
         u.uScat.value[i].copy(this.targets[i].scat);
         this.curTopMl[i] = this.targets[i].topMl * 0.0;
       }
@@ -566,23 +633,30 @@ export class LiquidBody {
       // freeze current blend as the "old" colour and swirl in the new one from the top
       const m = u.uMix.value;
       for (let i = 0; i < MAX_LAYERS; i++) {
-        u.uKOld.value[i].lerp(u.uKNew.value[i], m);
-        u.uKNew.value[i].copy(this.targets[i].k);
+        const o = this.lutOld[i];
+        const nw = this.lutNew[i];
+        for (let j = 0; j < o.length; j++) o[j] += (nw[j] - o[j]) * m;
+        nw.set(this.targets[i].od);
       }
       u.uMix.value = 0;
       this.mixing = true;
     } else {
       for (let i = 0; i < MAX_LAYERS; i++) {
-        u.uKNew.value[i].copy(this.targets[i].k);
-        if (!this.mixing) u.uKOld.value[i].copy(this.targets[i].k);
+        this.lutNew[i].set(this.targets[i].od);
+        if (!this.mixing) this.lutOld[i].set(this.targets[i].od);
       }
     }
     u.uLayerCount.value = count;
+    this.uploadLut();
+    // the refractive index of the dominant layer sets the free surface's index and how strongly the column's edge darkens
+    // (contrast with the glass, n ~ 1.47): hexane (1.375) is less contrasty than water (1.333)... both lower than a dense solution
+    const nDom = this.targets[this.dominantLayer()].n;
+    this.surfaceMat.ior = Math.min(2.333, Math.max(1.0, nDom));
+    u.uEdge.value = 1 - Math.min(0.75, 0.55 * Math.min(1.8, Math.max(0.3, Math.abs(1.47 - nDom) / 0.137)));
     this.updateApparent();
   }
 
-  private updateApparent() {
-    // dominant (largest) layer, evaluated at Lref
+  private dominantLayer(): number {
     let best = 0;
     let bestV = -1;
     let prev = 0;
@@ -594,12 +668,21 @@ export class LiquidBody {
         best = i;
       }
     }
-    const t = this.targets[best];
+    return best;
+  }
+
+  private updateApparent() {
+    // dominant (largest) layer, evaluated at Lref from its LUT
+    const t = this.targets[this.dominantLayer()];
     const L = this.Lref;
+    const u = Math.sqrt(Math.min(1, L / LUT_LMAX_CM)) * (LUT_N - 1);
+    const j = Math.min(LUT_N - 2, Math.floor(u));
+    const f = u - j;
+    const od = (c: number) => (t.od[3 * j + c] * (1 - f) + t.od[3 * (j + 1) + c] * f) * Math.max(1, L / LUT_LMAX_CM);
     const a = 1 - Math.exp(-t.scat.w * L);
-    const r = Math.exp(-t.k.x * L) * (1 - a) + t.scat.x * a;
-    const g = Math.exp(-t.k.y * L) * (1 - a) + t.scat.y * a;
-    const b = Math.exp(-t.k.z * L) * (1 - a) + t.scat.z * a;
+    const r = Math.exp(-od(0)) * (1 - a) + t.scat.x * a;
+    const g = Math.exp(-od(1)) * (1 - a) + t.scat.y * a;
+    const b = Math.exp(-od(2)) * (1 - a) + t.scat.z * a;
     this.apparent = linearToHex(r, g, b);
   }
 
@@ -677,7 +760,8 @@ export class LiquidBody {
       u.uMix.value = Math.min(1, u.uMix.value + dt / 0.9);
       if (u.uMix.value >= 1) {
         this.mixing = false;
-        for (let i = 0; i < MAX_LAYERS; i++) u.uKOld.value[i].copy(u.uKNew.value[i]);
+        for (let i = 0; i < MAX_LAYERS; i++) this.lutOld[i].set(this.lutNew[i]);
+        this.uploadLut();
       }
     }
 

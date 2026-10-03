@@ -9,7 +9,15 @@ use crate::chem_db;
 use crate::physics::R_GAS;
 use crate::thermo::functions::get_thermo_state;
 use crate::transfer::combustion::{self as comb, FuelData, ProductCp};
+use crate::optics::flame::{self, FlameColour};
 use crate::vessel::*;
+
+/// Fraction of a burning liquid that the flame carries off as droplets (splatter, spray from bubbles bursting at the
+/// surface). A placeholder for the aerosol feed of dissolved salts into a liquid-fuel flame.
+const ENTRAINMENT_FRACTION: f64 = 0.01;
+/// Volume of liquid fed per volume of flame gas (cm3 per cm3) when a loop or wire dipped in a liquid is held in a gas flame
+/// (the burner's flame test): the same order as the liquid-per-gas ratio of a burning pool of a typical liquid fuel.
+const SAMPLE_LIQUID_PER_GAS: f64 = 8e-4;
 
 struct Fuel {
     id: String,
@@ -205,15 +213,68 @@ impl Vessel {
             let f = &fuels[k];
             let t_flame = comb::adiabatic_flame_temperature_k(&f.data, y_o2, t, cp);
             let app = comb::flame_appearance(&f.data, t_flame);
+            // metals dissolved in the burning liquid are carried into the flame as droplets: their lines and bands colour it
+            let o2 = f.data.o2_stoich();
+            let nu_flue = f.data.elements.get("C").copied().unwrap_or(0.0) + 0.5 * f.data.elements.get("H").copied().unwrap_or(0.0) + 3.76 * o2;
+            let gas_cm3_per_mol = nu_flue * R_GAS * t_flame / crate::vle::P_BAR_PA * 1e6;
+            let rho_l = self.molecule(&f.id).map_or(0.8, |m| (m.mw / (m.v_liquid_m3_mol(t) * 1e6)).max(0.3));
+            let liquid_per_gas = (f.data.molar_mass_g_mol / rho_l) / gas_cm3_per_mol.max(1.0);
+            let fc = self.flame_colour_of_contents(t_flame, ENTRAINMENT_FRACTION, liquid_per_gas, app.emitter_rgb, app.luminosity);
             self.flame_visual = Some(FlameVisual {
                 fuel: self.display_name(&f.id),
                 power_w: power,
                 luminosity: app.luminosity,
                 flame_temp_k: t_flame,
-                emitter_rgb: Some(app.emitter_rgb),
+                emitter_rgb: Some(fc.emitter_rgb),
+                metal_share: fc.metal_share,
+                emitters: fc.top.iter().filter(|e| e.3 > 0.05).map(|e| format!("{} {} {:.0} nm", e.0, e.1, e.2)).collect(),
             });
         }
         let _ = R_GAS;
         q_liquid
+    }
+
+    /// Atom densities (cm-3 of flame gas) of the flame-emitting elements and of chlorine that the liquid contents of the vessel
+    /// feed into a flame, for a given `entrainment` of the liquid and volume of liquid per volume of flame gas.
+    fn flame_feed_atoms_cm3(&self, entrainment: f64, liquid_per_gas: f64) -> (HashMap<String, f64>, f64) {
+        let v_ml = self.total_liquid_volume_ml();
+        let mut atoms: HashMap<String, f64> = HashMap::new();
+        let mut cl = 0.0;
+        if v_ml <= 1e-9 {
+            return (atoms, cl);
+        }
+        let emitters = flame::emitter_elements();
+        for m in self.liquid_maps() {
+            for (sp, &mol) in m {
+                if mol <= 0.0 {
+                    continue;
+                }
+                let Some(el) = crate::ions::species_elements(sp) else { continue };
+                for (e, n) in &el {
+                    let c_mol_cm3 = mol * n / v_ml;
+                    let dens = flame::atom_density_cm3(c_mol_cm3, entrainment, liquid_per_gas);
+                    if e == "Cl" {
+                        cl += dens;
+                    } else if emitters.iter().any(|x| x == e) {
+                        *atoms.entry(e.clone()).or_default() += dens;
+                    }
+                }
+            }
+        }
+        (atoms, cl)
+    }
+
+    /// Colour of a flame at `t_flame_k` that carries the vessel's dissolved metals (`base_rgb` / `sooting_index` describe
+    /// the flame's own light).
+    pub(crate) fn flame_colour_of_contents(&self, t_flame_k: f64, entrainment: f64, liquid_per_gas: f64, base_rgb: [f64; 3], sooting_index: f64) -> FlameColour {
+        let (atoms, cl) = self.flame_feed_atoms_cm3(entrainment, liquid_per_gas);
+        flame::flame_colour(&atoms, cl, t_flame_k, base_rgb, sooting_index)
+    }
+
+    /// The burner's flame test: the colour a gas flame at `t_flame_k` takes when a loop dipped in this vessel's liquid is held
+    /// in it (the same emission model as a burning liquid, fed at `SAMPLE_LIQUID_PER_GAS` with the same entrainment).
+    pub fn flame_test(&self, t_flame_k: f64) -> FlameColour {
+        let pale_blue = [0.35, 0.5, 1.0];
+        self.flame_colour_of_contents(t_flame_k, ENTRAINMENT_FRACTION, SAMPLE_LIQUID_PER_GAS, pale_blue, 0.0)
     }
 }

@@ -144,28 +144,87 @@ pub struct RedoxCouple {
     pub n_electrons: Option<i32>,
 }
 
+/// One Gaussian absorption band of a species in a solvent (or in the solid lattice): the molar absorptivity at the band
+/// centre and the full width at half maximum. `solvent` is a solvent *class* ("water", "alkane", "aromatic", "alcohol",
+/// "other") or a species id; absent means "any solvent" (the band is not known to depend on it).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct OpticsBand {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub solvent: Option<String>,
     pub nm: f64,
+    /// Molar absorptivity at the centre, L/(mol cm).
     pub eps: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fwhm: Option<f64>,
+    /// "d-d" | "ct" | "pi-pi*" | "n-pi*" | "ivct" ...: informational (and which width estimate applies when `fwhm` is absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
+/// One Gaussian band of a gas-phase absorption cross-section.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GasBand {
+    pub nm: f64,
+    /// Cross-section at the centre, cm2 per molecule.
+    pub sigma_cm2: f64,
+    pub fwhm: f64,
+}
+
+/// A measured colour of a solid as stated by a source (parsed colour phrase): never an absorptivity.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SolidColour {
+    /// Linear sRGB of the diffuse (bulk powder) colour.
+    pub rgb_linear: [f64; 3],
+    /// What the phrase describes: "solid" | "solution" | "vapour" | "liquid".
+    #[serde(default = "default_subject")]
+    pub subject: String,
+    /// True when the phrase is about a hydrate, false for an anhydrous form, absent when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hydrate: Option<bool>,
+    /// 0..1: how sure the parser is that `rgb_linear` is the phrase's colour (compound hues and modifiers lower it).
+    #[serde(default = "default_confidence")]
+    pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phrase: Option<String>,
+}
+
+fn default_subject() -> String {
+    "solid".to_string()
+}
+
+fn default_confidence() -> f64 {
+    0.5
+}
+
+/// Optical record of a species (every value carries the record's tier and source).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Optics {
+    /// Solution absorption bands (per solvent).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bands: Vec<OpticsBand>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<ProvenanceTier>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Molar refraction R_D, cm3/mol (Lorentz-Lorenz).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub molar_refraction: Option<Datum>,
+    /// Measured refractive index n_D of the pure phase (overrides Lorentz-Lorenz).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refractive_index: Option<Datum>,
+    /// Optical band gap of the solid, eV (absorption edge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub band_gap_eV: Option<Datum>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gas_xsec: Option<Vec<f64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flame_rgb: Option<[f64; 3]>,
+    /// Absorption bands of chromophores in the solid lattice (intervalence / charge transfer / d-d) with the
+    /// absorptivity the chromophore has in the lattice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub solid_bands: Vec<OpticsBand>,
+    /// Measured colour of the solid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<SolidColour>,
+    /// Gas-phase absorption cross-section.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gas_bands: Vec<GasBand>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]

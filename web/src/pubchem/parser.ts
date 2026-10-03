@@ -180,41 +180,6 @@ export function parsePhysicalState(texts: string[]): 'solid' | 'liquid' | 'gas' 
   return best?.k;
 }
 
-const COLOUR_WORDS: Array<[RegExp, string]> = [
-  [/\b(colou?rless|clear|transparent)\b/, '#e8f4fa'],
-  [/\bwhite\b/, '#f4f3ef'],
-  [/\b(yellow|straw)\b/, '#e8d34a'],
-  [/\borange\b/, '#e98a2b'],
-  [/\bred\b/, '#c8332c'],
-  [/\bpink\b/, '#e79bb4'],
-  [/\b(purple|violet|lilac)\b/, '#7b4fa8'],
-  [/\bblue\b/, '#3d6fc4'],
-  [/\bgreen\b/, '#4f9a55'],
-  [/\bbrown\b/, '#7b5233'],
-  [/\bblack\b/, '#262626'],
-  [/\b(gr[ae]y|silver\w*)\b/, '#9b9da0'],
-];
-
-/** First colour word in the text -> sRGB hex (generic English colour names, not per-compound data). */
-export function parseColourWord(texts: string[]): string | undefined {
-  const t = texts.slice(0, 4).join(' ; ').toLowerCase();
-  let best: { c: string; i: number } | undefined;
-  for (const [re, hex] of COLOUR_WORDS) {
-    const m = re.exec(t);
-    if (m && (!best || m.index < best.i)) best = { c: hex, i: m.index };
-  }
-  if (!best) return undefined;
-  if (/\b(pale|light)\b/.test(t) && best.c !== '#e8f4fa' && best.c !== '#f4f3ef') return mixHex(best.c, '#ffffff', 0.45);
-  if (/\bdark\b/.test(t)) return mixHex(best.c, '#000000', 0.4);
-  return best.c;
-}
-
-function mixHex(a: string, b: string, t: number): string {
-  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
-  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
-  return '#' + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('');
-}
-
 // ------------------------------------------------------------------ phase at room temperature (derived, never stamped)
 
 export type Phase = 'solid' | 'liquid' | 'gas';

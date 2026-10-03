@@ -85,14 +85,36 @@ export interface OpticsBand {
   nm: number;
   eps: number;
   fwhm?: number;
+  /** "d-d" | "ct" | "pi-pi*" | "n-pi*" | "ivct": informational (and which width default applies). */
+  kind?: string;
+}
+
+export interface GasBand {
+  nm: number;
+  /** Cross-section at the centre, cm2 per molecule. */
+  sigma_cm2: number;
+  fwhm: number;
+}
+
+/** A measured colour of a solid (parsed colour phrase): never an absorptivity. */
+export interface SolidColour {
+  rgb_linear: [number, number, number];
+  subject?: string;
+  hydrate?: boolean;
+  confidence?: number;
+  phrase?: string;
 }
 
 export interface Optics {
   bands?: OpticsBand[];
+  tier?: string;
+  source?: string;
   molar_refraction?: Datum;
+  refractive_index?: Datum;
   band_gap_eV?: Datum;
-  gas_xsec?: number[];
-  flame_rgb?: [number, number, number];
+  solid_bands?: OpticsBand[];
+  colour?: SolidColour;
+  gas_bands?: GasBand[];
 }
 
 export interface Transport {

@@ -51,6 +51,10 @@ export interface PhysicalData {
   cp_j_mol_k?: number;
   /** Heat capacity polynomial coefficients. */
   cp_coefficients?: number[];
+  /** Solution absorption bands `[nm, eps L/(mol cm), fwhm nm | null, solvent class | null]` from the PubChem UV text. */
+  uv_bands?: Array<[number, number, number | null, string | null]>;
+  /** What the colour phrase was about and how sure the parser is (see `pubchem/colour_lexicon.ts`). */
+  colour_meta?: { subject: 'solid' | 'solution' | 'liquid' | 'vapour'; hydrate?: boolean; confidence: number; phrase: string };
 }
 
 export interface SpeciesRecord {

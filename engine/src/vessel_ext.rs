@@ -8,7 +8,6 @@ use crate::compound_thermo::is_metal_element;
 use crate::ions;
 use crate::optics;
 use crate::solubility;
-use crate::spectra;
 use crate::vessel::*;
 
 /// A new solid is announced above this concentration-equivalent (mol per litre of aqueous solvent: 2.5 umol in 50 mL,
@@ -30,6 +29,8 @@ pub struct EventState {
     pub complexes: HashSet<String>,
     /// Display (sRGB) colour of the solution at the last colour report.
     pub colour_ref: Option<[f64; 3]>,
+    /// Display colour each liquid layer had at its last colour report (keyed by the layer's lead species, "aqueous" for water).
+    pub layer_colour_ref: HashMap<String, [f64; 3]>,
     pub colour_t: f64,
     pub colour_reported: bool,
     pub colour_eval_t: f64,
@@ -64,6 +65,11 @@ pub struct SolidProps {
     pub density_g_ml: f64,
     pub particle_um: f64,
     pub refractive_index: f64,
+    /// Absorption coefficient of the solid material per bin, cm-1 (imaginary part of its refractive index).
+    pub alpha_per_cm: optics::Spectrum,
+    /// Tier and source of the colour (see `optics::solid`).
+    pub colour_tier: crate::types::ProvenanceTier,
+    pub colour_source: String,
 }
 
 fn kind_from_str(k: &str) -> SolidKind {
@@ -149,73 +155,100 @@ fn capitalise(s: &str) -> String {
 
 impl Vessel {
     // ------------------------------------------------------------------------------------------ appearance
-    /// Appearance of a solid species: hand-tuned spectra entries first, then the mineral registry (table or rules),
-    /// then a neutral default.
+    /// Appearance of a solid species. Colour comes from `optics::solid` (a measured colour, else Kubelka-Munk reflectance from
+    /// the band gap and the inherited ion chromophores), failing that from the hand-picked mineral colour or the cation/anion
+    /// hue rules (Speculative). Refractive index is Lorentz-Lorenz from the molar refractions and the density (a measured
+    /// n_D wins); density comes from the mineral / import record, never from a formula-mass heuristic.
     pub fn solid_props(&self, sp: &str) -> SolidProps {
+        use crate::optics::solid::{self as osolid, SolidSpec};
         let formula = sp.trim_end_matches("(s)").to_string();
         let mineral = self.minerals.iter().find(|m| m.solid_species == sp);
-        let name = mineral.map(|m| m.mineral.clone()).unwrap_or_else(|| formula.clone());
-        if let Some(o) = spectra::solid_optics(sp) {
-            return SolidProps {
-                name,
-                formula,
-                rgb: o.rgb_linear,
-                kind: kind_from_str(o.kind),
-                density_g_ml: o.density_g_ml,
-                particle_um: o.default_particle_um,
-                refractive_index: o.refractive_index,
-            };
-        }
-        if let Some(c) = self.compound_for(sp).filter(|c| c.phase_model != "ionic") {
-            // metals are a bright grey sheet-like solid, other solids a fine pale powder unless the record has a colour
+        let default_name = mineral.map(|m| m.mineral.clone()).unwrap_or_else(|| formula.clone());
+        let compound = self.compound_for(sp);
+        let mw = chem_db::get_species_thermo(sp).mw;
+
+        // ---- the physical solid: density, grain size, morphology
+        let (name, density_g_ml, particle_um, kind, hand_rgb, is_metal);
+        if let Some(c) = compound.filter(|c| c.phase_model != "ionic") {
+            // metals are a bright grey sheet-like solid, other solids a fine pale powder
             let single_metal = ions::parse_formula_strict(&c.formula).map_or(false, |e| e.len() == 1 && e.keys().all(|k| is_metal_element(k)));
-            return SolidProps {
-                name: if c.name.is_empty() { name } else { c.name.clone() },
-                formula,
-                rgb: c.color_linear_rgb.unwrap_or(if single_metal { [0.55, 0.56, 0.58] } else { [0.85, 0.85, 0.85] }),
-                kind: if single_metal { SolidKind::Metal } else { SolidKind::Powder },
-                density_g_ml: c.rho_solid.max(0.3),
-                particle_um: 30.0,
-                refractive_index: 1.55,
-            };
+            name = if c.name.is_empty() { default_name } else { c.name.clone() };
+            density_g_ml = c.rho_solid.max(0.3);
+            particle_um = 30.0;
+            kind = if single_metal { SolidKind::Metal } else { SolidKind::Powder };
+            hand_rgb = if single_metal { [0.55, 0.56, 0.58] } else { [0.85, 0.85, 0.85] };
+            is_metal = single_metal;
+        } else if let Some((rec_name, d)) = mineral.is_none().then(|| self.molecular_solid_of(sp)).flatten() {
+            // a molecular solid the species store describes (ice, iodine): its record's name and density
+            name = rec_name;
+            density_g_ml = d;
+            particle_um = 150.0;
+            kind = SolidKind::Crystal;
+            hand_rgb = [0.88, 0.9, 0.93];
+            is_metal = false;
+        } else if let Some(m) = mineral {
+            name = default_name;
+            density_g_ml = m.density_g_ml.max(0.3);
+            particle_um = m.default_particle_um.max(0.5);
+            kind = kind_from_str(&m.kind);
+            hand_rgb = m.solid_color;
+            is_metal = false;
+        } else {
+            name = default_name;
+            density_g_ml = 2.5;
+            particle_um = 20.0;
+            kind = SolidKind::Powder;
+            hand_rgb = [0.9, 0.9, 0.9];
+            is_metal = false;
         }
-        // a molecular solid the species store describes (ice, iodine): its record's name and density
-        if mineral.is_none() {
-            if let Some(lk) = self.liquid_key_of_solid(sp) {
-                if let Some(mol) = self.molecule(&lk) {
-                    let rec_name = crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(sp).and_then(|r| r.identity.names.first().cloned()));
-                    return SolidProps {
-                        name: rec_name.unwrap_or_else(|| mol.name.clone()),
-                        formula,
-                        rgb: [0.88, 0.9, 0.93],
-                        kind: SolidKind::Crystal,
-                        density_g_ml: mol.v_solid_m3_mol.map(|v| mol.mw / (v * 1e6)).unwrap_or(1.5).max(0.3),
-                        particle_um: 150.0,
-                        refractive_index: 1.5,
-                    };
+
+        // ---- appearance
+        let ions: Vec<(String, f64)> = {
+            let mut v: Vec<(String, f64)> = mineral.map(|m| m.dissolved_products.iter().map(|(k, n)| (k.clone(), *n)).collect()).unwrap_or_default();
+            v.sort_by(|a, b| a.0.cmp(&b.0));
+            v
+        };
+        let record = optics::records::lookup(sp);
+        let measured = compound.and_then(|c| c.solid_colour.as_ref());
+        let spec = SolidSpec { ions: &ions, density_g_ml, mw, particle_um, record: record.as_ref(), measured_colour: measured, is_metal };
+        let look = osolid::look(&spec);
+        let (rgb, alpha, tier, source) = match look {
+            Some(l) => (l.rgb, l.alpha_per_cm, l.tier, l.source),
+            None => {
+                // Speculative fallbacks: the mineral's hand-picked colour (or the hue rules that produced it), else grey
+                let refl = optics::fallback::spectrum_from_rgb(hand_rgb);
+                let s_coef = 1.5 / (particle_um.clamp(0.5, 200.0) * 1e-4);
+                let mut a = [0.0; optics::N_BINS];
+                for (x, r) in a.iter_mut().zip(refl.iter()) {
+                    *x = 0.5 * s_coef * (1.0 - r).powi(2) / (2.0 * r.max(1e-4));
                 }
+                let basis = if mineral.is_some() { "hand-picked mineral colour / cation-anion hue rules" } else { "default colour" };
+                (hand_rgb, a, crate::types::ProvenanceTier::Speculative, basis.to_string())
             }
-        }
-        if let Some(m) = mineral {
-            return SolidProps {
-                name,
-                formula,
-                rgb: m.solid_color,
-                kind: kind_from_str(&m.kind),
-                density_g_ml: m.density_g_ml.max(0.3),
-                particle_um: m.default_particle_um.max(0.5),
-                refractive_index: if m.kind == "gel" { 1.55 } else { 1.65 },
-            };
-        }
-        SolidProps {
-            name,
-            formula,
-            rgb: [0.9, 0.9, 0.9],
-            kind: SolidKind::Powder,
-            density_g_ml: 2.5,
-            particle_um: 20.0,
-            refractive_index: 1.6,
-        }
+        };
+
+        // ---- refractive index
+        let n = record
+            .as_ref()
+            .and_then(|o| o.refractive_index.as_ref().map(|d| d.value))
+            .or_else(|| compound.and_then(|c| c.refractive_index))
+            .unwrap_or_else(|| {
+                let rm: f64 = if ions.is_empty() {
+                    optics::records::molar_refraction(sp).0
+                } else {
+                    ions.iter().map(|(id, n)| n * optics::records::molar_refraction(id).0).sum()
+                };
+                osolid::refractive_index(rm, density_g_ml, mw)
+            });
+        SolidProps { name, formula, rgb, kind, density_g_ml, particle_um, refractive_index: n, alpha_per_cm: alpha, colour_tier: tier, colour_source: source }
+    }
+
+    /// Name and density of a molecular solid (ice, iodine) from the species store and the molecule model.
+    fn molecular_solid_of(&self, sp: &str) -> Option<(String, f64)> {
+        let lk = self.liquid_key_of_solid(sp)?;
+        let mol = self.molecule(&lk)?;
+        let rec_name = crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(sp).and_then(|r| r.identity.names.first().cloned()));
+        Some((rec_name.unwrap_or_else(|| mol.name.clone()), mol.v_solid_m3_mol.map(|v| mol.mw / (v * 1e6)).unwrap_or(1.5).max(0.3)))
     }
 
     // ------------------------------------------------------------------------------------------ solubility control
@@ -521,30 +554,71 @@ impl Vessel {
         }
     }
 
+    /// Colour-change detection per layer: the colour a layer shows at a 2 cm path (its absorption plus the turbidity of the
+    /// solids suspended in it), for every liquid layer, aqueous or not. The report names the layer when there is more than
+    /// one; each layer keeps its own reference colour.
     fn detect_colour_change(&mut self) {
-        if !self.has_aqueous_phase() {
-            return;
-        }
-        let a = optics::absorbance_per_cm(&self.concentrations_m());
-        let lin = optics::transmitted_linear_rgb(&a, 2.0);
-        let cur = [to_srgb(lin[0]), to_srgb(lin[1]), to_srgb(lin[2])];
-        let reference = self.ev.colour_ref.unwrap_or([1.0, 1.0, 1.0]);
-        let dist = ((cur[0] - reference[0]).powi(2) + (cur[1] - reference[1]).powi(2) + (cur[2] - reference[2]).powi(2)).sqrt();
-        if dist > 0.12 && (!self.ev.colour_reported || self.t_sim_s - self.ev.colour_t >= 0.5) {
-            self.ev.colour_reported = true;
-            let chroma = cur.iter().cloned().fold(0.0, f64::max) - cur.iter().cloned().fold(1.0, f64::min);
-            let text = if chroma < 0.06 {
-                "Solution became colourless".to_string()
+        let views = self.phase_views();
+        // (distance, key, name of the layer, colour, linear colour)
+        let mut worst: Option<(f64, String, String, [f64; 3], [f64; 3])> = None;
+        for (idx, v) in views.iter().enumerate() {
+            if v.volume_ml <= 0.001 {
+                continue;
+            }
+            let aqueous = self.phase_is_aqueous(&v.species_mol);
+            let lead = if aqueous {
+                None
             } else {
-                format!("Solution turned {}", colour_name(cur))
+                v.species_mol.iter().filter(|(k, _)| ions::species_charge(k) == 0).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(k, _)| k.clone())
             };
-            self.ev.colour_ref = Some(cur);
-            self.ev.colour_t = self.t_sim_s;
-            self.push_event_full(VesselEventKind::ColourChange, text, 0.4, None, Some(lin));
-        } else if self.ev.colour_ref.is_none() {
-            self.ev.colour_ref = Some(reference);
+            let po = self.phase_optics(&v.species_mol, v.volume_ml, lead.as_deref());
+            let n_layer = crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml);
+            let (ext, albedo) = if idx == 0 { self.suspension_optics(n_layer) } else { (vec![0.0; optics::N_BINS], vec![1.0; optics::N_BINS]) };
+            let lin = layer_colour_at(&po.a_per_cm, &ext, &albedo, 2.0);
+            let cur = [to_srgb(lin[0]), to_srgb(lin[1]), to_srgb(lin[2])];
+            let key = match &lead {
+                None => "aqueous".to_string(),
+                Some(k) => k.clone(),
+            };
+            let reference = *self.ev.layer_colour_ref.entry(key.clone()).or_insert([1.0, 1.0, 1.0]);
+            let dist = ((cur[0] - reference[0]).powi(2) + (cur[1] - reference[1]).powi(2) + (cur[2] - reference[2]).powi(2)).sqrt();
+            if dist > 0.12 && worst.as_ref().map_or(true, |w| dist > w.0) {
+                let name = lead.as_ref().map(|k| self.display_name(k)).unwrap_or_else(|| "aqueous layer".to_string());
+                worst = Some((dist, key, name, cur, lin));
+            }
+        }
+        let many = views.iter().filter(|v| v.volume_ml > 0.001).count() > 1;
+        if let Some((_, key, name, cur, lin)) = worst {
+            if !self.ev.colour_reported || self.t_sim_s - self.ev.colour_t >= 0.5 {
+                self.ev.colour_reported = true;
+                let chroma = cur.iter().cloned().fold(0.0, f64::max) - cur.iter().cloned().fold(1.0, f64::min);
+                let subject = if many { capitalise(&name) } else { "Solution".to_string() };
+                let text = if chroma < 0.06 { format!("{} became colourless", subject) } else { format!("{} turned {}", subject, colour_name(cur)) };
+                self.ev.layer_colour_ref.insert(key, cur);
+                self.ev.colour_ref = Some(cur);
+                self.ev.colour_t = self.t_sim_s;
+                self.push_event_full(VesselEventKind::ColourChange, text, 0.4, None, Some(lin));
+            }
         }
     }
+}
+
+/// Linear-sRGB colour of a layer seen through `path_cm`: Beer-Lambert absorption times the extinction of its suspension, plus
+/// the scattered light in proportion to the albedo (single-scattering approximation, as the shader does).
+pub fn layer_colour_at(a_per_cm: &[f64], ext_per_cm: &[f64], albedo: &[f64], path_cm: f64) -> [f64; 3] {
+    let mut t = [0.0; optics::N_BINS];
+    let mut s = [0.0; optics::N_BINS];
+    for i in 0..optics::N_BINS {
+        let a = a_per_cm.get(i).copied().unwrap_or(0.0);
+        let e = ext_per_cm.get(i).copied().unwrap_or(0.0);
+        let w = albedo.get(i).copied().unwrap_or(1.0);
+        let trans = 10f64.powf(-a * path_cm) * (-e * path_cm).exp();
+        t[i] = trans;
+        s[i] = (1.0 - (-e * path_cm).exp()) * w * 10f64.powf(-a * path_cm * 0.5);
+    }
+    let direct = optics::spectrum_to_rgb(&t);
+    let scat = optics::spectrum_to_rgb(&s);
+    [(direct[0] + scat[0]).clamp(0.0, 1.0), (direct[1] + scat[1]).clamp(0.0, 1.0), (direct[2] + scat[2]).clamp(0.0, 1.0)]
 }
 
 /// A monatomic (or Hg2/NH4) cation the solubility table / rules can reason about.

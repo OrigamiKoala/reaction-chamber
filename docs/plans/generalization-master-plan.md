@@ -1145,6 +1145,8 @@ peaks at ≈520 nm in alkane layers and ≈460 nm in water; Prussian blue render
 blue-green flames; NO2/Br2/Cl2 visible above open vessels; no steam from a dry beaker; ethanol shows boiling at its
 bubble point.
 
+**Status: implemented, 2026-10-03.** Deviations: all optical rows are recalled seed rows (tier estimated), the A8 / MPI-Mainz / Materials Project / NIST ASD / Greenman / sTDA pipelines are not run; Prussian blue comes from a generic mixed-valence rule (blue-violet, very dark); Cu is blue-green only with chloride in the flame; `chem_db.rs` keeps its five default minerals (Ksp(T) data); the pour stream still uses `ior` 1.333; flame and plume placeholders are named constants. The spectrophotometer reads the same engine spectra. Details in `generalization-progress.md`.
+
 ### Stage 11: later environments
 
 - **Electrochemistry:** electrodes as phases, power supply and meter, Butler–Volmer at each electrode, E from ΔfG° and
