@@ -5,6 +5,10 @@ import { LiquidBody } from './liquid_material';
 import { SpriteParticles, BubbleSystem } from './particles';
 import { FlameCluster } from './flame';
 import { softSpriteTexture, smokePuffTexture, dropletsTexture } from './textures';
+import { SolidPieces, getRibbonGeo, BED_PACKING, PieceSolid } from './solid_pieces';
+import { ELECTRODE_X, ELECTRODE_RADIUS, electrodeBottomY } from './electrode_geometry';
+
+export { getRibbonGeo };
 
 /**
  * All per-vessel reaction effects. Lives in the vessel's glass-local frame (y = 0 at the bottom of the glass).
@@ -17,7 +21,6 @@ let crystalGeo: THREE.BufferGeometry | null = null;
 let lumpGeo: THREE.BufferGeometry | null = null;
 let foamGeo: THREE.BufferGeometry | null = null;
 let shardGeo: THREE.BufferGeometry | null = null;
-let ribbonGeo: THREE.BufferGeometry | null = null;
 let stirBarGeo: THREE.BufferGeometry | null = null;
 let stopperGeo: THREE.BufferGeometry | null = null;
 const condGeoCache = new Map<string, THREE.BufferGeometry>();
@@ -41,34 +44,6 @@ function getShardGeo() {
   shardGeo = new THREE.ExtrudeGeometry(s, { depth: 0.06, bevelEnabled: false });
   shardGeo.center();
   return shardGeo;
-}
-
-/** Curled metal ribbon strip (≈ 5 cm × 0.3 cm), centred. */
-export function getRibbonGeo(): THREE.BufferGeometry {
-  if (ribbonGeo) return ribbonGeo;
-  const segs = 40;
-  const pos: number[] = [];
-  const idx: number[] = [];
-  const L = 5;
-  const W = 0.32;
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs;
-    const x = (t - 0.5) * L;
-    const y = Math.sin(t * Math.PI * 2.2) * 0.35 + t * 0.2;
-    const z = Math.cos(t * Math.PI * 1.3) * 0.45;
-    const tw = Math.sin(t * 5) * 0.4;
-    pos.push(x, y + Math.cos(tw) * W * 0.5, z + Math.sin(tw) * W * 0.5);
-    pos.push(x, y - Math.cos(tw) * W * 0.5, z - Math.sin(tw) * W * 0.5);
-  }
-  for (let i = 0; i < segs; i++) {
-    const a = i * 2;
-    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-  }
-  ribbonGeo = new THREE.BufferGeometry();
-  ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  ribbonGeo.setIndex(idx);
-  ribbonGeo.computeVertexNormals();
-  return ribbonGeo;
 }
 
 function getStirBarGeo() {
@@ -167,7 +142,7 @@ export class VesselEffects {
   private bedTop: THREE.Mesh | null = null;
   private bedMat: THREE.MeshStandardMaterial;
   /** Last built bed: flat-layer level, heap footprint radius / height, surface radius (all glass-local cm). */
-  private bed = { yb: 0, rp: 0, H: 0, rS: 0, wet: false, vol: -1 };
+  private bed = { yb: 0, rp: 0, H: 0, rS: 0, wet: false, vol: -1, sig: '' };
   private bedTargetVol = 0;
   private bedVol = 0;
   private bedColor = new THREE.Color(1, 1, 1);
@@ -181,11 +156,10 @@ export class VesselEffects {
   private lumpCount = 0;
   private lumpState: { x: number; y: number; z: number; s: number; floatY: number; susp: boolean; ph: number }[] = [];
 
-  private ribbon: THREE.Mesh;
-  private ribbonMat: THREE.MeshStandardMaterial;
-  private ribbonScale = 0;
-  private ribbonTarget = 0;
-  private ribbonFloating = false;
+  /** Floating / frozen / film solids and metal pieces. */
+  private pieces: SolidPieces;
+  /** Settled solids, bottom first: each one's colour and bed volume (mixed beds are mottled, not averaged). */
+  private bedLayers: { rgb: [number, number, number]; vol: number }[] = [];
 
   private stirBar: THREE.Mesh;
   private stirRpm = 0;
@@ -225,7 +199,7 @@ export class VesselEffects {
   constructor(private profile: VesselProfile, private liquid: LiquidBody) {
     const p = profile;
     this.floorY = -p.baseOffsetY;
-    this.bubbles = new BubbleSystem(220);
+    this.bubbles = new BubbleSystem(700);
     this.smoke = new SpriteParticles(170, smokePuffTexture());
     this.smoke.fadeIn = 0.2;
     this.splash = new SpriteParticles(140, softSpriteTexture());
@@ -306,7 +280,7 @@ export class VesselEffects {
     this.group.add(this.cond);
 
     // settled bed material
-    this.bedMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
+    this.bedMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, vertexColors: true });
 
     // crystals + lumps
     this.crystals = new THREE.InstancedMesh(getCrystalGeo(), crystalMat(), 48);
@@ -324,15 +298,9 @@ export class VesselEffects {
     this.lumps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.group.add(this.crystals, this.lumps);
 
-    // metal ribbon
-    this.ribbonMat = new THREE.MeshStandardMaterial({ color: 0xc8c8cc, metalness: 1, roughness: 0.32, side: THREE.DoubleSide });
-    this.ribbon = new THREE.Mesh(getRibbonGeo(), this.ribbonMat);
-    this.ribbon.visible = false;
-    this.ribbon.castShadow = false;
-    this.ribbon.raycast = () => {};
-    const ribbonLen = Math.min(1, (p.rimInnerRadius * 2 - 0.4) / 5);
-    this.ribbon.userData.baseScale = Math.max(0.35, ribbonLen);
-    this.group.add(this.ribbon);
+    // floating pieces, frozen mass, powder film, metal ribbons / granules
+    this.pieces = new SolidPieces(p);
+    this.group.add(this.pieces.group);
 
     // stir bar
     this.stirBar = new THREE.Mesh(
@@ -373,6 +341,7 @@ export class VesselEffects {
     this.crystals.renderOrder = base + 4;
     this.lumps.renderOrder = base + 4;
     this.flame.group.children.forEach((c) => (c.renderOrder = base + 4));
+    this.pieces.setRenderOrder(base);
     if (this.shards) this.shards.renderOrder = base + 6;
     if (this.puddle) this.puddle.renderOrder = base;
   }
@@ -437,20 +406,38 @@ export class VesselEffects {
     let lumpMass = 0;
     let lumpSusp = 0;
     let rough = 0.92;
-    let metal: SolidVisual | null = null;
     let diam = 0;
     let vel = 0;
     const lumpCol = new THREE.Color(1, 1, 1);
+    const floaters: Array<PieceSolid & { floating: boolean }> = [];
+    const metals: Array<PieceSolid & { floating: boolean }> = [];
+    const layers: { rgb: [number, number, number]; vol: number }[] = [];
     for (const s of solids) {
       if (s.mass_g <= 1e-6) continue;
+      const piece = (): PieceSolid & { floating: boolean } => ({
+        rgb: s.rgb,
+        // the engine reports bed bulk volume; a single piece / frozen mass has no packing voids
+        volumeMl: Math.max(0, s.settled_volume_ml) / BED_PACKING,
+        remaining: s.remaining_fraction ?? 1,
+        kind: s.kind,
+        diameterUm: s.particle_diameter_um,
+        floating: !!s.floating,
+      });
       if (s.kind === 'metal') {
-        if (!metal) metal = s;
+        metals.push(piece());
+        continue;
+      }
+      if (s.floating) {
+        // lighter than the liquid (ice, wax, flakes): rides the surface, never part of the bed or the cloud
+        floaters.push(piece());
         continue;
       }
       const settled = 1 - Math.max(0, Math.min(1, s.suspended_fraction));
       const v = Math.max(0, s.settled_volume_ml) * settled;
       bedVol += v;
-      const w = s.mass_g * settled + 1e-9;
+      if (v > 1e-5) layers.push({ rgb: s.rgb, vol: v });
+      // colour weights: the share of the bed's *volume* (surface area) each solid covers, not its mass
+      const w = v + 1e-9;
       r += s.rgb[0] * w;
       g += s.rgb[1] * w;
       b += s.rgb[2] * w;
@@ -476,6 +463,7 @@ export class VesselEffects {
       }
     }
     this.bedTargetVol = bedVol;
+    this.bedLayers = layers;
     if (wsum > 0) this.bedColorTarget.setRGB(r / wsum, g / wsum, b / wsum);
     this.bedMat.roughness = rough;
     // suspended cloud
@@ -499,14 +487,9 @@ export class VesselEffects {
       this.lumpCount = nL;
       this.layoutLumps(lumpCol, lumpMass > 0 ? lumpSusp / lumpMass : 0);
     }
-    // metal piece
-    if (metal) {
-      this.ribbonTarget = Math.max(0.05, Math.min(1, metal.remaining_fraction ?? 1));
-      this.ribbonFloating = !!metal.floating;
-      this.ribbonMat.color.setRGB(metal.rgb[0], metal.rgb[1], metal.rgb[2]);
-    } else {
-      this.ribbonTarget = 0;
-    }
+    // floating pieces, frozen mass, metal
+    metals.sort((x, y) => y.volumeMl - x.volumeMl);
+    this.pieces.setSolids(floaters, metals);
   }
 
   private layoutCrystals(col: THREE.Color) {
@@ -552,7 +535,10 @@ export class VesselEffects {
     const n = this.lumpCount;
     this.lumps.count = n;
     this.lumps.visible = n > 0;
-    (this.lumps.material as THREE.MeshStandardMaterial).color.copy(col);
+    const lm = this.lumps.material as THREE.MeshStandardMaterial;
+    lm.color.copy(col);
+    // a flocculent precipitate hanging in the liquid is translucent; settled curds are denser
+    lm.opacity = 0.92 - 0.38 * Math.max(0, Math.min(1, suspFrac));
     this.lumpState = [];
     for (let i = 0; i < n; i++) {
       const susp = prand(i, 11) < suspFrac;
@@ -606,7 +592,7 @@ export class VesselEffects {
     this.cond.visible = false;
     this.crystals.visible = false;
     this.lumps.visible = false;
-    this.ribbon.visible = false;
+    this.pieces.hide();
     this.stirBar.visible = false;
     if (this.bedSide) this.bedSide.visible = false;
     if (this.bedTop) this.bedTop.visible = false;
@@ -857,17 +843,26 @@ export class VesselEffects {
     // ---- bubbles
     this.safe('bubbles', () => {
       if (snap && hasLiquid) {
-        for (const g of snap.gas_fluxes) this.spawnGas(g, dt, fill);
-        if (snap.boil_intensity > 0.01) {
-          this.spawnAcc.boil += snap.boil_intensity * 55 * dt;
-          while (this.spawnAcc.boil >= 1) {
+        const boiling = snap.boil_intensity > 0.02;
+        for (const g of snap.gas_fluxes) {
+          // the vapour of a boiling liquid is drawn by the boil path below (bubbles born on the hot floor that grow as
+          // they rise); spawning it here too would double it with bulk bubbles of the wrong size and place
+          if (boiling && this.isVapourOfLiquid(g, snap)) continue;
+          this.spawnGas(g, dt, fill);
+        }
+        if (boiling) {
+          this.spawnAcc.boil += snap.boil_intensity * 320 * dt;
+          const scale = Math.min(1.2, p.rimInnerRadius / 2.5);
+          const R = innerRadiusAt(p, p.innerBottomY + 0.3) * 0.85;
+          let guard = 0;
+          while (this.spawnAcc.boil >= 1 && guard++ < 40) {
             this.spawnAcc.boil -= 1;
-            const R = innerRadiusAt(p, p.innerBottomY + 0.3) * 0.8;
             const a = Math.random() * Math.PI * 2;
             const rr = Math.sqrt(Math.random()) * R;
-            const rad = rnd(0.12, 0.42) * Math.min(1.2, p.rimInnerRadius / 2.5) * (0.5 + snap.boil_intensity * 0.6);
-            this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(16, 32), 1);
+            const rad = rnd(0.05, 0.16) * scale * (0.6 + snap.boil_intensity * 0.5);
+            this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(14, 26), 1, rnd(2.0, 3.4), 0.55 * scale * (0.6 + snap.boil_intensity * 0.5));
           }
+          if (this.spawnAcc.boil > 2) this.spawnAcc.boil = 2;
         }
       }
       const swirl = this.stirRpm > 0 ? Math.min(4.5, (this.stirRpm / 60) * 6.283 * 0.12) : 0;
@@ -962,7 +957,6 @@ export class VesselEffects {
     this.safe('settled bed', () => {
       this.bedVol += (this.bedTargetVol - this.bedVol) * Math.min(1, dt * 1.2);
       this.bedColor.lerp(this.bedColorTarget, Math.min(1, dt * 2));
-      this.bedMat.color.copy(this.bedColor);
       this.updateBed();
     });
 
@@ -971,25 +965,10 @@ export class VesselEffects {
       if (this.lumpCount > 0 && !this.burst) this.updateLumps(time, fill, hasLiquid);
     });
 
-    // ---- metal ribbon
-    this.safe('metal ribbon', () => {
-      this.ribbonScale += (this.ribbonTarget - this.ribbonScale) * Math.min(1, dt * 1.5);
-      if (this.ribbonScale > 0.03 && !this.burst) {
-        this.ribbon.visible = true;
-        const bs = this.ribbon.userData.baseScale as number;
-        const s = bs * this.ribbonScale;
-        const fizz = snap ? snap.gas_fluxes.some((g) => g.nucleation === 'solid' && g.rate_ml_s > 0.01) : false;
-        this.ribbon.scale.set(s, bs * (0.6 + 0.4 * this.ribbonScale), bs);
-        const yFloat = hasLiquid ? Math.max(p.innerBottomY + 0.4, fill - 0.35) : p.innerBottomY + 0.3;
-        const yBed = this.bedLevelY() + 0.35;
-        const yT = this.ribbonFloating ? yFloat : yBed;
-        this.ribbon.position.y += (yT - this.ribbon.position.y) * Math.min(1, dt * 2);
-        const bob = fizz ? Math.sin(time * 9) * 0.04 : 0;
-        this.ribbon.position.y += bob;
-        this.ribbon.rotation.set(0.25 + Math.sin(time * 0.7) * (fizz ? 0.08 : 0), time * (fizz ? 0.25 : 0.02), 0.1);
-      } else {
-        this.ribbon.visible = false;
-      }
+    // ---- floating pieces / frozen mass / film / metal
+    this.safe('solid pieces', () => {
+      const fizz = snap ? snap.gas_fluxes.some((g) => g.nucleation === 'solid' && g.rate_ml_s > 0.01) : false;
+      this.pieces.update(dt, time, { fill, hasLiquid, bedY: Math.max(this.bedLevelY(), p.innerBottomY), stirRpm: this.stirRpm, fizz, burst: this.burst, up: this.liquid.uniforms.uUpObj.value });
     });
 
     // ---- stir bar
@@ -1038,14 +1017,36 @@ export class VesselEffects {
     this.safe('precipitate particles', () => this.precip.update(dt));
   }
 
+  /** Which electrode a gas flux comes from (the cell reaction that has the gas among its products), if any. */
+  private electrodeFor(g: GasFlux): 'anode' | 'cathode' | null {
+    const e = this.snap?.electrolysis;
+    if (!e) return null;
+    const strip = (id: string) => id.replace(/\((g|aq|s|l)\)$/, '');
+    const want = strip(g.species);
+    for (const row of e.rows) {
+      const products = row.equation.split(/->|→|=>/)[1] ?? '';
+      for (const tok of products.trim().split(/\s+/)) if (strip(tok) === want) return row.electrode === 'anode' ? 'anode' : 'cathode';
+    }
+    return null;
+  }
+
+  /** True when the flux is the vapour of a liquid present in the vessel (its species is "X(g)" and X is a liquid component). */
+  private isVapourOfLiquid(g: GasFlux, snap: VesselSnapshot): boolean {
+    const base = g.species.replace(/\(g\)$/, '');
+    return snap.species.some((r) => r.id === base && (r.phase === 'aqueous' || r.phase === 'organic') && r.amount_mol > 1e-6);
+  }
+
   private spawnGas(g: GasFlux, dt: number, fill: number) {
     if (g.rate_ml_s <= 1e-4) return;
     const p = this.profile;
     let dmm = Math.max(0.4, Math.min(6, g.bubble_diameter_mm || 2));
     let perSec = g.rate_ml_s / ((Math.PI / 6) * Math.pow(dmm / 10, 3));
-    const maxRate = 170;
+    // A vigorous reaction releases far more gas than the bubble budget can show as individual 1 mm bubbles: past the
+    // budget the bubbles merge into larger ones (up to ~3.5 mm, as they do in a real fizzing liquid) and the rest is
+    // the milky haze of micro-bubbles the liquid body adds (`setGasAgitation`).
+    const maxRate = 800;
     if (perSec > maxRate) {
-      dmm = Math.min(7, dmm * Math.cbrt(perSec / maxRate));
+      dmm = Math.min(3.5, dmm * Math.cbrt(perSec / maxRate));
       perSec = maxRate;
     }
     this.spawnAcc.bubbles += perSec * dt;
@@ -1065,12 +1066,17 @@ export class VesselEffects {
         x = Math.cos(a) * R;
         z = Math.sin(a) * R;
       } else if (g.nucleation === 'solid') {
-        if (this.ribbon.visible) {
-          tmpP.set(rnd(-2.5, 2.5), rnd(-0.3, 0.3), rnd(-0.4, 0.4));
-          this.ribbon.localToWorld(tmpP);
-          this.group.worldToLocal(tmpP);
+        const el = this.electrodeFor(g);
+        if (el) {
+          // gas evolved by an electrode forms on that rod (H2 at the cathode, O2 / Cl2 at the anode), mostly low on it
+          const bottom = electrodeBottomY(fill + p.baseOffsetY) - p.baseOffsetY;
+          const a = Math.random() * Math.PI * 2;
+          x = (el === 'anode' ? -ELECTRODE_X : ELECTRODE_X) + Math.cos(a) * (ELECTRODE_RADIUS + r);
+          z = Math.sin(a) * (ELECTRODE_RADIUS + r);
+          y = bottom + 0.15 + Math.pow(Math.random(), 1.6) * Math.max(0.1, top - bottom - 0.15);
+        } else if (this.pieces.nucleationPoint(tmpP, top)) {
           x = tmpP.x;
-          y = Math.min(tmpP.y, top);
+          y = tmpP.y;
           z = tmpP.z;
         } else {
           y = Math.max(bedY, p.innerBottomY) + 0.05 + r;
@@ -1182,6 +1188,7 @@ export class VesselEffects {
     const V = this.bedVol;
     if (V < 0.003 || this.burst) {
       this.bed.vol = -1;
+      this.bed.sig = '';
       if (this.bedSide) this.bedSide.visible = false;
       if (this.bedTop) this.bedTop.visible = false;
       return;
@@ -1205,8 +1212,9 @@ export class VesselEffects {
     const flat = yb > p.innerBottomY + 0.03;
     const rS = flat ? Math.max(0.1, rim) : Math.max(0.1, Math.min(rp, rim));
     const prev = this.bed;
-    const same = prev.vol >= 0 && prev.wet === wet && Math.abs(V - prev.vol) / Math.max(V, 0.02) < 0.015;
-    this.bed = { yb, rp, H, rS, wet, vol: same ? prev.vol : V };
+    const sig = this.bedLayers.map((l) => `${Math.round(l.vol * 40)}:${l.rgb.map((c) => c.toFixed(2)).join(',')}`).join('|');
+    const same = prev.vol >= 0 && prev.wet === wet && prev.sig === sig && Math.abs(V - prev.vol) / Math.max(V, 0.02) < 0.015;
+    this.bed = { yb, rp, H, rS, wet, vol: same ? prev.vol : V, sig };
     if (same && this.bedSide && this.bedTop) {
       this.bedSide.visible = flat;
       this.bedTop.visible = true;
@@ -1222,6 +1230,7 @@ export class VesselEffects {
       }
       pts.push(new THREE.Vector2(rS, this.bedSurfaceAt(rS)));
       sideG = new THREE.LatheGeometry(pts, 48);
+      this.colourBed(sideG, false, 0);
     }
     // top: radial height-field (heap + grain)
     const J = 20;
@@ -1263,6 +1272,7 @@ export class VesselEffects {
     topG.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     topG.setIndex(idx);
     topG.computeVertexNormals();
+    this.colourBed(topG, true, seed);
 
     if (!this.bedTop) {
       this.bedTop = new THREE.Mesh(topG, this.bedMat);
@@ -1283,6 +1293,85 @@ export class VesselEffects {
     this.bedSide!.visible = flat;
     this.bedTop.visible = true;
     this.placeCrystals();
+  }
+
+  /**
+   * Vertex colours of the settled bed from the engine's solids (bottom first). The flat layer's wall shows them as bands
+   * by cumulative volume; the heap's surface is a mottled mix weighted towards what settled last (it is on top), so a
+   * white and a black precipitate make a speckled grey bed, not a flat average.
+   */
+  private colourBed(g: THREE.BufferGeometry, top: boolean, seed: number) {
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    const n = pos.count;
+    const col = new Float32Array(n * 3);
+    const L = this.bedLayers;
+    const m = L.length;
+    if (m <= 1) {
+      const c = m === 1 ? L[0].rgb : [this.bedColorTarget.r, this.bedColorTarget.g, this.bedColorTarget.b];
+      for (let i = 0; i < n; i++) {
+        // a little tonal grain so a single powder is not a flat paint
+        const k = top ? 0.94 + 0.12 * Math.sin(pos.getX(i) * 31 + pos.getZ(i) * 17 + seed) * Math.cos(pos.getZ(i) * 23 - seed) : 1;
+        col[i * 3] = c[0] * k;
+        col[i * 3 + 1] = c[1] * k;
+        col[i * 3 + 2] = c[2] * k;
+      }
+    } else {
+      let total = 0;
+      const wTop: number[] = [];
+      const cumVol: number[] = [];
+      let acc = 0;
+      for (let i = 0; i < m; i++) {
+        acc += L[i].vol;
+        cumVol.push(acc);
+        wTop.push(L[i].vol * (1 + 0.9 * i));
+        total += wTop[i];
+      }
+      const cumTop: number[] = [];
+      let a2 = 0;
+      for (let i = 0; i < m; i++) {
+        a2 += wTop[i] / total;
+        cumTop.push(a2);
+      }
+      const yEdge = cumVol.map((v) => heightForVolume(this.profile, v));
+      const soft = 0.06;
+      for (let i = 0; i < n; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        let c0 = 0, c1 = 0, c2 = 0;
+        if (top) {
+          // two octaves of smooth value noise in [0,1]
+          const u = Math.min(
+            1,
+            Math.max(0, 0.5 + 0.34 * Math.sin(x * 4.7 + seed) * Math.cos(z * 4.1 - seed * 0.7) + 0.2 * Math.sin(x * 11.3 + z * 9.1 + seed * 1.9) + 0.12 * Math.sin(x * 29 - z * 25 + seed))
+          );
+          let j = 0;
+          while (j < m - 1 && u > cumTop[j]) j++;
+          const lo = j > 0 ? cumTop[j - 1] : 0;
+          const hi = cumTop[j];
+          // blend towards the neighbouring solid near the boundary
+          const edge = Math.min(u - lo, hi - u);
+          const nb = edge < soft ? (j === 0 || (hi - u) < (u - lo) ? Math.min(m - 1, j + 1) : j - 1) : j;
+          const f = edge < soft ? 0.5 * (1 - edge / soft) : 0;
+          c0 = L[j].rgb[0] * (1 - f) + L[nb].rgb[0] * f;
+          c1 = L[j].rgb[1] * (1 - f) + L[nb].rgb[1] * f;
+          c2 = L[j].rgb[2] * (1 - f) + L[nb].rgb[2] * f;
+        } else {
+          let j = 0;
+          while (j < m - 1 && y > yEdge[j] + 0.0) j++;
+          const d = j < m - 1 ? yEdge[j] - y : 1;
+          const f = d < soft ? 0.5 * (1 - d / soft) : 0;
+          const nb = Math.min(m - 1, j + 1);
+          c0 = L[j].rgb[0] * (1 - f) + L[nb].rgb[0] * f;
+          c1 = L[j].rgb[1] * (1 - f) + L[nb].rgb[1] * f;
+          c2 = L[j].rgb[2] * (1 - f) + L[nb].rgb[2] * f;
+        }
+        col[i * 3] = c0;
+        col[i * 3 + 1] = c1;
+        col[i * 3 + 2] = c2;
+      }
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   }
 
   private updateLumps(time: number, fill: number, hasLiquid: boolean) {
@@ -1408,7 +1497,7 @@ export class VesselEffects {
     this.crystals.dispose();
     (this.lumps.material as THREE.Material).dispose();
     this.lumps.dispose();
-    this.ribbonMat.dispose();
+    this.pieces.dispose();
     (this.stirBar.material as THREE.Material).dispose();
     (this.stopper.material as THREE.Material).dispose();
     if (this.shards) {

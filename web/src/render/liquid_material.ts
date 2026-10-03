@@ -178,9 +178,11 @@ vec3 lqOptics( out vec3 scatterCol, out float scatterAmt ) {
     sod += s * len;
     lo = hi;
   }
-  // Even "clear" water is not invisible: a blue-green absorption over the chord (plus ~1 cm of "free" path so thin
-  // films still read) gives the liquid body a readable tint at bench distance, without any per-reagent data.
-  od += vec3( 0.09, 0.05, 0.026 ) * ( 1.0 + min( tExit, 6.0 ) );
+  // Even "clear" water is not invisible: a faint cool absorption over the chord (plus ~1 cm of "free" path so thin films
+  // still read) gives the liquid body a readable tint at bench distance. It fades out as the layer's own absorption takes
+  // over, so a coloured solution keeps the hue the engine's spectra give it (the old fixed tint shifted every colour).
+  float lqOwn = max( od.r, max( od.g, od.b ) );
+  od += vec3( 0.045, 0.028, 0.02 ) * ( 1.0 + min( tExit, 6.0 ) ) * exp( -1.5 * lqOwn );
   return od;
 }
 `;
@@ -424,6 +426,7 @@ function makeSurfaceMaterial(u: LiquidUniforms): THREE.MeshPhysicalMaterial {
 
 // ------------------------------------------------------------------ helpers
 const tmpV = new THREE.Vector3();
+const hazeTarget = new THREE.Vector4();
 const tmpM = new THREE.Matrix4();
 
 function linearToHex(r: number, g: number, b: number): string {
@@ -651,7 +654,8 @@ export class LiquidBody {
     // the refractive index of the dominant layer sets the free surface's index and how strongly the column's edge darkens
     // (contrast with the glass, n ~ 1.47): hexane (1.375) is less contrasty than water (1.333)... both lower than a dense solution
     const nDom = this.targets[this.dominantLayer()].n;
-    this.surfaceMat.ior = Math.min(2.333, Math.max(1.0, nDom));
+    // the free surface is the top layer's: a hexane layer floating on water reflects like hexane, not like water
+    this.surfaceMat.ior = Math.min(2.333, Math.max(1.0, this.targets[Math.max(0, count - 1)].n));
     u.uEdge.value = 1 - Math.min(0.75, 0.55 * Math.min(1.8, Math.max(0.3, Math.abs(1.47 - nDom) / 0.137)));
     this.updateApparent();
   }
@@ -737,8 +741,13 @@ export class LiquidBody {
       const tgt = this.targets[i].topMl * frac;
       this.curTopMl[i] += (tgt - this.curTopMl[i]) * Math.min(1, dt * 5);
       u.uLayerTop.value[i] = heightForVolume(p, this.curTopMl[i]);
-      // scatter lerp
-      u.uScat.value[i].lerp(this.targets[i].scat, Math.min(1, dt * 2.5));
+      // scatter lerp; a vigorously gassing liquid is milky with micro-bubbles (white, ~0.25 /cm at full agitation)
+      const tg = this.targets[i].scat;
+      const haze = this.gasAgitation > 0.15 ? (this.gasAgitation - 0.15) * 0.3 : 0;
+      const w = tg.w + haze;
+      const k = w > 1e-6 ? haze / w : 0;
+      hazeTarget.set(tg.x + (1 - tg.x) * k, tg.y + (1 - tg.y) * k, tg.z + (1 - tg.z) * k, w);
+      u.uScat.value[i].lerp(hazeTarget, Math.min(1, dt * 2.5));
     }
 
     // surface radius and cone fit for the chord estimate

@@ -67,12 +67,20 @@ export interface SolidVisual {
   /** Linear-RGB reflectance colour of the dry/wet solid. */
   rgb: [number, number, number];
   kind: SolidKind;
+  /** Intrinsic material density, g/mL. */
+  density_g_ml?: number;
+  /** True solid volume (mass / density), mL. */
+  volume_ml?: number;
+  /** Visual form: 'bed' | 'monolith' | 'pieces' | 'film'. */
+  morphology?: 'bed' | 'monolith' | 'pieces' | 'film' | string;
   /** Stokes settling velocity of the particles in the liquid that is in the vessel (mm/s, 0 when they float or stay colloidal). */
   settling_velocity_mm_s?: number;
   /** Total particle surface, cm2. */
   surface_area_cm2?: number;
   /** True when the solid is floating or clinging (e.g. a metal ribbon fizzing) rather than a bed. */
   floating?: boolean;
+  /** Liquid layer index the solid floats in/on, if floating. */
+  layer_index?: number;
   /** Fraction of this solid still undissolved/unreacted relative to what was added (for shrinking pieces). 0..1 */
   remaining_fraction?: number;
 }
@@ -85,6 +93,8 @@ export interface GasFlux {
   bubble_diameter_mm: number;
   /** Where bubbles nucleate. 'solid' = on surface of undissolved solid; 'bulk' = throughout liquid; 'wall' = glass wall. */
   nucleation: 'bulk' | 'wall' | 'solid';
+  /** Origin/mechanism of gas evolution, e.g. 'boil'. */
+  origin?: string;
 }
 
 export interface FumeVisual {
@@ -404,6 +414,8 @@ export interface VesselSnapshot {
   gas_phase?: GasPhaseInfo;
   /** Electrochemistry / electrolysis cell readout if electrodes are present. */
   electrolysis?: ElectroReadout | null;
+  /** Visuals for the cell's electrodes (material, mass change, plated deposit). */
+  electrodes?: ElectrodeVisual[];
 }
 
 export interface ElectrodeSpec {
@@ -428,6 +440,12 @@ export interface ElectrodeReactionRow {
   e0_v: number;
 }
 
+export interface ElectrodeVisual {
+  material: string;
+  mass_change_g: number;
+  deposit?: SolidVisual;
+}
+
 export interface ElectroReadout {
   current_a: number;
   cell_voltage_v: number;
@@ -437,6 +455,7 @@ export interface ElectroReadout {
   resistance_ohm: number;
   charge_c: number;
   rows: ElectrodeReactionRow[];
+  electrodes?: ElectrodeVisual[];
 }
 
 // ------------------------------------------------------------------ commands

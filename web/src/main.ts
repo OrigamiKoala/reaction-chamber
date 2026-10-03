@@ -47,7 +47,7 @@ setSessionToken(sessionToken);
 const SHELF_SEED = 8;
 const NOTABLE_EVENTS = new Set(['stopper_pop', 'ignition', 'flame_out', 'boil_over', 'dry_out', 'splatter']);
 /** Reaction-log events that are worth a toast the first time they happen in a vessel (engine supplies the sentence). */
-const REACTION_TOAST_EVENTS = new Set(['precipitate_formed', 'gas_evolved', 'colour_change', 'temperature_change']);
+const REACTION_TOAST_EVENTS = ['precipitate_formed', 'gas_evolved', 'complex_formed', 'colour_change'];
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -568,7 +568,12 @@ async function initApp() {
       const kinds = Array.from(new Set(fresh.filter((e) => NOTABLE_EVENTS.has(e.kind)).map((e) => e.kind)));
       for (const k of kinds) toast(`${name}: ${EVENT_LABELS[k] ?? k}`, k === 'ignition' || k === 'boil_over' ? 'warning' : 'info');
       // Reaction log: toast the first notable chemistry in this addition (one toast per batch, not per tick)
-      const chem = fresh.find((e) => REACTION_TOAST_EVENTS.has(e.kind) && e.detail);
+      // (the most telling kind first; steady temperature steps stay in the panel's log, not in toasts)
+      let chem: (typeof fresh)[number] | undefined;
+      for (const kind of REACTION_TOAST_EVENTS) {
+        chem = fresh.find((e) => e.kind === kind && e.detail);
+        if (chem) break;
+      }
       if (chem && now - lastChemToast > 4000) {
         lastChemToast = now;
         toast(`${name}: ${chem.detail}`, 'info');

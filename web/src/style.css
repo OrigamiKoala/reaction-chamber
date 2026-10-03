@@ -2892,3 +2892,8 @@ dialog.modal::backdrop {
 .stopcock-hud .sh-close:hover {
   background: #ffc79b;
 }
+
+/* Details drawer: appearance tables and legend */
+.legend b { font-weight: inherit; }
+.d-sec .table-wrap + .table-wrap,
+.d-sec .table-wrap + .kv { margin-top: 10px; }

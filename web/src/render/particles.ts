@@ -261,6 +261,9 @@ export class BubbleSystem {
   private wob: Float32Array;
   private age: Float32Array;
   private squash: Float32Array;
+  /** Per-bubble relative radius growth per second (vapour bubbles of a boiling liquid grow as they rise). */
+  private grow: Float32Array;
+  private rMax: Float32Array;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private s = new THREE.Vector3();
@@ -282,10 +285,15 @@ export class BubbleSystem {
     this.wob = new Float32Array(cap);
     this.age = new Float32Array(cap);
     this.squash = new Float32Array(cap);
+    this.grow = new Float32Array(cap);
+    this.rMax = new Float32Array(cap);
   }
 
-  /** radius in cm, rise speed in cm/s, squash>0 for big irregular vapour bubbles. */
-  public spawn(x: number, y: number, z: number, radius: number, speed: number, squash = 0) {
+  /**
+   * radius in cm, rise speed in cm/s, squash>0 for big irregular vapour bubbles, `growth` the relative radius growth
+   * per second up to `maxRadius` (0 = only the slight hydrostatic expansion).
+   */
+  public spawn(x: number, y: number, z: number, radius: number, speed: number, squash = 0, growth = 0, maxRadius = 0) {
     if (this.live >= this.cap) return;
     const i = this.live++;
     this.p[i * 3] = x;
@@ -296,6 +304,8 @@ export class BubbleSystem {
     this.wob[i] = Math.random() * 6.28;
     this.age[i] = 0;
     this.squash[i] = squash;
+    this.grow[i] = growth;
+    this.rMax[i] = maxRadius > radius ? maxRadius : radius * 2;
   }
 
   private kill(i: number) {
@@ -309,6 +319,8 @@ export class BubbleSystem {
     this.wob[i] = this.wob[j];
     this.age[i] = this.age[j];
     this.squash[i] = this.squash[j];
+    this.grow[i] = this.grow[j];
+    this.rMax[i] = this.rMax[j];
   }
 
   public clear() {
@@ -349,7 +361,7 @@ export class BubbleSystem {
         x = nx;
       }
       // grow slightly as hydrostatic pressure drops
-      this.r[i] *= 1 + dt * 0.04;
+      this.r[i] = Math.min(this.rMax[i], this.r[i] * (1 + dt * (0.04 + this.grow[i])));
       const wallR = Math.max(0.05, radiusAt(y) - this.r[i]);
       const rr = Math.hypot(x, z);
       if (rr > wallR) {

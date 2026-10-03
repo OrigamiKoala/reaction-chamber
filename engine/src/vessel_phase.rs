@@ -977,6 +977,10 @@ impl Vessel {
                 }
             }
         }
+        let baseline = optics::solution::solvent_baseline_absorbance(solvent);
+        for (x, y) in a.iter_mut().zip(&baseline) {
+            *x += y;
+        }
         // weakest tier among the species that matter (>= 5 % of the strongest contribution)
         let max_peak = used.iter().map(|u| u.0).fold(0.0, f64::max);
         let mut tier = ProvenanceTier::Tabulated;
@@ -994,6 +998,7 @@ impl Vessel {
         }
         if used.is_empty() {
             tier = ProvenanceTier::Tabulated;
+            sources.push(format!("{} baseline absorbance spectrum (Pope & Fry 1997 / open spectral atlases)", solvent));
         }
         PhaseOptics { a_per_cm: a, tier, sources, solvent }
     }

@@ -102,6 +102,18 @@ pub fn estimate_ladder(acid_elems: &HashMap<String, f64>, k: usize) -> Ladder {
     Ladder { pka: vec![GENERIC_PKA; k], class: "generic weak acid (no class rule applies)" }
 }
 
+/// Convenience function to estimate the first pKa of an acid from formula or SMILES if parseable, or returns class default.
+pub fn estimate_pka(formula_or_id: &str) -> Option<f64> {
+    if let Some(elems) = ions::parse_formula_strict(formula_or_id) {
+        let ladder = estimate_ladder(&elems, 1);
+        return ladder.pka.first().copied();
+    }
+    if formula_or_id.contains("C(=O)O") || formula_or_id.contains("COOH") {
+        return Some(4.75);
+    }
+    None
+}
+
 /// One estimated dissociation step as an equilibrium record (Estimated tier, ΔH unknown = 0).
 pub fn step_equilibrium(parent: &str, base: &str, step: usize, pka: f64, class: &str) -> GeneralEquilibrium {
     GeneralEquilibrium {

@@ -188,6 +188,106 @@ fn make_solid_with_analytic(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f
     make_solid_with_params(id, formula, df_h, df_g, cp, density, Some(analytic))
 }
 
+fn make_solid_with_shomate(
+    id: &str,
+    formula: &str,
+    df_h: f64,
+    df_g: f64,
+    cp: f64,
+    density: f64,
+    analytic: Option<[f64; 5]>,
+    shomate: [f64; 8],
+) -> SpeciesRecord {
+    let mut phases = HashMap::new();
+    phases.insert("s".to_string(), PhaseData {
+        thermo: Some(PhaseThermo {
+            model: "shomate".to_string(),
+            tier: ProvenanceTier::Tabulated,
+            source: "NBS Tables / NIST WebBook".to_string(),
+            dfH: Some(Datum::new(df_h, "kJ/mol", ProvenanceTier::Tabulated, "NBS Tables")),
+            dfG: Some(Datum::new(df_g, "kJ/mol", ProvenanceTier::Tabulated, "NBS Tables")),
+            S: Some(Datum::new((df_h - df_g) * 1000.0 / 298.15, "J/(mol K)", ProvenanceTier::Tabulated, "NBS Tables")),
+            cp: Some(Datum::new(cp, "J/(mol K)", ProvenanceTier::Tabulated, "NBS Tables")),
+            ranges: Some(serde_json::to_value(&shomate).unwrap()),
+            params: analytic.map(|a| serde_json::to_value(a).unwrap()),
+        }),
+        volume: None,
+        rho: Some(Datum::new(density, "g/mL", ProvenanceTier::Tabulated, "CRC / NBS")),
+        polymorph: None,
+    });
+
+    SpeciesRecord {
+        id: id.to_string(),
+        identity: Identity {
+            inchikey: None,
+            smiles: None,
+            formula: formula.to_string(),
+            charge: 0,
+            cas: None,
+            cid: None,
+            names: vec![id.to_string()],
+            db_names: HashMap::new(),
+        },
+        phases,
+        critical: None,
+        points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
+        acid_base: Vec::new(),
+        redox: Vec::new(),
+        optics: None,
+        transport: None,
+        kinetics_refs: Vec::new(),
+        rejected: Vec::new(),
+    }
+}
+
+fn make_gas_with_shomate(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: Option<&str>, shomate: [f64; 8]) -> SpeciesRecord {
+    let mut phases = HashMap::new();
+    phases.insert("g".to_string(), PhaseData {
+        thermo: Some(PhaseThermo {
+            model: "shomate".to_string(),
+            tier: ProvenanceTier::Tabulated,
+            source: "NIST WebBook / JANAF".to_string(),
+            dfH: Some(Datum::new(df_h, "kJ/mol", ProvenanceTier::Tabulated, "NBS Tables")),
+            dfG: Some(Datum::new(df_g, "kJ/mol", ProvenanceTier::Tabulated, "NBS Tables")),
+            S: Some(Datum::new((df_h - df_g) * 1000.0 / 298.15, "J/(mol K)", ProvenanceTier::Tabulated, "NBS Tables")),
+            cp: Some(Datum::new(cp, "J/(mol K)", ProvenanceTier::Tabulated, "NBS Tables")),
+            ranges: Some(serde_json::to_value(&shomate).unwrap()),
+            params: None,
+        }),
+        volume: None,
+        rho: None,
+        polymorph: None,
+    });
+
+    let names = vec![id.to_string()];
+    SpeciesRecord {
+        id: id.to_string(),
+        identity: Identity {
+            inchikey: inchi.map(|s| s.to_string()),
+            smiles: None,
+            formula: formula.to_string(),
+            charge: 0,
+            cas: None,
+            cid: None,
+            names,
+            db_names: HashMap::new(),
+        },
+        phases,
+        critical: None,
+        points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
+        acid_base: Vec::new(),
+        redox: Vec::new(),
+        optics: None,
+        transport: None,
+        kinetics_refs: Vec::new(),
+        rejected: Vec::new(),
+    }
+}
+
 fn make_solid_with_params(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, density: f64, analytic: Option<[f64; 5]>) -> SpeciesRecord {
     let mut phases = HashMap::new();
     phases.insert("s".to_string(), PhaseData {
@@ -318,7 +418,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
 
         // Solids with PHREEQC llnl.dat analytic expressions
         make_solid_with_analytic("AgCl(s)", "AgCl", -127.07, -109.79, 50.8, 5.56, [2.671219, -0.007312, -3053.408327, 0.0, 0.0]),
-        make_solid_with_analytic("CaCO3(s)", "CaCO3", -1207.6, -1128.8, 81.9, 2.71, [0.187056, -0.017951, -988.386510, 0.0, 0.0]),
+        make_solid_with_shomate("CaCO3(s)", "CaCO3", -1207.6, -1128.8, 81.9, 2.71, Some([0.187056, -0.017951, -988.386510, 0.0, 0.0]), [82.3458, 49.7513, -12.8712, 1.056, -1.63027, -1239.719, 169.111, -1207.6]),
         make_solid_with_analytic("CaSO4(s)", "CaSO4", -1434.5, -1321.8, 99.6, 2.96, [9.560767, -0.027630, -1694.376875, 0.0, 0.0]),
         make_solid_with_analytic("BaSO4(s)", "BaSO4", -1473.2, -1362.2, 101.8, 4.50, [-2.959406, -0.007034, -1464.930007, 0.0, 0.0]),
         make_solid_with_analytic("Ag2CrO4(s)", "Ag2CrO4", -731.8, -642.3, 142.3, 5.53, [-3.371456, -0.005145, -2100.321335, 0.0, 0.0]),
@@ -350,12 +450,12 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("CuSO4(s)", "CuSO4", -771.4, -662.2, 100.0, 3.60),
         make_solid("Na(s)", "Na", 0.0, 0.0, 28.2, 0.97),
         make_solid("Na2S(s)", "Na2S", -364.8, -349.8, 77.0, 1.86),
-        make_solid("CaO(s)", "CaO", -634.9, -603.3, 42.8, 3.34),
+        make_solid_with_shomate("CaO(s)", "CaO", -634.9, -603.3, 42.8, 3.34, None, [49.95403, 4.887916, -0.352056, 0.046187, -0.825097, -652.775, 94.119, -634.9]),
         make_solid("KMnO4(s)", "KMnO4", -837.2, -737.6, 117.6, 2.70),
         make_solid("NH4Cl(s)", "NH4Cl", -314.4, -202.9, 84.1, 1.53),
 
         // Gases
-        make_gas("CO2(g)", "CO2", -393.51, -394.39, 37.1, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N")),
+        make_gas_with_shomate("CO2(g)", "CO2", -393.51, -394.39, 37.1, Some("CURLTUGMZLYLDI-UHFFFAOYSA-N"), [24.99735, 55.18696, -33.69137, 7.948387, -0.136638, -403.592, 228.195, -393.51]),
         make_gas("O2(g)", "O2", 0.0, 0.0, 29.4, Some("MYMOFIZGZYHOMD-UHFFFAOYSA-N")),
         make_gas("H2(g)", "H2", 0.0, 0.0, 28.8, Some("UFHFLCQGNIYNRP-UHFFFAOYSA-N")),
         make_gas("NH3(g)", "NH3", -46.11, -16.45, 35.1, Some("QGZKDVFQNNGYKY-UHFFFAOYSA-N")),

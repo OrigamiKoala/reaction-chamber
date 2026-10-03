@@ -212,9 +212,9 @@ fn s10_6_coloured_gases_are_visible_above_open_vessels_and_clear_gases_are_not()
     let mut v = beaker();
     ml(&mut v, "water", 50.0);
     for _ in 0..20 {
-        v.gas_fluxes.push(GasFlux { species: "NO2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into() });
-        v.gas_fluxes.push(GasFlux { species: "Br2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into() });
-        v.gas_fluxes.push(GasFlux { species: "O2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into() });
+        v.gas_fluxes.push(GasFlux { species: "NO2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into(), origin: None });
+        v.gas_fluxes.push(GasFlux { species: "Br2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into(), origin: None });
+        v.gas_fluxes.push(GasFlux { species: "O2(g)".into(), rate_ml_s: 30.0, bubble_diameter_mm: 2.0, nucleation: "bulk".into(), origin: None });
         v.step_plume(0.5);
     }
     let f = v.snapshot().fumes;
@@ -323,7 +323,7 @@ fn s10_9_bubbles_follow_surface_tension_and_foam_needs_a_surfactant() {
     // baking-soda fizz: gas, but no lasting foam without a surface-active species
     let mut v = beaker();
     ml(&mut v, "water", 30.0);
-    v.gas_fluxes.push(GasFlux { species: "CO2(g)".into(), rate_ml_s: 60.0, bubble_diameter_mm: 2.0, nucleation: "wall".into() });
+    v.gas_fluxes.push(GasFlux { species: "CO2(g)".into(), rate_ml_s: 60.0, bubble_diameter_mm: 2.0, nucleation: "wall".into(), origin: None });
     assert_eq!(v.snapshot().foam, 0.0, "plain fizz is transient");
     // the same gas flow through a surfactant solution builds a head
     import(CompoundRequest {
@@ -334,7 +334,7 @@ fn s10_9_bubbles_follow_surface_tension_and_foam_needs_a_surfactant() {
     ml(&mut s, "water", 30.0);
     grams(&mut s, "s10_sds", 0.3);
     run(&mut s, 10.0, 0.5);
-    s.gas_fluxes.push(GasFlux { species: "CO2(g)".into(), rate_ml_s: 60.0, bubble_diameter_mm: 2.0, nucleation: "wall".into() });
+    s.gas_fluxes.push(GasFlux { species: "CO2(g)".into(), rate_ml_s: 60.0, bubble_diameter_mm: 2.0, nucleation: "wall".into(), origin: None });
     let foam = s.snapshot().foam;
     println!("[s10_9] foam with SDS {foam:.2}");
     assert!(foam > 0.3, "surfactant foam {foam}");
@@ -345,8 +345,8 @@ fn s10_10_dissolved_hydrogen_chloride_fumes_and_ammonia_smokes_with_it() {
     let mut v = beaker();
     ml(&mut v, "water", 20.0);
     for _ in 0..10 {
-        v.gas_fluxes.push(GasFlux { species: "NH3(g)".into(), rate_ml_s: 20.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
-        v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 20.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+        v.gas_fluxes.push(GasFlux { species: "NH3(g)".into(), rate_ml_s: 20.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into(), origin: None });
+        v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 20.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into(), origin: None });
         v.step_plume(0.5);
     }
     let f = v.snapshot().fumes;

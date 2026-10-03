@@ -6,10 +6,12 @@ import type { VesselBundle } from './glassware';
 import type { BottleAssembly } from '../equipment/bottle';
 import { looksLikeMetal, makePipette } from '../equipment/bottle';
 import type { ReagentShelf } from './shelf';
-import { Animator, DropFall, MetalPieces, PourStream, PowderStream, poseTask } from './animations';
+import { Animator, DropFall, GasPlume, MetalPieces, PourStream, PowderStream, poseTask } from './animations';
 import {
   DROP_MAX_S,
   LIQUID_MAX_ML_S,
+  GAS_MAX_ML_S,
+  GAS_MIN_ML_S,
   LIQUID_MIN_ML_S,
   METAL_MAX_PIECES_S,
   METAL_MIN_PIECES_S,
@@ -134,13 +136,14 @@ const UP = new THREE.Vector3(0, 1, 0);
 const AXIS_Z = new THREE.Vector3(0, 0, 1);
 const IDENT = new THREE.Quaternion();
 
-type PourKind = 'liquid' | 'powder' | 'metal' | 'drops';
+type PourKind = 'liquid' | 'powder' | 'metal' | 'drops' | 'gas';
 
 interface Fx {
   stream?: PourStream;
   powder?: PowderStream;
   metal?: MetalPieces;
   drops?: DropFall;
+  gas?: GasPlume;
   pipette?: THREE.Group;
   target: VesselBundle | null;
 }
@@ -481,7 +484,7 @@ export class HandlingController {
         this.tickFx(f, dt, time, 0);
       } catch (e) {
         warnOnce('fading fx failed', e);
-        f.stream = f.powder = f.metal = f.drops = undefined;
+        f.stream = f.powder = f.metal = f.drops = f.gas = undefined;
       }
       if (!this.fxAlive(f)) {
         this.disposeFx(f);
@@ -599,6 +602,8 @@ export class HandlingController {
       const m = this.host.shelf.getMeta(h.id);
       return m && looksLikeMetal(m.formula, m.name) && (m.form === 'solid' || !!m.by_mass) ? 'metal' : 'powder';
     }
+    // a gas reagent (cylinder / lecture bottle) is released as a plume, not poured as a liquid
+    if (this.host.shelf.getMeta(h.id)?.form === 'gas') return 'gas';
     return 'liquid';
   }
 
@@ -671,7 +676,7 @@ export class HandlingController {
   }
 
   private lock(h: Held, t: VesselBundle, kind: PourKind, tall = false) {
-    const form: FlowForm = kind === 'liquid' ? 'ml' : kind === 'drops' ? 'drops' : 'g';
+    const form: FlowForm = kind === 'liquid' || kind === 'gas' ? 'ml' : kind === 'drops' ? 'drops' : 'g';
     const src: FlowSourceRef = h.kind === 'vessel' ? { type: 'vessel', id: h.id } : { type: 'reagent', id: h.id };
     const sink = this.host.openFlow(src, t.vesselState.id, form);
     if (!sink) {
@@ -689,6 +694,7 @@ export class HandlingController {
     const fx: Fx = { target: t };
     try {
       if (kind === 'liquid') fx.stream = new PourStream(this.host.scene, h.color);
+      else if (kind === 'gas') fx.gas = new GasPlume(this.host.scene, h.color);
       else if (kind === 'powder') fx.powder = new PowderStream(this.host.scene, h.color);
       else if (kind === 'metal') fx.metal = new MetalPieces(this.host.scene, h.color);
       else {
@@ -864,6 +870,14 @@ export class HandlingController {
         target: T,
         mouthR: h.mouthR,
       });
+    } else if (kind === 'gas' && L.fx.gas) {
+      const flow = L.blocked ? 0 : flowRate(excess, GAS_MIN_ML_S, GAS_MAX_ML_S);
+      if (flow > 0) {
+        const got = sink.push(flow * dt);
+        if (got < flow * dt * 0.98) this.block(h, L, sink.limit() ?? 'full');
+      }
+      rate = flow;
+      L.fx.gas.update(dt, time, flow, lipW, T);
     } else if (kind === 'powder' && L.fx.powder) {
       const g = L.blocked ? 0 : flowRate(excess, POWDER_MIN_G_S, POWDER_MAX_G_S);
       if (g > 0) sink.push(g * dt);
@@ -1024,6 +1038,13 @@ export class HandlingController {
         f.metal = undefined;
       }
     }
+    if (f.gas) {
+      f.gas.update(dt, time, 0, IDENT_V, f.target);
+      if (!f.gas.alive) {
+        f.gas.dispose();
+        f.gas = undefined;
+      }
+    }
     if (f.drops) {
       f.drops.update(dt, time, f.target);
       if (!f.drops.alive) {
@@ -1034,7 +1055,7 @@ export class HandlingController {
   }
 
   private fxAlive(f: Fx): boolean {
-    return !!(f.stream || f.powder || f.metal || f.drops);
+    return !!(f.stream || f.powder || f.metal || f.drops || f.gas);
   }
 
   private disposeFx(f: Fx) {
@@ -1042,6 +1063,7 @@ export class HandlingController {
     f.powder?.dispose();
     f.metal?.dispose();
     f.drops?.dispose();
+    f.gas?.dispose();
     if (f.pipette) this.host.scene.remove(f.pipette);
   }
 

@@ -468,6 +468,11 @@ export class BenchScene {
     return this.glasswareMap.get(id);
   }
 
+  /** Group-local height of a vessel's liquid surface (0 when unknown). */
+  public vesselSurfaceY(id: string): number {
+    return this.glasswareMap.get(id)?.surfaceLocalY() ?? 0;
+  }
+
   public getAllVessels(): VesselState[] {
     return Array.from(this.glasswareMap.values()).map((g) => g.vesselState);
   }

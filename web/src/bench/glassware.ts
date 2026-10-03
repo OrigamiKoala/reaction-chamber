@@ -14,7 +14,7 @@ import {
 } from '../render/glass_profiles';
 import { createGlassMesh, createSolidMesh, polyGlass } from '../render/glass_material';
 import { LiquidBody } from '../render/liquid_material';
-import { blobShadowTexture, graduationTexture, labelTexture, ringGlowTexture } from '../render/textures';
+import { blobShadowTexture, graduationTexture, labelTexture, ringGlowTexture, softSpriteTexture } from '../render/textures';
 import { buildAccessories, buildSupport } from '../render/glass_accessories';
 import { createGenericBottle } from '../equipment/bottle';
 
@@ -116,6 +116,10 @@ let planeGeo: THREE.PlaneGeometry | null = null;
 let bandGeo: THREE.CylinderGeometry | null = null;
 let proxyMat: THREE.MeshBasicMaterial | null = null;
 const decalMat = new Map<string, THREE.MeshBasicMaterial>();
+
+/** Horizontal direction the key light's shadows fall (the key sits at (-55, 170, 95), `lab_room.ts`). */
+const KEY_DIR_X = 55 / Math.hypot(55, 95);
+const KEY_DIR_Z = -95 / Math.hypot(55, 95);
 
 function unitPlane(): THREE.PlaneGeometry {
   if (!planeGeo) {
@@ -401,6 +405,27 @@ export function createGlassware(state: VesselState): VesselBundle {
   blob.raycast = () => {};
   group.add(blob);
 
+  // Coloured light the liquid casts onto the worktop (a tinted caustic, thrown away from the key light), only for liquids
+  // that actually have a colour; the colour is the one the shader shows, so it follows the engine's spectra.
+  const causticMat = new THREE.MeshBasicMaterial({
+    map: softSpriteTexture(),
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    polygonOffset: true,
+    polygonOffsetFactor: -5,
+  });
+  const caustic = new THREE.Mesh(unitPlane(), causticMat);
+  caustic.visible = false;
+  caustic.raycast = () => {};
+  caustic.renderOrder = 0;
+  group.add(caustic);
+  let causticTarget = 0;
+  let causticLevel = 0;
+  const causticCol = new THREE.Color();
+
   const ringMat = new THREE.MeshBasicMaterial({
     map: ringGlowTexture(),
     color: 0x7cc8ff,
@@ -465,6 +490,13 @@ export function createGlassware(state: VesselState): VesselBundle {
       try {
         liquid.setLayers(snap.layers || [], snap.total_liquid_ml, opticsTables ?? defaultOptics);
         state.liquidColor = liquid.getApparentHex();
+        causticCol.set(state.liquidColor);
+        const mx = Math.max(causticCol.r, causticCol.g, causticCol.b);
+        const chroma = mx - Math.min(causticCol.r, causticCol.g, causticCol.b);
+        const depth = Math.min(1, (heightForVolume(p, snap.total_liquid_ml) - p.innerBottomY) / 3);
+        causticTarget = snap.total_liquid_ml > 0.5 ? Math.min(0.85, chroma * 1.8) * depth : 0;
+        if (mx > 0.02) causticCol.multiplyScalar(1 / mx);
+        causticMat.color.copy(causticCol);
       } catch (e) {
         warnOnce('liquid.setLayers failed (falling back to a clear liquid of the same volume)', e);
         try {
@@ -540,6 +572,18 @@ export function createGlassware(state: VesselState): VesselBundle {
       const k = Math.max(0, 1 - lift / 25);
       blob.visible = k > 0.02 && !burst;
       blob.scale.set(blobX * (1 + lift * 0.04), 1, blobZ * (1 + lift * 0.04));
+      // tinted caustic: thrown along the light's horizontal direction by the height of the liquid column
+      causticLevel += ((burst ? 0 : causticTarget) - causticLevel) * Math.min(1, dt * 3);
+      caustic.visible = causticLevel > 0.01 && k > 0.02;
+      if (caustic.visible) {
+        const col = Math.max(0.5, liquid.fillY);
+        const r = Math.max(footprint * 1.6, 1.2);
+        const off = col * 0.65 + footprint * 0.25;
+        caustic.position.set(KEY_DIR_X * off, groundY - group.position.y + 0.07, KEY_DIR_Z * off);
+        caustic.scale.set(r * 1.5, 1, r * 1.1);
+        caustic.rotation.y = Math.atan2(KEY_DIR_Z, KEY_DIR_X) * -1;
+        causticMat.opacity = 0.32 * causticLevel * k;
+      }
     },
 
     setHover: (on: boolean) => {

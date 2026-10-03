@@ -540,7 +540,8 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
 
     // Solid ions are only meaningful if every species has a known mass
     for sp in composition.keys() {
-        if sp != "H2O" && ions::species_mass(sp).is_none() {
+        let base = sp.trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)");
+        if sp != "H2O" && base != inert_id.as_str() && ions::species_mass(sp).is_none() {
             return none(req, "Contains a species the engine cannot represent.");
         }
     }

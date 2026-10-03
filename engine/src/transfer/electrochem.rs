@@ -547,12 +547,161 @@ pub struct ChannelFlow {
     pub anodic_a: f64,
 }
 
+#[derive(Clone, Debug)]
+pub struct PrecomputedChannel {
+    pub half: usize,
+    pub electrode: usize,
+    pub area_m2: f64,
+    pub anodic_ok: bool,
+    pub cathodic_ok: bool,
+    pub base_i_a: f64,
+    pub base_i_c: f64,
+    pub alpha_a_f: f64,
+    pub alpha_c_f: f64,
+    pub e0: f64,
+    pub cap_red: f64,
+    pub cap_ox: f64,
+    pub lim_red: f64,
+    pub lim_ox: f64,
+}
+
+impl PrecomputedChannel {
+    pub fn new(h: &HalfReaction, hi: usize, el: &Electrode, ei: usize, ctx: &ElectroCtx) -> Self {
+        let f = FARADAY / (R_GAS * ctx.t_k);
+        let n = h.n_e;
+        let act = |s: &str| (ctx.activity)(s).max(A_FLOOR);
+        let mut prod_ox = 1.0;
+        for (s, c) in &h.ox {
+            prod_ox *= act(s).powf(*c);
+        }
+        let mut prod_red = 1.0;
+        for (s, c) in &h.red {
+            prod_red *= act(s).powf(*c);
+        }
+        let e0 = h.e0(ctx.t_k, ctx.p_pa);
+        let (alpha_c, alpha_a) = transfer_coefficients(h);
+        let (i0_ref, _) = exchange_current_a_m2(h, el);
+        let own = el.active_species.as_deref();
+        let dissolves_own = own.map_or(false, |s| h.red.iter().any(|(r, _)| r == s));
+        let passivation = if dissolves_own && el.passive { PASSIVE_FACTOR } else { 1.0 };
+        let anodic_ok = h.anodic_allowed && h.red.iter().filter(|(s, _)| s.ends_with("(s)")).all(|(s, _)| own == Some(s.as_str()));
+        let cathodic_ok = h.cathodic_allowed && h.ox.iter().filter(|(s, _)| s.ends_with("(s)")).all(|(s, _)| (ctx.available)(s));
+
+        let solid_cap = |side: &Vec<(String, f64)>, area: f64, own_only: bool| -> f64 {
+            let mut cap = f64::INFINITY;
+            for (s, c) in side.iter().filter(|(s, _)| s.ends_with("(s)")) {
+                let amt = (ctx.solid_mol)(s, el);
+                if amt.is_finite() {
+                    let a = if own_only { el.area_m2 } else { area };
+                    cap = cap.min(n * FARADAY * amt / (c * ctx.dt_s.max(1e-9) * a.max(1e-12)));
+                }
+            }
+            cap
+        };
+        let cap_red = solid_cap(&h.red, ctx.total_area_m2, true);
+        let cap_ox = solid_cap(&h.ox, ctx.total_area_m2, false);
+
+        let lim = |side: &Vec<(String, f64)>| -> f64 {
+            let mut l = I_MAX_A_M2;
+            for (s, c) in side {
+                let c_bulk = (ctx.conc_mol_m3)(s);
+                if c_bulk.is_finite() {
+                    l = l.min(n * FARADAY * (ctx.k_m)(s) * c_bulk / c);
+                }
+            }
+            l
+        };
+        let lim_ox = lim(&h.ox);
+        let lim_red = lim(&h.red);
+
+        Self {
+            half: hi,
+            electrode: ei,
+            area_m2: el.area_m2,
+            anodic_ok,
+            cathodic_ok,
+            base_i_a: i0_ref * passivation * prod_red,
+            base_i_c: i0_ref * prod_ox,
+            alpha_a_f: alpha_a * f,
+            alpha_c_f: alpha_c * f,
+            e0,
+            cap_red,
+            cap_ox,
+            lim_red,
+            lim_ox,
+        }
+    }
+
+    #[inline]
+    pub fn current_at(&self, e_v: f64) -> (f64, f64, f64) {
+        let dv = e_v - self.e0;
+        let mut ia = if self.anodic_ok {
+            let ea = (self.alpha_a_f * dv).clamp(-80.0, 80.0).exp();
+            (self.base_i_a * ea).min(self.cap_red)
+        } else {
+            0.0
+        };
+        let mut ic = if self.cathodic_ok {
+            let ec = (-self.alpha_c_f * dv).clamp(-80.0, 80.0).exp();
+            (self.base_i_c * ec).min(self.cap_ox)
+        } else {
+            0.0
+        };
+        let kl = |i: f64, l: f64| -> f64 {
+            if i <= 0.0 { 0.0 } else { i * l / (i + l) }
+        };
+        ic = kl(ic, self.lim_ox);
+        ia = kl(ia, self.lim_red);
+        (ia - ic, ic, ia)
+    }
+}
+
+pub fn precompute_channels(electrodes: &[&Electrode], halves: &[HalfReaction], ctx: &ElectroCtx) -> Vec<PrecomputedChannel> {
+    let mut channels = Vec::with_capacity(electrodes.len() * halves.len());
+    for (ei, el) in electrodes.iter().enumerate() {
+        for (hi, h) in halves.iter().enumerate() {
+            channels.push(PrecomputedChannel::new(h, hi, el, ei, ctx));
+        }
+    }
+    channels
+}
+
+#[inline]
+pub fn fast_net_current_a(channels: &[PrecomputedChannel], e_v: f64) -> f64 {
+    let mut total = 0.0;
+    for ch in channels {
+        let (net, _, _) = ch.current_at(e_v);
+        total += net * ch.area_m2;
+    }
+    total
+}
+
+pub fn potential_for_current_fast(channels: &[PrecomputedChannel], current_a: f64) -> f64 {
+    let (mut lo, mut hi) = (-6.0, 6.0);
+    for _ in 0..45 {
+        if hi - lo < 1e-8 {
+            break;
+        }
+        let mid = 0.5 * (lo + hi);
+        if fast_net_current_a(channels, mid) > current_a {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
 /// Open-circuit mixed potential of all `electrodes` (electrically connected): the potential where the net current is zero.
 pub fn solve_mixed_potential(electrodes: &[&Electrode], halves: &[HalfReaction], ctx: &ElectroCtx) -> (f64, Vec<ChannelFlow>) {
+    let channels = precompute_channels(electrodes, halves, ctx);
     let (mut lo, mut hi) = (-4.5, 3.5);
-    for _ in 0..90 {
+    for _ in 0..50 {
+        if hi - lo < 1e-8 {
+            break;
+        }
         let mid = 0.5 * (lo + hi);
-        if net_current_a(electrodes, halves, mid, ctx, None) > 0.0 {
+        if fast_net_current_a(&channels, mid) > 0.0 {
             hi = mid;
         } else {
             lo = mid;
@@ -566,16 +715,8 @@ pub fn solve_mixed_potential(electrodes: &[&Electrode], halves: &[HalfReaction],
 
 /// Potential of an electrode set carrying a prescribed net oxidation current (A, negative = reduction).
 pub fn potential_for_current(electrodes: &[&Electrode], halves: &[HalfReaction], ctx: &ElectroCtx, current_a: f64) -> f64 {
-    let (mut lo, mut hi) = (-6.0, 6.0);
-    for _ in 0..100 {
-        let mid = 0.5 * (lo + hi);
-        if net_current_a(electrodes, halves, mid, ctx, None) > current_a {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
-    }
-    0.5 * (lo + hi)
+    let channels = precompute_channels(electrodes, halves, ctx);
+    potential_for_current_fast(&channels, current_a)
 }
 
 // ----------------------------------------------------------------------------------------------- electrolysis
@@ -613,9 +754,11 @@ pub fn solve_electrolysis(
 ) -> ElectrolysisResult {
     let a = [anode];
     let c = [cathode];
+    let a_channels = precompute_channels(&a, halves, ctx);
+    let c_channels = precompute_channels(&c, halves, ctx);
     let cell = |i: f64| -> (f64, f64, f64) {
-        let ea = potential_for_current(&a, halves, ctx, i);
-        let ec = potential_for_current(&c, halves, ctx, -i);
+        let ea = potential_for_current_fast(&a_channels, i);
+        let ec = potential_for_current_fast(&c_channels, -i);
         (ea, ec, ea - ec + i * resistance_ohm)
     };
     let i_cap = I_MAX_A_M2 * anode.area_m2.min(cathode.area_m2);
@@ -627,9 +770,18 @@ pub fn solve_electrolysis(
                 0.0
             } else {
                 let (mut lo, mut hi) = (0.0, i_cap);
-                for _ in 0..70 {
+                for _ in 0..40 {
+                    if hi - lo < 1e-7 * i_cap.max(1.0) {
+                        break;
+                    }
                     let mid = 0.5 * (lo + hi);
-                    if cell(mid).2 < v {
+                    let v_mid = cell(mid).2;
+                    if (v_mid - v).abs() < 1e-6 {
+                        lo = mid;
+                        hi = mid;
+                        break;
+                    }
+                    if v_mid < v {
                         lo = mid;
                     } else {
                         hi = mid;

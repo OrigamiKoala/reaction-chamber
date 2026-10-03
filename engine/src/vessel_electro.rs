@@ -57,6 +57,14 @@ pub struct ElectrodeReactionRow {
     pub e0_v: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ElectrodeVisual {
+    pub material: String,
+    pub mass_change_g: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deposit: Option<SolidVisual>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ElectroReadout {
     pub current_a: f64,
@@ -67,6 +75,8 @@ pub struct ElectroReadout {
     pub resistance_ohm: f64,
     pub charge_c: f64,
     pub rows: Vec<ElectrodeReactionRow>,
+    #[serde(default)]
+    pub electrodes: Vec<ElectrodeVisual>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -74,6 +84,9 @@ pub struct ElectroState {
     pub spec: Option<ElectrolysisSpec>,
     pub readout: Option<ElectroReadout>,
     pub charge_c: f64,
+    pub anode_mass_change_g: f64,
+    pub cathode_mass_change_g: f64,
+    pub cathode_deposit_mol: HashMap<String, f64>,
     /// Moles of each solid the electrodes took up (+) or gave up (-): plating and electrode dissolution.
     pub electrode_exchange_mol: HashMap<String, f64>,
     /// Open-circuit mixed potential of the conducting solids (V vs SHE), when there are any.
@@ -89,17 +102,27 @@ fn material_element(material: &str) -> String {
 
 impl Vessel {
     pub fn set_electrolysis(&mut self, spec: Option<ElectrolysisSpec>) {
-        self.electro.spec = spec;
-        if self.electro.spec.is_none() {
+        if spec.is_none() {
             self.electro.readout = None;
+            self.electro.anode_mass_change_g = 0.0;
+            self.electro.cathode_mass_change_g = 0.0;
+            self.electro.cathode_deposit_mol.clear();
         }
+        self.electro.spec = spec;
     }
 
     fn half_reactions_for(&mut self, present: &[String], extra: &[String]) -> Vec<HalfReaction> {
-        let mut key_parts: Vec<String> = present.to_vec();
-        key_parts.extend(extra.iter().map(|e| format!("@{}", e)));
-        key_parts.sort();
-        let key = key_parts.join("|");
+        let mut elements: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for sp in present {
+            if let Some(m) = crate::ions::species_elements(sp) {
+                elements.extend(m.into_keys());
+            }
+        }
+        elements.extend(extra.iter().cloned());
+        elements.insert("H".to_string());
+        elements.insert("O".to_string());
+        let temp_band = (self.temperature_k / 5.0).round() as i64 * 5;
+        let key = format!("{}:{}", elements.into_iter().collect::<Vec<_>>().join(","), temp_band);
         if self.electro.halves_key != key {
             self.electro.halves = ec::discover_half_reactions(present, extra, self.temperature_k);
             self.electro.halves_key = key;
@@ -334,6 +357,7 @@ impl Vessel {
                 rows.push(ElectrodeReactionRow { electrode: role.to_string(), equation: eq, current_a: f.net_oxidation_a.abs(), faradaic_fraction: f.net_oxidation_a.abs() / total, e0_v: h.e0(t_k, p_pa) });
             }
         }
+        let electrodes_vis = self.build_electrode_visuals(&spec);
         self.electro.readout = Some(ElectroReadout {
             current_a: res.current_a,
             cell_voltage_v: res.cell_voltage_v,
@@ -343,9 +367,59 @@ impl Vessel {
             resistance_ohm: resistance,
             charge_c: self.electro.charge_c,
             rows,
+            electrodes: electrodes_vis,
         });
         let _ = &mut q;
         q
+    }
+
+    fn build_electrode_visuals(&self, spec: &ElectrolysisSpec) -> Vec<ElectrodeVisual> {
+        let anode_vis = ElectrodeVisual {
+            material: spec.anode.material.clone(),
+            mass_change_g: self.electro.anode_mass_change_g,
+            deposit: None,
+        };
+        let deposit = self
+            .electro
+            .cathode_deposit_mol
+            .iter()
+            .filter(|(_, &m)| m > 1e-9)
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(sp, &mol)| {
+                let props = self.solid_props(sp);
+                let mw = chem_db::get_species_thermo(sp).mw;
+                let mass_g = mol * mw;
+                let density = props.density_g_ml;
+                let volume_ml = if density > 1e-9 { mass_g / density } else { 0.0 };
+                SolidVisual {
+                    species: sp.clone(),
+                    name: props.name.clone(),
+                    mass_g,
+                    density_g_ml: density,
+                    volume_ml,
+                    settled_volume_ml: volume_ml,
+                    morphology: "film".to_string(),
+                    suspended_fraction: 0.0,
+                    particle_diameter_um: DEPOSIT_DIAMETER_M * 1e6,
+                    suspended_diameter_um: 0.0,
+                    particle_sigma_g: 1.0,
+                    rgb: props.rgb,
+                    colour_tier: props.colour_tier,
+                    colour_source: props.colour_source,
+                    kind: props.kind,
+                    floating: None,
+                    layer_index: None,
+                    remaining_fraction: Some(1.0),
+                    settling_velocity_mm_s: 0.0,
+                    surface_area_cm2: spec.cathode.area_cm2,
+                }
+            });
+        let cathode_vis = ElectrodeVisual {
+            material: spec.cathode.material.clone(),
+            mass_change_g: self.electro.cathode_mass_change_g,
+            deposit,
+        };
+        vec![anode_vis, cathode_vis]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -426,6 +500,7 @@ impl Vessel {
         }
         rows.truncate(6);
 
+        let electrodes_vis = self.build_electrode_visuals(&spec);
         self.electro.readout = Some(ElectroReadout {
             current_a: 0.0,
             cell_voltage_v: cell_v,
@@ -435,6 +510,7 @@ impl Vessel {
             resistance_ohm: resistance,
             charge_c: self.electro.charge_c,
             rows,
+            electrodes: electrodes_vis,
         });
     }
 
@@ -551,6 +627,16 @@ impl Vessel {
                 let own = flows.iter().any(|f| f.half == half && electrodes[f.electrode].active_species.as_deref() == Some(sp));
                 if d_mol > 0.0 || own {
                     *self.electro.electrode_exchange_mol.entry(sp.to_string()).or_default() += d_mol;
+                    let mw = chem_db::get_species_thermo(sp).mw;
+                    let el_idx = flows.iter().find(|f| f.half == half).map(|f| f.electrode);
+                    if el_idx == Some(0) {
+                        self.electro.anode_mass_change_g += d_mol * mw;
+                    } else if el_idx == Some(1) {
+                        self.electro.cathode_mass_change_g += d_mol * mw;
+                        if d_mol > 0.0 {
+                            *self.electro.cathode_deposit_mol.entry(sp.to_string()).or_default() += d_mol;
+                        }
+                    }
                     if d_mol > 0.0 {
                         self.ledger.book_out(sp, d_mol);
                     } else {
@@ -575,7 +661,15 @@ impl Vessel {
                     *self.headspace_gas_mol.entry(sp.to_string()).or_default() += d_mol;
                 } else {
                     let ml_s = d_mol / dt_s * crate::physics::R_GAS * self.temperature_k / self.p_ext_pa().max(1.0) * 1e6;
-                    self.gas_fluxes.push(GasFlux { species: sp.to_string(), rate_ml_s: ml_s, bubble_diameter_mm: self.bubble_diameter_mm("solid"), nucleation: "solid".to_string() });
+                    if ml_s >= 1e-4 {
+                        self.gas_fluxes.push(GasFlux {
+                            species: sp.to_string(),
+                            rate_ml_s: ml_s,
+                            bubble_diameter_mm: self.bubble_diameter_mm("solid"),
+                            nucleation: "solid".to_string(),
+                            origin: None,
+                        });
+                    }
                     self.mass_lost_g += d_mol * chem_db::get_species_thermo(sp).mw;
                     self.ledger.book_out(sp, d_mol);
                     self.gas.escaped_mol += d_mol;

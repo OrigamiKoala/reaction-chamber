@@ -84,6 +84,10 @@ impl SpeciesStore {
         self.records.get(id)
     }
 
+    pub fn by_smiles(&self, smiles: &str) -> Option<&SpeciesRecord> {
+        self.records.values().find(|r| r.identity.smiles.as_deref() == Some(smiles))
+    }
+
     /// Most recently registered record under this InChIKey (a molecule can have one record per phase id: "H2O", "H2O(g)").
     pub fn get_by_inchikey(&self, inchi_key: &str) -> Option<&SpeciesRecord> {
         self.by_inchikey.get(inchi_key).and_then(|ids| ids.last()).and_then(|id| self.records.get(id))

@@ -518,7 +518,13 @@ impl Vessel {
             let vol_ml = mol * R_GAS * t_boil_last / p_ext * 1e6;
             total_vol_ml += vol_ml;
             total_mass += mol * vol.mw;
-            self.gas_fluxes.push(GasFlux { species: vol.gas_id.clone(), rate_ml_s: vol_ml / dt_s, bubble_diameter_mm: self.bubble_diameter_mm("bulk"), nucleation: "bulk".to_string() });
+            self.gas_fluxes.push(GasFlux {
+                species: vol.gas_id.clone(),
+                rate_ml_s: vol_ml / dt_s,
+                bubble_diameter_mm: self.bubble_diameter_mm("bulk"),
+                nucleation: "bulk".to_string(),
+                origin: Some("boil".to_string()),
+            });
             let first = self.record_boil_flag(&key);
             let gone = self.liquid_total(&key) <= 1e-5;
             events.push((key, vol, first, if gone { 1.0 } else { 0.0 }));
@@ -807,7 +813,13 @@ impl Vessel {
                     if bubbling {
                         let vol_ml = d * R_GAS * t / p_ext.max(1.0) * 1e6;
                         bubbled_ml += vol_ml;
-                        self.gas_fluxes.push(GasFlux { species: gas_id.clone(), rate_ml_s: vol_ml / dt_s, bubble_diameter_mm: self.bubble_diameter_mm("wall"), nucleation: "bulk".to_string() });
+                        self.gas_fluxes.push(GasFlux {
+                            species: gas_id.clone(),
+                            rate_ml_s: vol_ml / dt_s,
+                            bubble_diameter_mm: self.bubble_diameter_mm("wall"),
+                            nucleation: "bulk".to_string(),
+                            origin: None,
+                        });
                     }
                 }
                 heat += -d * -vle::henry_dh_dissolve_j_mol(&it.h.aq_id, &gas_id, t);
@@ -1115,7 +1127,13 @@ impl Vessel {
             let rest = mol - dissolved;
             if rest > 0.0 {
                 let vol_ml = rest * R_GAS * t / self.p_ext_pa().max(1.0) * 1e6;
-                self.gas_fluxes.push(GasFlux { species: gas_id.to_string(), rate_ml_s: vol_ml / 0.1, bubble_diameter_mm: self.bubble_diameter_mm("wall"), nucleation: "bulk".to_string() });
+                self.gas_fluxes.push(GasFlux {
+                    species: gas_id.to_string(),
+                    rate_ml_s: vol_ml / 0.1,
+                    bubble_diameter_mm: self.bubble_diameter_mm("wall"),
+                    nucleation: "bulk".to_string(),
+                    origin: None,
+                });
             }
         }
         // whatever did not dissolve leaves into the room; it was never booked in

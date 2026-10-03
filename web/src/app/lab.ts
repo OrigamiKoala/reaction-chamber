@@ -153,6 +153,10 @@ export class Lab {
     if (snap.electrolysis && id === this.selectedId) {
       this.bench.instruments.electrochem?.updateReadout(snap.electrolysis, this.ctl(id).electrolysis?.on ?? false);
     }
+    // the electrode rods stand in the liquid: follow its level (reaction products, evaporation, pouring)
+    if (this.ctl(id).electrolysis) {
+      if (Math.abs(this.bench.vesselSurfaceY(id) - (this.electroSurfaceY.get(id) ?? -99)) > 0.15) this.updateElectroVisuals(id);
+    }
     // Stopper popped (or sealed from elsewhere): re-attach the gauge for the selected vessel.
     if (sealedChanged && id === this.selectedId) this.bench.setSelectedVessel(id);
     return snap;
@@ -390,6 +394,8 @@ export class Lab {
     }
   }
 
+  private electroSurfaceY = new Map<string, number>();
+
   public updateElectroVisuals(id: string) {
     const c = this.ctl(id);
     const ec = this.bench.instruments?.electrochem;
@@ -397,7 +403,9 @@ export class Lab {
     if (c.electrolysis) {
       const b = this.bench.getGlassware(id);
       if (b) {
-        ec.attachToVessel(b.group.position, vesselHeight(getProfile(b.vesselState.type)), b.vesselState.currentVolumeMl);
+        const surfY = this.bench.vesselSurfaceY(id);
+        ec.attachToVessel(b.group.position, vesselHeight(getProfile(b.vesselState.type)), surfY);
+        this.electroSurfaceY.set(id, surfY);
         ec.setMaterials(c.electrolysis.anode.material as any, c.electrolysis.cathode.material as any);
       }
     } else {

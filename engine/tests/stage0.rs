@@ -693,9 +693,9 @@ fn s0_14_open_vessel_fumes_come_from_the_gas_leaving() {
     let mut v = beaker();
     ml(&mut v, "water", 20.0);
     assert!(v.snapshot().fumes.is_empty());
-    v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
-    v.gas_fluxes.push(GasFlux { species: "N2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
-    v.gas_fluxes.push(GasFlux { species: "Cl2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into() });
+    v.gas_fluxes.push(GasFlux { species: "HCl(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into(), origin: None });
+    v.gas_fluxes.push(GasFlux { species: "N2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into(), origin: None });
+    v.gas_fluxes.push(GasFlux { species: "Cl2(g)".into(), rate_ml_s: 120.0, bubble_diameter_mm: 1.0, nucleation: "bulk".into(), origin: None });
     v.step_plume(1.0);
     let f = v.snapshot().fumes;
     let find = |id: &str| f.iter().find(|x| x.species == id);

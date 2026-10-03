@@ -39,6 +39,39 @@ pub fn solvent_class(is_water_phase: bool, smiles: Option<&str>) -> &'static str
     "other"
 }
 
+/// Pope & Fry (1997) absorption coefficients of pure water, decadic per cm, on the 380..780 nm grid (step 10 nm).
+/// Extended above 720 nm from Hale & Querry (1973).
+pub const POPE_FRY_WATER_A_PER_CM: [f64; N_BINS] = [
+    4.91e-5, 3.65e-5, 2.88e-5, 2.05e-5, 1.97e-5, 2.15e-5, 2.76e-5, 4.00e-5, 4.25e-5, 4.60e-5,
+    5.52e-5, 6.51e-5, 8.86e-5, 1.41e-4, 1.72e-4, 1.87e-4, 2.06e-4, 2.45e-4, 2.59e-4, 3.02e-4,
+    3.89e-4, 5.87e-4, 9.66e-4, 1.15e-3, 1.20e-3, 1.27e-3, 1.35e-3, 1.48e-3, 1.78e-3, 1.91e-3,
+    2.02e-3, 2.24e-3, 2.71e-3, 3.60e-3, 5.08e-3, 7.77e-3, 1.03e-2, 1.07e-2, 1.11e-2, 1.09e-2,
+    1.02e-2,
+];
+
+/// Baseline absorption spectrum of pure solvents by solvent class (decadic per cm).
+pub fn solvent_baseline_absorbance(solvent_class: &str) -> [f64; N_BINS] {
+    match solvent_class {
+        "water" => POPE_FRY_WATER_A_PER_CM,
+        "alcohol" => {
+            let mut a = [1e-5; N_BINS];
+            a[34] = 5e-4; // 720 nm
+            a[35] = 1.2e-3; // 730 nm
+            a[36] = 2.0e-3; // 740 nm
+            a[37] = 1.5e-3; // 750 nm
+            a
+        }
+        "alkane" | "aromatic" => {
+            let mut a = [5e-6; N_BINS];
+            a[35] = 1e-4;
+            a[36] = 3e-4;
+            a[37] = 2e-4;
+            a
+        }
+        _ => [1e-5; N_BINS],
+    }
+}
+
 /// The bands that apply to a species in a solvent, with the provenance of the data.
 #[derive(Clone, Debug)]
 pub struct Resolved {

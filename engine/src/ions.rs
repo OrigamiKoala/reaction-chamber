@@ -41,18 +41,41 @@ pub fn mass_of_elements(elems: &HashMap<String, f64>) -> Option<f64> {
 // ---------------------------------------------------------------------------------------------- formula parsing
 
 /// Parses a plain formula (no charge, no phase tag, no hydrate) into element counts.
-/// Supports nested ( ) / [ ] groups with multipliers. Returns None on malformed input or unknown symbols.
+/// Supports nested ( ) / [ ] groups with multipliers, dot-separated components (e.g. CaO.SiO2),
+/// and variable / polymer indices ('n', 'x'). Returns None on malformed input or unknown symbols.
 pub fn parse_formula_strict(formula: &str) -> Option<HashMap<String, f64>> {
     let chars: Vec<char> = formula.chars().filter(|c| !c.is_whitespace()).collect();
     let mut i = 0;
-    let out = parse_group(&chars, &mut i, 0)?;
-    if i != chars.len() || out.is_empty() {
-        return None;
+    if let Some(out) = parse_group(&chars, &mut i, 0) {
+        if i == chars.len() && !out.is_empty() && out.keys().all(|e| atomic_mass(e).is_some()) {
+            return Some(out);
+        }
     }
-    for e in out.keys() {
-        atomic_mass(e)?;
+    // If direct parse failed and formula contains '.' or '·', try splitting components
+    if formula.contains('.') || formula.contains('·') {
+        let parts: Vec<&str> = formula.split(|c| c == '.' || c == '·').collect();
+        if parts.len() > 1 {
+            let mut combined: HashMap<String, f64> = HashMap::new();
+            for part in parts {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                let p_chars: Vec<char> = part.chars().collect();
+                let mut pi = 0;
+                let mult = read_count(&p_chars, &mut pi);
+                let remainder: String = p_chars[pi..].iter().collect();
+                let sub = parse_formula_strict(&remainder)?;
+                for (elem, count) in sub {
+                    *combined.entry(elem).or_insert(0.0) += count * mult;
+                }
+            }
+            if !combined.is_empty() && combined.keys().all(|e| atomic_mass(e).is_some()) {
+                return Some(combined);
+            }
+        }
     }
-    Some(out)
+    None
 }
 
 fn read_count(chars: &[char], i: &mut usize) -> f64 {
@@ -62,7 +85,15 @@ fn read_count(chars: &[char], i: &mut usize) -> f64 {
         *i += 1;
     }
     if s.is_empty() {
-        1.0
+        if *i < chars.len()
+            && (chars[*i] == 'n' || chars[*i] == 'x')
+            && (*i + 1 >= chars.len() || !chars[*i + 1].is_ascii_lowercase())
+        {
+            *i += 1;
+            1.0
+        } else {
+            1.0
+        }
     } else {
         s.parse().unwrap_or(1.0)
     }

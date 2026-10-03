@@ -10,6 +10,9 @@ export const UNLOCK_DOWN_PX = 90;
 /** Flow limits. mL/s for liquids, g/s for powders, pieces/s for bare metal, drops/s for droppers. */
 export const LIQUID_MIN_ML_S = 0.25;
 export const LIQUID_MAX_ML_S = 30;
+/** A gas from a cylinder / lecture bottle, mL/s of gas. */
+export const GAS_MIN_ML_S = 2;
+export const GAS_MAX_ML_S = 60;
 export const POWDER_MIN_G_S = 0.01;
 export const POWDER_MAX_G_S = 5;
 export const METAL_MIN_PIECES_S = 0.25;

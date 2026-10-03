@@ -45,15 +45,25 @@ export class AdvancedView {
           <h3 class="eyebrow">Last 10 minutes</h3>
           <div class="plot-wrap"><canvas class="plot" height="170" role="img" aria-label="Temperature, pH and pressure over time"></canvas></div>
           <div class="legend">
-            <span><i style="background:${SERIES.temp}"></i>Temperature (270–380 K)</span>
+            <span><i style="background:${SERIES.temp}"></i><b data-k="lg-temp">Temperature</b></span>
             <span><i style="background:${SERIES.ph}"></i>pH (0–14)</span>
-            <span><i style="background:${SERIES.press}"></i>Pressure (0.5–4 atm)</span>
+            <span><i style="background:${SERIES.press}"></i><b data-k="lg-press">Pressure</b></span>
           </div>
         </section>
         <div class="d-grid">
           <section class="d-card"><h3 class="eyebrow">Conservation</h3><dl class="kv" data-k="cons"></dl></section>
           <section class="d-card"><h3 class="eyebrow">Heat &amp; mass</h3><dl class="kv" data-k="energy"></dl></section>
         </div>
+        <section class="d-sec">
+          <h3 class="eyebrow">Appearance (what the engine tells the renderer)</h3>
+          <div class="table-wrap"><table class="dtable">
+            <thead><tr><th>Liquid layer</th><th class="num">mL</th><th class="num">ρ g/mL</th><th class="num">n</th><th>Solvent</th><th>Colour from</th><th>Data</th></tr></thead>
+            <tbody data-k="layers"></tbody></table></div>
+          <div class="table-wrap"><table class="dtable">
+            <thead><tr><th>Solid</th><th>Form</th><th class="num">g</th><th class="num">d (µm)</th><th class="num">σg</th><th class="num">Suspended</th><th class="num">Settles mm/s</th><th>Colour from</th><th>Data</th></tr></thead>
+            <tbody data-k="solids"></tbody></table></div>
+          <dl class="kv" data-k="visual"></dl>
+        </section>
         <section class="d-sec">
           <h3 class="eyebrow">Reactions</h3>
           <div class="table-wrap"><table class="dtable">
@@ -148,6 +158,7 @@ export class AdvancedView {
       <dt>Heater</dt><dd>${s.heat_input_w.toFixed(0)} W</dd>
       <dt>Reaction heat</dt><dd>${s.net_reaction_heat_w.toFixed(1)} W</dd>
       <dt>Ionic strength</dt><dd>${s.ionic_strength !== null ? s.ionic_strength.toFixed(4) + ' M' : '—'}</dd>`;
+    this.renderAppearance(s, q);
     q('rxn').innerHTML = s.reactions.length
       ? s.reactions
           .map(
@@ -176,6 +187,56 @@ export class AdvancedView {
           )
           .join('')
       : '<tr><td colspan="6" class="empty-cell">Empty</td></tr>';
+  }
+
+  private renderAppearance(s: VesselSnapshot, q: (k: string) => HTMLElement) {
+    const tier = (t: string | undefined) => (t ? `<span class="tier tier-${esc(t)}">${esc(t)}</span>` : '—');
+    q('layers').innerHTML = s.layers.length
+      ? s.layers
+          .map((l) => {
+            const a = l.absorbance_per_cm;
+            const amax = a.length ? Math.max(...a) : 0;
+            const sc = l.scatter_per_cm.length ? Math.max(...l.scatter_per_cm) : 0;
+            const look = amax < 1e-3 && sc < 1e-3 ? 'colourless' : sc > 0.3 ? `turbid (${sc.toFixed(2)} /cm)` : `A max ${amax.toFixed(2)} /cm`;
+            const name = l.name ?? l.species ?? (l.phase === 'aqueous' ? 'aqueous' : 'organic');
+            return `<tr><td>${esc(name)} <span class="muted">${esc(look)}</span></td>
+              <td class="num mono">${l.volume_ml.toFixed(1)}</td><td class="num mono">${l.density_g_ml.toFixed(3)}</td><td class="num mono">${l.refractive_index.toFixed(3)}</td>
+              <td>${esc(l.solvent_class ?? '—')}</td><td class="src">${esc((l.colour_sources ?? []).join('; ') || '—')}</td><td>${tier(l.colour_tier)}</td></tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="7" class="empty-cell">No liquid</td></tr>';
+    q('solids').innerHTML = s.solids.length
+      ? s.solids
+          .map((x) => {
+            const form = x.floating ? `${x.kind} (floats)` : x.kind;
+            return `<tr><td><span class="mono">${esc(prettyFormula(x.species))}</span> <span class="muted">${esc(x.name)}</span></td>
+              <td>${esc(form)}</td><td class="num mono">${x.mass_g.toFixed(3)}</td><td class="num mono">${x.particle_diameter_um.toFixed(1)}</td>
+              <td class="num mono">${x.particle_sigma_g ? x.particle_sigma_g.toFixed(2) : '—'}</td><td class="num mono">${(x.suspended_fraction * 100).toFixed(0)} %</td>
+              <td class="num mono">${(x.settling_velocity_mm_s ?? 0).toExponential(1)}</td><td class="src">${esc(x.colour_source ?? '—')}</td><td>${tier(x.colour_tier)}</td></tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="9" class="empty-cell">No solids</td></tr>';
+    // gas and vapour: the fluxes of one species add up (the engine reports one row per reaction)
+    const flux = new Map<string, { rate: number; d: number; w: number; site: string }>();
+    for (const g of s.gas_fluxes) {
+      if (g.rate_ml_s < 1e-6) continue;
+      const e = flux.get(g.species) ?? { rate: 0, d: 0, w: 0, site: g.nucleation };
+      e.rate += g.rate_ml_s;
+      e.d += g.bubble_diameter_mm * g.rate_ml_s;
+      e.w += g.rate_ml_s;
+      flux.set(g.species, e);
+    }
+    const rows: string[] = [];
+    for (const [sp, e] of flux) rows.push(`<dt>${esc(prettyFormula(sp))} bubbles</dt><dd>${e.rate.toFixed(e.rate < 1 ? 3 : 1)} mL/s · ⌀ ${(e.d / e.w).toFixed(2)} mm · from ${esc(e.site)}</dd>`);
+    for (const f of s.fumes) {
+      rows.push(`<dt>${esc(prettyFormula(f.species))} ${f.kind === 'aerosol' ? 'smoke' : 'fumes'}</dt><dd>intensity ${f.intensity.toFixed(2)} · ${f.denser_than_air ? `sinks (${(f.density_ratio ?? 0).toFixed(2)}× air)` : 'rises'}</dd>`);
+    }
+    if (s.boil_intensity > 0.01) rows.push(`<dt>Boiling</dt><dd>${(s.boil_intensity * 100).toFixed(0)} %</dd>`);
+    if (s.evaporation_g_s > 1e-5) rows.push(`<dt>Evaporation</dt><dd>${s.evaporation_g_s.toExponential(2)} g/s</dd>`);
+    if (s.foam > 0.01) rows.push(`<dt>Foam</dt><dd>${(s.foam * 100).toFixed(0)} % of the surface</dd>`);
+    if (s.condensation > 0.01) rows.push(`<dt>Fogged glass</dt><dd>${(s.condensation * 100).toFixed(0)} %</dd>`);
+    if (s.flame) rows.push(`<dt>Flame</dt><dd>${esc(prettyFormula(s.flame.fuel))} · ${s.flame.power_w.toFixed(0)} W · ${s.flame.flame_temp_k.toFixed(0)} K${s.flame.emitters?.length ? ' · ' + esc(s.flame.emitters.join(', ')) : ''}</dd>`);
+    q('visual').innerHTML = rows.length ? rows.join('') : '<dt>Gas, vapour, flame</dt><dd>none</dd>';
   }
 
   private drawPlot() {
@@ -234,8 +295,24 @@ export class AdvancedView {
       }
       ctx.stroke();
     };
-    line(SERIES.temp, (p) => p.tempK, 270, 380);
+    // axes follow the data (a frozen sample, a flame or a sealed vessel under pressure must not be clipped)
+    let tLo = 270, tHi = 380, pLo = 0.5, pHi = 4;
+    for (const p of hist) {
+      tLo = Math.min(tLo, p.tempK);
+      tHi = Math.max(tHi, p.tempK);
+      pHi = Math.max(pHi, p.pressureAtm);
+      pLo = Math.min(pLo, p.pressureAtm);
+    }
+    tLo = Math.floor((tLo - 3) / 10) * 10;
+    tHi = Math.ceil((tHi + 3) / 10) * 10;
+    pHi = Math.ceil(pHi * 2) / 2;
+    pLo = Math.floor(pLo * 2) / 2;
+    const lgT = this.el.querySelector('[data-k="lg-temp"]');
+    const lgP = this.el.querySelector('[data-k="lg-press"]');
+    if (lgT) setText(lgT as HTMLElement, `Temperature (${tLo}–${tHi} K)`);
+    if (lgP) setText(lgP as HTMLElement, `Pressure (${pLo}–${pHi} atm)`);
+    line(SERIES.temp, (p) => p.tempK, tLo, tHi);
     line(SERIES.ph, (p) => p.ph, 0, 14);
-    line(SERIES.press, (p) => p.pressureAtm, 0.5, 4);
+    line(SERIES.press, (p) => p.pressureAtm, pLo, pHi);
   }
 }

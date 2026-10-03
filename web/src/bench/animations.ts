@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { VesselBundle } from './glassware';
 import { SpriteParticles } from '../render/particles';
-import { softSpriteTexture } from '../render/textures';
+import { softSpriteTexture, smokePuffTexture } from '../render/textures';
 import { getRibbonGeo } from '../render/effects';
 import { makePipette, makeSpatula } from '../equipment/bottle';
 
@@ -927,6 +927,93 @@ export class PowderStream {
     this.disposed = true;
     this.scene.remove(this.powder.points);
     this.powder.dispose();
+  }
+}
+
+
+/**
+ * Gas released from a bottle held over a vessel: a soft plume leaving the neck. A gas denser than the room air (the
+ * default for the usual reagent gases) rolls down into the vessel; a light one drifts up past the lip. Colourless gases
+ * show only as a faint haze (the colour is the reagent's own, near white for most).
+ */
+export class GasPlume {
+  private puffs: SpriteParticles;
+  private acc = 0;
+  private col: THREE.Color;
+  private disposed = false;
+
+  constructor(private scene: THREE.Scene, colorHex: string) {
+    this.col = new THREE.Color(colorHex);
+    // lighten towards white: a clear gas is drawn as a faint, slightly cool haze
+    const lum = this.col.r * 0.3 + this.col.g * 0.59 + this.col.b * 0.11;
+    if (lum > 0.8) this.col.set(0xeef4f8);
+    this.puffs = new SpriteParticles(220, smokePuffTexture());
+    this.puffs.fadeIn = 0.2;
+    scene.add(this.puffs.points);
+  }
+
+  public get alive(): boolean {
+    return !this.disposed && this.puffs.live > 0;
+  }
+
+  /** `mlPerS` <= 0 stops emitting; puffs in the air finish their drift. */
+  public update(dt: number, _time: number, mlPerS: number, lip: THREE.Vector3, target: VesselBundle | null, heavy = true) {
+    if (this.disposed) return;
+    if (target) this.puffs.points.renderOrder = target.glassMesh.renderOrder + 2;
+    if (mlPerS > 0) {
+      this.acc += Math.min(60, 6 + mlPerS * 0.8) * dt;
+      while (this.acc >= 1) {
+        this.acc -= 1;
+        const sh = 0.9 + Math.random() * 0.15;
+        const alpha = Math.min(0.24, 0.07 + mlPerS * 0.004);
+        this.puffs.spawn(
+          lip.x + (Math.random() - 0.5) * 0.4,
+          lip.y - 0.1,
+          lip.z + (Math.random() - 0.5) * 0.4,
+          (Math.random() - 0.5) * 1.6,
+          heavy ? -1.5 - Math.random() * 2 : 2 + Math.random() * 3,
+          (Math.random() - 0.5) * 1.6,
+          1.6 + Math.random() * 0.8,
+          0.5,
+          2.4 + Math.random() * 1.2,
+          alpha,
+          this.col.r * sh,
+          this.col.g * sh,
+          this.col.b * sh,
+          heavy ? -6 : 3,
+          0.8,
+          0
+        );
+      }
+    } else this.acc = 0;
+    // a heavy gas that reaches the vessel's opening is kept by it: it stops at the rim line instead of falling through
+    const pu = this.puffs;
+    if (heavy && target) {
+      const rimTop = target.group.position.y + target.profile.rimY + target.profile.baseOffsetY;
+      for (let i = 0; i < pu.live; i++) {
+        const dx = pu.pos[i * 3] - target.group.position.x;
+        const dz = pu.pos[i * 3 + 2] - target.group.position.z;
+        const inside = Math.hypot(dx, dz) < target.profile.rimInnerRadius;
+        const floorY = inside ? target.group.position.y + target.profile.innerBottomY + target.profile.baseOffsetY + 0.5 : this.groundFor(target);
+        if (pu.pos[i * 3 + 1] < floorY) {
+          pu.pos[i * 3 + 1] = floorY;
+          pu.vel[i * 3 + 1] = 0;
+        }
+        void rimTop;
+      }
+    }
+    pu.update(dt);
+  }
+
+  private groundFor(target: VesselBundle): number {
+    return target.group.position.y + 0.3;
+  }
+
+  public dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.scene.remove(this.puffs.points);
+    this.puffs.dispose();
   }
 }
 

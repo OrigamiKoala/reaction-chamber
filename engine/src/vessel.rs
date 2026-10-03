@@ -76,7 +76,13 @@ pub struct SolidVisual {
     pub species: String,
     pub name: String,
     pub mass_g: f64,
+    #[serde(default)]
+    pub density_g_ml: f64,
+    #[serde(default)]
+    pub volume_ml: f64,
     pub settled_volume_ml: f64,
+    #[serde(default = "default_solid_morphology")]
+    pub morphology: String, // "bed" | "monolith" | "pieces" | "film"
     pub suspended_fraction: f64,
     /// Volume-equivalent mean diameter of the whole population, um.
     pub particle_diameter_um: f64,
@@ -97,6 +103,8 @@ pub struct SolidVisual {
     pub kind: SolidKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub floating: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_index: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining_fraction: Option<f64>,
     /// Stokes settling velocity of the particles in the liquid that is in the vessel, mm/s (0: floats or stays colloidal).
@@ -107,12 +115,18 @@ pub struct SolidVisual {
     pub surface_area_cm2: f64,
 }
 
+fn default_solid_morphology() -> String {
+    "bed".to_string()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GasFlux {
     pub species: String,
     pub rate_ml_s: f64,
     pub bubble_diameter_mm: f64,
     pub nucleation: String, // "bulk" | "wall" | "solid"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -255,6 +269,9 @@ pub struct VesselSnapshot {
     /// Electrolysis cell readout (current, voltage, electrode potentials, reactions); absent without electrodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub electrolysis: Option<crate::vessel_electro::ElectroReadout>,
+    /// Electrode visuals (anode, cathode, mass change, plated deposit).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub electrodes: Vec<crate::vessel_electro::ElectrodeVisual>,
     pub contents_mass_g: f64,
     pub mass_lost_g: f64,
     pub heat_input_w: f64,
@@ -1172,6 +1189,7 @@ impl Vessel {
                     rate_ml_s: vol_gas_ml / dt_s,
                     bubble_diameter_mm: self.bubble_diameter_mm(nucleation),
                     nucleation: nucleation.to_string(),
+                    origin: None,
                 });
 
                 if self.sealed {
@@ -1452,6 +1470,7 @@ impl Vessel {
                 rate_ml_s: ml_s,
                 bubble_diameter_mm: self.bubble_diameter_mm(nucleation),
                 nucleation: nucleation.to_string(),
+                origin: None,
             });
         }
     }
@@ -1548,14 +1567,20 @@ impl Vessel {
                 continue;
             }
             let aqueous = self.phase_is_aqueous(&v.species_mol);
-            // the dominant molecule names a non-aqueous layer
             let lead = if aqueous {
                 None
             } else {
                 v.species_mol.iter().filter(|(k, _)| ions::species_charge(k) == 0).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(k, _)| k.clone())
             };
+            let (lead_species, lead_name) = if aqueous {
+                (Some(AQUEOUS_SOLVENT.to_string()), Some("Aqueous phase".to_string()))
+            } else {
+                let sp = lead;
+                let name = sp.as_ref().map(|k| self.display_name(k)).or_else(|| Some("Organic phase".to_string()));
+                (sp, name)
+            };
             let n_layer = crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml);
-            let po = self.phase_optics(&v.species_mol, v.volume_ml, lead.as_deref());
+            let po = self.phase_optics(&v.species_mol, v.volume_ml, lead_species.as_deref());
             let (scatter, albedo) = if idx == 0 { self.suspension_optics(n_layer) } else { (vec![0.0; optics::N_BINS], vec![1.0; optics::N_BINS]) };
             layers.push(LiquidLayer {
                 phase: if aqueous { PhaseKind::Aqueous } else { PhaseKind::Organic },
@@ -1568,8 +1593,8 @@ impl Vessel {
                 colour_tier: po.tier,
                 colour_sources: po.sources,
                 solvent_class: po.solvent.to_string(),
-                name: lead.as_ref().map(|k| self.display_name(k)),
-                species: lead,
+                name: lead_name,
+                species: lead_species,
             });
         }
         // densest at the bottom (first in the list for rendering order)
@@ -1586,15 +1611,26 @@ impl Vessel {
             let mass_g = mol * thermo.mw;
             let props = self.solid_props(sp);
             let density = props.density_g_ml;
-
-            let settled_vol = (mass_g / density) * 1.6;
-            let init_mol = *self.initial_solids.get(sp).unwrap_or(&mol);
-            let rem_frac = (mol / init_mol.max(1e-9)).clamp(0.0, 1.0);
+            let volume_ml = if density > 1e-9 { mass_g / density } else { 0.0 };
 
             let pop = self.particle_populations.get(sp);
             let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
-            // morphology follows the particle size (fine precipitates are gels and curds, coarse ones crystals), except
-            // for metals, which keep their lustre
+            let is_ice = (sp.ends_with("(s)") && sp.trim_end_matches("(s)") == crate::db::seed::WATER) || props.name.to_lowercase().contains("ice");
+            let morphology = if props.kind == SolidKind::Metal && d_um >= 200.0 {
+                "pieces".to_string()
+            } else if is_ice {
+                if total_liq_ml <= 0.001 { "monolith".to_string() } else { "pieces".to_string() }
+            } else {
+                "bed".to_string()
+            };
+            let settled_vol = if morphology == "bed" {
+                volume_ml * 1.6
+            } else {
+                volume_ml
+            };
+            let init_mol = *self.initial_solids.get(sp).unwrap_or(&mol);
+            let rem_frac = (mol / init_mol.max(1e-9)).clamp(0.0, 1.0);
+
             let kind = if props.kind == SolidKind::Metal {
                 SolidKind::Metal
             } else if pop.is_none() {
@@ -1608,8 +1644,6 @@ impl Vessel {
             } else {
                 SolidKind::Crystal
             };
-            // settling velocity of what is suspended: each equal-mass size class falls at its own Stokes velocity (a class
-            // below the Brownian limit does not settle), averaged with the class's suspended mass
             let view = self.solid_size_view(sp, &props);
             let (settle_mm_s, area_cm2) = {
                 let rho_p = density * 1000.0;
@@ -1623,20 +1657,54 @@ impl Vessel {
                 (if wsum > 1e-12 { vsum / wsum } else { 0.0 }, pop.map_or(0.0, |p| p.surface_area_m2() * 1e4))
             };
 
+            let (suspended_fraction, suspended_diameter_um) = if props.kind == SolidKind::Metal && d_um >= 200.0 {
+                (0.0, 0.0)
+            } else {
+                (
+                    self.ev.susp.get(sp).copied().unwrap_or(if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 }),
+                    view.suspended_d_m * 1e6,
+                )
+            };
+
+            let (floating, layer_index) = if layers.is_empty() {
+                (if density < 1.0 { Some(true) } else { None }, None)
+            } else if density < layers.last().unwrap().density_g_ml {
+                (Some(true), Some(layers.len() - 1))
+            } else if density > layers[0].density_g_ml {
+                (Some(false), Some(0))
+            } else {
+                let mut idx = 0;
+                for (i, layer) in layers.iter().enumerate() {
+                    if density <= layer.density_g_ml {
+                        idx = i;
+                    }
+                }
+                (Some(true), Some(idx))
+            };
+            let floating = if kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01) {
+                Some(true)
+            } else {
+                floating
+            };
+
             solids.push(SolidVisual {
                 species: sp.clone(),
                 name: props.name.clone(),
                 mass_g,
+                density_g_ml: density,
+                volume_ml,
                 settled_volume_ml: settled_vol,
-                suspended_fraction: self.ev.susp.get(sp).copied().unwrap_or(if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 }),
+                morphology,
+                suspended_fraction,
                 particle_diameter_um: d_um,
-                suspended_diameter_um: view.suspended_d_m * 1e6,
+                suspended_diameter_um,
                 particle_sigma_g: view.sigma_g,
                 rgb: props.rgb,
                 colour_tier: props.colour_tier.clone(),
                 colour_source: props.colour_source.clone(),
                 kind,
-                floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
+                floating,
+                layer_index,
                 remaining_fraction: Some(rem_frac),
                 settling_velocity_mm_s: settle_mm_s,
                 surface_area_cm2: area_cm2,
@@ -1719,16 +1787,43 @@ impl Vessel {
         // flow of a liquid that is there. No liquid, no boil, no steam, no condensation.
         let has_liquid = total_liq_ml > 0.01;
         let is_boiling = has_liquid && self.boil_vapour_ml_s > 0.0;
-        // bubbling vigour from the vapour flow: a gentle simmer (~20 mL/s of vapour) to a hard boil (500+ mL/s)
-        let boil_intensity = if is_boiling { (1.0 - (-self.boil_vapour_ml_s / 150.0).exp()).clamp(0.12, 1.0) } else { 0.0 };
+        // bubbling vigour from the vapour flow: superheat / flux ratio, not saturating at 0.94
+        let boil_intensity = if is_boiling { (self.boil_vapour_ml_s / 50.0).max(0.12) } else { 0.0 };
         // visible vapour and wall condensation come from the mixing-line supersaturation of whatever evaporates (a dry vessel, a
         // cold liquid or a sealed vessel shows none)
         let mist = self.mist_state();
         let vap_visibility = if has_liquid { mist.visibility.max(if is_boiling { boil_intensity * mist.visibility } else { 0.0 }) } else { 0.0 };
         let condensation = if has_liquid { mist.condensation } else { 0.0 };
 
-        let mut total_gas_rate = 0.0;
+        // Aggregate gas fluxes per species and nucleation site; drop noise below 1e-4 mL/s
+        let mut aggregated_fluxes: HashMap<(String, String), (f64, Option<String>)> = HashMap::new();
         for g in &self.gas_fluxes {
+            if g.rate_ml_s < 1e-4 {
+                continue;
+            }
+            let entry = aggregated_fluxes.entry((g.species.clone(), g.nucleation.clone())).or_insert((0.0, None));
+            entry.0 += g.rate_ml_s;
+            if entry.1.is_none() && g.origin.is_some() {
+                entry.1 = g.origin.clone();
+            }
+        }
+        let mut final_gas_fluxes: Vec<GasFlux> = aggregated_fluxes
+            .into_iter()
+            .map(|((species, nucleation), (rate_ml_s, origin))| {
+                let bubble_diameter_mm = self.bubble_diameter_mm(&nucleation);
+                GasFlux {
+                    species,
+                    rate_ml_s,
+                    bubble_diameter_mm,
+                    nucleation,
+                    origin,
+                }
+            })
+            .collect();
+        final_gas_fluxes.sort_by(|a, b| a.species.cmp(&b.species).then(a.nucleation.cmp(&b.nucleation)));
+
+        let mut total_gas_rate = 0.0;
+        for g in &final_gas_fluxes {
             total_gas_rate += g.rate_ml_s;
         }
         let foam = self.foam_level(total_gas_rate);
@@ -1759,6 +1854,9 @@ impl Vessel {
             unverified_species: unparsed_now,
         };
 
+        let electro_readout = self.electrolysis_snapshot();
+        let electrodes_vis = electro_readout.as_ref().map(|r| r.electrodes.clone()).unwrap_or_default();
+
         VesselSnapshot {
             t_sim_s: self.t_sim_s,
             temperature_k: self.temperature_k,
@@ -1772,7 +1870,7 @@ impl Vessel {
             layers,
             total_liquid_ml: total_liq_ml,
             solids,
-            gas_fluxes: self.gas_fluxes.clone(),
+            gas_fluxes: final_gas_fluxes,
             foam,
             boil_intensity,
             evaporation_g_s: if is_boiling { self.boil_mass_g_s } else { self.evaporation_g_s },
@@ -1780,7 +1878,8 @@ impl Vessel {
             condensation,
             fumes,
             flame,
-            electrolysis: self.electrolysis_snapshot(),
+            electrolysis: electro_readout,
+            electrodes: electrodes_vis,
             contents_mass_g: self.contents_mass_g(),
             mass_lost_g: self.mass_lost_g,
             heat_input_w: self.controls.heater_w.unwrap_or(0.0) + self.controls.burner_w.unwrap_or(0.0),
@@ -2024,10 +2123,15 @@ impl Vessel {
             if mol <= dust {
                 continue;
             }
+            let props = self.solid_props(sp);
+            let pop = self.particle_populations.get(sp);
+            let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
+            if props.kind == SolidKind::Metal && d_um >= 200.0 {
+                continue;
+            }
             let thermo = chem_db::get_species_thermo(sp);
             let mass_g = mol * thermo.mw;
             let mass_conc = (mass_g / vol_ml) * self.ev.susp.get(sp).copied().unwrap_or(0.8).clamp(0.0, 1.0);
-            let props = self.solid_props(sp);
             // every equal-mass size class scatters with its own cross-section per gram, weighted by its own suspended
             // fraction (`mass_conc` already carries the mean one)
             let view = self.solid_size_view(sp, &props);

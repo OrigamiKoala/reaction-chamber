@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ElectroReadout, ElectrolysisSpec } from '../types/sim';
 import { LcdDisplay, frontPlate, roundedBox, setWorldPose } from './lcd';
 import { Control3D, Knob, PushButton, Rocker, Selector, place } from '../bench/controls3d';
+import { ELECTRODE_LENGTH, ELECTRODE_RADIUS, ELECTRODE_X, electrodeBottomY } from '../render/electrode_geometry';
 
 export const ELECTRODE_MATERIALS = ['Pt', 'C', 'Cu', 'Zn', 'Ag', 'Fe', 'Al', 'Ni'] as const;
 export type ElectrodeMaterial = (typeof ELECTRODE_MATERIALS)[number];
@@ -232,7 +233,7 @@ export class ElectrochemStation {
     this.anodeMat = new THREE.MeshStandardMaterial({ color: MATERIAL_COLORS.Pt, metalness: 0.85, roughness: 0.25 });
     this.cathodeMat = new THREE.MeshStandardMaterial({ color: MATERIAL_COLORS.Pt, metalness: 0.85, roughness: 0.25 });
 
-    const rodGeo = new THREE.CylinderGeometry(0.2, 0.2, 9.0, 16);
+    const rodGeo = new THREE.CylinderGeometry(ELECTRODE_RADIUS, ELECTRODE_RADIUS, ELECTRODE_LENGTH, 16);
     this.anodeRod = new THREE.Mesh(rodGeo, this.anodeMat);
     this.cathodeRod = new THREE.Mesh(rodGeo, this.cathodeMat);
     this.anodeRod.castShadow = true;
@@ -249,8 +250,8 @@ export class ElectrochemStation {
     const blackClip = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.0, 12), blackCableMat);
     blackClip.position.set(1.4, 4.2, 0);
 
-    this.anodeRod.position.set(-1.4, 0, 0);
-    this.cathodeRod.position.set(1.4, 0, 0);
+    this.anodeRod.position.set(-ELECTRODE_X, 0, 0);
+    this.cathodeRod.position.set(ELECTRODE_X, 0, 0);
 
     this.electrodesGroup.add(clampBar, redClip, blackClip, this.anodeRod, this.cathodeRod);
     this.electrodesGroup.visible = false;
@@ -353,11 +354,11 @@ export class ElectrochemStation {
   /**
    * Poses the electrode assembly over a target vessel in world space, and shapes the red & black leads.
    */
-  public attachToVessel(worldPos: THREE.Vector3, lipHeight: number, liquidLevel: number) {
+  public attachToVessel(worldPos: THREE.Vector3, _lipHeight: number, surfaceY: number) {
     this.electrodesGroup.visible = true;
 
-    // Position electrode assembly centered at vessel top
-    const targetY = worldPos.y + lipHeight - 1.5;
+    // The rods stand a few cm in the liquid (not a fixed distance below the rim): their tips follow the surface level
+    const targetY = worldPos.y + electrodeBottomY(surfaceY) + ELECTRODE_LENGTH / 2;
     const targetWorld = new THREE.Vector3(worldPos.x, targetY, worldPos.z);
     setWorldPose(this.electrodesGroup, targetWorld, new THREE.Quaternion());
 

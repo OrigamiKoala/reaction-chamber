@@ -43,6 +43,7 @@ export const EVENT_LABELS: Record<VesselEvent['kind'], string> = {
 /** Engine-written sentence kinds (reaction log): the sentence is the whole message, no label needed. */
 const LOG_KINDS = new Set<string>(['precipitate_formed', 'solid_dissolved', 'gas_evolved', 'colour_change', 'temperature_change', 'complex_formed']);
 const LOG_ROWS = 8;
+const SUPERSEDING = new Set<string>(['temperature_change', 'solid_dissolved', 'colour_change']);
 
 function linearToCss(rgb: [number, number, number]): string {
   const g = (c: number) => {
@@ -421,7 +422,10 @@ export class VesselPanel {
       if (!s) return;
       const formula = prettyFormula(s.formula || s.id);
       setText(row.f, formula);
-      setText(row.n, s.name && s.name !== s.formula && s.name !== s.id ? s.name : '');
+      // say where it is when it is not dissolved in the main liquid: a solid on the bottom, or its own liquid layer
+      const where = s.phase === 'solid' ? 'solid' : s.phase === 'organic' ? 'organic layer' : '';
+      const nm = s.name && s.name !== s.formula && s.name !== s.id ? s.name : '';
+      setText(row.n, where ? (nm ? `${nm} · ${where}` : where) : nm);
       setText(row.a, s.conc_m !== null && s.phase !== 'solid' ? fmtConc(s.conc_m) : fmtAmountMol(s.amount_mol));
     });
   }
@@ -436,6 +440,14 @@ export class VesselPanel {
     for (const e of evs) {
       const prev = out[out.length - 1];
       if (prev && prev.kind === e.kind && prev.detail === e.detail && e.t_sim_s - prev.t_sim_s < 5) continue;
+      // Running readings (temperature steps, solids vanishing one by one, a colour drifting) replace the last entry of
+      // their kind and species instead of burying the one-off events (precipitate, gas, complex) in a flood.
+      if (SUPERSEDING.has(e.kind)) {
+        const j = out.findLastIndex((o) => o.kind === e.kind && o.species === e.species && e.t_sim_s - o.t_sim_s < 30);
+        if (j >= 0) {
+          out.splice(j, 1);
+        }
+      }
       out.push(e);
     }
     const recent = out.slice(-LOG_ROWS).reverse();

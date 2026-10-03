@@ -194,12 +194,13 @@ impl Vessel {
             hand_rgb = m.solid_color;
             is_metal = false;
         } else {
+            let single_metal = ions::parse_formula_strict(&formula).map_or(false, |e| e.len() == 1 && e.keys().all(|k| is_metal_element(k)));
             name = default_name;
             density_g_ml = 2.5;
-            particle_um = 20.0;
-            kind = SolidKind::Powder;
-            hand_rgb = [0.9, 0.9, 0.9];
-            is_metal = false;
+            particle_um = if single_metal { 30.0 } else { 20.0 };
+            kind = if single_metal { SolidKind::Metal } else { SolidKind::Powder };
+            hand_rgb = if single_metal { [0.55, 0.56, 0.58] } else { [0.9, 0.9, 0.9] };
+            is_metal = single_metal;
         }
 
         // ---- appearance
@@ -437,6 +438,7 @@ impl Vessel {
 
     /// Derives log entries from state differences. `force` also evaluates the solution colour right away.
     pub fn detect_events(&mut self, force: bool) {
+        let t = self.t_sim_s;
         // --- solids appearing / disappearing
         let mut appeared: Vec<String> = Vec::new();
         let announce_mol = (SOLID_ANNOUNCE_M * self.solvent_volume_ml() / 1000.0).max(SOLID_ANNOUNCE_DUST * self.dust_mol());
@@ -467,13 +469,19 @@ impl Vessel {
         for sp in gone {
             self.ev.solids.remove(&sp);
             let props = self.solid_props(&sp);
-            self.push_event_full(
-                VesselEventKind::SolidDissolved,
-                format!("Solid gone (dissolved or consumed): {}", props.formula),
-                0.2,
-                Some(sp),
-                Some(props.rgb),
-            );
+            let detail = format!("Solid gone (dissolved or consumed): {}", props.formula);
+            if let Some(last) = self.events.iter_mut().rev().find(|e| e.kind == VesselEventKind::SolidDissolved && e.species.as_deref() == Some(&sp) && (t - e.t_sim_s <= 30.0)) {
+                last.detail = Some(detail);
+                last.t_sim_s = t;
+            } else {
+                self.push_event_full(
+                    VesselEventKind::SolidDissolved,
+                    detail,
+                    0.2,
+                    Some(sp),
+                    Some(props.rgb),
+                );
+            }
         }
 
         // --- gas evolution (steam from boiling is reported by the boil display, not here)
@@ -546,9 +554,12 @@ impl Vessel {
                     } else {
                         format!("Temperature fell {:.1} °C (to {:.1} °C)", r - temp, temp - 273.15)
                     };
-                    self.ev.temp_ref = Some(temp);
-                    self.ev.temp_ref_t = t;
-                    self.push_event_full(VesselEventKind::TemperatureChange, text, 0.4, None, None);
+                    if let Some(last) = self.events.iter_mut().rev().find(|e| e.kind == VesselEventKind::TemperatureChange && (t - e.t_sim_s <= 30.0)) {
+                        last.detail = Some(text);
+                        last.t_sim_s = t;
+                    } else {
+                        self.push_event_full(VesselEventKind::TemperatureChange, text, 0.4, None, None);
+                    }
                 }
             }
         }
@@ -597,7 +608,13 @@ impl Vessel {
                 self.ev.layer_colour_ref.insert(key, cur);
                 self.ev.colour_ref = Some(cur);
                 self.ev.colour_t = self.t_sim_s;
-                self.push_event_full(VesselEventKind::ColourChange, text, 0.4, None, Some(lin));
+                if let Some(last) = self.events.iter_mut().rev().find(|e| e.kind == VesselEventKind::ColourChange && (self.t_sim_s - e.t_sim_s <= 30.0)) {
+                    last.detail = Some(text);
+                    last.t_sim_s = self.t_sim_s;
+                    last.rgb = Some(lin);
+                } else {
+                    self.push_event_full(VesselEventKind::ColourChange, text, 0.4, None, Some(lin));
+                }
             }
         }
     }

@@ -15,21 +15,21 @@ const LN10: f64 = std::f64::consts::LN_10;
 /// |ln(Q/K)| below which a slow equilibrium row counts as settled and is not relaxed (a numerical tolerance, not physics).
 const SLOW_ROW_EQUILIBRIUM_TOL: f64 = 1e-5;
 
-fn ln_c(amount_mol: f64, vol_l: f64) -> f64 {
-    (amount_mol / vol_l).max(1e-300).ln()
+fn ln_c(amount_mol: f64, solv_kg: f64) -> f64 {
+    (amount_mol / solv_kg).max(1e-300).ln()
 }
 
 /// Solves the saturation of one solid given the amounts (mol) of its ions: returns the amount of solid dissolved
 /// (negative = precipitated) so that IAP = Ksp, or the whole solid if it is undersaturated. None if infeasible
 /// (an ion would go negative even with all of the solid dissolved).
-fn solve_saturation(ion_mol: &[f64], mu: &[f64], solid_mol: f64, vol_l: f64, ln_ksp: f64) -> Option<f64> {
-    solve_saturation_core(ion_mol.len(), |k| ion_mol[k], |k| mu[k], solid_mol, vol_l, ln_ksp)
+fn solve_saturation(ion_mol: &[f64], mu: &[f64], solid_mol: f64, solv_kg: f64, ln_ksp: f64) -> Option<f64> {
+    solve_saturation_core(ion_mol.len(), |k| ion_mol[k], |k| mu[k], solid_mol, solv_kg, ln_ksp)
 }
 
 /// Same, reading the ion amounts straight from the species-amount vector (no per-call allocation: this runs inside the
 /// nested bisection of every equilibrium).
-fn solve_saturation_idx(ions: &[(usize, f64)], amounts: &[f64], solid_mol: f64, vol_l: f64, ln_ksp: f64) -> Option<f64> {
-    solve_saturation_core(ions.len(), |k| amounts[ions[k].0], |k| ions[k].1, solid_mol, vol_l, ln_ksp)
+fn solve_saturation_idx(ions: &[(usize, f64)], amounts: &[f64], solid_mol: f64, solv_kg: f64, ln_ksp: f64) -> Option<f64> {
+    solve_saturation_core(ions.len(), |k| amounts[ions[k].0], |k| ions[k].1, solid_mol, solv_kg, ln_ksp)
 }
 
 fn solve_saturation_core(
@@ -37,10 +37,10 @@ fn solve_saturation_core(
     ion: impl Fn(usize) -> f64,
     mu: impl Fn(usize) -> f64,
     solid_mol: f64,
-    vol_l: f64,
+    solv_kg: f64,
     ln_ksp: f64,
 ) -> Option<f64> {
-    let tol = 1e-12 * vol_l;
+    let tol = 1e-12 * solv_kg;
     let mut y_lo = f64::NEG_INFINITY;
     for k in 0..n {
         y_lo = y_lo.max(-ion(k) / mu(k));
@@ -50,7 +50,7 @@ fn solve_saturation_core(
         return Some(y_hi);
     }
     let y_lo = y_lo.min(y_hi);
-    let ln_iap = |y: f64| -> f64 { (0..n).map(|k| mu(k) * ln_c((ion(k) + mu(k) * y).max(0.0), vol_l)).sum() };
+    let ln_iap = |y: f64| -> f64 { (0..n).map(|k| mu(k) * ln_c((ion(k) + mu(k) * y).max(0.0), solv_kg)).sum() };
     if ln_iap(y_hi) <= ln_ksp {
         return Some(y_hi);
     }
@@ -91,7 +91,7 @@ struct EqSystem {
     reac: Vec<(usize, f64)>,
     prod: Vec<(usize, f64)>,
     minerals: Vec<MineralLocal>,
-    vol_l: f64,
+    solv_kg: f64,
 }
 
 struct EqState {
@@ -111,7 +111,7 @@ impl EqSystem {
             for (mi, m) in self.minerals.iter().enumerate() {
                 // A solid that cannot yet cover a deficit (another solid may supply it in a later pass) is skipped here;
                 // negative amounts left after all passes mark the extent infeasible.
-                let y = match solve_saturation_idx(&m.ions, &amounts, solids[mi], self.vol_l, m.ln_ksp) {
+                let y = match solve_saturation_idx(&m.ions, &amounts, solids[mi], self.solv_kg, m.ln_ksp) {
                     Some(y) => y,
                     None => continue,
                 };
@@ -127,15 +127,15 @@ impl EqSystem {
                 break;
             }
         }
-        if amounts.iter().any(|a| *a < -1e-11 * self.vol_l) {
+        if amounts.iter().any(|a| *a < -1e-11 * self.solv_kg) {
             return None;
         }
         let mut ln_q = 0.0;
         for (i, nu) in &self.prod {
-            ln_q += nu * ln_c(amounts[*i], self.vol_l);
+            ln_q += nu * ln_c(amounts[*i], self.solv_kg);
         }
         for (i, nu) in &self.reac {
-            ln_q -= nu * ln_c(amounts[*i], self.vol_l);
+            ln_q -= nu * ln_c(amounts[*i], self.solv_kg);
         }
         Some(EqState { amounts, solids, ln_q })
     }
@@ -155,7 +155,7 @@ impl Vessel {
             self.slow_exclude = false;
             return self.step_equilibria_core(dt_s);
         }
-        let vol_l = self.solvent_volume_ml() / 1000.0;
+        let solv_kg = (self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528).max(1e-12);
         let kin_dt = self.kinetic_dt_s;
         self.slow_exclude = true;
         let mut q = self.step_equilibria_core(dt_s);
@@ -164,7 +164,7 @@ impl Vessel {
             .into_iter()
             .filter(|&i| {
                 let eq = &self.equilibria[i];
-                let have = |sp: &String| sp == AQUEOUS_SOLVENT || self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * vol_l.max(1e-6);
+                let have = |sp: &String| sp == AQUEOUS_SOLVENT || self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * solv_kg.max(1e-6);
                 eq.reactants.keys().all(have) || eq.products.keys().all(have)
             })
             .collect();
@@ -172,7 +172,7 @@ impl Vessel {
         // concentration quotient of the fast-manifold state is checked before paying for the full solve.
         let off_equilibrium = |this: &Self, i: usize| -> bool {
             let eq = &this.equilibria[i];
-            let conc = |sp: &str| this.species_mol.get(sp).copied().unwrap_or(0.0).max(0.0) / vol_l.max(1e-12);
+            let conc = |sp: &str| this.species_mol.get(sp).copied().unwrap_or(0.0).max(0.0) / solv_kg.max(1e-12);
             let (mut ln_q, mut have_all) = (-eq.log_k_at(this.temperature_k) * std::f64::consts::LN_10, true);
             for (sp, c) in eq.products.iter().filter(|(sp, _)| *sp != AQUEOUS_SOLVENT) {
                 let x = conc(sp);
@@ -187,7 +187,7 @@ impl Vessel {
             !have_all || ln_q.abs() > SLOW_ROW_EQUILIBRIUM_TOL
         };
         let active: Vec<usize> = active.into_iter().filter(|&i| off_equilibrium(self, i)).collect();
-        if kin_dt > 0.0 && !active.is_empty() && vol_l > 0.0 {
+        if kin_dt > 0.0 && !active.is_empty() && solv_kg > 0.0 {
             let m0_species = self.species_mol.clone();
             let m0_solid = self.solid_mol.clone();
             let t0 = self.temperature_k;
@@ -228,7 +228,7 @@ impl Vessel {
                 for &i in &active {
                     let eq = &self.equilibria[i];
                     let rate = eq.rate.as_ref().unwrap();
-                    let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / vol_l;
+                    let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / solv_kg;
                     let k_f = rate.k_forward(t_k, &conc);
                     let k_eq = (eq.log_k_at(t_k) * std::f64::consts::LN_10).exp().max(1e-300);
                     let (mut fwd, mut rev) = (1.0, 1.0);
@@ -242,7 +242,7 @@ impl Vessel {
                             rev *= conc(sp).powf(*c);
                         }
                     }
-                    let r0 = vol_l * (k_f * fwd - k_f / k_eq * rev); // mol/s, + = forward
+                    let r0 = solv_kg * (k_f * fwd - k_f / k_eq * rev); // mol/s, + = forward
                     let nu = eq.products.get(tr).copied().unwrap_or(0.0) - eq.reactants.get(tr).copied().unwrap_or(0.0);
                     rate_into_tracer += nu * r0;
                 }
@@ -293,11 +293,11 @@ impl Vessel {
     pub(crate) fn step_equilibria_core(&mut self, dt_s: f64) -> f64 {
         // Any cation/anion pair that has newly met gets its solubility controlled by the table / solubility rules.
         self.auto_minerals();
-        // The solver's concentration basis is the volume of the aqueous solvent (water). Immiscible or miscible
+        // The solver's concentration basis is the mass of the aqueous solvent (water in kg). Immiscible or miscible
         // co-solvents (ethanol) do not dilute the aqueous chemistry until Stage 3 makes this per-phase. No scale gate:
         // the only requirement is that an aqueous phase exists at all.
-        let vol_l = self.solvent_volume_ml() / 1000.0;
-        if !self.has_aqueous_phase() || vol_l <= 0.0 {
+        let solv_kg = (self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528).max(1e-12);
+        if !self.has_aqueous_phase() || solv_kg <= 0.0 {
             return 0.0;
         }
         let t_k = self.temperature_k;
@@ -305,8 +305,8 @@ impl Vessel {
 
         // Minerals that can matter right now (solid present, or every ion present): found once per sweep, so each
         // equilibrium looks only at these instead of the whole 130-row table.
-        let present_mol = 1e-9 * vol_l;
-        let eps_mol = 1e-15 * vol_l;
+        let present_mol = 1e-9 * solv_kg;
+        let eps_mol = 1e-15 * solv_kg;
         let active: Vec<usize> = self
             .minerals
             .iter()
@@ -323,10 +323,10 @@ impl Vessel {
         let ln_aw = a_w.max(1e-10).ln();
 
         for e in 0..self.equilibria.len() {
-            q_joules += self.relax_equilibrium(e, vol_l, t_k, dt_s, &active, &gamma_cache, ln_aw);
+            q_joules += self.relax_equilibrium(e, solv_kg, t_k, dt_s, &active, &gamma_cache, ln_aw);
         }
-        q_joules += self.saturate_minerals(&active, vol_l, t_k, &gamma_cache);
-        q_joules += self.solve_coupled_equilibria(vol_l, t_k, dt_s);
+        q_joules += self.saturate_minerals(&active, solv_kg, t_k, &gamma_cache);
+        q_joules += self.solve_coupled_equilibria(solv_kg, t_k, dt_s);
 
         // Numerical dust: exact zeros are removed so that species tables only list what is present.
         self.species_mol.retain(|_, m| *m > 0.0);
@@ -341,9 +341,9 @@ impl Vessel {
     }
 
     /// Saturates every solid with its ions (exact IAP = Ksp). Returns heat (J).
-    fn saturate_minerals(&mut self, active: &[usize], vol_l: f64, t_k: f64, gamma_cache: &std::collections::HashMap<String, f64>) -> f64 {
+    fn saturate_minerals(&mut self, active: &[usize], solv_kg: f64, t_k: f64, gamma_cache: &std::collections::HashMap<String, f64>) -> f64 {
         let mut q = 0.0;
-        let eps_mol = 1e-15 * vol_l;
+        let eps_mol = 1e-15 * solv_kg;
         for &idx in active {
             let plan = {
                 let min = &self.minerals[idx];
@@ -363,7 +363,7 @@ impl Vessel {
                     for (ion, &c) in &min.dissolved_products {
                         let amt = self.species_mol.get(ion).copied().unwrap_or(0.0);
                         if amt <= 0.0 { can_calc_iap = false; break; }
-                        ln_iap += c * (amt / vol_l).ln();
+                        ln_iap += c * (amt / solv_kg).ln();
                     }
                     if can_calc_iap && (ln_iap - ln_ksp_eff).abs() < 1e-4 {
                         continue;
@@ -375,7 +375,7 @@ impl Vessel {
                     ion_mol.push(self.species_mol.get(ion).copied().unwrap_or(0.0).max(0.0));
                     mu.push(c);
                 }
-                solve_saturation(&ion_mol, &mu, solid_mol, vol_l, ln_ksp_eff).map(|y| (y, dh_j))
+                solve_saturation(&ion_mol, &mu, solid_mol, solv_kg, ln_ksp_eff).map(|y| (y, dh_j))
             };
             if let Some((y, dh_j)) = plan {
                 if y.abs() < 100.0 * eps_mol {
@@ -402,7 +402,7 @@ impl Vessel {
     fn relax_equilibrium(
         &mut self,
         e: usize,
-        vol_l: f64,
+        solv_kg: f64,
         t_k: f64,
         dt_s: f64,
         active_minerals: &[usize],
@@ -418,12 +418,12 @@ impl Vessel {
         // or backward (every product present); otherwise there is nothing to solve.
         let has_supply = |sp: &String| {
             if sp == "H2O" { return true; }
-            if self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * vol_l {
+            if self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * solv_kg {
                 return true;
             }
             active_minerals.iter().any(|&mi| {
                 let m = &self.minerals[mi];
-                m.dissolved_products.contains_key(sp) && self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0) > 1e-15 * vol_l
+                m.dissolved_products.contains_key(sp) && self.solid_mol.get(&m.solid_species).copied().unwrap_or(0.0) > 1e-15 * solv_kg
             })
         };
         let forward = eq.reactants.keys().all(has_supply);
@@ -460,7 +460,7 @@ impl Vessel {
                 if r != "H2O" {
                     let amt = self.species_mol.get(r).copied().unwrap_or(0.0);
                     if amt <= 0.0 { can_calc_q = false; break; }
-                    ln_q -= c * (amt / vol_l).ln();
+                    ln_q -= c * (amt / solv_kg).ln();
                 }
             }
             if can_calc_q {
@@ -468,7 +468,7 @@ impl Vessel {
                     if p != "H2O" {
                         let amt = self.species_mol.get(p).copied().unwrap_or(0.0);
                         if amt <= 0.0 { can_calc_q = false; break; }
-                        ln_q += c * (amt / vol_l).ln();
+                        ln_q += c * (amt / solv_kg).ln();
                     }
                 }
                 if can_calc_q && (ln_q - ln_k).abs() < 1e-4 {
@@ -477,8 +477,8 @@ impl Vessel {
             }
         }
         // concentration-scaled tolerances: 1e-15 M and 1e-9 M expressed as amounts in this vessel
-        let eps_mol = 1e-15 * vol_l;
-        let present_mol = 1e-9 * vol_l;
+        let eps_mol = 1e-15 * solv_kg;
+        let present_mol = 1e-9 * solv_kg;
 
         let mut names: Vec<String> = Vec::new();
         let index_of = |name: &str, names: &mut Vec<String>| -> usize {
@@ -553,7 +553,7 @@ impl Vessel {
         for (i, c) in &solvent_nu {
             nu[*i] += c;
         }
-        let sys = EqSystem { names, a0, nu, reac, prod, minerals, vol_l };
+        let sys = EqSystem { names, a0, nu, reac, prod, minerals, solv_kg };
 
         // Available supply of each species including solids that can dissolve into it
         let supply = |i: usize| -> f64 {
@@ -572,14 +572,14 @@ impl Vessel {
             xi_hi = xi_hi.min(supply(*i) / c);
         }
         if !xi_hi.is_finite() {
-            xi_hi = 10.0 * vol_l; // water autoionisation-type (solvent only on the left)
+            xi_hi = 10.0 * solv_kg; // water autoionisation-type (solvent only on the left)
         }
         let mut xi_lo = f64::INFINITY;
         for (i, c) in &sys.prod {
             xi_lo = xi_lo.min(supply(*i) / c);
         }
         let xi_lo = if xi_lo.is_finite() { -xi_lo } else { 0.0 };
-        if xi_hi <= 1e-18 * vol_l && xi_lo >= -1e-18 * vol_l {
+        if xi_hi <= 1e-18 * solv_kg && xi_lo >= -1e-18 * solv_kg {
             return 0.0;
         }
 
@@ -588,7 +588,7 @@ impl Vessel {
         // Already at equilibrium, or the needed direction is blocked because a species is absent (the common case
         // every tick): nothing to do.
         if let Some(s) = &start {
-            let blocked = (s.ln_q < ln_k && xi_hi <= 1e-18 * vol_l) || (s.ln_q > ln_k && xi_lo >= -1e-18 * vol_l);
+            let blocked = (s.ln_q < ln_k && xi_hi <= 1e-18 * solv_kg) || (s.ln_q > ln_k && xi_lo >= -1e-18 * solv_kg);
             if blocked {
                 return 0.0;
             }
@@ -697,7 +697,7 @@ impl Vessel {
                 id: eq.id.clone(),
                 equation: eq.equation.clone(),
                 kind: "equilibrium".to_string(),
-                rate: xi / (vol_l * dt_s.max(0.001)),
+                rate: xi / (solv_kg * dt_s.max(0.001)),
                 log_q_over_k,
                 tier: eq.tier.clone(),
                 source: eq.source.clone(),
@@ -715,7 +715,7 @@ impl Vessel {
     /// reaction is f = ln IAP - ln Ksp). Damped projected Newton from the current (interior) state converges to the unique
     /// minimum regardless of how the contents were assembled. The result is only committed if it reduces the residual,
     /// so on any numerical trouble the state from the preceding sweeps is kept. Returns heat released (J).
-    fn solve_coupled_equilibria(&mut self, vol_l: f64, t_k: f64, dt_s: f64) -> f64 {
+    fn solve_coupled_equilibria(&mut self, solv_kg: f64, t_k: f64, dt_s: f64) -> f64 {
         self.eq_converged = false;
         struct Rxn {
             eq: Option<usize>,
@@ -742,8 +742,8 @@ impl Vessel {
         };
         let amount = |m: &Vessel, n: &str| m.species_mol.get(n).copied().unwrap_or(0.0).max(0.0);
         const TINY: f64 = 1e-30;
-        let eps_mol = 1e-15 * vol_l;
-        let present_mol = 1e-9 * vol_l;
+        let eps_mol = 1e-15 * solv_kg;
+        let present_mol = 1e-9 * solv_kg;
 
         let mut rxns: Vec<Rxn> = Vec::new();
         for (e, eq) in self.equilibria.iter().enumerate() {
@@ -850,7 +850,7 @@ impl Vessel {
         let residual = |n: &[f64], act: &[f64]| -> Vec<f64> {
             rxns.iter()
                 .enumerate()
-                .map(|(r, rx)| rx.nu.iter().map(|(i, c)| c * ln_c(n[*i], vol_l)).sum::<f64>() + act[r] - rx.ln_k)
+                .map(|(r, rx)| rx.nu.iter().map(|(i, c)| c * ln_c(n[*i], solv_kg)).sum::<f64>() + act[r] - rx.ln_k)
                 .collect()
         };
         // Bound-aware merit: a dissolving solid already fully consumed whose residual still wants more is satisfied.
@@ -1020,7 +1020,7 @@ impl Vessel {
                         continue;
                     }
                     for i in 0..ns {
-                        ln_c_try[i] = ln_c(n_try[i], vol_l);
+                        ln_c_try[i] = ln_c(n_try[i], solv_kg);
                     }
                     let mut mer = 0.0_f64;
                     for (r, rx) in rxns.iter().enumerate() {
@@ -1093,7 +1093,7 @@ impl Vessel {
                 }
             }
             if let (Some(e), true) = (rx.eq, xi.abs() > 10.0 * eps_mol) {
-                let rate = xi / (vol_l * dt_s.max(0.001));
+                let rate = xi / (solv_kg * dt_s.max(0.001));
                 if let Some(row) = self.active_reactions.iter_mut().find(|row| row.id == self.equilibria[e].id) {
                     row.rate += rate;
                 } else {

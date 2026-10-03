@@ -368,91 +368,24 @@ pub fn audit_equilibrium(eq: &mut GeneralEquilibrium) -> Option<String> {
     })
 }
 
-fn species_thermo_table(species: &str) -> Option<SpeciesThermo> {
-    match species {
-        "H+" => Some(SpeciesThermo { mw: 1.008, charge: 1, delta_h_f: 0.0, cp: 0.0 }),
-        "OH-" => Some(SpeciesThermo { mw: 17.007, charge: -1, delta_h_f: -230.0, cp: -148.5 }),
-        "H2O" => Some(SpeciesThermo { mw: 18.015, charge: 0, delta_h_f: -285.83, cp: 75.38 }),
-        "Na+" => Some(SpeciesThermo { mw: 22.990, charge: 1, delta_h_f: -240.1, cp: 46.4 }),
-        "K+" => Some(SpeciesThermo { mw: 39.098, charge: 1, delta_h_f: -252.4, cp: 21.8 }),
-        "Cl-" => Some(SpeciesThermo { mw: 35.453, charge: -1, delta_h_f: -167.2, cp: -136.4 }),
-        "SO4-2" => Some(SpeciesThermo { mw: 96.06, charge: -2, delta_h_f: -909.3, cp: -293.0 }),
-        "NO3-" => Some(SpeciesThermo { mw: 62.00, charge: -1, delta_h_f: -205.0, cp: -86.6 }),
-        "Cu+2" => Some(SpeciesThermo { mw: 63.546, charge: 2, delta_h_f: 64.8, cp: -99.6 }),
-        "Cu(NH3)4+2" => Some(SpeciesThermo { mw: 131.67, charge: 2, delta_h_f: -347.0, cp: 250.0 }),
-        "NH3" => Some(SpeciesThermo { mw: 17.031, charge: 0, delta_h_f: -80.3, cp: 80.0 }),
-        "NH4+" => Some(SpeciesThermo { mw: 18.039, charge: 1, delta_h_f: -132.5, cp: 79.9 }),
-        "Ag+" => Some(SpeciesThermo { mw: 107.868, charge: 1, delta_h_f: 105.6, cp: 77.0 }),
-        "Ag(NH3)2+" => Some(SpeciesThermo { mw: 141.93, charge: 1, delta_h_f: -111.0, cp: 180.0 }),
-        "CO3-2" => Some(SpeciesThermo { mw: 60.01, charge: -2, delta_h_f: -677.1, cp: -50.0 }),
-        "HCO3-" => Some(SpeciesThermo { mw: 61.017, charge: -1, delta_h_f: -692.0, cp: 112.0 }),
-        "CO2(aq)" => Some(SpeciesThermo { mw: 44.01, charge: 0, delta_h_f: -413.8, cp: 243.0 }),
-        "CH3COOH" => Some(SpeciesThermo { mw: 60.052, charge: 0, delta_h_f: -484.5, cp: 124.0 }),
-        "CH3COO-" => Some(SpeciesThermo { mw: 59.044, charge: -1, delta_h_f: -486.0, cp: 80.0 }),
-        "Fe+3" => Some(SpeciesThermo { mw: 55.845, charge: 3, delta_h_f: -48.5, cp: 150.0 }),
-        "Fe(SCN)+2" => Some(SpeciesThermo { mw: 113.92, charge: 2, delta_h_f: 30.0, cp: 200.0 }),
-        "SCN-" => Some(SpeciesThermo { mw: 58.08, charge: -1, delta_h_f: 76.4, cp: 40.0 }),
-        "Co+2" | "Co(H2O)6+2" => Some(SpeciesThermo { mw: 58.933, charge: 2, delta_h_f: -58.2, cp: 110.0 }),
-        "CoCl4-2" => Some(SpeciesThermo { mw: 200.75, charge: -2, delta_h_f: -8.0, cp: 280.0 }),
-        "I-" => Some(SpeciesThermo { mw: 126.904, charge: -1, delta_h_f: -55.2, cp: -142.3 }),
-        "I3-" => Some(SpeciesThermo { mw: 380.71, charge: -1, delta_h_f: -51.5, cp: 120.0 }),
-        "I2(aq)" => Some(SpeciesThermo { mw: 253.808, charge: 0, delta_h_f: 22.6, cp: 116.0 }),
-        "S2O8-2" => Some(SpeciesThermo { mw: 192.12, charge: -2, delta_h_f: -1345.0, cp: 280.0 }),
-        "S2O3-2" => Some(SpeciesThermo { mw: 112.13, charge: -2, delta_h_f: -648.5, cp: 150.0 }),
-        "S4O6-2" => Some(SpeciesThermo { mw: 224.26, charge: -2, delta_h_f: -1224.0, cp: 300.0 }),
-        "H2O2" => Some(SpeciesThermo { mw: 34.015, charge: 0, delta_h_f: -191.17, cp: 89.0 }),
-        "O2(aq)" => Some(SpeciesThermo { mw: 31.999, charge: 0, delta_h_f: -11.7, cp: 45.0 }),
-        "Mg+2" => Some(SpeciesThermo { mw: 24.305, charge: 2, delta_h_f: -466.85, cp: -118.0 }),
-        "MnO4-" => Some(SpeciesThermo { mw: 118.94, charge: -1, delta_h_f: -541.4, cp: 117.0 }),
-        "Cr2O7-2" => Some(SpeciesThermo { mw: 215.99, charge: -2, delta_h_f: -1490.3, cp: 220.0 }),
-        "CrO4-2" => Some(SpeciesThermo { mw: 115.99, charge: -2, delta_h_f: -881.2, cp: 110.0 }),
-        "HIn_phph" => Some(SpeciesThermo { mw: 318.32, charge: 0, delta_h_f: -500.0, cp: 300.0 }),
-        "In_phph-" => Some(SpeciesThermo { mw: 317.32, charge: -1, delta_h_f: -450.0, cp: 300.0 }),
-        "starch" => Some(SpeciesThermo { mw: 162.14, charge: 0, delta_h_f: -800.0, cp: 200.0 }),
-        "starch_I3" => Some(SpeciesThermo { mw: 542.85, charge: -1, delta_h_f: -860.0, cp: 320.0 }),
-        "HIn_btb" => Some(SpeciesThermo { mw: 624.38, charge: 0, delta_h_f: -600.0, cp: 400.0 }),
-        "In_btb-" => Some(SpeciesThermo { mw: 623.37, charge: -1, delta_h_f: -560.0, cp: 400.0 }),
-        "HIn_mo" => Some(SpeciesThermo { mw: 327.33, charge: 0, delta_h_f: -200.0, cp: 300.0 }),
-        "In_mo-" => Some(SpeciesThermo { mw: 326.32, charge: -1, delta_h_f: -170.0, cp: 300.0 }),
-        "HIn_mr" => Some(SpeciesThermo { mw: 269.30, charge: 0, delta_h_f: -120.0, cp: 300.0 }),
-        "In_mr-" => Some(SpeciesThermo { mw: 268.29, charge: -1, delta_h_f: -95.0, cp: 300.0 }),
-        "C2H5OH" => Some(SpeciesThermo { mw: 46.069, charge: 0, delta_h_f: -277.69, cp: 112.3 }),
-
-        // Solids
-        "AgCl(s)" => Some(SpeciesThermo { mw: 143.32, charge: 0, delta_h_f: -127.07, cp: 50.8 }),
-        "Cu(OH)2(s)" => Some(SpeciesThermo { mw: 97.561, charge: 0, delta_h_f: -450.0, cp: 96.0 }),
-        "NaHCO3(s)" => Some(SpeciesThermo { mw: 84.007, charge: 0, delta_h_f: -950.8, cp: 87.6 }),
-        "MnO2(s)" => Some(SpeciesThermo { mw: 86.937, charge: 0, delta_h_f: -520.0, cp: 54.1 }),
-        "Mg(s)" => Some(SpeciesThermo { mw: 24.305, charge: 0, delta_h_f: 0.0, cp: 24.89 }),
-        "CoCl2(s)" => Some(SpeciesThermo { mw: 129.84, charge: 0, delta_h_f: -312.5, cp: 78.5 }),
-        "NaCl(s)" => Some(SpeciesThermo { mw: 58.443, charge: 0, delta_h_f: -411.15, cp: 50.5 }),
-        "NaOH(s)" => Some(SpeciesThermo { mw: 39.997, charge: 0, delta_h_f: -425.61, cp: 59.5 }),
-        "KI(s)" => Some(SpeciesThermo { mw: 166.00, charge: 0, delta_h_f: -327.9, cp: 52.9 }),
-        "CaCO3(s)" => Some(SpeciesThermo { mw: 100.087, charge: 0, delta_h_f: -1207.6, cp: 81.9 }),
-        "BaSO4(s)" => Some(SpeciesThermo { mw: 233.39, charge: 0, delta_h_f: -1473.2, cp: 101.8 }),
-        "Fe(OH)3(s)" => Some(SpeciesThermo { mw: 106.87, charge: 0, delta_h_f: -823.0, cp: 105.0 }),
-
-        // Gases
-        "CO2(g)" => Some(SpeciesThermo { mw: 44.01, charge: 0, delta_h_f: -393.51, cp: 37.1 }),
-        "O2(g)" => Some(SpeciesThermo { mw: 31.999, charge: 0, delta_h_f: 0.0, cp: 29.4 }),
-        "H2(g)" => Some(SpeciesThermo { mw: 2.016, charge: 0, delta_h_f: 0.0, cp: 28.8 }),
-        "NH3(g)" => Some(SpeciesThermo { mw: 17.031, charge: 0, delta_h_f: -46.11, cp: 35.1 }),
-        "HCl(g)" => Some(SpeciesThermo { mw: 35.453, charge: 0, delta_h_f: -92.31, cp: 29.1 }),
-        "N2(g)" => Some(SpeciesThermo { mw: 28.013, charge: 0, delta_h_f: 0.0, cp: 29.1 }),
-        "H2O(g)" => Some(SpeciesThermo { mw: 18.015, charge: 0, delta_h_f: -241.82, cp: 33.6 }),
-        "C2H5OH(g)" => Some(SpeciesThermo { mw: 46.069, charge: 0, delta_h_f: -235.3, cp: 65.4 }),
-
-        _ => None,
-    }
-}
-
-/// Thermo record of a species: checks SpeciesStore, then table entry, else a general estimate from the formula
+/// Thermo record of a species: checks SpeciesStore and try_thermo_state, else a general estimate from the formula
 /// (mass and charge are real; ΔfH° and Cp are placeholders, so `species_thermo_tier` reports Speculative, and queues a PropertyRequest).
 pub fn get_species_thermo(species: &str) -> SpeciesThermo {
+    let mw = crate::ions::species_mass(species).filter(|m| *m > 0.5).unwrap_or(50.0);
+    let charge = crate::ions::species_charge(species);
+    let phase = crate::thermo::phase_of_id(species);
+
+    if let Some(st) = crate::thermo::try_thermo_state(species, phase, 298.15, 101_325.0) {
+        return SpeciesThermo {
+            mw,
+            charge,
+            delta_h_f: st.h_j_mol / 1000.0,
+            cp: st.cp_j_mol_k,
+        };
+    }
+
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         if let Some(rec) = store.get(species) {
-            let charge = rec.charge();
-            let mw = rec.mw();
             let phase_thermo = rec.phases.get("aq")
                 .or_else(|| rec.phases.get("l"))
                 .or_else(|| rec.phases.get("s"))
@@ -470,13 +403,7 @@ pub fn get_species_thermo(species: &str) -> SpeciesThermo {
         }
     }
 
-    if let Some(t) = species_thermo_table(species) {
-        return t;
-    }
     // General estimator from the formula: full periodic table for the mass, charge parsed from the id.
-    let mw = crate::ions::species_mass(species).filter(|m| *m > 0.5).unwrap_or(50.0);
-    let charge = crate::ions::species_charge(species);
-
     crate::queue_property_request(crate::PropertyRequest {
         species_id: species.to_string(),
         identity: crate::db::Identity {
@@ -505,6 +432,10 @@ pub fn get_species_thermo(species: &str) -> SpeciesThermo {
 /// Provenance of the thermo record `get_species_thermo` returns: Tabulated for a table entry or store entry, Speculative for the
 /// placeholder estimate (the mass and charge of such a species are still exact; its enthalpy and heat capacity are not).
 pub fn species_thermo_tier(species: &str) -> ProvenanceTier {
+    let phase = crate::thermo::phase_of_id(species);
+    if let Some(st) = crate::thermo::try_thermo_state(species, phase, 298.15, 101_325.0) {
+        return st.tier;
+    }
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         if let Some(rec) = store.get(species) {
             let phase_thermo = rec.phases.get("aq")
@@ -517,11 +448,7 @@ pub fn species_thermo_tier(species: &str) -> ProvenanceTier {
             }
         }
     }
-    if species_thermo_table(species).is_some() {
-        ProvenanceTier::Tabulated
-    } else {
-        ProvenanceTier::Speculative
-    }
+    ProvenanceTier::Speculative
 }
 
 pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
@@ -662,19 +589,32 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
             tier: ProvenanceTier::Tabulated,
             source: "IUPAC Stability Constants".to_string(),
         },
-        // 9. Cobalt(II) chloride thermochromic complexation
+        // 9. Cobalt(II) chloride stepwise complexation (Smith & Martell, Critical Stability Constants)
+        GeneralEquilibrium {
+            id: "co_cl_1".to_string(),
+            name: "Chlorocobalt(II) formation".to_string(),
+            equation: "Co+2 + Cl- <=> CoCl+".to_string(),
+            reactants: [("Co+2".to_string(), 1.0), ("Cl-".to_string(), 1.0)].into(),
+            products: [("CoCl+".to_string(), 1.0)].into(),
+            log_k_298: -0.1,
+            delta_h_kj: 5.0,
+            log_k_analytic: None,
+            rate: None,
+            tier: ProvenanceTier::Tabulated,
+            source: "Smith & Martell, Critical Stability Constants".to_string(),
+        },
         GeneralEquilibrium {
             id: "cobalt_tetrachloro".to_string(),
             name: "Tetrachlorocobaltate(II) formation".to_string(),
             equation: "Co+2 + 4 Cl- <=> CoCl4-2".to_string(),
             reactants: [("Co+2".to_string(), 1.0), ("Cl-".to_string(), 4.0)].into(),
             products: [("CoCl4-2".to_string(), 1.0)].into(),
-            log_k_298: -4.0, // effective K in aqueous chloride
+            log_k_298: -4.0, // overall beta_4 in aqueous chloride
             delta_h_kj: 50.0, // endothermic => turns blue on heating
             log_k_analytic: None,
             rate: None,
             tier: ProvenanceTier::Tabulated,
-            source: "J. Chem. Educ. Thermochromic Cobalt System".to_string(),
+            source: "Smith & Martell, Critical Stability Constants".to_string(),
         },
         // 10. Triiodide equilibrium
         GeneralEquilibrium {
@@ -832,44 +772,6 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
             kind: "powder".to_string(),
             tier: ProvenanceTier::Tabulated,
             source: "PHREEQC core".to_string(),
-            interfacial_energy_j_m2: None,
-            interfacial_energy_source: None,
-        },
-        // 4. MnO2
-        GeneralMineral {
-            id: "MnO2_sol".to_string(),
-            mineral: "Pyrolusite".to_string(),
-            formula: "MnO2".to_string(),
-            solid_species: "MnO2(s)".to_string(),
-            dissolved_products: HashMap::new(), // Insoluble heterogeneous catalyst
-            log_ksp_298: -50.0,
-            delta_h_kj: 0.0,
-            log_ksp_analytic: None,
-            solid_color: [0.08, 0.08, 0.08],
-            density_g_ml: 5.03,
-            default_particle_um: 10.0,
-            kind: "powder".to_string(),
-            tier: ProvenanceTier::Tabulated,
-            source: "CRC Handbook".to_string(),
-            interfacial_energy_j_m2: None,
-            interfacial_energy_source: None,
-        },
-        // 5. Magnesium metal
-        GeneralMineral {
-            id: "Mg_metal".to_string(),
-            mineral: "Magnesium Metal".to_string(),
-            formula: "Mg".to_string(),
-            solid_species: "Mg(s)".to_string(),
-            dissolved_products: HashMap::new(),
-            log_ksp_298: -100.0,
-            delta_h_kj: 0.0,
-            log_ksp_analytic: None,
-            solid_color: [0.82, 0.84, 0.86],
-            density_g_ml: 1.74,
-            default_particle_um: 100.0,
-            kind: "metal".to_string(),
-            tier: ProvenanceTier::Tabulated,
-            source: "CRC Handbook".to_string(),
             interfacial_energy_j_m2: None,
             interfacial_energy_source: None,
         },

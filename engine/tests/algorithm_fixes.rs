@@ -114,7 +114,16 @@ fn thermo_lookup_sees_records_registered_later_and_invents_nothing() {
         id: id.into(),
         identity: Identity { formula: "AuTe".into(), ..Default::default() },
         phases,
-        ..Default::default()
+        critical: None,
+        points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
+        acid_base: Vec::new(),
+        redox: Vec::new(),
+        optics: None,
+        transport: None,
+        kinetics_refs: Vec::new(),
+        rejected: Vec::new(),
     });
     let st = try_thermo_state(id, "s", 298.15, 1e5).expect("seen after registration");
     assert!((st.h_j_mol + 100_000.0).abs() < 1.0);
@@ -158,14 +167,20 @@ fn generated_products_carry_joback_estimates() {
 #[test]
 fn templates_follow_structure() {
     let gen = NetworkGenerator::new(NetworkGeneratorConfig::default());
-    let concs: HashMap<String, f64> = [("bromoethane".to_string(), 0.1), ("CC[O-]".to_string(), 0.1)].into();
+    let ethoxide = reaction_chamber_engine::network_generator::register_or_find_species(
+        &reaction_chamber_engine::smiles::parse("CC[O-]").unwrap(),
+    );
+    let concs: HashMap<String, f64> = [("bromoethane".to_string(), 0.1), (ethoxide, 0.1)].into();
     let net = gen.generate_network(&concs, 298.15, 13.0);
     let sn2 = net.reactions.iter().find(|r| r.family_id == "sn2_substitution").expect("SN2 by ethoxide");
     let ether = sn2.products.keys().find(|k| k.as_str() != "Br-").unwrap();
     let mol = reaction_chamber_engine::network_generator::resolve_molecule(ether).unwrap();
     assert_eq!(mol.formula(), "C4H10O", "diethyl ether from {}", ether);
 
-    let concs: HashMap<String, f64> = [("CC=C".to_string(), 0.1), ("H2O".to_string(), 55.5)].into();
+    let propene = reaction_chamber_engine::network_generator::register_or_find_species(
+        &reaction_chamber_engine::smiles::parse("CC=C").unwrap(),
+    );
+    let concs: HashMap<String, f64> = [(propene, 0.1), ("H2O".to_string(), 55.5)].into();
     let net = gen.generate_network(&concs, 298.15, 0.0);
     let hyd = net.reactions.iter().find(|r| r.family_id == "alkene_hydration").expect("hydration in acid");
     assert_eq!(hyd.orders.get("H+"), Some(&1.0));
