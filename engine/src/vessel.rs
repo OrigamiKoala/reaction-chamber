@@ -329,6 +329,18 @@ pub struct VesselControls {
     pub remove_electrodes: Option<bool>,
 }
 
+/// Activities of a vessel at the start of a step, for reaction quotients (`Vessel::activity_context`).
+pub(crate) struct ActivityContext {
+    /// ln gamma of the aqueous solutes
+    pub gamma: HashMap<String, f64>,
+    pub ln_aw: f64,
+    pub vol_l: f64,
+    /// partial pressure (Pa) of each gas: headspace (sealed) or atmosphere (open)
+    pub gas_pa: HashMap<String, f64>,
+    pub sealed: bool,
+    pub head_m3: f64,
+}
+
 pub struct Vessel {
     pub config: VesselConfig,
     pub t_sim_s: f64,
@@ -396,6 +408,10 @@ pub struct Vessel {
     pub particle_populations: HashMap<String, crate::transfer::ParticlePopulation>,
     /// Species ids of the organic (SMILES-bearing) species the Stage 9 network generator last expanded for.
     pub last_smiles_species: HashSet<String>,
+    /// (pH unit, 10 K band) the organic network was last generated in: candidates are filtered by their rate at the
+    /// generation conditions, so a path that was too slow then (acid hydrolysis at pH 7) is looked for again when the
+    /// solution turns acidic or hot
+    pub last_network_env: (i32, i32),
     pub network_cap_reached: bool,
     /// How the current flame looks (fuel, power, luminosity, temperature, emission colour); None when nothing burns.
     pub flame_visual: Option<FlameVisual>,
@@ -470,6 +486,7 @@ impl Vessel {
             phases: crate::phases::PhaseState::new(temp_k),
             particle_populations: HashMap::new(),
             last_smiles_species: HashSet::new(),
+            last_network_env: (i32::MIN, i32::MIN),
             network_cap_reached: false,
             flame_visual: None,
             nuc_clock: HashMap::new(),
@@ -546,22 +563,23 @@ impl Vessel {
         self.network_cap_reached = gen_net.cap_reached;
         for rxn in gen_net.reactions {
             if !self.kinetic_reactions.iter().any(|r| r.id == rxn.id) {
-                // generated rate constants are written for first order in every reactant
-                let orders: HashMap<String, f64> = rxn.reactants.keys().map(|k| (k.clone(), 1.0)).collect();
+                // the rate law carries its own orders (solvent zero order, dissolved catalysts such as H+ first order) and
+                // K(298) with the reaction enthalpy, so the vessel re-evaluates catalysis, temperature and detailed balance
+                // every tick instead of freezing the conditions of the moment the network was generated
                 self.kinetic_reactions.push(chem_db::GeneralKineticRxn {
                     id: rxn.id,
                     equation: rxn.equation,
                     reactants: rxn.reactants,
                     products: rxn.products,
                     gas_products: rxn.gas_products,
-                    orders: Some(orders),
+                    orders: Some(rxn.orders),
                     arrhenius_a: rxn.arrhenius_a,
                     arrhenius_n: 0.0,
                     arrhenius_ea: rxn.arrhenius_ea,
                     delta_h_kj: rxn.delta_h_kj,
                     catalyst_species: None,
-                    is_reversible: rxn.k_rev > 0.0,
-                    k_eq_298: Some(rxn.k_eq),
+                    is_reversible: true,
+                    k_eq_298: Some(rxn.k_eq_298),
                     tier: rxn.tier,
                     source: rxn.source,
                 });
@@ -946,9 +964,14 @@ impl Vessel {
                 cur_smiles_species.insert(sp.clone());
             }
         }
-        if !cur_smiles_species.is_empty() && cur_smiles_species != self.last_smiles_species {
-            self.last_smiles_species = cur_smiles_species;
-            self.update_network();
+        if !cur_smiles_species.is_empty() {
+            let ph = self.current_ph();
+            let env = (if ph.is_finite() { ph.floor() as i32 } else { i32::MAX }, (self.temperature_k / 10.0).floor() as i32);
+            if cur_smiles_species != self.last_smiles_species || env != self.last_network_env {
+                self.last_smiles_species = cur_smiles_species;
+                self.last_network_env = env;
+                self.update_network();
+            }
         }
 
         // 1. Generalized chemical kinetics & combustion
@@ -1058,10 +1081,11 @@ impl Vessel {
 
             let mut orders_reactants = Vec::new();
             if let Some(ref ord_map) = rxn.orders {
+                // an order may name a species the reaction does not consume (a dissolved catalyst such as H+): it enters
+                // the rate law with zero stoichiometry
                 for (r, &ord) in ord_map {
-                    if let Some(&idx) = spec_map.get(r) {
-                        orders_reactants.push((idx, ord));
-                    }
+                    let idx = get_or_add_species(r, &mut species_set, &mut spec_map);
+                    orders_reactants.push((idx, ord));
                 }
             } else {
                 orders_reactants = reactants.clone();
@@ -1109,34 +1133,38 @@ impl Vessel {
         );
 
         for (r_idx, rxn) in self.kinetic_reactions.iter().enumerate() {
+            // a reversible reaction runs backward (negative extent) when its quotient is past K
             let extent = extents[r_idx];
-            if extent <= 1e-15 {
+            if extent.abs() <= 1e-15 {
                 continue;
             }
 
-            // Apply consumption of reactants
+            // Reactants are consumed (returned when the extent is negative); a solid id lives in `solid_mol`
             for (reactant, &coeff) in &rxn.reactants {
                 let d = extent * coeff;
-                if let Some(m) = self.species_mol.get_mut(reactant) {
-                    *m = (*m - d).max(0.0);
-                } else if let Some(m) = self.solid_mol.get_mut(reactant) {
-                    *m = (*m - d).max(0.0);
-                }
+                let map = if reactant.ends_with("(s)") || (!self.species_mol.contains_key(reactant) && self.solid_mol.contains_key(reactant)) {
+                    &mut self.solid_mol
+                } else {
+                    &mut self.species_mol
+                };
+                let m = map.entry(reactant.clone()).or_default();
+                *m = (*m - d).max(0.0);
             }
 
-            // Apply formation of products
+            // Products are formed (consumed when the extent is negative)
             for (prod, &coeff) in &rxn.products {
                 let d = extent * coeff;
-                if prod.ends_with("(s)") {
-                    *self.solid_mol.entry(prod.clone()).or_default() += d;
-                } else {
-                    *self.species_mol.entry(prod.clone()).or_default() += d;
-                }
+                let map = if prod.ends_with("(s)") { &mut self.solid_mol } else { &mut self.species_mol };
+                let m = map.entry(prod.clone()).or_default();
+                *m = (*m + d).max(0.0);
             }
 
-            // Apply gas evolution
+            // Apply gas evolution (gas products make a reaction irreversible in the integrator, so extent > 0 here)
             for (gas_sp, &coeff) in &rxn.gas_products {
-                let gas_mol = extent * coeff;
+                let gas_mol = extent.max(0.0) * coeff;
+                if gas_mol <= 0.0 {
+                    continue;
+                }
                 let vol_gas_ml = gas_mol * r_ideal * t_k / (self.pressure_atm * 101325.0) * 1e6;
                 let nucleation = if rxn.reactants.keys().any(|k| k.ends_with("(s)")) { "solid" } else { "wall" };
                 self.gas_fluxes.push(GasFlux {
@@ -1182,6 +1210,8 @@ impl Vessel {
     }
 
     /// Thermal decomposition and dehydration of solids (solid -> solid + gas), driven by GEM thermodynamics.
+    /// Thermal decomposition of the solids present (solid -> solid + gas, solid -> gases), found by
+    /// `gem::discovery::discover_thermal_decompositions`. Every non-solid product is released as a gas.
     pub(crate) fn step_thermal_decomposition(&mut self, dt_s: f64) -> f64 {
         let t_k = self.temperature_k;
         let p_pa = self.pressure_atm * crate::vle::P_BAR_PA;
@@ -1189,51 +1219,17 @@ impl Vessel {
         if rxns.is_empty() {
             return 0.0;
         }
-
+        let ctx = self.activity_context();
         let mut total_q_joules = 0.0;
-        let rt = crate::physics::R_GAS * t_k;
-
         for rxn in rxns {
-            // Find limiting solid reactant
-            let mut max_xi = f64::INFINITY;
-            let mut can_react = true;
-
-            for &(idx, coeff) in &rxn.nu {
-                if coeff < 0.0 {
-                    let sp = &rxn.species_names[idx];
-                    let amt = self.solid_mol.get(sp).copied().unwrap_or(0.0);
-                    if amt <= 1e-9 {
-                        can_react = false;
-                        break;
-                    }
-                    let avail = amt / (-coeff);
-                    if avail < max_xi {
-                        max_xi = avail;
-                    }
-                }
-            }
-
-            if !can_react || max_xi <= 1e-12 {
-                continue;
-            }
-
-            // Delta G of reaction
-            let delta_g = rxn.delta_g0_j;
-            if delta_g >= 0.0 {
-                // Thermodynamically unfavorable below onset temperature
-                continue;
-            }
-
-            // Thermal rate driven by driving force -Delta G / RT
-            let driving = ((-delta_g) / rt).min(20.0);
-            let rate_k = 0.1 * (1.0 - (-driving).exp());
-            let extent = (rate_k * dt_s * max_xi).min(max_xi);
-
+            // PLACEHOLDER relaxation rate (1/s): the decomposition front of a heated powder is limited by heat and gas
+            // transport through the bed, which is not modelled; the extent is bounded by equilibrium below
+            const DECOMPOSITION_RATE_S: f64 = 0.1;
+            let gas_like = |sp: &str| !sp.ends_with("(s)");
+            let extent = self.discovered_extent(&rxn, &ctx, DECOMPOSITION_RATE_S, dt_s, &gas_like);
             if extent <= 1e-15 {
                 continue;
             }
-
-            // Apply reaction extent
             for &(idx, coeff) in &rxn.nu {
                 let sp = &rxn.species_names[idx];
                 let change = coeff * extent;
@@ -1243,40 +1239,18 @@ impl Vessel {
                     if coeff > 0.0 {
                         *self.initial_solids.entry(sp.clone()).or_insert(0.0) += change;
                     }
-                } else if sp.ends_with("(g)") {
-                    if self.sealed {
-                        *self.headspace_gas_mol.entry(sp.clone()).or_insert(0.0) += change;
-                    } else {
-                        let mw = chem_db::get_species_thermo(sp).mw;
-                        self.mass_lost_g += change * mw;
-                        self.ledger.book_out(sp, change);
-                    }
+                } else {
+                    self.release_gas(sp, change, dt_s, "solid");
                 }
             }
-
             total_q_joules -= extent * rxn.delta_h0_j;
-
-            let eq_str = rxn.nu.iter()
-                .map(|&(i, c)| format!("{} {}", c, rxn.species_names[i]))
-                .collect::<Vec<_>>()
-                .join(" + ");
-
-            self.active_reactions.push(ReactionRow {
-                id: format!("decomp_{}", rxn.species_names[rxn.nu[0].0]),
-                equation: eq_str,
-                kind: "thermal_decomposition".to_string(),
-                rate: extent / dt_s.max(0.001),
-                log_q_over_k: None,
-                tier: crate::types::ProvenanceTier::Tabulated,
-                source: "Thermodynamics / GEM".to_string(),
-                active: true,
-            });
+            self.push_discovered_row(&rxn, "thermal_decomposition", extent / dt_s.max(0.001), "Thermodynamics / GEM");
         }
-
         total_q_joules
     }
 
-    /// Generalized redox reactions: electron transfer between couples, metal oxidation / cementation.
+    /// Generalized redox reactions: electron transfer between couples (non-conducting solids and dissolved species; metals
+    /// react through their electrode reactions in `step_electrochemistry`).
     pub(crate) fn step_redox(&mut self, dt_s: f64) -> f64 {
         let t_k = self.temperature_k;
         let p_pa = self.pressure_atm * crate::vle::P_BAR_PA;
@@ -1284,7 +1258,7 @@ impl Vessel {
 
         let rxns = crate::gem::discovery::discover_reactions(&self.species_mol, &self.solid_mol, t_k, p_pa);
         let mut total_q_joules = 0.0;
-        let rt = crate::physics::R_GAS * t_k;
+        let ctx = self.activity_context();
 
         for rxn in rxns {
             if !matches!(rxn.kind, crate::gem::discovery::DiscoveredRxnKind::Redox { .. }) {
@@ -1295,46 +1269,10 @@ impl Vessel {
                 continue;
             }
 
-            // Find limiting reactant
-            let mut max_xi = f64::INFINITY;
-            let mut can_react = true;
-            let mut has_solid_reactant = false;
-
-            for &(idx, coeff) in &rxn.nu {
-                if coeff < 0.0 {
-                    let sp = &rxn.species_names[idx];
-                    let amt = if sp.ends_with("(s)") {
-                        has_solid_reactant = true;
-                        self.solid_mol.get(sp).copied().unwrap_or(0.0)
-                    } else if sp == "H2O" {
-                        self.species_mol.get(sp).copied().unwrap_or(55.5)
-                    } else {
-                        self.species_mol.get(sp).copied().unwrap_or(0.0)
-                    };
-
-                    if amt <= 1e-9 {
-                        can_react = false;
-                        break;
-                    }
-                    let avail = amt / (-coeff);
-                    if avail < max_xi {
-                        max_xi = avail;
-                    }
-                }
-            }
-
-            if !can_react || max_xi <= 1e-12 {
-                continue;
-            }
-
-            // Delta G check: only spontaneous redox reactions proceed forward
-            if rxn.delta_g0_j > 0.0 {
-                continue;
-            }
-
             // Rate: a reaction with a (non-conducting) solid reactant proceeds through the surface of the solid: the film
             // relaxation rate k A / V of its particle population; a homogeneous electron transfer between labile couples
-            // is limited by the encounter of its reactants, relaxation rate ~ 1 / s here (Stage 7 refines it)
+            // is limited by the encounter of its reactants: PLACEHOLDER relaxation rate 1 / s (no Marcus estimate yet)
+            let has_solid_reactant = rxn.nu.iter().any(|&(idx, c)| c < 0.0 && rxn.species_names[idx].ends_with("(s)"));
             let base_rate = if has_solid_reactant {
                 let hyd = self.hydro_state();
                 let mut lam = 0.0;
@@ -1351,21 +1289,15 @@ impl Vessel {
             } else {
                 1.0
             };
-
-            let driving = ((-rxn.delta_g0_j) / rt).min(30.0);
-            let driving_factor = 1.0 - (-driving).exp();
-            let rate = base_rate * driving_factor;
-            let extent = (rate * dt_s * max_xi).min(max_xi);
-
+            let gas_like = |sp: &str| sp.ends_with("(g)");
+            let extent = self.discovered_extent(&rxn, &ctx, base_rate, dt_s, &gas_like);
             if extent <= 1e-15 {
                 continue;
             }
 
-            // Apply reaction extent
             for &(idx, coeff) in &rxn.nu {
                 let sp = &rxn.species_names[idx];
                 let change = coeff * extent;
-
                 if sp.ends_with("(s)") {
                     let cur = self.solid_mol.entry(sp.clone()).or_insert(0.0);
                     *cur = (*cur + change).max(0.0);
@@ -1373,13 +1305,7 @@ impl Vessel {
                         *self.initial_solids.entry(sp.clone()).or_insert(0.0) += change;
                     }
                 } else if sp.ends_with("(g)") {
-                    if self.sealed {
-                        *self.headspace_gas_mol.entry(sp.clone()).or_insert(0.0) += change;
-                    } else {
-                        let mw = chem_db::get_species_thermo(sp).mw;
-                        self.mass_lost_g += change * mw;
-                        self.ledger.book_out(sp, change);
-                    }
+                    self.release_gas(sp, change, dt_s, "wall");
                 } else {
                     let cur = self.species_mol.entry(sp.clone()).or_insert(0.0);
                     *cur = (*cur + change).max(0.0);
@@ -1387,27 +1313,163 @@ impl Vessel {
             }
 
             total_q_joules -= extent * rxn.delta_h0_j;
-
-            let eq_str = rxn.nu.iter()
-                .map(|&(i, c)| format!("{} {}", c, rxn.species_names[i]))
-                .collect::<Vec<_>>()
-                .join(" + ");
-
-            self.active_reactions.push(ReactionRow {
-                id: format!("redox_{}", rxn.species_names[rxn.nu[0].0]),
-                equation: eq_str,
-                kind: "redox".to_string(),
-                rate: extent / (vol_l * dt_s.max(0.001)),
-                log_q_over_k: None,
-                tier: crate::types::ProvenanceTier::Tabulated,
-                source: "Redox / GEM".to_string(),
-                active: true,
-            });
+            self.push_discovered_row(&rxn, "redox", extent / (vol_l * dt_s.max(0.001)), "Redox / GEM");
         }
 
         total_q_joules
     }
 
+    /// What a reaction quotient needs from the vessel at the start of a step: activity coefficients and water activity of
+    /// the aqueous solution, its volume, and the partial pressure (Pa) of every gas the reactions can meet (the headspace
+    /// when sealed, the atmosphere when open).
+    pub(crate) fn activity_context(&self) -> ActivityContext {
+        let (gamma, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
+        let mut gas_pa: HashMap<String, f64> = HashMap::new();
+        let mut head_m3 = 0.0;
+        if self.sealed {
+            head_m3 = self.headspace_volume_m3().max(1e-9);
+            for (sp, &n) in &self.headspace_gas_mol {
+                gas_pa.insert(sp.clone(), n.max(0.0) * R_GAS * self.temperature_k / head_m3);
+            }
+        } else {
+            for (sp, p) in self.atmosphere_partials() {
+                gas_pa.insert(sp, p);
+            }
+        }
+        ActivityContext {
+            gamma,
+            ln_aw: a_w.max(1e-10).ln(),
+            vol_l: (self.reaction_volume_ml() / 1000.0).max(1e-6),
+            gas_pa,
+            sealed: self.sealed,
+            head_m3,
+        }
+    }
+
+    /// Extent (mol) a discovered reaction advances over `dt_s`: relaxation at `rate_s` (1/s) toward the extent at which its
+    /// quotient reaches K (Delta_r G = Delta_r G0 + RT ln Q = 0), never past the limiting reactant. Activities: solids 1, the
+    /// solvent a_w, gases p / 1 bar (`gas_like` decides which ids are gases), solutes gamma c. An open vessel's gases leave,
+    /// so their partial pressure stays the atmosphere's.
+    pub(crate) fn discovered_extent(
+        &self,
+        rxn: &crate::gem::discovery::DiscoveredReaction,
+        ctx: &ActivityContext,
+        rate_s: f64,
+        dt_s: f64,
+        gas_like: &dyn Fn(&str) -> bool,
+    ) -> f64 {
+        if rate_s <= 0.0 || dt_s <= 0.0 {
+            return 0.0;
+        }
+        let rt = R_GAS * self.temperature_k.max(1.0);
+        // limiting reactant (a reactant that is absent stops the reaction)
+        let mut max_xi = f64::INFINITY;
+        for &(idx, coeff) in &rxn.nu {
+            if coeff >= 0.0 {
+                continue;
+            }
+            let sp = &rxn.species_names[idx];
+            let amt = if sp.ends_with("(s)") {
+                self.solid_mol.get(sp).copied().unwrap_or(0.0)
+            } else if gas_like(sp) {
+                if ctx.sealed {
+                    self.headspace_gas_mol.get(sp).copied().unwrap_or(0.0)
+                } else {
+                    // the open atmosphere is an infinite reservoir of its own gases
+                    if ctx.gas_pa.get(sp).copied().unwrap_or(0.0) > 0.0 { f64::INFINITY } else { 0.0 }
+                }
+            } else {
+                self.species_mol.get(sp).copied().unwrap_or(0.0)
+            };
+            if amt <= 1e-12 {
+                return 0.0;
+            }
+            max_xi = max_xi.min(amt / (-coeff));
+        }
+        if !max_xi.is_finite() || max_xi <= 1e-15 {
+            return 0.0;
+        }
+        let ln_k = -rxn.delta_g0_j / rt;
+        let ln_q = |xi: f64| -> f64 {
+            let mut lq = 0.0;
+            for &(idx, coeff) in &rxn.nu {
+                let sp = &rxn.species_names[idx];
+                let ln_a = if sp.ends_with("(s)") {
+                    0.0
+                } else if sp == AQUEOUS_SOLVENT {
+                    ctx.ln_aw
+                } else if gas_like(sp) {
+                    let mut p = ctx.gas_pa.get(sp).copied().unwrap_or(0.0);
+                    if ctx.sealed {
+                        p += coeff * xi * rt / ctx.head_m3;
+                    }
+                    (p.max(1e-6) / crate::vle::P_BAR_PA).ln()
+                } else {
+                    let n = self.species_mol.get(sp).copied().unwrap_or(0.0) + coeff * xi;
+                    let c = n.max(1e-30) / ctx.vol_l;
+                    c.ln() + ctx.gamma.get(sp).copied().unwrap_or(0.0)
+                };
+                lq += coeff * ln_a;
+            }
+            lq
+        };
+        // ln Q rises with the extent: the equilibrium extent is the root of ln Q - ln K on [0, max_xi]
+        if ln_q(0.0) >= ln_k {
+            return 0.0;
+        }
+        let xi_eq = if ln_q(max_xi * (1.0 - 1e-12)) <= ln_k {
+            max_xi
+        } else {
+            let (mut lo, mut hi) = (0.0, max_xi);
+            for _ in 0..80 {
+                let mid = 0.5 * (lo + hi);
+                if ln_q(mid) < ln_k {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            lo
+        };
+        xi_eq * (1.0 - (-rate_s * dt_s).exp())
+    }
+
+    /// A gas produced (`mol` > 0) or consumed by a discovered reaction: into the headspace when sealed, out of an open vessel.
+    fn release_gas(&mut self, sp: &str, mol: f64, dt_s: f64, nucleation: &str) {
+        if self.sealed {
+            let cur = self.headspace_gas_mol.entry(sp.to_string()).or_insert(0.0);
+            *cur = (*cur + mol).max(0.0);
+        } else {
+            // leaves an open vessel (mol > 0) or is drawn from its atmosphere (mol < 0)
+            let mw = chem_db::get_species_thermo(sp).mw;
+            self.mass_lost_g += mol * mw;
+            self.ledger.book_out(sp, mol);
+        }
+        if mol > 0.0 && dt_s > 0.0 {
+            let ml_s = mol * R_GAS * self.temperature_k / self.p_ext_pa().max(1.0) * 1e6 / dt_s;
+            self.gas_fluxes.push(GasFlux {
+                species: if sp.ends_with("(g)") { sp.to_string() } else { format!("{}(g)", sp) },
+                rate_ml_s: ml_s,
+                bubble_diameter_mm: self.bubble_diameter_mm(nucleation),
+                nucleation: nucleation.to_string(),
+            });
+        }
+    }
+
+    fn push_discovered_row(&mut self, rxn: &crate::gem::discovery::DiscoveredReaction, kind: &str, rate: f64, source: &str) {
+        let eq_str = rxn.nu.iter().map(|&(i, c)| format!("{} {}", c, rxn.species_names[i])).collect::<Vec<_>>().join(" + ");
+        let lead = rxn.nu.iter().find(|&&(_, c)| c < 0.0).map(|&(i, _)| rxn.species_names[i].clone()).unwrap_or_default();
+        self.active_reactions.push(ReactionRow {
+            id: format!("{}_{}", if kind == "redox" { "redox" } else { "decomp" }, lead),
+            equation: eq_str,
+            kind: kind.to_string(),
+            rate,
+            log_q_over_k: None,
+            tier: crate::types::ProvenanceTier::Tabulated,
+            source: source.to_string(),
+            active: true,
+        });
+    }
 
     fn step_thermal(&mut self, dt_s: f64, reaction_heat_joules: f64) {
         let cp_contents = self.contents_heat_capacity(); // J/K

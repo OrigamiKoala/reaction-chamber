@@ -2,11 +2,6 @@ import init, {
   init_engine,
   echo_message,
   pour_volume,
-  calculate_equilibrium,
-  calculate_titration,
-  calculate_calorimetry_mixing,
-  run_iodine_clock_sim,
-  run_wasm_benchmark,
   vessel_new,
   vessel_free,
   vessel_dose,
@@ -37,8 +32,6 @@ import init, {
   import_compound,
   m6_get_reaction_families,
   m6_calculate_mayr_rate,
-  m6_sn2_e2_competition,
-  m6_ester_hydrolysis_rate_vs_ph,
   m6_generate_reaction_network,
   m6_stress_test_mixture,
   m6_diffusion_capped_rate,
@@ -95,76 +88,6 @@ self.onmessage = async (e: MessageEvent) => {
         self.postMessage({
           type: 'POUR_CALC_RESPONSE',
           payload: JSON.parse(wasmRes),
-          requestId,
-        });
-        break;
-      }
-
-      case 'CALCULATE_EQUILIBRIUM': {
-        const res = calculate_equilibrium(JSON.stringify(payload));
-        self.postMessage({
-          type: 'CALCULATE_EQUILIBRIUM_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'CALCULATE_TITRATION': {
-        const { curveType, volAcidMl, cAcid, cBase, extraParam, maxTitrantMl, steps, tempK } = payload;
-        const res = calculate_titration(
-          curveType,
-          volAcidMl,
-          cAcid,
-          cBase,
-          typeof extraParam === 'string' ? extraParam : JSON.stringify(extraParam ?? ''),
-          maxTitrantMl,
-          steps || 100,
-          tempK || 298.15
-        );
-        self.postMessage({
-          type: 'CALCULATE_TITRATION_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'CALCULATE_MIXING': {
-        const { vol1Ml, temp1K, vol2Ml, temp2K } = payload;
-        const res = calculate_calorimetry_mixing(vol1Ml, temp1K, vol2Ml, temp2K);
-        self.postMessage({
-          type: 'CALCULATE_MIXING_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'RUN_IODINE_CLOCK': {
-        const { initialS2O8, initialI, initialS2O3, tempK, dt, maxTimeSec } = payload;
-        const res = run_iodine_clock_sim(
-          initialS2O8,
-          initialI,
-          initialS2O3,
-          tempK || 298.15,
-          dt || 0.1,
-          maxTimeSec || 120.0
-        );
-        self.postMessage({
-          type: 'RUN_IODINE_CLOCK_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'RUN_BENCHMARK': {
-        const { ticks } = payload || { ticks: 50 };
-        const res = run_wasm_benchmark(ticks || 50);
-        self.postMessage({
-          type: 'RUN_BENCHMARK_RESPONSE',
-          payload: JSON.parse(res),
           requestId,
         });
         break;
@@ -435,28 +358,6 @@ self.onmessage = async (e: MessageEvent) => {
         const res = m6_calculate_mayr_rate(nucId, elId, tempK || 298.15);
         self.postMessage({
           type: 'M6_MAYR_RATE_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'M6_SN2_E2': {
-        const { substrate, isBulky, tempK } = payload;
-        const res = m6_sn2_e2_competition(substrate, !!isBulky, tempK || 298.15);
-        self.postMessage({
-          type: 'M6_SN2_E2_RESPONSE',
-          payload: JSON.parse(res),
-          requestId,
-        });
-        break;
-      }
-
-      case 'M6_ESTER_HYDROLYSIS': {
-        const { ester, ph, tempK } = payload;
-        const res = m6_ester_hydrolysis_rate_vs_ph(ester, ph ?? 7.0, tempK || 298.15);
-        self.postMessage({
-          type: 'M6_ESTER_HYDROLYSIS_RESPONSE',
           payload: JSON.parse(res),
           requestId,
         });

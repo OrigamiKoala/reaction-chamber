@@ -10,8 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use crate::db::SpeciesStore;
-use crate::physics::R_GAS;
-use crate::thermo::functions::get_thermo_state;
+use crate::thermo::functions::{phase_of_id, try_thermo_state};
 use super::basis::build_reaction_basis;
 use super::candidates::get_present_elements;
 use super::redox::determine_oxidation_states;
@@ -36,35 +35,20 @@ pub struct DiscoveredReaction {
     pub kind: DiscoveredRxnKind,
 }
 
-impl DiscoveredReaction {
-    /// Evaluates Delta_r G at temperature T (K) and species amounts (mol) / partial pressures (Pa).
-    pub fn delta_r_g(&self, amounts: &[f64], vol_l: f64, t_k: f64, p_pa: f64) -> f64 {
-        let rt = R_GAS * t_k.max(1.0);
-        let mut delta_g = self.delta_g0_j;
+// The reaction quotient of a discovered reaction is evaluated by the vessel (`Vessel::discovered_extent`), which knows the
+// phase of every species: solutes by activity, gases by partial pressure in the headspace or atmosphere, solids and the
+// solvent at unit activity.
 
-        for &(idx, coeff) in &self.nu {
-            let sp = &self.species_names[idx];
-            let is_solid = sp.ends_with("(s)");
-            let is_gas = sp.ends_with("(g)");
-            let is_solvent = sp == "H2O";
-
-            if is_solid || is_solvent {
-                // Unit activity for pure solid and dilute liquid water solvent
-                continue;
-            } else if is_gas {
-                // Partial pressure activity a = p / p0
-                let p_part = amounts[idx].max(1e-12) * rt / (vol_l.max(0.01) * 1e-3);
-                let a = (p_part / p_pa).max(1e-15);
-                delta_g += coeff * rt * a.ln();
-            } else {
-                // Aqueous concentration activity a = c / c0 (mol/L)
-                let c = (amounts[idx] / vol_l.max(0.001)).max(1e-15);
-                delta_g += coeff * rt * c.ln();
-            }
-        }
-
-        delta_g
+/// Standard reaction enthalpy and Gibbs energy (J/mol), or None when a species has no formation data.
+fn reaction_thermo(species: &[String], nu: &[(usize, f64)], t_k: f64, p_pa: f64) -> Option<(f64, f64)> {
+    let (mut dh, mut dg) = (0.0, 0.0);
+    for &(idx, coeff) in nu {
+        let sp = &species[idx];
+        let st = try_thermo_state(sp, phase_of_id(sp), t_k, p_pa)?;
+        dh += coeff * st.h_j_mol;
+        dg += coeff * st.mu0_j_mol;
     }
+    Some((dh, dg))
 }
 
 /// Discovers all independent redox and equilibrium reactions among candidate species reachable from the vessel contents.
@@ -230,16 +214,12 @@ pub fn discover_reactions(
                         continue;
                     }
 
-                    // Evaluate thermodynamics
-                    let mut delta_h0 = 0.0;
-                    let mut delta_g0 = 0.0;
-                    for &(idx, coeff) in &nu_oriented {
-                        let sp = &sub_species[idx];
-                        let phase = if sp.ends_with("(s)") { "s" } else if sp.ends_with("(g)") { "g" } else { "aq" };
-                        let thermo = get_thermo_state(sp, phase, t_k, p_pa);
-                        delta_h0 += coeff * thermo.h_j_mol;
-                        delta_g0 += coeff * thermo.mu0_j_mol;
-                    }
+                    // Evaluate thermodynamics; a species without formation data cannot be judged, so the reaction is
+                    // not proposed (a placeholder value would invent its driving force)
+                    let (delta_h0, delta_g0) = match reaction_thermo(&sub_species, &nu_oriented, t_k, p_pa) {
+                        Some(x) => x,
+                        None => continue,
+                    };
 
                     let z_electrons = (cur_c_sox.abs() * (ox_p - ox_s) as f64).round().max(1.0);
 
@@ -332,15 +312,26 @@ pub fn discover_thermal_decompositions(
             let basis = build_reaction_basis(&candidate_ids);
 
             for rxn in basis {
+                // every candidate other than a solid is evaluated (and later released) as a gas
                 let mut delta_h0 = 0.0;
                 let mut delta_g0 = 0.0;
-
+                let mut known = true;
                 for &(idx, coeff) in &rxn.nu {
                     let sp = &candidate_ids[idx];
                     let phase = if sp.ends_with("(s)") { "s" } else { "g" };
-                    let thermo = get_thermo_state(sp, phase, t_k, p_pa);
-                    delta_h0 += coeff * thermo.h_j_mol;
-                    delta_g0 += coeff * thermo.mu0_j_mol;
+                    match try_thermo_state(sp, phase, t_k, p_pa) {
+                        Some(thermo) => {
+                            delta_h0 += coeff * thermo.h_j_mol;
+                            delta_g0 += coeff * thermo.mu0_j_mol;
+                        }
+                        None => {
+                            known = false;
+                            break;
+                        }
+                    }
+                }
+                if !known {
+                    continue;
                 }
 
                 let mut nu_oriented = rxn.nu;

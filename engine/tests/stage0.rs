@@ -102,9 +102,9 @@ fn s0_1_ph_is_not_clamped_and_basic_branch_uses_the_solver() {
 
 #[test]
 fn s0_1_template_catalysis_reads_oh_from_the_solution_not_14_minus_ph() {
-    use reaction_chamber_engine::templates::{ester_hydrolysis_k_obs_in, Medium};
+    use reaction_chamber_engine::network_generator::{NetworkGenerator, NetworkGeneratorConfig};
+    use reaction_chamber_engine::templates::Medium;
     // same pH 7 but a hot medium: OH- from Kw(T) is 10x larger at 60 C than 14 - pH would give
-    let cold = ester_hydrolysis_k_obs_in("ethyl_acetate", Medium::from_solution(7.0, 298.15, &HashMap::new()), 298.15);
     let medium_hot = Medium::from_solution(7.0, 333.15, &HashMap::new());
     // Kw(60 C) = 10^-13.02, so [OH-] at pH 7 is 9e-7 M (14 - pH would give 1e-7)
     assert!(medium_hot.oh_conc > 8.0e-7 && medium_hot.oh_conc < 1.1e-6, "OH- at pH 7, 60 C: {}", medium_hot.oh_conc);
@@ -112,7 +112,18 @@ fn s0_1_template_catalysis_reads_oh_from_the_solution_not_14_minus_ph() {
     let concs: HashMap<String, f64> = [("OH-".to_string(), 0.01), ("H+".to_string(), 1e-12)].into();
     let strong = Medium::from_solution(12.0, 298.15, &concs);
     assert_eq!(strong.oh_conc, 0.01);
-    assert!(ester_hydrolysis_k_obs_in("ethyl_acetate", strong, 298.15) > 100.0 * cold);
+    // (the hand-written ethyl-acetate k_obs(pH) function is gone) generated reactions carry their catalyst in the rate
+    // law, so the vessel reads [H+] / [OH-] from the solution every tick: acid hydrolysis is first order in H+ and zero
+    // order in the solvent
+    let gen = NetworkGenerator::new(NetworkGeneratorConfig::default());
+    let concs: HashMap<String, f64> = [("ethyl_acetate".to_string(), 0.1), ("H2O".to_string(), 55.5), ("H+".to_string(), 0.1)].into();
+    let net = gen.generate_network(&concs, 298.15, 1.0);
+    let acid = net.reactions.iter().find(|r| r.family_id == "acid_ester_hydrolysis").expect("acid hydrolysis generated");
+    assert_eq!(acid.orders.get("H+"), Some(&1.0));
+    assert_eq!(acid.orders.get("H2O"), Some(&0.0));
+    // k(298) per M of H+ is the measured k_H of ethyl acetate within a factor of 3 (1.1e-4 M^-1 s^-1)
+    let k_h = acid.arrhenius_a * (-acid.arrhenius_ea / (8.314462618 * 298.15)).exp();
+    assert!(k_h > 1.1e-4 / 3.0 && k_h < 1.1e-4 * 3.0, "k_H {}", k_h);
 }
 
 // ---- 0.2 kinetic records + balance check ---------------------------------------------------------------------------
@@ -550,7 +561,7 @@ fn s0_9_bicarbonate_plus_vinegar_cools_with_the_degassing_enthalpy() {
 #[test]
 fn s0_9_one_gas_constant_and_one_glass_factor() {
     assert_eq!(reaction_chamber_engine::physics::R_GAS, 8.314462618);
-    assert_eq!(reaction_chamber_engine::equilibrium::R_IDEAL, reaction_chamber_engine::physics::R_GAS);
+    assert_eq!(reaction_chamber_engine::templates::R_IDEAL, reaction_chamber_engine::physics::R_GAS);
     // pouring 10 mL of 80 C water into an empty beaker: the same glass fraction as every other path
     let mut v = beaker();
     v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(353.15) }).unwrap();

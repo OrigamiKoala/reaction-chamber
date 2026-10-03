@@ -5,7 +5,6 @@
 //! - Captures retrograde solubility of CaCO3 and CaSO4 (solubility decreases as temperature rises).
 
 use std::collections::HashMap;
-use crate::physics::R_GAS;
 
 /// Evaluates log10 Ksp of a mineral at temperature `t_k` and pressure `p_pa`.
 /// If the mineral has an analytic expression from llnl.dat / SUPCRTBL, it is used;
@@ -60,15 +59,22 @@ pub fn mineral_log_ksp(mineral: &str, t_k: f64, p_pa: f64) -> f64 {
     }
 
     if !found_products {
-        if let Some(elems) = crate::ions::species_elements(norm_name) {
-            for (e, &n) in &elems {
-                products.insert(e.clone(), n);
+        // the ions the solid dissolves into (never its elements: a salt does not dissolve into atoms)
+        match crate::ions::decompose_ionic(norm_name) {
+            Some(split) => {
+                for ion in split.cations.iter().chain(split.anions.iter()) {
+                    *products.entry(ion.id.clone()).or_insert(0.0) += ion.n;
+                }
             }
+            None => return f64::NAN,
         }
     }
 
-    let dg = crate::thermo::functions::delta_r_g0(&reactants, &products, t, p_pa);
-    -dg / (R_GAS * t * std::f64::consts::LN_10)
+    // NaN when a species has no formation data: no value is better than an invented one
+    match crate::thermo::functions::try_ln_k_equilibrium(&reactants, &products, t, p_pa) {
+        Some(ln_k) => ln_k / std::f64::consts::LN_10,
+        None => f64::NAN,
+    }
 }
 
 /// Checks if a mineral exhibits retrograde solubility (d(log Ksp)/dT < 0).

@@ -1,5 +1,7 @@
 //! A precipitate that is not in the Ksp table starts with a rule-based guess; the lookup queue hands it to the web layer
-//! (PubChem) and `resolve_mineral` replaces the guess with a Ksp derived from the measured solubility.
+//! (PubChem) and `resolve_mineral` replaces the guess with a Ksp derived from the measured solubility. The pair used here,
+//! Zn2+ / IO3-, has neither a table row nor formation data in the store (a pair that has formation data, such as ZnF2, gets
+//! its Ksp from the dissolution Gibbs energy instead and is never a rule-based guess).
 //! One test function: the lookup queue is process-global.
 use reaction_chamber_engine::chem_db;
 use reaction_chamber_engine::compound_model::*;
@@ -29,10 +31,10 @@ fn mix() -> Vessel {
     let mut v = beaker();
     v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
     dose_g(&mut v, "t_ZnNO32", 2.0);
-    dose_g(&mut v, "t_NaF", 1.0);
+    dose_g(&mut v, "t_NaIO3", 1.0);
     v
 }
-fn solid(v: &Vessel) -> f64 { v.solid_mol.get("ZnF2(s)").copied().unwrap_or(0.0) }
+fn solid(v: &Vessel) -> f64 { v.solid_mol.get("Zn(IO3)2(s)").copied().unwrap_or(0.0) }
 
 #[test]
 fn unlisted_precipitate_is_looked_up_and_corrected() {
@@ -41,42 +43,42 @@ fn unlisted_precipitate_is_looked_up_and_corrected() {
     assert_eq!(solubility::hill_formula("CuS").as_deref(), Some("CuS"));
 
     import_solid("t_ZnNO32", "Zn(NO3)2");
-    import_solid("t_NaF", "NaF");
+    import_solid("t_NaIO3", "NaIO3");
 
     // 1. Rule-based guess: very insoluble (Ksp 1e-8), nearly everything precipitates.
     let mut guess = mix();
     guess.equilibrate(60.0);
     let guessed = solid(&guess);
-    assert!(guessed > 1e-3, "ZnF2 should precipitate on the rule-based Ksp, got {}", guessed);
-    let m = guess.minerals.iter().find(|m| m.solid_species == "ZnF2(s)").expect("rule mineral registered");
+    assert!(guessed > 1e-3, "Zn(IO3)2 should precipitate on the rule-based Ksp, got {}", guessed);
+    let m = guess.minerals.iter().find(|m| m.solid_species == "Zn(IO3)2(s)").expect("rule mineral registered");
     assert_eq!(m.tier, ProvenanceTier::Speculative);
 
     // 2. It was queued for an external lookup with a PubChem-ready formula, exactly once.
     let queue = solubility::take_lookups();
-    let q = queue.iter().find(|l| l.solid_species == "ZnF2(s)").expect("ZnF2 queued");
-    assert_eq!(q.hill_formula, "F2Zn");
+    let q = queue.iter().find(|l| l.solid_species == "Zn(IO3)2(s)").expect("Zn(IO3)2 queued");
+    assert_eq!(q.hill_formula, "I2O6Zn");
     assert_eq!(q.tier, "speculative");
-    assert!(q.molar_mass > 100.0 && q.molar_mass < 107.0);
-    assert!(solubility::take_lookups().iter().all(|l| l.solid_species != "ZnF2(s)"), "queue drains");
+    assert!(q.molar_mass > 414.0 && q.molar_mass < 417.0);
+    assert!(solubility::take_lookups().iter().all(|l| l.solid_species != "Zn(IO3)2(s)"), "queue drains");
     let _ = mix();
-    assert!(solubility::take_lookups().iter().all(|l| l.solid_species != "ZnF2(s)"), "no repeat requests");
+    assert!(solubility::take_lookups().iter().all(|l| l.solid_species != "Zn(IO3)2(s)"), "no repeat requests");
 
-    // 3. PubChem says it dissolves ~16 g/L: Ksp = 4 s^3 with s = 16 / M.
+    // 3. The lookup says it dissolves 50 g/L (test data): Ksp = 4 s^3 with s = 50 / M.
     let res = solubility::resolve_mineral(&MineralData {
-        solid_species: "ZnF2(s)".into(),
-        name: Some("Zinc fluoride".into()),
-        solubility_g_per_l: Some(16.0),
+        solid_species: "Zn(IO3)2(s)".into(),
+        name: Some("Zinc iodate".into()),
+        solubility_g_per_l: Some(50.0),
         color_linear_rgb: Some([0.8, 0.8, 0.75]),
         density_g_ml: Some(3.9),
         source: "PubChem CID test".into(),
         ..Default::default()
     });
     assert!(res.registered, "{}", res.detail);
-    let s = 16.0 / q.molar_mass;
+    let s = 50.0 / q.molar_mass;
     assert!((res.log_ksp.unwrap() - (4.0 * s * s * s).log10()).abs() < 1e-9, "{:?}", res.log_ksp);
     let min = res.mineral.clone().unwrap();
     assert_eq!(min.tier, ProvenanceTier::Imported);
-    assert_eq!(min.mineral, "Zinc fluoride");
+    assert_eq!(min.mineral, "Zinc iodate");
     assert!(min.source.contains("PubChem CID test"));
     chem_db::register_custom_mineral(min.clone());
 
@@ -87,16 +89,16 @@ fn unlisted_precipitate_is_looked_up_and_corrected() {
     let (corrected, new) = (solid(&guess), solid(&fresh));
     assert!(corrected < guessed * 0.1, "real (much higher) Ksp must dissolve the solid: {} -> {}", guessed, corrected);
     assert!((corrected - new).abs() <= 0.05 * new.max(1e-9), "existing vessel {} vs fresh vessel {}", corrected, new);
-    assert_eq!(guess.minerals.iter().filter(|m| m.solid_species == "ZnF2(s)").count(), 1, "no duplicate registry entries");
+    assert_eq!(guess.minerals.iter().filter(|m| m.solid_species == "Zn(IO3)2(s)").count(), 1, "no duplicate registry entries");
 
     // 5. Importing the product as a reagent reuses the same (resolved) solid record, not a separate saturation cap.
     let imported = model_compound(&CompoundRequest {
-        id: "t_ZnF2".into(), name: "Zinc fluoride".into(), formula: "ZnF2".into(), smiles: None, mw: None, density: None,
+        id: "t_ZnIO32".into(), name: "Zinc iodate".into(), formula: "Zn(IO3)2".into(), smiles: None, mw: None, density: None,
         state: Some("solid".into()), molarity: None, ghs: vec![], ..Default::default()
     });
     assert!(imported.modelable, "{}", imported.reason);
     let im = imported.mineral.expect("imported salt carries its solid");
-    assert_eq!(im.solid_species, "ZnF2(s)");
+    assert_eq!(im.solid_species, "Zn(IO3)2(s)");
     assert_eq!(im.tier, ProvenanceTier::Imported);
     assert!((im.log_ksp_298 - min.log_ksp_298).abs() < 1e-12);
 
@@ -111,4 +113,13 @@ fn unlisted_precipitate_is_looked_up_and_corrected() {
 
     // 6. Unknown solids and qualitative-only data.
     assert!(!solubility::resolve_mineral(&MineralData { solid_species: "NoSuch(s)".into(), ..Default::default() }).registered);
+}
+
+#[test]
+fn pair_with_formation_data_gets_its_ksp_from_the_dissolution_gibbs_energy() {
+    // ZnF2: dfG of ZnF2(s), Zn2+ and F- are in the store, so its Ksp is computed, not guessed (measured log Ksp -1.52)
+    let m = solubility::mineral_for_pair("Zn+2", "F-").expect("ZnF2 mineral");
+    assert_eq!(m.tier, ProvenanceTier::Estimated);
+    assert!((m.log_ksp_298 + 1.52).abs() < 0.3, "log Ksp {}", m.log_ksp_298);
+    assert!(m.delta_h_kj.abs() > 1.0, "van 't Hoff enthalpy from the formation enthalpies");
 }

@@ -9,10 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::ProvenanceTier;
 use crate::smiles::{self, Atom, Molecule};
-use crate::templates::{
-    self, CatalysisType, Medium, ReactionFamily, R_IDEAL,
-    calculate_mayr_rate, apply_diffusion_cap,
-};
+use crate::templates::{self, Medium, ReactionFamily, R_IDEAL, apply_diffusion_cap};
 
 pub const DEFAULT_MAX_ACTIVE_SPECIES: usize = 200;
 pub const DEFAULT_MAX_REACTIONS: usize = 500;
@@ -37,6 +34,13 @@ pub struct GeneratedReaction {
     pub tier: ProvenanceTier,
     pub source: String,
     pub formation_flux: f64,
+    /// Rate-law orders: every non-solvent reactant first order, plus the dissolved catalysts the reaction does not consume
+    /// (H+ for acid catalysis, OH- for base catalysis); the solvent is zero order. `arrhenius_a` is per unit of these.
+    pub orders: HashMap<String, f64>,
+    /// Equilibrium constant at 298.15 K (concentration units, solids and solvent at unit activity) and whether it came
+    /// from species data (true) or from the template's own estimate (false).
+    pub k_eq_298: f64,
+    pub k_eq_from_data: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -95,6 +99,18 @@ impl NetworkGenerator {
         let medium = Medium::from_solution(ph, t, initial_concs);
         let mut active_species_set: HashSet<String> = initial_concs.keys().cloned().collect();
         let mut species_concs = initial_concs.clone();
+        // an ionic compound named by its formula ("NaOH", "HCl") reacts as the ions it dissolves into
+        for (sp, &c) in initial_concs {
+            if resolve_molecule(sp).is_some() {
+                continue;
+            }
+            if let Some(split) = crate::ions::decompose_ionic(sp) {
+                for ion in split.cations.iter().chain(split.anions.iter()) {
+                    *species_concs.entry(ion.id.clone()).or_insert(0.0) += ion.n * c;
+                    active_species_set.insert(ion.id.clone());
+                }
+            }
+        }
 
         let mut generated_reactions: Vec<GeneratedReaction> = Vec::new();
         let mut seen_reaction_ids: HashSet<String> = HashSet::new();
@@ -102,10 +118,9 @@ impl NetworkGenerator {
         let mut cap_reached = false;
         let mut total_flux = 0.0;
 
-        let mayr_db = templates::get_mayr_database();
-
         // Iterative expansion queue (RMG rate-based expansion)
-        let mut queue: Vec<String> = initial_concs.keys().cloned().collect();
+        let mut queue: Vec<String> = active_species_set.iter().cloned().collect();
+        queue.sort();
 
         while let Some(current_sp) = queue.pop() {
             if active_species_set.len() >= self.config.max_active_species {
@@ -130,8 +145,7 @@ impl NetworkGenerator {
                     continue;
                 }
 
-                let reactant_conc = species_concs.get(&current_sp).copied().unwrap_or(0.0);
-                let flux = cand.k_fwd * reactant_conc;
+                let flux = rate_at(&cand, &species_concs);
 
                 if flux >= self.config.flux_threshold_abs {
                     seen_reaction_ids.insert(cand.id.clone());
@@ -171,7 +185,7 @@ impl NetworkGenerator {
                     break;
                 }
 
-                let bimol_rxns = self.match_bimolecular(&current_sp, &partner_sp, t, medium, &mayr_db);
+                let bimol_rxns = self.match_bimolecular(&current_sp, &partner_sp, t, medium);
                 for cand in bimol_rxns {
                     if seen_reaction_ids.contains(&cand.id) {
                         continue;
@@ -183,9 +197,7 @@ impl NetworkGenerator {
                         continue;
                     }
 
-                    let c1 = species_concs.get(&current_sp).copied().unwrap_or(0.0);
-                    let c2 = species_concs.get(&partner_sp).copied().unwrap_or(0.0);
-                    let flux = cand.k_fwd * c1 * c2;
+                    let flux = rate_at(&cand, &species_concs);
 
                     if flux >= self.config.flux_threshold_abs {
                         seen_reaction_ids.insert(cand.id.clone());
@@ -231,6 +243,85 @@ impl NetworkGenerator {
         }
     }
 
+    /// Builds one generated reaction: Arrhenius rate rule of the template (overridden by a precomputed barrier when the
+    /// flywheel has one), diffusion ceiling for bimolecular steps, dissolved-catalyst concentrations folded into `k_fwd`
+    /// at the generation conditions (the vessel re-evaluates them every tick through `orders`), and K from the species'
+    /// formation data when all of them have it, else from the template's estimate (`fallback_dh_kj`, `fallback_dg_kj` at
+    /// 298.15 K), labelled.
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        &self,
+        id: String,
+        name: String,
+        family_id: &str,
+        reactants: HashMap<String, f64>,
+        products: HashMap<String, f64>,
+        catalysts: &[(&str, f64)],
+        mut arr_a: f64,
+        mut arr_ea: f64,
+        fallback_dh_kj: f64,
+        fallback_dg_kj: f64,
+        temp_k: f64,
+        medium: Medium,
+        source: &str,
+    ) -> GeneratedReaction {
+        if let Some(&dg_kcal) = self.config.precomputed_barriers.get(family_id) {
+            arr_ea = dg_kcal * 4184.0;
+            arr_a = 1.0e11;
+        }
+        let k_arr = arr_a * (-arr_ea / (R_IDEAL * temp_k)).clamp(-700.0, 700.0).exp();
+        let mut orders: HashMap<String, f64> = HashMap::new();
+        for sp in reactants.keys() {
+            orders.insert(sp.clone(), if sp == crate::vessel::AQUEOUS_SOLVENT { 0.0 } else { 1.0 });
+        }
+        let mut cat_factor = 1.0;
+        for &(cat, ord) in catalysts {
+            orders.insert(cat.to_string(), ord);
+            let c = match cat {
+                "H+" => medium.h_conc,
+                "OH-" => medium.oh_conc,
+                _ => 0.0,
+            };
+            cat_factor *= c.max(0.0).powf(ord);
+        }
+        let total_order: f64 = orders.values().sum();
+        let k_cap = if total_order >= 1.8 { apply_diffusion_cap(k_arr, temp_k, self.config.viscosity_pa_s) } else { k_arr };
+        let k_fwd = k_cap * cat_factor;
+
+        let (k_eq_298, dh_kj, from_data) = reaction_k_298(&reactants, &products, fallback_dh_kj, fallback_dg_kj);
+        // K at the generation temperature by van 't Hoff
+        let ln_k_t = k_eq_298.ln() - dh_kj * 1000.0 / R_IDEAL * (1.0 / temp_k - 1.0 / 298.15);
+        let k_eq = ln_k_t.clamp(-690.0, 690.0).exp();
+        let delta_g_kj = -R_IDEAL * temp_k * ln_k_t / 1000.0;
+        let equation = format!(
+            "{} <=> {}",
+            reactants.keys().cloned().collect::<Vec<_>>().join(" + "),
+            products.keys().cloned().collect::<Vec<_>>().join(" + ")
+        );
+        GeneratedReaction {
+            id,
+            name,
+            family_id: family_id.to_string(),
+            equation,
+            reactants,
+            products,
+            gas_products: HashMap::new(),
+            k_fwd,
+            k_rev: if k_eq > 0.0 { k_fwd / k_eq } else { 0.0 },
+            arrhenius_a: arr_a,
+            arrhenius_ea: arr_ea,
+            delta_h_kj: dh_kj,
+            delta_g_kj,
+            k_eq,
+            tier: ProvenanceTier::Estimated,
+            source: format!("{}; K from {}", source, if from_data { "species formation data" } else { "template estimate" }),
+            formation_flux: 0.0,
+            orders,
+            k_eq_298,
+            k_eq_from_data: from_data,
+        }
+    }
+
     fn match_unimolecular(
         &self,
         species: &str,
@@ -244,33 +335,29 @@ impl NetworkGenerator {
             None => return results,
         };
 
-        // Keto-enol tautomerism: C(=O)-C(H) <=> C(OH)=C
-        let enolizable = find_enolizable_carbonyls(&mol);
-        for (c_carb, o_carb, c_alpha) in enolizable {
-            let enol_mol = create_enol(&mol, c_carb, o_carb, c_alpha);
-            let enol_id = register_or_find_species(&enol_mol);
-
-            let (arr_a, arr_ea, k_fwd, k_rev, k_eq, delta_g) = self.eval_kinetics("keto_enol_tautomerism", temp_k, medium);
-
-            results.push(GeneratedReaction {
-                id: format!("tautomerism_{}_{}", species, enol_id),
-                name: format!("Keto-Enol Tautomerism on {}", species),
-                family_id: "keto_enol_tautomerism".to_string(),
-                equation: format!("{} <=> {}", species, enol_id),
-                reactants: [(species.to_string(), 1.0)].into(),
-                products: [(enol_id, 1.0)].into(),
-                gas_products: HashMap::new(),
-                k_fwd,
-                k_rev,
-                arrhenius_a: arr_a,
-                arrhenius_ea: arr_ea,
-                delta_h_kj: 25.0,
-                delta_g_kj: delta_g,
-                k_eq,
-                tier: ProvenanceTier::Estimated,
-                source: "Stage 9 Organic Structure Generator".to_string(),
-                formation_flux: 0.0,
-            });
+        // Keto-enol tautomerism C(=O)-C(H) <=> C(OH)=C, acid- and base-catalysed (two parallel paths)
+        let fam = self.families.iter().find(|f| f.id == "keto_enol_tautomerism");
+        let (a, ea, dh, ds) = fam.map_or((1.0e6, 70_000.0, 42.0, 5.0), |f| (f.arrhenius_a, f.arrhenius_ea, f.delta_h_kj, f.delta_s_j_k));
+        for (c_carb, o_carb, c_alpha) in find_enolizable_carbonyls(&mol) {
+            let enol_id = register_or_find_species(&create_enol(&mol, c_carb, o_carb, c_alpha));
+            for (cat, tag) in [("H+", "acid"), ("OH-", "base")] {
+                // rate rule: k = 10 A exp(-Ea/RT) per M of catalyst (the family's A is for 0.1 M catalyst)
+                results.push(self.build(
+                    format!("tautomerism_{}_{}_{}", tag, species, enol_id),
+                    format!("Keto-enol tautomerism of {} ({}-catalysed)", species, tag),
+                    "keto_enol_tautomerism",
+                    [(species.to_string(), 1.0)].into(),
+                    [(enol_id.clone(), 1.0)].into(),
+                    &[(cat, 1.0)],
+                    10.0 * a,
+                    ea,
+                    dh,
+                    dh - 298.15 * ds / 1000.0,
+                    temp_k,
+                    medium,
+                    "Stage 9 structure template (keto-enol)",
+                ));
+            }
         }
 
         results
@@ -282,372 +369,410 @@ impl NetworkGenerator {
         sp2: &str,
         temp_k: f64,
         medium: Medium,
-        mayr_db: &HashMap<String, templates::MayrParameter>,
     ) -> Vec<GeneratedReaction> {
         let mut results = Vec::new();
-
-        // 1. Mayr parameter matching
-        let nuc_cand = mayr_db.values().find(|p| p.is_nucleophile && (sp1.contains(&p.id) || sp2.contains(&p.id)));
-        let el_cand = mayr_db.values().find(|p| !p.is_nucleophile && (sp1.contains(&p.id) || sp2.contains(&p.id)));
-        if let (Some(nuc), Some(el)) = (nuc_cand, el_cand) {
-            let raw_k = calculate_mayr_rate(nuc, el, temp_k);
-            let capped_k = apply_diffusion_cap(raw_k, temp_k, self.config.viscosity_pa_s);
-            let adduct = format!("MayrAdduct_{}_{}", nuc.id, el.id);
-
-            let delta_h = -55.0;
-            let delta_s = -70.0;
-            let delta_g = delta_h - (temp_k * delta_s / 1000.0);
-            let k_eq = (-delta_g * 1000.0 / (R_IDEAL * temp_k)).exp().clamp(1e-15, 1e15);
-            let k_rev = capped_k / k_eq;
-
-            results.push(GeneratedReaction {
-                id: format!("mayr_{}_{}", nuc.id, el.id),
-                name: format!("Mayr Addition: {} + {}", nuc.name, el.name),
-                family_id: "mayr_carbocation_addition".to_string(),
-                equation: format!("{} + {} <=> {}", sp1, sp2, adduct),
-                reactants: [(sp1.to_string(), 1.0), (sp2.to_string(), 1.0)].into(),
-                products: [(adduct, 1.0)].into(),
-                gas_products: HashMap::new(),
-                k_fwd: capped_k,
-                k_rev,
-                arrhenius_a: capped_k,
-                arrhenius_ea: 0.0,
-                delta_h_kj: delta_h,
-                delta_g_kj: delta_g,
-                k_eq,
-                tier: ProvenanceTier::Tabulated,
-                source: "Mayr Reactivity Database".to_string(),
-                formation_flux: 0.0,
-            });
-        }
-
-        // 2. Structure-based Organic Transformations
         let mol1 = resolve_molecule(sp1);
         let mol2 = resolve_molecule(sp2);
-
-        // Check if one partner is base/nucleophile OH- (or a hydroxide salt)
-        let get_hydroxide_anion = |s: &str| -> Option<String> {
-            if s == "OH-" {
-                Some("OH-".to_string())
-            } else if let Some(split) = crate::ions::decompose_ionic(s) {
-                split.anions.into_iter().find(|a| a.id == "OH-").map(|a| a.id)
-            } else {
-                None
-            }
-        };
-        let is_oh_base = |s: &str| get_hydroxide_anion(s).is_some();
         let is_water = |s: &str| {
             crate::ions::species_elements(s).map_or(false, |e| {
                 e.get("H") == Some(&2.0) && e.get("O") == Some(&1.0) && e.len() == 2
-            })
+            }) && crate::ions::species_charge(s) == 0
         };
         let is_halogen = |s: &str| {
             crate::ions::species_elements(s).map_or(false, |e| {
                 e.len() == 1 && matches!(e.iter().next(), Some((sym, &2.0)) if matches!(sym.as_str(), "F" | "Cl" | "Br" | "I"))
-            })
+            }) && crate::ions::species_charge(s) == 0
+        };
+        // the partner that carries a functional group of `find` (either order of the pair)
+        let pick = |find: &dyn Fn(&Molecule) -> bool| -> Option<(&str, &Molecule, &str)> {
+            if let Some(m) = mol1.as_ref().filter(|m| find(m)) {
+                return Some((sp1, m, sp2));
+            }
+            mol2.as_ref().filter(|m| find(m)).map(|m| (sp2, m, sp1))
         };
 
-        // --- A. Ester Hydrolysis (Base Saponification & Acid Hydrolysis) ---
-        let ester_match = if let Some(ref m1) = mol1 {
-            let esters = find_ester_groups(m1);
-            if !esters.is_empty() { Some((sp1, m1, sp2, esters)) } else { None }
-        } else {
-            None
-        }.or_else(|| {
-            if let Some(ref m2) = mol2 {
-                let esters = find_ester_groups(m2);
-                if !esters.is_empty() { Some((sp2, m2, sp1, esters)) } else { None }
-            } else {
-                None
-            }
-        });
-
-        if let Some((ester_id, ester_mol, other_id, esters)) = ester_match {
-            for (c_carb, _o_carb, o_alkoxy, _c_alkyl) in esters {
-                if is_oh_base(other_id) || medium.oh_conc > 10.0 * medium.h_conc {
-                    // Saponification: ester + OH- -> carboxylate + alcohol
+        // --- A. Ester hydrolysis: saponification by hydroxide; acid-catalysed hydrolysis by water (rate ∝ [H+])
+        if let Some((ester_id, ester_mol, other_id)) = pick(&|m: &Molecule| !find_ester_groups(m).is_empty()) {
+            let nuc = nucleophile_of(other_id).filter(|(_, n)| n.class == NucClass::Hydroxide);
+            for (c_carb, _o_carb, o_alkoxy, _c_alkyl) in find_ester_groups(ester_mol) {
+                if let Some((other_id, _)) = nuc.as_ref() {
+                    let other_id = other_id.as_str();
                     let (acyl_mol, alkoxy_mol) = cleave_ester(ester_mol, c_carb, o_alkoxy, true);
                     let acyl_id = register_or_find_species(&acyl_mol);
                     let alc_id = register_or_find_species(&alkoxy_mol);
-
-                    // Arrhenius: A ~ 2.3e7, Ea ~ 47.5 kJ/mol -> k(298.15) = 0.1098 M^-1 s^-1 (~ 0.11 M^-1 s^-1 Gate 1)
-                    let arr_a = 2.3e7;
-                    let arr_ea = 47_500.0;
-                    let k_fwd = arr_a * (-arr_ea / (R_IDEAL * temp_k)).exp();
-                    let k_fwd_capped = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
-                    let delta_h_kj = -55.0;
-                    let delta_g_kj = -50.0;
-                    let k_eq = 1.0e8;
-                    let k_rev = k_fwd_capped / k_eq;
-
-                    let base_species = get_hydroxide_anion(other_id).unwrap_or_else(|| other_id.to_string());
-
-                    results.push(GeneratedReaction {
-                        id: format!("saponification_{}_{}", ester_id, base_species),
-                        name: format!("Saponification of {} with {}", ester_id, base_species),
-                        family_id: "base_ester_hydrolysis".to_string(),
-                        equation: format!("{} + {} -> {} + {}", ester_id, base_species, acyl_id, alc_id),
-                        reactants: [(ester_id.to_string(), 1.0), (base_species.to_string(), 1.0)].into(),
-                        products: [(acyl_id, 1.0), (alc_id, 1.0)].into(),
-                        gas_products: HashMap::new(),
-                        k_fwd: k_fwd_capped,
-                        k_rev,
-                        arrhenius_a: arr_a,
-                        arrhenius_ea: arr_ea,
-                        delta_h_kj,
-                        delta_g_kj,
-                        k_eq,
-                        tier: ProvenanceTier::Tabulated,
-                        source: "Stage 9 Structure Template (Ester Saponification)".to_string(),
-                        formation_flux: 0.0,
-                    });
-                } else if is_water(other_id) || medium.h_conc > 0.01 {
-                    // Acid-catalyzed hydrolysis: ester + H2O -> carboxylic_acid + alcohol
+                    // rate rule (BAc2): A 2.3e7 M^-1 s^-1, Ea 47.5 kJ/mol -> k(298) ~ 0.11 M^-1 s^-1 (ethyl acetate class)
+                    results.push(self.build(
+                        format!("saponification_{}_{}", ester_id, other_id),
+                        format!("Saponification of {} with {}", ester_id, other_id),
+                        "base_ester_hydrolysis",
+                        [(ester_id.to_string(), 1.0), (other_id.to_string(), 1.0)].into(),
+                        [(acyl_id, 1.0), (alc_id, 1.0)].into(),
+                        &[],
+                        2.3e7,
+                        47_500.0,
+                        -55.0,
+                        -50.0,
+                        temp_k,
+                        medium,
+                        "Stage 9 structure template (ester saponification)",
+                    ));
+                } else if is_water(other_id) {
                     let (acyl_mol, alkoxy_mol) = cleave_ester(ester_mol, c_carb, o_alkoxy, false);
                     let acid_id = register_or_find_species(&acyl_mol);
                     let alc_id = register_or_find_species(&alkoxy_mol);
-
-                    let arr_a = 1.1e6 * (medium.h_conc / 0.1).clamp(0.01, 100.0);
-                    let arr_ea = 62_000.0;
-                    let k_fwd = arr_a * (-arr_ea / (R_IDEAL * temp_k)).exp();
-                    let k_fwd_capped = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
-                    let delta_h_kj = 3.0;
-                    let delta_g_kj = 2.5;
-                    let k_eq = 0.25;
-                    let k_rev = k_fwd_capped / k_eq;
-
-                    results.push(GeneratedReaction {
-                        id: format!("acid_hydrolysis_{}", ester_id),
-                        name: format!("Acid-Catalyzed Hydrolysis of {}", ester_id),
-                        family_id: "acid_ester_hydrolysis".to_string(),
-                        equation: format!("{} + H2O <=> {} + {}", ester_id, acid_id, alc_id),
-                        reactants: [(ester_id.to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
-                        products: [(acid_id, 1.0), (alc_id, 1.0)].into(),
-                        gas_products: HashMap::new(),
-                        k_fwd: k_fwd_capped,
-                        k_rev,
-                        arrhenius_a: arr_a,
-                        arrhenius_ea: arr_ea,
-                        delta_h_kj,
-                        delta_g_kj,
-                        k_eq,
-                        tier: ProvenanceTier::Tabulated,
-                        source: "Stage 9 Structure Template (Acid Ester Hydrolysis)".to_string(),
-                        formation_flux: 0.0,
-                    });
+                    // rate rule (AAc2): k = 1.1e7 exp(-62 kJ/mol / RT) [H+] -> 1.5e-4 M^-1 s^-1 at 298 K
+                    results.push(self.build(
+                        format!("acid_hydrolysis_{}", ester_id),
+                        format!("Acid-catalysed hydrolysis of {}", ester_id),
+                        "acid_ester_hydrolysis",
+                        [(ester_id.to_string(), 1.0), (other_id.to_string(), 1.0)].into(),
+                        [(acid_id, 1.0), (alc_id, 1.0)].into(),
+                        &[("H+", 1.0)],
+                        1.1e7,
+                        62_000.0,
+                        3.0,
+                        2.5,
+                        temp_k,
+                        medium,
+                        "Stage 9 structure template (acid ester hydrolysis)",
+                    ));
                 }
             }
         }
 
-        // --- B. Haloalkane SN2 Substitution & E2 Elimination ---
-        let halide_match = if let Some(ref m1) = mol1 {
-            let halides = find_haloalkane_groups(m1);
-            if !halides.is_empty() { Some((sp1, m1, sp2, halides)) } else { None }
-        } else {
-            None
-        }.or_else(|| {
-            if let Some(ref m2) = mol2 {
-                let halides = find_haloalkane_groups(m2);
-                if !halides.is_empty() { Some((sp2, m2, sp1, halides)) } else { None }
-            } else {
-                None
-            }
-        });
-
-        if let Some((halide_id, halide_mol, base_id, halides)) = halide_match {
-            if is_oh_base(base_id) || base_id.contains("O-") || base_id.contains("oxide") {
-                let actual_base = get_hydroxide_anion(base_id).unwrap_or_else(|| base_id.to_string());
-                let is_bulky_base = base_id.contains("tert") || base_id.contains("t-Bu") || base_id.contains("LDA");
-
-                for (c_alpha, x_idx, halogen_sym) in halides {
+        // --- B. Haloalkane SN2 substitution and E2 elimination by any anionic O, S or C nucleophile / base
+        if let Some((halide_id, halide_mol, nuc_id)) = pick(&|m: &Molecule| !find_haloalkane_groups(m).is_empty()) {
+            if let Some((nuc_id, nuc)) = nucleophile_of(nuc_id) {
+                let nuc_id = nuc_id.as_str();
+                for (c_alpha, x_idx, halogen_sym) in find_haloalkane_groups(halide_mol) {
                     let leaving_group = format!("{}-", halogen_sym);
+                    let sub = substrate_class(halide_mol, c_alpha, x_idx);
+                    let bulky = nuc.bulky;
 
-                    // 1. SN2: R-X + OH- -> R-OH + X-
-                    let alcohol_mol = haloalkane_sn2(halide_mol, c_alpha, x_idx);
-                    let alc_id = register_or_find_species(&alcohol_mol);
-
-                    // SN2 parameters: Ea = 89.5 kJ/mol, A = 4.0e9 M^-1 s^-1
-                    let mut arr_a_sn2 = 4.0e9;
-                    if is_bulky_base {
-                        arr_a_sn2 *= 0.005; // 200x steric hindrance
+                    // 1. SN2: R-X + Nu- -> R-Nu + X-. Rate rule for a primary substrate with hydroxide (A 4e9 M^-1 s^-1,
+                    // Ea 89.5 kJ/mol), scaled by the substrate's steric class and the nucleophile's Swain-Scott n.
+                    let product = substitute(halide_mol, c_alpha, x_idx, &nuc);
+                    let prod_id = register_or_find_species(&product);
+                    let mut a_sn2 = 4.0e9 * sub.sn2_factor * 10f64.powf(nuc.class.swain_scott_n() - NucClass::Hydroxide.swain_scott_n());
+                    if bulky {
+                        a_sn2 *= 0.005; // backside attack hindered by a bulky nucleophile
                     }
-                    let arr_ea_sn2 = 89_500.0;
-                    let k_sn2 = arr_a_sn2 * (-arr_ea_sn2 / (R_IDEAL * temp_k)).exp();
-                    let k_sn2_capped = apply_diffusion_cap(k_sn2, temp_k, self.config.viscosity_pa_s);
+                    if a_sn2 > 0.0 {
+                        results.push(self.build(
+                            format!("sn2_{}_{}", halide_id, nuc_id),
+                            format!("SN2 substitution on {} by {}", halide_id, nuc_id),
+                            "sn2_substitution",
+                            [(halide_id.to_string(), 1.0), (nuc_id.to_string(), 1.0)].into(),
+                            [(prod_id, 1.0), (leaving_group.clone(), 1.0)].into(),
+                            &[],
+                            a_sn2,
+                            89_500.0,
+                            -80.0,
+                            -85.0,
+                            temp_k,
+                            medium,
+                            "Stage 9 structure template (SN2; steric class and Swain-Scott nucleophilicity, estimated)",
+                        ));
+                    }
 
-                    results.push(GeneratedReaction {
-                        id: format!("sn2_{}_{}", halide_id, actual_base),
-                        name: format!("SN2 Substitution on {}: {} + {}", halide_id, halide_id, actual_base),
-                        family_id: "sn2_substitution".to_string(),
-                        equation: format!("{} + {} -> {} + {}", halide_id, actual_base, alc_id, leaving_group),
-                        reactants: [(halide_id.to_string(), 1.0), (actual_base.to_string(), 1.0)].into(),
-                        products: [(alc_id, 1.0), (leaving_group.clone(), 1.0)].into(),
-                        gas_products: HashMap::new(),
-                        k_fwd: k_sn2_capped,
-                        k_rev: 0.0,
-                        arrhenius_a: arr_a_sn2,
-                        arrhenius_ea: arr_ea_sn2,
-                        delta_h_kj: -80.0,
-                        delta_g_kj: -85.0,
-                        k_eq: 1.0e12,
-                        tier: ProvenanceTier::Tabulated,
-                        source: "Stage 9 Structure Template (SN2)".to_string(),
-                        formation_flux: 0.0,
-                    });
-
-                    // 2. E2: R-CH-CH-X + OH- -> R-C=C + H2O + X-
-                    if let Some(alkene_mol) = haloalkane_e2(halide_mol, c_alpha, x_idx) {
-                        let alkene_id = register_or_find_species(&alkene_mol);
-
-                        // E2 parameters: Ea = 105.0 kJ/mol, A = 8.0e11 M^-1 s^-1 (Ea_E2 > Ea_SN2 -> elimination rises with T)
-                        let mut arr_a_e2 = 8.0e11;
-                        if is_bulky_base {
-                            arr_a_e2 *= 3.0; // boosted with bulky base
+                    // 2. E2 by a strong base (hydroxide, alkoxide): one reaction per distinct alkene. Rate rule for a
+                    // primary substrate (A 2e10 M^-1 s^-1, Ea 105 kJ/mol: ~1 % elimination for a primary bromide at 25 C;
+                    // Ea_E2 > Ea_SN2, so elimination rises with T), scaled by the substrate class, the beta-H count and
+                    // (small bases) Zaitsev substitution.
+                    if nuc.class.is_strong_base() {
+                        let conj_acid = conjugate_acid_id(&nuc);
+                        let mut by_alkene: Vec<(String, f64)> = Vec::new();
+                        for (beta, n_h, beta_subst) in beta_carbons(halide_mol, c_alpha, x_idx) {
+                            if let Some(alkene) = haloalkane_e2_at(halide_mol, c_alpha, x_idx, beta) {
+                                let alk_id = register_or_find_species(&alkene);
+                                let orient = if bulky { 1.0 } else { 1.0 + beta_subst as f64 };
+                                let f = sub.e2_factor * n_h as f64 / 3.0 * orient;
+                                match by_alkene.iter_mut().find(|(id, _)| *id == alk_id) {
+                                    Some(x) => x.1 += f,
+                                    None => by_alkene.push((alk_id, f)),
+                                }
+                            }
                         }
-                        let arr_ea_e2 = 105_000.0;
-                        let k_e2 = arr_a_e2 * (-arr_ea_e2 / (R_IDEAL * temp_k)).exp();
-                        let k_e2_capped = apply_diffusion_cap(k_e2, temp_k, self.config.viscosity_pa_s);
-
-                        results.push(GeneratedReaction {
-                            id: format!("e2_{}_{}", halide_id, actual_base),
-                            name: format!("E2 Elimination on {}: {} + {}", halide_id, halide_id, actual_base),
-                            family_id: "e2_elimination".to_string(),
-                            equation: format!("{} + {} -> {} + H2O + {}", halide_id, actual_base, alkene_id, leaving_group),
-                            reactants: [(halide_id.to_string(), 1.0), (actual_base.to_string(), 1.0)].into(),
-                            products: [(alkene_id, 1.0), ("H2O".to_string(), 1.0), (leaving_group.clone(), 1.0)].into(),
-                            gas_products: HashMap::new(),
-                            k_fwd: k_e2_capped,
-                            k_rev: 0.0,
-                            arrhenius_a: arr_a_e2,
-                            arrhenius_ea: arr_ea_e2,
-                            delta_h_kj: -35.0,
-                            delta_g_kj: -45.0,
-                            k_eq: 1.0e10,
-                            tier: ProvenanceTier::Tabulated,
-                            source: "Stage 9 Structure Template (E2)".to_string(),
-                            formation_flux: 0.0,
-                        });
+                        for (alk_id, f) in by_alkene {
+                            let a_e2 = 2.0e10 * f * if bulky { 3.0 } else { 1.0 };
+                            if a_e2 <= 0.0 {
+                                continue;
+                            }
+                            let mut products: HashMap<String, f64> = [(alk_id.clone(), 1.0), (leaving_group.clone(), 1.0)].into();
+                            *products.entry(conj_acid.clone()).or_insert(0.0) += 1.0;
+                            results.push(self.build(
+                                format!("e2_{}_{}_{}", halide_id, nuc_id, alk_id),
+                                format!("E2 elimination on {} by {} -> {}", halide_id, nuc_id, alk_id),
+                                "e2_elimination",
+                                [(halide_id.to_string(), 1.0), (nuc_id.to_string(), 1.0)].into(),
+                                products,
+                                &[],
+                                a_e2,
+                                105_000.0,
+                                -35.0,
+                                -45.0,
+                                temp_k,
+                                medium,
+                                "Stage 9 structure template (E2; substrate class, beta-H count, Zaitsev/Hofmann, estimated)",
+                            ));
+                        }
                     }
                 }
             }
         }
 
-        // --- C. Alkene Additions (Hydration & Halogenation) ---
-        let alkene_match = if let Some(ref m1) = mol1 {
-            let alkenes = find_alkene_groups(m1);
-            if !alkenes.is_empty() { Some((sp1, m1, sp2, alkenes)) } else { None }
-        } else {
-            None
-        }.or_else(|| {
-            if let Some(ref m2) = mol2 {
-                let alkenes = find_alkene_groups(m2);
-                if !alkenes.is_empty() { Some((sp2, m2, sp1, alkenes)) } else { None }
-            } else {
-                None
-            }
-        });
-
-        if let Some((alkene_id, alkene_mol, other_id, alkenes)) = alkene_match {
-            for (c1, c2) in alkenes {
+        // --- C. Alkene additions: acid-catalysed Markovnikov hydration, halogen addition
+        if let Some((alkene_id, alkene_mol, other_id)) = pick(&|m: &Molecule| !find_alkene_groups(m).is_empty()) {
+            for (c1, c2) in find_alkene_groups(alkene_mol) {
                 if is_water(other_id) {
-                    // Hydration: alkene + H2O -> alcohol
-                    let alc_mol = alkene_hydration(alkene_mol, c1, c2);
-                    let alc_id = register_or_find_species(&alc_mol);
-
-                    let arr_a = 1.0e6 * (medium.h_conc / 0.1).clamp(0.01, 100.0);
-                    let arr_ea = 70_000.0;
-                    let k_fwd = arr_a * (-arr_ea / (R_IDEAL * temp_k)).exp();
-                    let k_fwd_capped = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
-
-                    results.push(GeneratedReaction {
-                        id: format!("hydration_{}", alkene_id),
-                        name: format!("Hydration of {}: {} + H2O", alkene_id, alkene_id),
-                        family_id: "alkene_hydration".to_string(),
-                        equation: format!("{} + H2O <=> {}", alkene_id, alc_id),
-                        reactants: [(alkene_id.to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
-                        products: [(alc_id, 1.0)].into(),
-                        gas_products: HashMap::new(),
-                        k_fwd: k_fwd_capped,
-                        k_rev: k_fwd_capped / 100.0,
-                        arrhenius_a: arr_a,
-                        arrhenius_ea: arr_ea,
-                        delta_h_kj: -45.0,
-                        delta_g_kj: -15.0,
-                        k_eq: 100.0,
-                        tier: ProvenanceTier::Tabulated,
-                        source: "Stage 9 Structure Template (Alkene Hydration)".to_string(),
-                        formation_flux: 0.0,
-                    });
+                    let alc_id = register_or_find_species(&alkene_hydration(alkene_mol, c1, c2));
+                    // rate rule: k = 1e7 exp(-70 kJ/mol / RT) [H+]
+                    results.push(self.build(
+                        format!("hydration_{}_{}_{}", alkene_id, c1, c2),
+                        format!("Acid-catalysed hydration of {}", alkene_id),
+                        "alkene_hydration",
+                        [(alkene_id.to_string(), 1.0), (other_id.to_string(), 1.0)].into(),
+                        [(alc_id, 1.0)].into(),
+                        &[("H+", 1.0)],
+                        1.0e7,
+                        70_000.0,
+                        -45.0,
+                        -15.0,
+                        temp_k,
+                        medium,
+                        "Stage 9 structure template (alkene hydration, Markovnikov)",
+                    ));
                 } else if is_halogen(other_id) {
-                    // Halogenation: alkene + X2 -> dihaloalkane
-                    let hal_sym = crate::ions::species_elements(other_id)
-                        .and_then(|e| e.into_keys().next())
-                        .unwrap_or_else(|| "Br".to_string());
-                    let dihalo_mol = alkene_halogenation(alkene_mol, c1, c2, &hal_sym);
-                    let dihalo_id = register_or_find_species(&dihalo_mol);
-
-                    let arr_a = 5.0e8;
-                    let arr_ea = 28_000.0;
-                    let k_fwd = arr_a * (-arr_ea / (R_IDEAL * temp_k)).exp();
-                    let k_fwd_capped = apply_diffusion_cap(k_fwd, temp_k, self.config.viscosity_pa_s);
-
-                    results.push(GeneratedReaction {
-                        id: format!("halogenation_{}_{}", alkene_id, other_id),
-                        name: format!("Halogenation of {}: {} + {}", alkene_id, alkene_id, other_id),
-                        family_id: "alkene_halogenation".to_string(),
-                        equation: format!("{} + {} -> {}", alkene_id, other_id, dihalo_id),
-                        reactants: [(alkene_id.to_string(), 1.0), (other_id.to_string(), 1.0)].into(),
-                        products: [(dihalo_id, 1.0)].into(),
-                        gas_products: HashMap::new(),
-                        k_fwd: k_fwd_capped,
-                        k_rev: 0.0,
-                        arrhenius_a: arr_a,
-                        arrhenius_ea: arr_ea,
-                        delta_h_kj: -120.0,
-                        delta_g_kj: -95.0,
-                        k_eq: 1.0e14,
-                        tier: ProvenanceTier::Tabulated,
-                        source: "Stage 9 Structure Template (Alkene Halogenation)".to_string(),
-                        formation_flux: 0.0,
-                    });
+                    let hal_sym = crate::ions::species_elements(other_id).and_then(|e| e.into_keys().next()).unwrap_or_default();
+                    let dihalo_id = register_or_find_species(&alkene_halogenation(alkene_mol, c1, c2, &hal_sym));
+                    results.push(self.build(
+                        format!("halogenation_{}_{}_{}_{}", alkene_id, other_id, c1, c2),
+                        format!("Halogen addition: {} + {}", alkene_id, other_id),
+                        "alkene_halogenation",
+                        [(alkene_id.to_string(), 1.0), (other_id.to_string(), 1.0)].into(),
+                        [(dihalo_id, 1.0)].into(),
+                        &[],
+                        5.0e8,
+                        28_000.0,
+                        -120.0,
+                        -95.0,
+                        temp_k,
+                        medium,
+                        "Stage 9 structure template (alkene halogenation)",
+                    ));
                 }
             }
         }
 
         results
     }
+}
 
-    fn eval_kinetics(&self, family_id: &str, temp_k: f64, medium: Medium) -> (f64, f64, f64, f64, f64, f64) {
-        let fam = self.families.iter().find(|f| f.id == family_id);
-        let (mut a, mut ea, n, delta_h_kj, delta_s_j_k, is_rev) = match fam {
-            Some(f) => (f.arrhenius_a, f.arrhenius_ea, f.arrhenius_n, f.delta_h_kj, f.delta_s_j_k, f.is_reversible),
-            None => (1.0e8, 65_000.0, 0.0, 0.0, 0.0, true),
-        };
-
-        if let Some(&dg_kcal) = self.config.precomputed_barriers.get(family_id) {
-            ea = dg_kcal * 4184.0;
-            a = 1.0e11;
+/// Rate of a candidate (M/s) at the generation concentrations: `k_fwd` already holds the catalysts, so only the consumed,
+/// non-solvent reactants count.
+fn rate_at(r: &GeneratedReaction, concs: &HashMap<String, f64>) -> f64 {
+    let mut rate = r.k_fwd;
+    for (sp, &ord) in &r.orders {
+        if r.reactants.contains_key(sp) && ord > 0.0 {
+            rate *= concs.get(sp).copied().unwrap_or(0.0).max(0.0).powf(ord);
         }
+    }
+    rate
+}
 
-        let exp_arg = (-ea / (R_IDEAL * temp_k)).clamp(-100.0, 100.0);
-        let mut k_fwd = a * temp_k.powf(n) * exp_arg.exp();
-
-        if let Some(f) = fam {
-            match f.catalysis {
-                CatalysisType::Acid => k_fwd *= (medium.h_conc / 0.1).clamp(0.01, 100.0),
-                CatalysisType::Base => k_fwd *= (medium.oh_conc / 0.1).clamp(0.01, 100.0),
-                CatalysisType::BothAcidBase => k_fwd *= (medium.h_conc * 10.0 + 1e-4 + medium.oh_conc * 10.0).clamp(1e-4, 10.0),
-                _ => {}
+/// K at 298.15 K and the reaction enthalpy (kJ/mol) from the species' formation data, or from the template estimate.
+fn reaction_k_298(
+    reactants: &HashMap<String, f64>,
+    products: &HashMap<String, f64>,
+    fallback_dh_kj: f64,
+    fallback_dg_kj: f64,
+) -> (f64, f64, bool) {
+    use crate::thermo::functions::{phase_of_id, try_ln_k_equilibrium, try_thermo_state};
+    if let Some(ln_k) = try_ln_k_equilibrium(reactants, products, 298.15, 1.0e5) {
+        let mut dh = 0.0;
+        let mut ok = true;
+        for (sign, side) in [(1.0, products), (-1.0, reactants)] {
+            for (sp, &c) in side {
+                match try_thermo_state(sp, phase_of_id(sp), 298.15, 1.0e5) {
+                    Some(st) => dh += sign * c * st.h_j_mol / 1000.0,
+                    None => ok = false,
+                }
             }
         }
-
-        let delta_g_j = delta_h_kj * 1000.0 - temp_k * delta_s_j_k;
-        let delta_g_kj = delta_g_j / 1000.0;
-        let k_eq = (-delta_g_j / (R_IDEAL * temp_k)).clamp(-50.0, 50.0).exp().max(1e-15);
-        let k_rev = if is_rev { (k_fwd / k_eq).max(0.0) } else { 0.0 };
-
-        (a, ea, k_fwd, k_rev, k_eq, delta_g_kj)
+        if ok {
+            return (ln_k.clamp(-690.0, 690.0).exp(), dh, true);
+        }
     }
+    let ln_k = -fallback_dg_kj * 1000.0 / (R_IDEAL * 298.15);
+    (ln_k.clamp(-690.0, 690.0).exp(), fallback_dh_kj, false)
+}
+
+/// Kind of nucleophilic / basic site, from the structure around the anionic atom.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum NucClass {
+    Hydroxide,
+    Alkoxide,
+    Phenoxide,
+    Carboxylate,
+    Thiolate,
+    Cyanide,
+}
+
+impl NucClass {
+    /// Swain-Scott nucleophilicity n (CH3Br in water, s = 1): hydroxide 4.2, acetate 2.7, HS- 5.1, CN- 5.1 (Swain & Scott
+    /// 1953); alkoxide taken as hydroxide and phenoxide as an estimate between hydroxide and carboxylate.
+    pub fn swain_scott_n(self) -> f64 {
+        match self {
+            NucClass::Hydroxide | NucClass::Alkoxide => 4.2,
+            NucClass::Phenoxide => 3.5,
+            NucClass::Carboxylate => 2.7,
+            NucClass::Thiolate | NucClass::Cyanide => 5.1,
+        }
+    }
+
+    /// Strong enough a base (conjugate acid pKa >= ~15) for bimolecular elimination.
+    pub fn is_strong_base(self) -> bool {
+        matches!(self, NucClass::Hydroxide | NucClass::Alkoxide)
+    }
+}
+
+/// The anionic O, S or C atom of a species' graph and its class.
+#[derive(Clone, Debug)]
+pub struct NucSite {
+    pub mol: Molecule,
+    pub atom: usize,
+    pub class: NucClass,
+    /// alkoxide on a carbon with three carbon neighbours (tert-butoxide): hinders SN2, favours Hofmann elimination
+    pub bulky: bool,
+}
+
+/// The reacting id and nucleophilic site of a species: the species itself, or the hydroxide of a hydroxide salt written as
+/// a formula ("NaOH", which the vessel holds as its ions).
+pub fn nucleophile_of(species: &str) -> Option<(String, NucSite)> {
+    if let Some(site) = nucleophile_site(species) {
+        return Some((species.to_string(), site));
+    }
+    let split = crate::ions::decompose_ionic(species)?;
+    let oh = split.anions.into_iter().find(|a| a.id == crate::db::seed::HYDROXIDE)?;
+    nucleophile_site(&oh.id).map(|site| (oh.id, site))
+}
+
+pub fn nucleophile_site(species: &str) -> Option<NucSite> {
+    let mol = resolve_molecule(species)?;
+    if mol.atoms.iter().map(|a| a.charge).sum::<i32>() >= 0 {
+        return None;
+    }
+    let (atom, a) = mol.atoms.iter().enumerate().find(|(_, a)| a.charge == -1 && matches!(a.element.as_str(), "O" | "S" | "C"))?;
+    let nb = mol.neighbours(atom);
+    let heavy: Vec<usize> = nb.iter().map(|&(j, _)| j).collect();
+    let (class, bulky) = match a.element.as_str() {
+        "S" => (NucClass::Thiolate, false),
+        "C" => {
+            if nb.iter().any(|&(j, o)| mol.atoms[j].element == "N" && (o - 3.0).abs() < 1e-9) {
+                (NucClass::Cyanide, false)
+            } else {
+                return None;
+            }
+        }
+        _ => {
+            if heavy.is_empty() {
+                (NucClass::Hydroxide, false)
+            } else {
+                let c = heavy[0];
+                if mol.atoms[c].element != "C" {
+                    return None;
+                }
+                let c_nb = mol.neighbours(c);
+                if mol.atoms[c].aromatic {
+                    (NucClass::Phenoxide, false)
+                } else if c_nb.iter().any(|&(j, o)| j != atom && mol.atoms[j].element == "O" && (o - 2.0).abs() < 1e-9) {
+                    (NucClass::Carboxylate, false)
+                } else {
+                    let n_c = c_nb.iter().filter(|&&(j, _)| mol.atoms[j].element == "C").count();
+                    (NucClass::Alkoxide, n_c >= 3)
+                }
+            }
+        }
+    };
+    Some(NucSite { mol, atom, class, bulky })
+}
+
+/// Species id of the conjugate acid of a base site (water for hydroxide).
+fn conjugate_acid_id(nuc: &NucSite) -> String {
+    if nuc.class == NucClass::Hydroxide {
+        return crate::vessel::AQUEOUS_SOLVENT.to_string();
+    }
+    let mut m = nuc.mol.clone();
+    let h = m.hydrogens(nuc.atom);
+    m.atoms[nuc.atom].charge = 0;
+    set_h(&mut m, nuc.atom, h + 1);
+    register_or_find_species(&m)
+}
+
+/// Gives atom `i` exactly `h` hydrogens, implicitly when the valence model agrees, else as a bracket count.
+fn set_h(m: &mut Molecule, i: usize, h: u32) {
+    m.atoms[i].explicit_h = None;
+    if m.hydrogens(i) != h {
+        m.atoms[i].explicit_h = Some(h);
+    }
+}
+
+/// Steric class of the carbon that carries the leaving group.
+pub struct SubstrateClass {
+    /// carbon neighbours of the alpha carbon (0 methyl, 1 primary, 2 secondary, 3 tertiary)
+    pub degree: usize,
+    pub sn2_factor: f64,
+    pub e2_factor: f64,
+}
+
+/// Relative SN2 rates methyl 30 : primary 1 : secondary 0.025 : tertiary ~1e-5, times 0.04 per extra branch on a beta
+/// carbon (isobutyl, neopentyl) (Streitwieser 1956; Ingold); relative E2 rates primary 1 : secondary 5 : tertiary 50 per
+/// three beta hydrogens, which with the SN2 factors reproduce the Hughes-Ingold elimination fractions with ethoxide
+/// (primary ~1 %, secondary ~80 %, tertiary ~100 %). No beta carbon, no E2. Tertiary and secondary substrates also react
+/// by SN1/E1 in protic solvents, which no template covers yet.
+pub fn substrate_class(mol: &Molecule, c_alpha: usize, x_idx: usize) -> SubstrateClass {
+    let carbons: Vec<usize> = mol.neighbours(c_alpha).iter().filter(|&&(j, _)| j != x_idx && mol.atoms[j].element == "C").map(|&(j, _)| j).collect();
+    let degree = carbons.len().min(3);
+    let mut branch = 0i32;
+    for &b in &carbons {
+        let others = mol.neighbours(b).iter().filter(|&&(j, _)| j != c_alpha && mol.atoms[j].element == "C").count() as i32;
+        branch += (others - 1).max(0);
+    }
+    let sn2 = [30.0, 1.0, 0.025, 1.0e-5][degree] * 0.04f64.powi(branch);
+    let e2 = [0.0, 1.0, 5.0, 50.0][degree];
+    SubstrateClass { degree, sn2_factor: sn2, e2_factor: e2 }
+}
+
+/// sp3 beta carbons that carry hydrogen: (atom, H count, carbon substituents other than the alpha carbon).
+fn beta_carbons(mol: &Molecule, c_alpha: usize, x_idx: usize) -> Vec<(usize, u32, usize)> {
+    mol.neighbours(c_alpha)
+        .iter()
+        .filter(|&&(j, o)| j != x_idx && (o - 1.0).abs() < 1e-9 && mol.atoms[j].element == "C" && !mol.atoms[j].aromatic && mol.hydrogens(j) >= 1)
+        .map(|&(j, _)| {
+            let subst = mol.neighbours(j).iter().filter(|&&(k, _)| k != c_alpha && mol.atoms[k].element == "C").count();
+            (j, mol.hydrogens(j), subst)
+        })
+        .collect()
+}
+
+/// R-X + Nu- -> R-Nu: the leaving atom removed and the nucleophile's anionic atom (now neutral) bonded to the alpha carbon.
+pub fn substitute(mol: &Molecule, c_alpha: usize, x_idx: usize, nuc: &NucSite) -> Molecule {
+    let keep: HashSet<usize> = (0..mol.atoms.len()).filter(|&i| i != x_idx).collect();
+    let mut out = extract_submolecule(mol, &keep);
+    let new_alpha = (0..c_alpha).filter(|i| keep.contains(i)).count();
+    let offset = out.atoms.len();
+    let h = nuc.mol.hydrogens(nuc.atom);
+    for a in &nuc.mol.atoms {
+        out.atoms.push(a.clone());
+    }
+    for &(a, b, o) in &nuc.mol.bonds {
+        out.bonds.push((a + offset, b + offset, o));
+    }
+    let n_atom = offset + nuc.atom;
+    out.atoms[n_atom].charge = 0;
+    out.bonds.push((new_alpha, n_atom, 1.0));
+    set_h(&mut out, n_atom, h);
+    out
 }
 
 // ==============================================================================================
@@ -716,27 +841,46 @@ pub fn register_or_find_species(mol: &Molecule) -> String {
 
     if let Ok(mut store) = crate::db::SpeciesStore::global().write() {
         if store.get(&id).is_none() {
+            // Thermodynamics of a created compound: Joback group contributions over its graph (ideal gas) and the liquid
+            // reference state derived from them (Trouton + Clausius-Clapeyron), tier Estimated; its normal boiling point
+            // is stored as a labelled point on the vapour-pressure curve. A molecule outside the method (an ion, an
+            // uncovered atom) gets no thermodynamic data at all rather than an invented value: reactions that need it
+            // then fall back to the template's own estimate, labelled as such.
             let mut phases = HashMap::new();
-            let phase_tag = if net_charge != 0 { "aq" } else { "l" };
-            let df_h = -100.0;
-            let cp = 75.0;
-            let s = 150.0;
-            phases.insert(phase_tag.to_string(), crate::db::record::PhaseData {
-                thermo: Some(crate::db::record::PhaseThermo {
-                    model: "point+cp".to_string(),
+            let mut points = Vec::new();
+            let joback = if net_charge == 0 { crate::joback::estimate(mol) } else { None };
+            let datum = |v: f64, unit: &str| crate::db::record::Datum::new(v, unit, ProvenanceTier::Estimated, "Joback group contribution");
+            let thermo = |dfh: f64, dfg: f64, cp: f64, source: &str| crate::db::record::PhaseThermo {
+                model: "point+cp".to_string(),
+                tier: ProvenanceTier::Estimated,
+                source: source.to_string(),
+                dfH: Some(datum(dfh, "kJ/mol")),
+                dfG: Some(datum(dfg, "kJ/mol")),
+                S: None,
+                cp: Some(datum(cp, "J/(mol K)")),
+                ranges: None,
+                params: None,
+            };
+            let phase = |t: Option<crate::db::record::PhaseThermo>| crate::db::record::PhaseData { thermo: t, volume: None, rho: None, polymorph: None };
+            if let Some(j) = &joback {
+                let cp = j.cp_gas(298.15);
+                let (dfh_l, dfg_l) = j.liquid_formation_kj();
+                phases.insert("g".to_string(), phase(Some(thermo(j.dhf_gas_kj, j.dgf_gas_kj, cp, "Joback (ideal gas, 298.15 K)"))));
+                phases.insert("l".to_string(), phase(Some(thermo(dfh_l, dfg_l, cp, "Joback + Trouton + Clausius-Clapeyron (liquid, 298.15 K)"))));
+                points.push(crate::db::record::CurvePoint {
+                    kind: "psat".to_string(),
+                    T_K: Some(j.tb_k),
+                    P_Pa: Some(101_325.0),
+                    solvent: None,
+                    value: None,
+                    unit: None,
                     tier: ProvenanceTier::Estimated,
-                    source: "Stage 9 Organic Structure Generator".to_string(),
-                    dfH: Some(crate::db::record::Datum::new(df_h, "kJ/mol", ProvenanceTier::Estimated, "Estimated")),
-                    dfG: Some(crate::db::record::Datum::new(df_h - 298.15 * s / 1000.0, "kJ/mol", ProvenanceTier::Estimated, "Estimated")),
-                    S: Some(crate::db::record::Datum::new(s, "J/(mol K)", ProvenanceTier::Estimated, "Estimated")),
-                    cp: Some(crate::db::record::Datum::new(cp, "J/(mol K)", ProvenanceTier::Estimated, "Estimated")),
-                    ranges: None,
-                    params: None,
-                }),
-                volume: None,
-                rho: None,
-                polymorph: None,
-            });
+                    source: "Joback normal boiling point".to_string(),
+                    uncertainty: Some(25.0),
+                });
+            } else {
+                phases.insert(if net_charge != 0 { "aq".to_string() } else { "l".to_string() }, phase(None));
+            }
 
             store.register(crate::db::record::SpeciesRecord {
                 id: id.clone(),
@@ -752,7 +896,7 @@ pub fn register_or_find_species(mol: &Molecule) -> String {
                 },
                 phases,
                 critical: None,
-                points: Vec::new(),
+                points,
                 vapor_pressure: None,
                 unifac_groups: None,
                 acid_base: Vec::new(),
@@ -858,7 +1002,9 @@ pub fn find_haloalkane_groups(mol: &Molecule) -> Vec<(usize, usize, String)> {
         if matches!(atom.element.as_str(), "Cl" | "Br" | "I") && atom.charge == 0 {
             let nb = mol.neighbours(i);
             if let Some(&(c_alpha, order)) = nb.first() {
-                if (order - 1.0).abs() < 1e-9 && mol.atoms[c_alpha].element == "C" && !mol.atoms[c_alpha].aromatic {
+                // only an sp3 carbon substitutes / eliminates this way (vinyl and aryl halides do not)
+                let sp3 = mol.neighbours(c_alpha).iter().all(|&(_, o)| (o - 1.0).abs() < 1e-9);
+                if (order - 1.0).abs() < 1e-9 && mol.atoms[c_alpha].element == "C" && !mol.atoms[c_alpha].aromatic && sp3 {
                     results.push((c_alpha, i, atom.element.clone()));
                 }
             }
@@ -874,31 +1020,22 @@ pub fn haloalkane_sn2(mol: &Molecule, c_alpha: usize, x_idx: usize) -> Molecule 
     extract_submolecule_with_extra(mol, &keep_atoms, c_alpha, extra_oh)
 }
 
-/// E2 elimination: eliminates halogen and adjacent beta-hydrogen, forming a C=C double bond.
+/// E2 elimination: eliminates halogen and adjacent beta-hydrogen, forming a C=C double bond (first beta carbon with H).
 pub fn haloalkane_e2(mol: &Molecule, c_alpha: usize, x_idx: usize) -> Option<Molecule> {
-    // Find adjacent beta-carbon with at least one hydrogen
-    let nb = mol.neighbours(c_alpha);
-    let c_beta = nb.iter().find(|&&(nbr, _)| {
-        nbr != x_idx && mol.atoms[nbr].element == "C" && !mol.atoms[nbr].aromatic && mol.hydrogens(nbr) >= 1
-    }).map(|&(nbr, _)| nbr)?;
+    let (beta, _, _) = *beta_carbons(mol, c_alpha, x_idx).first()?;
+    haloalkane_e2_at(mol, c_alpha, x_idx, beta)
+}
 
+/// E2 elimination toward a given beta carbon: the C=C forms between the alpha and that beta carbon.
+pub fn haloalkane_e2_at(mol: &Molecule, c_alpha: usize, x_idx: usize, c_beta: usize) -> Option<Molecule> {
     let keep_atoms: HashSet<usize> = (0..mol.atoms.len()).filter(|&i| i != x_idx).collect();
     let mut sub = extract_submolecule(mol, &keep_atoms);
-
-    // Modify bond between c_alpha and c_beta in submolecule to double bond (2.0)
-    // Find old-to-new mapping for c_alpha and c_beta
     let mut sorted: Vec<usize> = keep_atoms.into_iter().collect();
     sorted.sort();
     let na = sorted.iter().position(|&x| x == c_alpha)?;
     let nb = sorted.iter().position(|&x| x == c_beta)?;
-
-    for b in sub.bonds.iter_mut() {
-        if (b.0 == na && b.1 == nb) || (b.0 == nb && b.1 == na) {
-            b.2 = 2.0;
-            break;
-        }
-    }
-
+    let bond = sub.bonds.iter_mut().find(|b| (b.0 == na && b.1 == nb) || (b.0 == nb && b.1 == na))?;
+    bond.2 = 2.0;
     Some(sub)
 }
 
@@ -913,8 +1050,11 @@ pub fn find_alkene_groups(mol: &Molecule) -> Vec<(usize, usize)> {
     results
 }
 
-/// Alkene hydration: adds H to c1 and OH to c2, turning C=C into C-C alcohol.
+/// Alkene hydration: H and OH add across C=C; the OH goes to the carbon with more carbon substituents (Markovnikov: the
+/// more stable carbocation forms on protonation).
 pub fn alkene_hydration(mol: &Molecule, c1: usize, c2: usize) -> Molecule {
+    let n_c = |c: usize| mol.neighbours(c).iter().filter(|&&(j, _)| mol.atoms[j].element == "C").count();
+    let (c1, c2) = if n_c(c1) > n_c(c2) { (c2, c1) } else { (c1, c2) };
     let keep_atoms: HashSet<usize> = (0..mol.atoms.len()).collect();
     let extra_oh = Atom { element: "O".to_string(), aromatic: false, charge: 0, explicit_h: None };
     let mut sub = extract_submolecule_with_extra(mol, &keep_atoms, c2, extra_oh);

@@ -164,11 +164,37 @@ pub fn mineral_for_pair(cation: &str, anion: &str) -> Option<GeneralMineral> {
     if let Some(m) = table_mineral_for(&ions_map) {
         return Some(m);
     }
+    // the dissolution Gibbs energy of the solid's and the ions' formation data, when the store has all three
+    if let Some(m) = mineral_from_formation_data(cation, anion) {
+        return Some(m);
+    }
     if !insoluble_by_rules(cation, anion) {
         return None;
     }
     let log_ksp = -(4.0 + 2.0 * (zc * za) as f64);
     make_mineral(cation, anion, log_ksp, ProvenanceTier::Speculative, "General solubility rules (order-of-magnitude estimate)")
+}
+
+/// Ksp of a cation/anion pair from Delta_sol G0 = sum nu mu0(ion) - mu0(solid) of the species store (and its van 't Hoff
+/// enthalpy from the formation enthalpies), or None when any of the three lacks formation data. Tier Estimated: a small
+/// error in the formation energies is a large one in Ksp (5.7 kJ/mol per decade).
+pub fn mineral_from_formation_data(cation: &str, anion: &str) -> Option<GeneralMineral> {
+    use crate::thermo::functions::{try_ln_k_equilibrium, try_thermo_state};
+    let (zc, za) = charges(cation, anion);
+    if zc <= 0 || za <= 0 {
+        return None;
+    }
+    let g = gcd(zc, za);
+    let (n_c, n_a) = ((za / g) as f64, (zc / g) as f64);
+    let solid = format!("{}(s)", solid_formula(cation, za / g, anion, zc / g));
+    let reactants: HashMap<String, f64> = [(solid.clone(), 1.0)].into();
+    let products: HashMap<String, f64> = [(cation.to_string(), n_c), (anion.to_string(), n_a)].into();
+    let ln_k = try_ln_k_equilibrium(&reactants, &products, 298.15, 1.0e5)?;
+    let h = |sp: &str, ph: &str| try_thermo_state(sp, ph, 298.15, 1.0e5).map(|st| st.h_j_mol);
+    let dh_j = n_c * h(cation, "aq")? + n_a * h(anion, "aq")? - h(&solid, "s")?;
+    let mut m = make_mineral(cation, anion, ln_k / std::f64::consts::LN_10, ProvenanceTier::Estimated, "Ksp from the formation Gibbs energies of the solid and its ions")?;
+    m.delta_h_kj = dh_j / 1000.0;
+    Some(m)
 }
 
 /// Mineral describing the *solid form of a soluble salt* (its saturation limit). Table value if listed, else a

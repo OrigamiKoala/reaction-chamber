@@ -21,28 +21,34 @@ pub struct ThermoState {
     pub tier: ProvenanceTier,
 }
 
-// Global thread-safe cache for thermo state keyed by (species_id, phase, T_centikelvin, P_kpa)
-static THERMO_CACHE: RwLock<Option<HashMap<(String, String, i64, i64), ThermoState>>> = RwLock::new(None);
+type ThermoKey = (String, String, i64, i64);
 
-fn get_cached(key: &(String, String, i64, i64)) -> Option<ThermoState> {
+// Global thread-safe cache for thermo state keyed by (species_id, phase, T_centikelvin, P_kpa). `None` is a cached "no
+// data" answer. The cache belongs to one generation of the species store: registering or replacing any record (an
+// import, a database shard, a resolved property request) empties it, so a value looked up before its record arrived is
+// never served afterwards.
+static THERMO_CACHE: RwLock<Option<(u64, HashMap<ThermoKey, Option<ThermoState>>)>> = RwLock::new(None);
+
+fn get_cached(key: &ThermoKey) -> Option<Option<ThermoState>> {
+    let gen = SpeciesStore::generation();
     if let Ok(lock) = THERMO_CACHE.read() {
-        if let Some(map) = lock.as_ref() {
-            return map.get(key).cloned();
+        if let Some((g, map)) = lock.as_ref() {
+            if *g == gen {
+                return map.get(key).cloned();
+            }
         }
     }
     None
 }
 
-fn put_cached(key: (String, String, i64, i64), state: ThermoState) {
+fn put_cached(key: ThermoKey, state: Option<ThermoState>) {
+    let gen = SpeciesStore::generation();
     if let Ok(mut lock) = THERMO_CACHE.write() {
-        if lock.is_none() {
-            *lock = Some(HashMap::new());
+        let stale = lock.as_ref().map_or(true, |(g, map)| *g != gen || map.len() > 10000);
+        if stale {
+            *lock = Some((gen, HashMap::new()));
         }
-        if let Some(map) = lock.as_mut() {
-            // Keep cache bounded
-            if map.len() > 10000 {
-                map.clear();
-            }
+        if let Some((_, map)) = lock.as_mut() {
             map.insert(key, state);
         }
     }
@@ -68,7 +74,20 @@ fn estimate_species_thermo_298(species: &str, phase: &str) -> (f64, f64, f64, Pr
 }
 
 /// Evaluates standard state thermo for species `species` in phase `phase` at temperature `t_k` and pressure `p_pa`.
+/// A species without formation data gets a placeholder (tier Speculative); callers that decide *whether a reaction
+/// happens* must use `try_thermo_state` instead and leave such species out, because the placeholder would invent a driving
+/// force.
 pub fn get_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> ThermoState {
+    if let Some(st) = try_thermo_state(species, phase, t_k, p_pa) {
+        return st;
+    }
+    let t = t_k.clamp(100.0, 3000.0);
+    let (dfh_kj, dfg_kj, cp, tier) = estimate_species_thermo_298(species, phase);
+    state_from_formation(dfh_kj, dfg_kj, cp, t, tier)
+}
+
+/// Standard state thermo from the species store, or None when the store has no enthalpy of formation for the species.
+pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Option<ThermoState> {
     let t = t_k.clamp(100.0, 3000.0);
     let p = p_pa.clamp(1.0, 1e9);
     let cache_key = (
@@ -82,11 +101,7 @@ pub fn get_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Ther
         return st;
     }
 
-    let mut found = false;
-    let mut tier = ProvenanceTier::Tabulated;
-    let (mut dfh_kj, mut dfg_kj, mut cp) = (0.0, 0.0, 0.0);
-
-    // 1. Query SpeciesStore
+    let mut out = None;
     if let Ok(store) = SpeciesStore::global().read() {
         let base_id = species.trim_end_matches("(s)").trim_end_matches("(g)").trim_end_matches("(l)").trim_end_matches("(aq)");
         let rec = store.get(species)
@@ -95,60 +110,86 @@ pub fn get_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Ther
             .or_else(|| store.get(&format!("{}(g)", base_id)))
             .or_else(|| store.get(&format!("{}(l)", base_id)));
         if let Some(r) = rec {
-            let ph = r.phases.get(phase)
-                .or_else(|| r.phases.get("aq"))
-                .or_else(|| r.phases.get("l"))
-                .or_else(|| r.phases.get("s"))
-                .or_else(|| r.phases.get("g"));
-            if let Some(p_data) = ph {
-                if let Some(t_data) = &p_data.thermo {
-                    if let Some(d) = &t_data.dfH {
-                        dfh_kj = d.value;
-                        tier = d.tier.clone();
-                        found = true;
+            // the requested phase's own data; the only substitution allowed is the pure liquid for a neutral solute
+            // (aq -> l, an estimate: it ignores the solute's standard-state transfer energy). A solid or a gas never
+            // borrows another phase's formation data.
+            let own = r.phases.get(phase).and_then(|p_data| p_data.thermo.as_ref()).filter(|t| t.dfH.is_some());
+            let (t_data, substituted) = match own {
+                Some(t) => (Some(t), false),
+                None if phase == "aq" && r.identity.charge == 0 => {
+                    (r.phases.get("l").and_then(|p_data| p_data.thermo.as_ref()).filter(|t| t.dfH.is_some()), true)
+                }
+                None => (None, false),
+            };
+            if let Some(t_data) = t_data {
+                if let Some(h) = &t_data.dfH {
+                    let mut tier = h.tier.clone();
+                    if substituted && matches!(tier, ProvenanceTier::Tabulated | ProvenanceTier::Imported) {
+                        tier = ProvenanceTier::Estimated;
                     }
-                    if let Some(d) = &t_data.dfG {
-                        dfg_kj = d.value;
-                    } else {
-                        // Approximate dfG ~ dfH if missing
-                        dfg_kj = dfh_kj;
-                    }
-                    if let Some(d) = &t_data.cp {
-                        cp = d.value;
-                    } else {
-                        cp = 50.0;
-                    }
+                    let dfg_kj = match &t_data.dfG {
+                        Some(g) => g.value,
+                        None => {
+                            // no Gibbs energy: dfS = 0 is a guess, so the result is at best an estimate
+                            if matches!(tier, ProvenanceTier::Tabulated | ProvenanceTier::Imported) {
+                                tier = ProvenanceTier::Estimated;
+                            }
+                            h.value
+                        }
+                    };
+                    let cp = t_data.cp.as_ref().map_or(50.0, |c| c.value);
+                    out = Some(state_from_formation(h.value, dfg_kj, cp, t, tier));
                 }
             }
         }
     }
 
-    // 2. Fallback to general physical estimation if not in store
-    if !found {
-        let (est_h, est_g, est_cp, est_tier) = estimate_species_thermo_298(species, phase);
-        dfh_kj = est_h;
-        dfg_kj = est_g;
-        cp = est_cp;
-        tier = est_tier;
-    }
+    put_cached(cache_key, out.clone());
+    out
+}
 
-    // Standard thermodynamic formation entropy: dfS = (dfH - dfG) / 298.15
+/// True when the store has formation data for the species (the phase falls back like `try_thermo_state`).
+pub fn has_thermo_data(species: &str, phase: &str) -> bool {
+    try_thermo_state(species, phase, 298.15, 101_325.0).is_some()
+}
+
+/// Phase key used for a species id in reaction thermodynamics: "(s)" solid, "(g)" gas, otherwise the solution.
+pub fn phase_of_id(species: &str) -> &'static str {
+    if species.ends_with("(s)") {
+        "s"
+    } else if species.ends_with("(g)") {
+        "g"
+    } else {
+        "aq"
+    }
+}
+
+fn state_from_formation(dfh_kj: f64, dfg_kj: f64, cp: f64, t: f64, tier: ProvenanceTier) -> ThermoState {
+    // Formation entropy dfS = (dfH - dfG) / 298.15 stands in for the absolute entropy: the element entropies cancel in
+    // every balanced reaction, so reaction quantities are exact; Cp is taken constant from 298.15 K.
     let df_s_j_mol_k = (dfh_kj - dfg_kj) * 1000.0 / 298.15;
     let t_ref = 298.15;
     let h_j_mol = dfh_kj * 1000.0 + cp * (t - t_ref);
     let s_j_mol_k = df_s_j_mol_k + cp * (t / t_ref).ln();
     let mu0_j_mol = h_j_mol - t * s_j_mol_k;
+    ThermoState { h_j_mol, s_j_mol_k, cp_j_mol_k: cp, mu0_j_mol, tier }
+}
 
-    let res = ThermoState {
-        h_j_mol,
-        s_j_mol_k,
-        cp_j_mol_k: cp,
-        mu0_j_mol,
-        tier,
-    };
-
-    put_cached(cache_key, res.clone());
-    res
+/// ln K(T, P) of a reaction when every species has formation data, else None.
+pub fn try_ln_k_equilibrium(
+    reactants: &HashMap<String, f64>,
+    products: &HashMap<String, f64>,
+    t_k: f64,
+    p_pa: f64,
+) -> Option<f64> {
+    let mut dg = 0.0;
+    for (p, &c) in products {
+        dg += c * try_thermo_state(p, phase_of_id(p), t_k, p_pa)?.mu0_j_mol;
+    }
+    for (r, &c) in reactants {
+        dg -= c * try_thermo_state(r, phase_of_id(r), t_k, p_pa)?.mu0_j_mol;
+    }
+    Some(-dg / (R_GAS * t_k.max(1.0)))
 }
 
 /// Standard reaction Gibbs free energy Delta_r G0(T, P) in J/mol

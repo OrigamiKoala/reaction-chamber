@@ -1,5 +1,4 @@
 pub mod types;
-pub mod equilibrium;
 pub mod kinetics;
 pub mod physics;
 pub mod conservation;
@@ -10,6 +9,7 @@ pub mod crystal;
 pub mod acid_estimate;
 pub mod smiles;
 pub mod smarts;
+pub mod joback;
 pub mod molecule;
 pub mod lle;
 pub mod eos;
@@ -52,10 +52,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use equilibrium::*;
-use kinetics::*;
-use physics::*;
-use benchmark::*;
 use chem_db::ReagentCatalogEntry;
 use vessel::*;
 
@@ -112,118 +108,6 @@ pub fn pour_volume(source_vol_ml: f64, target_vol_ml: f64, transfer_ml: f64) -> 
     });
 
     serde_wasm_bindgen_to_val(&result)
-}
-
-#[wasm_bindgen]
-pub fn calculate_equilibrium(input_json: &str) -> Result<JsValue, JsValue> {
-    let parsed: serde_json::Value = serde_json::from_str(input_json)
-        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-
-    let sys = AqueousSystemInput {
-        temp_k: parsed.get("temp_k").and_then(|v| v.as_f64()).unwrap_or(298.15),
-        c_strong_acid: parsed.get("c_strong_acid").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        c_strong_base: parsed.get("c_strong_base").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        c_weak_monoprotic_acid: parsed.get("c_weak_monoprotic_acid").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        pka_weak_mono: parsed.get("pka_weak_mono").and_then(|v| v.as_f64()),
-        c_weak_monoprotic_base: parsed.get("c_weak_monoprotic_base").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        pka_weak_base_conj: parsed.get("pka_weak_base_conj").and_then(|v| v.as_f64()),
-        c_diprotic_acid: parsed.get("c_diprotic_acid").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        pkas_diprotic: parsed.get("pkas_diprotic").and_then(|v| {
-            let arr = v.as_array()?;
-            if arr.len() == 2 {
-                Some([arr[0].as_f64()?, arr[1].as_f64()?])
-            } else {
-                None
-            }
-        }),
-        c_triprotic_acid: parsed.get("c_triprotic_acid").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        pkas_triprotic: parsed.get("pkas_triprotic").and_then(|v| {
-            let arr = v.as_array()?;
-            if arr.len() == 3 {
-                Some([arr[0].as_f64()?, arr[1].as_f64()?, arr[2].as_f64()?])
-            } else {
-                None
-            }
-        }),
-        c_ag_plus: parsed.get("c_ag_plus").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        c_cl_precip: parsed.get("c_cl_precip").and_then(|v| v.as_f64()).unwrap_or(0.0),
-    };
-
-    let result = solve_aqueous_equilibrium(&sys);
-    serde_wasm_bindgen_to_val(&result)
-}
-
-#[wasm_bindgen]
-pub fn calculate_titration(
-    curve_type: &str,
-    vol_acid_ml: f64,
-    c_acid: f64,
-    c_base: f64,
-    extra_param_json: &str,
-    max_titrant_ml: f64,
-    steps: usize,
-    temp_k: f64,
-) -> Result<JsValue, JsValue> {
-    let curve = match curve_type {
-        "strong_strong" => titrate_strong_strong(vol_acid_ml, c_acid, c_base, max_titrant_ml, steps, temp_k),
-        "weak_strong" => {
-            let pka: f64 = extra_param_json.parse().unwrap_or(4.756);
-            titrate_weak_strong(vol_acid_ml, c_acid, pka, c_base, max_titrant_ml, steps, temp_k)
-        }
-        "polyprotic" => {
-            let pkas: Vec<f64> = serde_json::from_str(extra_param_json).unwrap_or_else(|_| vec![6.35, 10.33]);
-            titrate_polyprotic(vol_acid_ml, c_acid, &pkas, c_base, max_titrant_ml, steps, temp_k)
-        }
-        _ => return Err(JsValue::from_str("Unknown titration curve type")),
-    };
-
-    serde_wasm_bindgen_to_val(&curve)
-}
-
-#[wasm_bindgen]
-pub fn calculate_calorimetry_mixing(
-    vol1_ml: f64,
-    temp1_k: f64,
-    vol2_ml: f64,
-    temp2_k: f64,
-) -> Result<JsValue, JsValue> {
-    let amounts1 = HashMap::new();
-    let amounts2 = HashMap::new();
-    let res = mix_liquids(vol1_ml, temp1_k, &amounts1, vol2_ml, temp2_k, &amounts2);
-    serde_wasm_bindgen_to_val(&res)
-}
-
-#[wasm_bindgen]
-pub fn run_iodine_clock_sim(
-    initial_s2o8: f64,
-    initial_i: f64,
-    initial_s2o3: f64,
-    temp_k: f64,
-    dt: f64,
-    max_time_sec: f64,
-) -> Result<JsValue, JsValue> {
-    let (delay, i2_series, s2o3_series) = simulate_iodine_clock(
-        initial_s2o8,
-        initial_i,
-        initial_s2o3,
-        temp_k,
-        dt,
-        max_time_sec,
-    );
-
-    let res = serde_json::json!({
-        "delay_time_sec": delay,
-        "temperature_k": temp_k,
-        "i2_series": i2_series,
-        "s2o3_series": s2o3_series,
-    });
-    serde_wasm_bindgen_to_val(&res)
-}
-
-#[wasm_bindgen]
-pub fn run_wasm_benchmark(ticks: usize) -> Result<JsValue, JsValue> {
-    let res = run_benchmark(ticks, 0.05);
-    serde_wasm_bindgen_to_val(&res)
 }
 
 #[wasm_bindgen]
@@ -680,35 +564,6 @@ pub fn m6_calculate_mayr_rate(nuc_id: &str, el_id: &str, temp_k: f64) -> Result<
 }
 
 #[wasm_bindgen]
-pub fn m6_sn2_e2_competition(substrate_type: &str, is_bulky_base: bool, temp_k: f64) -> Result<JsValue, JsValue> {
-    let (k_sn2, k_e2, ratio) = templates::sn2_e2_product_ratio(substrate_type, is_bulky_base, temp_k);
-    let res = serde_json::json!({
-        "substrate": substrate_type,
-        "is_bulky_base": is_bulky_base,
-        "temp_k": temp_k,
-        "k_sn2": k_sn2,
-        "k_e2": k_e2,
-        "e2_over_sn2_ratio": ratio,
-        "fraction_e2": k_e2 / (k_sn2 + k_e2).max(1e-15),
-        "fraction_sn2": k_sn2 / (k_sn2 + k_e2).max(1e-15),
-    });
-    serde_wasm_bindgen_to_val(&res)
-}
-
-#[wasm_bindgen]
-pub fn m6_ester_hydrolysis_rate_vs_ph(ester_type: &str, ph: f64, temp_k: f64) -> Result<JsValue, JsValue> {
-    let k_obs = templates::ester_hydrolysis_k_obs(ester_type, ph, temp_k);
-    let res = serde_json::json!({
-        "ester": ester_type,
-        "ph": ph,
-        "temp_k": temp_k,
-        "k_obs": k_obs,
-        "log10_k_obs": if k_obs > 0.0 { k_obs.log10() } else { -20.0 },
-    });
-    serde_wasm_bindgen_to_val(&res)
-}
-
-#[wasm_bindgen]
 pub fn m6_generate_reaction_network(initial_concs_json: &str, temp_k: f64, ph: f64) -> Result<JsValue, JsValue> {
     let concs: HashMap<String, f64> = serde_json::from_str(initial_concs_json)
         .map_err(|e| JsValue::from_str(&format!("Invalid initial_concs JSON: {}", e)))?;
@@ -752,9 +607,10 @@ pub fn m6_diffusion_capped_rate(k_fwd: f64, temp_k: f64, viscosity: f64) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use crate::physics::*;
+    use crate::benchmark::run_benchmark;
     use super::*;
     use crate::conservation::*;
-    use crate::types::ProvenanceTier;
 
     #[test]
     fn test_volume_conservation() {
@@ -764,79 +620,6 @@ mod tests {
         let remaining = s_vol - transfer;
         let new_t = t_vol + transfer;
         assert_eq!((s_vol + t_vol), (remaining + new_t));
-    }
-
-    #[test]
-    fn test_m3_gate_strong_strong_titration() {
-        // 50 mL 0.1 M HCl titrated with 0.1 M NaOH
-        let curve = titrate_strong_strong(50.0, 0.1, 0.1, 100.0, 100, 298.15);
-        assert_eq!(curve.points.len(), 101);
-
-        // Initial point: 0 mL titrant -> 0.1 M HCl
-        let p_start = &curve.points[0];
-        // Davies activity for 0.1 M: gamma ~ 0.78 => a_H ~ 0.078 => pH ~ 1.10
-        assert!((p_start.ph - 1.10).abs() < 0.05, "Initial pH {:.3} should match PHREEQC 1.10", p_start.ph);
-
-        // Equivalence point: 50 mL titrant -> pH = 7.00
-        let p_eq = &curve.points[50];
-        assert!((p_eq.ph - 7.00).abs() < 0.05, "Equivalence pH {:.3} should be ~7.00", p_eq.ph);
-
-        // Excess base: 100 mL titrant (50 mL excess NaOH in 150 mL total = 0.0333 M)
-        let p_end = &curve.points[100];
-        // pOH ~ 1.5 => pH ~ 12.4
-        assert!(p_end.ph > 12.0 && p_end.ph < 13.0, "Excess base pH {:.3} should be ~12.4", p_end.ph);
-    }
-
-    #[test]
-    fn test_m3_gate_weak_strong_titration() {
-        // 50 mL 0.1 M Acetic acid (pKa = 4.756) titrated with 0.1 M NaOH
-        let curve = titrate_weak_strong(50.0, 0.1, 4.756, 0.1, 100.0, 100, 298.15);
-        assert_eq!(curve.points.len(), 101);
-
-        // Initial pH: sqrt(Ka * C) ~ 1.32e-3 => pH ~ 2.88
-        let p_start = &curve.points[0];
-        assert!((p_start.ph - 2.88).abs() < 0.05, "Initial acetic acid pH {:.3} should match PHREEQC 2.88", p_start.ph);
-
-        // Half equivalence: 25 mL NaOH added -> with Davies activity correction at I = 0.033 M, pH = 4.68
-        let p_half = &curve.points[25];
-        assert!((p_half.ph - 4.68).abs() < 0.05, "Half equivalence pH {:.3} should match PHREEQC 4.68", p_half.ph);
-
-        // Equivalence point: 50 mL NaOH added -> 0.05 M sodium acetate hydrolysis with Davies activity -> pH ~ 8.64
-        let p_eq = &curve.points[50];
-        assert!((p_eq.ph - 8.64).abs() < 0.05, "Equivalence pH {:.3} should match PHREEQC 8.64", p_eq.ph);
-    }
-
-    #[test]
-    fn test_m3_gate_polyprotic_titration() {
-        // 50 mL 0.05 M Carbonic acid (H2CO3, pKas = [6.35, 10.33]) titrated with 0.1 M NaOH
-        let curve = titrate_polyprotic(50.0, 0.05, &[6.35, 10.33], 0.1, 100.0, 100, 298.15);
-        assert_eq!(curve.points.len(), 101);
-
-        // First equivalence point: 25 mL NaOH added (with Davies activity correction -> pH = 8.19)
-        let p_eq1 = &curve.points[25];
-        assert!((p_eq1.ph - 8.19).abs() < 0.05, "First equiv pH {:.3} should match PHREEQC 8.19", p_eq1.ph);
-
-        // Second equivalence point: 50 mL NaOH added (CO3^2- hydrolysis with Davies activity -> pH ~ 11.15)
-        let p_eq2 = &curve.points[50];
-        assert!((p_eq2.ph - 11.15).abs() < 0.05, "Second equiv pH {:.3} should match PHREEQC 11.15", p_eq2.ph);
-    }
-
-    #[test]
-    fn test_m3_gate_agcl_precipitation_ksp_threshold() {
-        // Test 1: Sub-threshold (no precipitate)
-        // [Ag+] = 1e-6 M, [Cl-] = 1e-6 M -> IAP = 1e-12 < Ksp (1.77e-10)
-        let (ag_eq1, cl_eq1, ppt1) = solve_agcl_precipitation(1e-6, 1e-6, 1.0, 298.15);
-        assert_eq!(ppt1, 0.0, "Sub-threshold should have 0 precipitate");
-        assert_eq!(ag_eq1, 1e-6);
-        assert_eq!(cl_eq1, 1e-6);
-
-        // Test 2: Above threshold
-        // [Ag+] = 0.01 M, [Cl-] = 0.01 M -> IAP = 1e-4 >> Ksp
-        let (ag_eq2, cl_eq2, ppt2) = solve_agcl_precipitation(0.01, 0.01, 1.0, 298.15);
-        assert!(ppt2 > 0.0099, "Should precipitate almost all AgCl");
-        // Remaining [Ag+] * [Cl-] must equal Ksp
-        let remaining_iap = ag_eq2 * cl_eq2;
-        assert!((remaining_iap - KSP_AGCL_298).abs() / KSP_AGCL_298 < 1e-3, "Remaining IAP must equal Ksp");
     }
 
     #[test]
@@ -864,23 +647,6 @@ mod tests {
         let (top2, bottom2) = determine_layering("DCM", 1.326, "Water", 1.000);
         assert_eq!(top2, "Water");
         assert_eq!(bottom2, "DCM");
-    }
-
-    #[test]
-    fn test_m4_gate_iodine_clock_delays_at_two_temperatures() {
-        // Literature test: [S2O8^2-] = 0.04 M, [I-] = 0.05 M, [S2O3^2-] = 0.002 M
-        // Theoretical delay t ~ [S2O3] / (2 * k1 * [S2O8] * [I])
-        // k1(293.15 K) ~ 0.020 => denominator ~ 2 * 0.020 * 0.04 * 0.05 = 8.0e-5
-        // Expected t_20C ~ 0.002 / 8.0e-5 = 25.0 s
-        let (delay_20c, _, _) = simulate_iodine_clock(0.04, 0.05, 0.002, 293.15, 0.1, 100.0);
-        assert!((delay_20c - 25.0).abs() / 25.0 < 0.20, "20 C clock delay {:.1} s within 20% of 25.0 s", delay_20c);
-
-        // At 35 C (308.15 K): k1 ~ 0.057 => t_35C ~ 25.0 / 2.85 ~ 8.8 s
-        let (delay_35c, _, _) = simulate_iodine_clock(0.04, 0.05, 0.002, 308.15, 0.05, 50.0);
-        let lit_35c = 8.8;
-        assert!((delay_35c - lit_35c).abs() / lit_35c < 0.20, "35 C clock delay {:.1} s within 20% of 8.8 s", delay_35c);
-        // Faster at higher temperature
-        assert!(delay_35c < delay_20c * 0.5, "Clock must be significantly faster at 35 C than 20 C");
     }
 
     #[test]
@@ -920,51 +686,6 @@ mod tests {
     }
 
     #[test]
-    fn test_m3_edge_concentrated_acid_base() {
-        // 5 M HCl
-        let sys_acid = AqueousSystemInput {
-            c_strong_acid: 5.0,
-            ..Default::default()
-        };
-        let res_acid = solve_aqueous_equilibrium(&sys_acid);
-        assert!(res_acid.ph < 0.0, "5 M HCl pH {:.2} must be negative", res_acid.ph);
-        assert_eq!(res_acid.tier, ProvenanceTier::Estimated);
-
-        // 5 M NaOH
-        let sys_base = AqueousSystemInput {
-            c_strong_base: 5.0,
-            ..Default::default()
-        };
-        let res_base = solve_aqueous_equilibrium(&sys_base);
-        assert!(res_base.ph > 14.0, "5 M NaOH pH {:.2} must be > 14", res_base.ph);
-        assert_eq!(res_base.tier, ProvenanceTier::Estimated);
-    }
-
-    #[test]
-    fn test_m3_edge_temperature_kw() {
-        let kw_0c = kw_at_temp(273.15);
-        assert!(kw_0c < 2.0e-15 && kw_0c > 1.0e-15);
-
-        let kw_60c = kw_at_temp(333.15);
-        assert!(kw_60c > 8.0e-14 && kw_60c < 1.2e-13);
-    }
-
-    #[test]
-    fn test_m3_edge_agcl_common_ion_and_temp() {
-        // Extreme common ion: 1 M Cl-, 1e-4 M Ag+
-        let (ag, cl, ppt) = solve_agcl_precipitation(1e-4, 1.0, 1.0, 298.15);
-        assert!(ppt > 9.99e-5);
-        assert!(ag < 1e-9);
-        assert!((ag * cl - KSP_AGCL_298).abs() / KSP_AGCL_298 < 1e-3);
-
-        // Temperature effect: higher solubility at 60 C (333.15 K)
-        let (_, _, ppt_25c) = solve_agcl_precipitation(2e-5, 2e-5, 1.0, 298.15);
-        assert!(ppt_25c > 0.0);
-        let (_, _, ppt_60c) = solve_agcl_precipitation(2e-5, 2e-5, 1.0, 333.15);
-        assert_eq!(ppt_60c, 0.0, "Higher temperature should dissolve AgCl precipitate");
-    }
-
-    #[test]
     fn test_m3_edge_solid_dissolution() {
         let (diss1, rem1) = dissolve_solid_with_limit(0.5, 2.0, 0.4);
         assert_eq!(diss1, 0.5);
@@ -973,38 +694,6 @@ mod tests {
         let (diss2, rem2) = dissolve_solid_with_limit(1.2, 2.0, 0.4);
         assert_eq!(diss2, 0.8);
         assert!((rem2 - 0.4).abs() < 1e-9);
-    }
-
-    #[test]
-    fn test_m4_edge_reversible_reaction_jacobian() {
-        // Reversible unimolecular isomerisation: A <=> B
-        // k_fwd = 1.0, K_eq = 2.0 => k_rev = 0.5
-        // At equilibrium with initial [A]=1.0, [B]=0.0:
-        // [B]_eq / [A]_eq = 2 => [A]_eq = 1/3 ~ 0.333, [B]_eq = 2/3 ~ 0.667
-        let network = KineticNetwork {
-            species_names: vec!["A".to_string(), "B".to_string()],
-            reactions: vec![KineticReaction {
-                name: "A to B reversible".to_string(),
-                reactants: vec![(0, 1.0)],
-                products: vec![(1, 1.0)],
-                arrhenius_a: 1.0,
-                arrhenius_n: 0.0,
-                arrhenius_ea: 0.0,
-                delta_h: 0.0,
-                is_reversible: true,
-                k_eq_298: Some(2.0),
-                stoich_reactants: None,
-                stoich_products: None,
-            }],
-        };
-
-        let mut concs = vec![1.0, 0.0];
-        for _ in 0..100 {
-            concs = rosenbrock_step(&network, &concs, 0.1, 298.15);
-        }
-
-        assert!((concs[0] - (1.0 / 3.0)).abs() < 1e-3, "Equilibrium [A] must be ~ 0.333, got {:.4}", concs[0]);
-        assert!((concs[1] - (2.0 / 3.0)).abs() < 1e-3, "Equilibrium [B] must be ~ 0.667, got {:.4}", concs[1]);
     }
 
     #[test]
@@ -1024,78 +713,6 @@ mod tests {
         leak.insert("H".to_string(), 1.5);
         let (passed2, _, _) = check_element_conservation(&initial, &leak, &HashMap::new());
         assert!(!passed2, "Element loss without gas must fail conservation");
-    }
-
-    #[test]
-    fn test_m4_edge_iodine_clock_zeros() {
-        let (d_s2o3, _, _) = simulate_iodine_clock(0.04, 0.05, 0.0, 293.15, 0.05, 50.0);
-        assert_eq!(d_s2o3, 0.0);
-
-        let (d_no_ox, _, _) = simulate_iodine_clock(0.0, 0.05, 0.002, 293.15, 0.05, 50.0);
-        assert_eq!(d_no_ox, 50.0);
-
-        let (d_zero_dt, _, _) = simulate_iodine_clock(0.04, 0.05, 0.002, 293.15, 0.0, 50.0);
-        assert_eq!(d_zero_dt, 0.0);
-    }
-
-    #[test]
-    fn test_m6_gate_sn2_e2_competition_shifts_with_heat_and_bulky_base() {
-        // Gate requirement: SN2/E2 product ratio shifts toward elimination with heat and with a bulky base
-        // 1. Room temp (298.15 K) with normal base (e.g. OH- / MeO-) on secondary halide:
-        let (k_sn2_rt, k_e2_rt, ratio_rt) = templates::sn2_e2_product_ratio("secondary", false, 298.15);
-        assert!(k_sn2_rt > 0.0 && k_e2_rt > 0.0);
-
-        // 2. Heat (353.15 K = 80 °C) with normal base:
-        let (_k_sn2_heat, _k_e2_heat, ratio_heat) = templates::sn2_e2_product_ratio("secondary", false, 353.15);
-        // Ratio E2/SN2 must increase significantly with heat because Ea(E2) > Ea(SN2)
-        assert!(
-            ratio_heat > ratio_rt * 1.5,
-            "Heat must shift ratio toward elimination: rt={:.4}, heat={:.4}",
-            ratio_rt,
-            ratio_heat
-        );
-
-        // 3. Bulky base (e.g. t-BuO-) at room temp (298.15 K):
-        let (_k_sn2_bulky, _k_e2_bulky, ratio_bulky) = templates::sn2_e2_product_ratio("secondary", true, 298.15);
-        // Ratio E2/SN2 must shift heavily (> 50x) toward elimination due to steric hindrance
-        assert!(
-            ratio_bulky > ratio_rt * 50.0,
-            "Bulky base must shift ratio toward elimination: normal={:.4}, bulky={:.4}",
-            ratio_rt,
-            ratio_bulky
-        );
-        assert!(ratio_bulky > 10.0, "Bulky base should make E2 strongly dominate (ratio > 10)");
-    }
-
-    #[test]
-    fn test_m6_gate_ester_hydrolysis_ph_curve_acid_and_base_catalysis() {
-        // Gate requirement: ester hydrolysis rate vs pH shows acid and base catalysis
-        let k_ph1 = templates::ester_hydrolysis_k_obs("ethyl_acetate", 1.0, 298.15);
-        let k_ph4 = templates::ester_hydrolysis_k_obs("ethyl_acetate", 4.0, 298.15);
-        let k_ph7 = templates::ester_hydrolysis_k_obs("ethyl_acetate", 7.0, 298.15);
-        let k_ph10 = templates::ester_hydrolysis_k_obs("ethyl_acetate", 10.0, 298.15);
-        let k_ph13 = templates::ester_hydrolysis_k_obs("ethyl_acetate", 13.0, 298.15);
-
-        // Acid catalysis: rate at pH 1 must be much higher than at pH 7
-        assert!(
-            k_ph1 > k_ph7 * 100.0,
-            "pH 1 rate ({:.2e}) must be > 100x pH 7 rate ({:.2e})",
-            k_ph1,
-            k_ph7
-        );
-        assert!(k_ph1 > k_ph4, "pH 1 rate must be faster than pH 4");
-
-        // Base catalysis: rate at pH 13 must be much higher than at pH 7
-        assert!(
-            k_ph13 > k_ph7 * 1000.0,
-            "pH 13 rate ({:.2e}) must be > 1000x pH 7 rate ({:.2e})",
-            k_ph13,
-            k_ph7
-        );
-        assert!(k_ph13 > k_ph10, "pH 13 rate must be faster than pH 10");
-
-        // Minimum rate is near neutral (pH 5-8)
-        assert!(k_ph7 < k_ph1 && k_ph7 < k_ph13);
     }
 
     #[test]

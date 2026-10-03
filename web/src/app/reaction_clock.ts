@@ -17,6 +17,12 @@ const REACTION_EVENTS: ReadonlySet<VesselEventKind> = new Set<VesselEventKind>([
 /** Net rate (mol/(L·s)) above which a kinetic / combustion row counts as an ongoing reaction (filters 1e-9 noise). */
 export const KINETIC_RATE_MIN = 1e-7;
 /**
+ * Row kinds that are chemical reactions in their own right: rate-law kinetics, combustion, and the reactions the engine
+ * discovers from Gibbs energies (electron transfer, thermal decomposition). Equilibrium rows are speciation (dissolving a
+ * weak acid moves them too), so only the neutralisation signature below counts among them.
+ */
+const REACTION_ROW_KINDS: ReadonlySet<string> = new Set(['kinetic', 'combustion', 'redox', 'thermal_decomposition']);
+/**
  * H2O <=> H+ + OH- relaxing strongly *towards water* (negative rate) means acid + base are neutralising. Self-ionisation
  * of pure water and spectator dissolution only ever show |rate| <~ 1e-4, a titration drop or more shows <= -1e-2.
  */
@@ -39,7 +45,7 @@ export interface ReactionDetection {
 /** Looks for row-based evidence (an ongoing reaction right now). */
 function rowEvidence(snap: VesselSnapshot): { trigger: ReactionTrigger; detail: string } | null {
   for (const r of snap.reactions ?? []) {
-    if (r.kind === 'kinetic' || r.kind === 'combustion') {
+    if (REACTION_ROW_KINDS.has(r.kind)) {
       if (r.active && Math.abs(r.rate) > KINETIC_RATE_MIN) return { trigger: 'kinetic', detail: r.equation };
     } else if (r.kind === 'equilibrium' && r.rate < NEUTRALISATION_RATE_MAX && /^H2O\s*<=>\s*H\+\s*\+\s*OH-$/.test(r.equation.trim())) {
       return { trigger: 'neutralisation', detail: 'Acid and base neutralising' };

@@ -100,38 +100,7 @@ pub fn apply_diffusion_cap(k_fwd: f64, temp_k: f64, viscosity: f64) -> f64 {
     (k_fwd * k_diff) / (k_fwd + k_diff)
 }
 
-/// Evaluate SN2 vs E2 competition:
-/// Returns (k_sn2, k_e2, ratio_e2_over_sn2)
-/// Gate requirement: SN2/E2 product ratio shifts toward elimination with heat and with a bulky base
-pub fn sn2_e2_product_ratio(substrate_type: &str, is_bulky_base: bool, temp_k: f64) -> (f64, f64, f64) {
-    let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
-
-    // Baseline kinetic parameters for secondary haloalkane (e.g. 2-bromopropane)
-    // SN2: lower Ea, lower A (ordered transition state, Delta S_ddagger < 0)
-    // E2: higher Ea, higher A (entropy favored, Delta S_ddagger >= 0)
-    let (ea_sn2, a_sn2, ea_e2, a_e2) = match substrate_type {
-        "primary" => (75_000.0, 5.0e8, 95_000.0, 5.0e10),
-        "tertiary" => (120_000.0, 1.0e6, 82_000.0, 5.0e11),
-        _ => (85_000.0, 2.0e9, 98_000.0, 2.0e11), // default secondary
-    };
-
-    let mut k_sn2 = a_sn2 * (-ea_sn2 / (R_IDEAL * t)).exp();
-    let mut k_e2 = a_e2 * (-ea_e2 / (R_IDEAL * t)).exp();
-
-    // Bulky base effect (e.g. tert-butoxide vs methoxide/hydroxide):
-    // Severe steric crowding at alpha-carbon heavily penalizes backside SN2 attack
-    // while deprotonation on outer beta-hydrogens for E2 is unhindered / promoted.
-    if is_bulky_base {
-        k_sn2 *= 0.005;  // 200x penalty for SN2
-        k_e2 *= 3.0;    // 3x boost for E2
-    }
-
-    let ratio = if k_sn2 > 1e-15 { k_e2 / k_sn2 } else { 1e6 };
-    (k_sn2, k_e2, ratio)
-}
-
-/// Acid/base state of the medium a template rate is evaluated in: H+ and OH- concentrations (mol/L) as the solver
-/// holds them. The OH- concentration is never inferred as 10^-(14 - pH).
+/// Acidity of the solution a network is generated in (dissolved H+ and OH- concentrations, mol/L).
 #[derive(Clone, Copy, Debug)]
 pub struct Medium {
     pub ph: f64,
@@ -155,39 +124,6 @@ impl Medium {
             .unwrap_or_else(|| 10.0_f64.powf(crate::chem_db::water_log_kw(temp_k)) / h_conc);
         Medium { ph, h_conc, oh_conc }
     }
-}
-
-/// Ester hydrolysis pseudo-first-order rate constant in a given medium:
-/// k_obs = k_acid * [H+] + k_neutral + k_base * [OH-]
-/// Gate requirement: rate vs pH shows V-shaped / U-shaped acid and base catalysis
-pub fn ester_hydrolysis_k_obs_in(ester_type: &str, medium: Medium, temp_k: f64) -> f64 {
-    let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
-    let h_conc = medium.h_conc;
-    let oh_conc = medium.oh_conc;
-
-    // Temperature factor relative to 298.15 K (typical Ea ~ 60 kJ/mol)
-    let ea = match ester_type {
-        "aromatic" => 68_000.0,
-        _ => 60_000.0, // ethyl acetate / aliphatic
-    };
-    let t_factor = ((-ea / R_IDEAL) * (1.0 / t - 1.0 / 298.15)).exp();
-
-    // Literature catalytic rate constants at 25 °C (M^-1 s^-1)
-    let k_acid_25 = 1.1e-4;   // M^-1 s^-1 (acid-catalysed A_Ac2)
-    let k_neutral_25 = 1.5e-8; // s^-1 (spontaneous neutral hydrolysis)
-    let k_base_25 = 0.11;      // M^-1 s^-1 (base-catalysed B_Ac2 saponification)
-
-    let k_acid = k_acid_25 * t_factor;
-    let k_neutral = k_neutral_25 * t_factor;
-    let k_base = k_base_25 * t_factor;
-
-    k_acid * h_conc + k_neutral + k_base * oh_conc
-}
-
-/// Same as `ester_hydrolysis_k_obs_in` for a solution of known pH (OH- from the water equilibrium Kw(T)).
-pub fn ester_hydrolysis_k_obs(ester_type: &str, ph: f64, temp_k: f64) -> f64 {
-    let t = if temp_k <= 100.0 || temp_k.is_nan() { 298.15 } else { temp_k };
-    ester_hydrolysis_k_obs_in(ester_type, Medium::from_solution(ph, t, &HashMap::new()), temp_k)
 }
 
 /// Returns the 45 curated reaction families covering intro organic and general chemistry

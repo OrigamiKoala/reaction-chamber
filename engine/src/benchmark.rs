@@ -1,4 +1,11 @@
-use crate::kinetics::{rosenbrock_step, KineticNetwork, KineticReaction};
+//! Performance benchmark of the kinetics integrator the vessel runs (`kinetics::core::KineticExtentSystem`, adaptive ROS2
+//! in extent coordinates) on a synthetic 50-species / 200-reaction reversible network. Native only: it reads the wall
+//! clock, which wasm32-unknown-unknown does not provide.
+
+use std::collections::HashMap;
+
+use crate::kinetics::{KineticExtentReaction, KineticExtentSystem};
+use crate::types::ProvenanceTier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -11,8 +18,9 @@ pub struct BenchmarkResult {
     pub passed_target: bool,
 }
 
-/// Generates a test network with 50 species and 200 reactions
-pub fn build_50_species_200_reactions_network() -> (KineticNetwork, Vec<f64>) {
+/// Synthetic network: 50 species, 200 bimolecular reversible reactions A + B <=> C + D with spread Arrhenius parameters.
+/// Returns the system and the initial amounts (mol in 1 L).
+pub fn build_50_species_200_reactions_network() -> (KineticExtentSystem, Vec<f64>) {
     let num_species = 50;
     let num_reactions = 200;
 
@@ -27,41 +35,50 @@ pub fn build_50_species_200_reactions_network() -> (KineticNetwork, Vec<f64>) {
 
         let a = 1.0e3 + ((r * 37) % 5000) as f64;
         let ea = 20000.0 + ((r * 101) % 30000) as f64;
-        let delta_h = -30000.0 + ((r * 73) % 60000) as f64;
+        let delta_h = -30.0 + ((r * 73) % 60) as f64;
 
-        reactions.push(KineticReaction {
-            name: format!("Rxn_{:03}", r),
+        reactions.push(KineticExtentReaction {
+            id: format!("Rxn_{:03}", r),
+            equation: String::new(),
             reactants: vec![(s1, 1.0), (s2, 1.0)],
             products: vec![(p1, 1.0), (p2, 1.0)],
+            gas_products: Vec::new(),
+            orders_reactants: vec![(s1, 1.0), (s2, 1.0)],
+            orders_products: vec![(p1, 1.0), (p2, 1.0)],
             arrhenius_a: a,
             arrhenius_n: 0.0,
             arrhenius_ea: ea,
-            delta_h,
+            delta_h_kj: delta_h,
+            catalyst_species: None,
             is_reversible: true,
             k_eq_298: Some(1.2 + (r % 10) as f64 * 0.1),
-            stoich_reactants: None,
-            stoich_products: None,
+            tier: ProvenanceTier::Estimated,
+            source: "benchmark".to_string(),
         });
     }
 
-    let initial_concs: Vec<f64> = (0..num_species).map(|i| 0.05 + (i as f64 * 0.002)).collect();
-
-    (KineticNetwork { species_names, reactions }, initial_concs)
+    let initial: Vec<f64> = (0..num_species).map(|i| 0.05 + (i as f64 * 0.002)).collect();
+    (KineticExtentSystem::new(species_names, reactions), initial)
 }
 
-/// Runs the 50 species / 200 reactions benchmark for a given number of ticks
+/// Runs the 50 species / 200 reactions benchmark for a given number of ticks of `dt` seconds.
 pub fn run_benchmark(ticks: usize, dt: f64) -> BenchmarkResult {
-    let (network, mut concs) = build_50_species_200_reactions_network();
+    let (system, mut moles) = build_50_species_200_reactions_network();
     let temp_k = 298.15;
+    let solids: HashMap<String, f64> = HashMap::new();
 
-    // Measure time
     let start = std::time::Instant::now();
     for _ in 0..ticks {
-        concs = rosenbrock_step(&network, &concs, dt, temp_k);
+        let (xi, _) = system.integrate_extent_step(&moles, dt, 1.0, temp_k, 101_325.0, 0.0, &solids);
+        for (i, m) in moles.iter_mut().enumerate() {
+            for (r, x) in xi.iter().enumerate() {
+                *m += system.nu[r][i] * x;
+            }
+            *m = m.max(0.0);
+        }
     }
-    let elapsed = start.elapsed();
-    let total_time_ms = elapsed.as_secs_f64() * 1000.0;
-    let avg_tick_time_ms = total_time_ms / (ticks as f64);
+    let total_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let avg_tick_time_ms = total_time_ms / (ticks.max(1) as f64);
 
     BenchmarkResult {
         num_species: 50,

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use crate::physics::R_GAS;
 use crate::types::ProvenanceTier;
 use crate::transport::k_diffusion_limit;
-use crate::thermo::functions::ln_k_equilibrium;
+use crate::thermo::functions::try_ln_k_equilibrium;
 
 /// Reaction representation in extent coordinates
 #[derive(Clone, Debug)]
@@ -48,6 +48,10 @@ pub struct KineticExtentSystem {
     pub reactions: Vec<KineticExtentReaction>,
     /// Net stoichiometry nu[r][i] = stoich_prod - stoich_react
     pub nu: Vec<Vec<f64>>,
+    /// Non-zero entries of `nu` per reaction: (species, nu)
+    nu_by_rxn: Vec<Vec<(usize, f64)>>,
+    /// Non-zero entries of `nu` per species: (reaction, nu)
+    nu_by_species: Vec<Vec<(usize, f64)>>,
 }
 
 impl KineticExtentSystem {
@@ -65,14 +69,33 @@ impl KineticExtentSystem {
             }
         }
 
+        let mut nu_by_rxn = vec![Vec::new(); num_rxns];
+        let mut nu_by_species = vec![Vec::new(); num_spec];
+        for r in 0..num_rxns {
+            for i in 0..num_spec {
+                if nu[r][i] != 0.0 {
+                    nu_by_rxn[r].push((i, nu[r][i]));
+                    nu_by_species[i].push((r, nu[r][i]));
+                }
+            }
+        }
+
         Self {
             species_names,
             reactions,
             nu,
+            nu_by_rxn,
+            nu_by_species,
         }
     }
 
-    /// Evaluates forward and reverse rate constants for reaction `r_idx`
+    /// (k_fwd, K) of every reaction: they depend on T, P, ionic strength and the catalysts present, which are constant
+    /// over one integration step, so they are evaluated once per step rather than at every stage.
+    pub fn rate_constants(&self, temp_k: f64, pressure_pa: f64, ionic_strength: f64, solid_moles: &HashMap<String, f64>) -> Vec<(f64, f64)> {
+        (0..self.reactions.len()).map(|r| self.evaluate_rate_constants(r, temp_k, pressure_pa, ionic_strength, solid_moles)).collect()
+    }
+
+    /// Evaluates the forward rate constant and the equilibrium constant K (0 = irreversible) of reaction `r_idx`
     pub fn evaluate_rate_constants(
         &self,
         r_idx: usize,
@@ -139,19 +162,16 @@ impl KineticExtentSystem {
             }
         }
 
-        // 5. Detailed balance: k_rev = k_fwd / K(T)
-        let k_rev = if k_fwd <= 0.0 {
+        // 5. Equilibrium constant for the reverse direction (concentration units, solids and solvent at unit activity):
+        // K(T) from the supplied K(298) by van 't Hoff, else from the species' standard chemical potentials. A reaction
+        // whose species lack formation data stays irreversible rather than getting an invented K. 0 = irreversible.
+        let k_eq = if k_fwd <= 0.0 {
             0.0
         } else if let Some(k_298) = rxn.k_eq_298 {
             let delta_h_j = rxn.delta_h_kj * 1000.0;
-            let ln_k_t = k_298.ln() - (delta_h_j / R_GAS) * (1.0 / t - 1.0 / 298.15);
-            if ln_k_t > 60.0 {
-                0.0
-            } else {
-                k_fwd / ln_k_t.exp().max(1e-30)
-            }
+            let ln_k_t = k_298.max(1e-300).ln() - (delta_h_j / R_GAS) * (1.0 / t - 1.0 / 298.15);
+            if ln_k_t > 690.0 { 0.0 } else { ln_k_t.exp() }
         } else if rxn.is_reversible {
-            // Compute ln K(T, P) from standard species chemical potentials
             let mut react_map = HashMap::new();
             for &(idx, c) in &rxn.reactants {
                 react_map.insert(self.species_names[idx].clone(), c);
@@ -163,21 +183,18 @@ impl KineticExtentSystem {
             for (g, c) in &rxn.gas_products {
                 *prod_map.entry(g.clone()).or_default() += *c;
             }
-
-            let ln_k = ln_k_equilibrium(&react_map, &prod_map, t, pressure_pa);
-            if ln_k > 60.0 {
-                0.0
-            } else {
-                k_fwd / ln_k.exp().max(1e-30)
+            match try_ln_k_equilibrium(&react_map, &prod_map, t, pressure_pa) {
+                Some(ln_k) if ln_k <= 690.0 => ln_k.exp(),
+                _ => 0.0,
             }
         } else {
             0.0
         };
 
-        (k_fwd, k_rev)
+        (k_fwd, k_eq)
     }
 
-    /// Computes reaction rates r_j (mol/(L*s)) and their concentration derivatives dr_j/dc_i
+    /// Computes reaction rates r_j (mol/(L*s)) and their concentration derivatives dr_j/dc_i (dense).
     pub fn compute_rates_and_derivatives(
         &self,
         concs: &[f64],
@@ -186,115 +203,111 @@ impl KineticExtentSystem {
         ionic_strength: f64,
         solid_moles: &HashMap<String, f64>,
     ) -> (Vec<f64>, Vec<Vec<f64>>) {
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
+        let (rates, sparse) = self.rates_sparse(concs, &consts);
+        let mut dense = vec![vec![0.0; self.species_names.len()]; self.reactions.len()];
+        for (r, row) in sparse.into_iter().enumerate() {
+            for (i, d) in row {
+                dense[r][i] += d;
+            }
+        }
+        (rates, dense)
+    }
+
+    /// Rates (mol/(L s)) and, per reaction, the non-zero derivatives dr/dc_i, for the step's rate constants `consts`.
+    fn rates_sparse(&self, concs: &[f64], consts: &[(f64, f64)]) -> (Vec<f64>, Vec<Vec<(usize, f64)>>) {
         let num_rxns = self.reactions.len();
-        let num_spec = self.species_names.len();
         let mut rates = vec![0.0; num_rxns];
-        let mut dr_dc = vec![vec![0.0; num_spec]; num_rxns];
+        let mut deriv: Vec<Vec<(usize, f64)>> = vec![Vec::new(); num_rxns];
 
         for r_idx in 0..num_rxns {
             let rxn = &self.reactions[r_idx];
-            let (k_fwd, k_rev) = self.evaluate_rate_constants(
-                r_idx,
-                temp_k,
-                pressure_pa,
-                ionic_strength,
-                solid_moles,
-            );
+            let (k_fwd, k_eq) = consts[r_idx];
+            let row = &mut deriv[r_idx];
+            let push = |row: &mut Vec<(usize, f64)>, i: usize, d: f64| {
+                if let Some(x) = row.iter_mut().find(|(j, _)| *j == i) {
+                    x.1 += d;
+                } else {
+                    row.push((i, d));
+                }
+            };
 
             // Check if any stoichiometric reactant is depleted
-            let mut reactant_depleted = false;
-            for &(idx, _) in &rxn.reactants {
-                if concs[idx] <= 1e-15 {
-                    reactant_depleted = true;
-                    break;
-                }
-            }
+            let reactant_depleted = rxn.reactants.iter().any(|&(idx, _)| concs[idx] <= 1e-15);
 
-            // Forward rate
-            let mut r_fwd = if reactant_depleted { 0.0 } else { k_fwd };
-            if r_fwd > 0.0 {
+            // Forward rate F = k_f prod c^order (orders may name catalysts that the reaction does not consume) and dF/dc
+            let mut f_fwd = if reactant_depleted { 0.0 } else { k_fwd };
+            if f_fwd > 0.0 {
                 for &(idx, order) in &rxn.orders_reactants {
                     let c = concs[idx].max(0.0);
-                    if (order - 1.0).abs() < 1e-6 {
-                        r_fwd *= c;
+                    if order.abs() < 1e-12 {
+                        // zero order
+                    } else if (order - 1.0).abs() < 1e-6 {
+                        f_fwd *= c;
                     } else if (order - 2.0).abs() < 1e-6 {
-                        r_fwd *= c * c;
+                        f_fwd *= c * c;
                     } else if c > 0.0 {
-                        r_fwd *= c.powf(order);
+                        f_fwd *= c.powf(order);
                     } else {
-                        r_fwd = 0.0;
+                        f_fwd = 0.0;
                     }
                 }
             }
-
-            // Check if any stoichiometric product is depleted for reverse rate
-            let mut product_depleted = false;
-            for &(idx, _) in &rxn.products {
-                if concs[idx] <= 1e-15 {
-                    product_depleted = true;
-                    break;
-                }
-            }
-
-            // Reverse rate
-            let mut r_rev = if product_depleted { 0.0 } else { k_rev };
-            if r_rev > 0.0 {
-                for &(idx, order) in &rxn.orders_products {
-                    let c = concs[idx].max(0.0);
-                    if (order - 1.0).abs() < 1e-6 {
-                        r_rev *= c;
-                    } else if (order - 2.0).abs() < 1e-6 {
-                        r_rev *= c * c;
-                    } else if c > 0.0 {
-                        r_rev *= c.powf(order);
-                    } else {
-                        r_rev = 0.0;
-                    }
-                }
-            } else {
-                r_rev = 0.0;
-            }
-
-            rates[r_idx] = r_fwd - r_rev;
-
-            // Concentration derivatives of forward rate
-            if r_fwd > 0.0 {
+            if f_fwd > 0.0 {
                 for &(k_idx, k_order) in &rxn.orders_reactants {
-                    let ck = concs[k_idx].max(1e-15);
-                    let mut term = k_fwd * k_order;
-                    if (k_order - 1.0).abs() > 1e-6 {
-                        term *= ck.powf(k_order - 1.0);
+                    if k_order.abs() < 1e-12 {
+                        continue;
                     }
-                    for &(m_idx, m_order) in &rxn.orders_reactants {
-                        if m_idx != k_idx {
-                            let cm = concs[m_idx].max(0.0);
-                            term *= cm.powf(m_order);
-                        }
-                    }
-                    dr_dc[r_idx][k_idx] += term;
+                    push(row, k_idx, f_fwd * k_order / concs[k_idx].max(1e-15));
                 }
             }
 
-            // Concentration derivatives of reverse rate
-            if r_rev > 0.0 {
-                for &(k_idx, k_order) in &rxn.orders_products {
-                    let ck = concs[k_idx].max(1e-15);
-                    let mut term = k_rev * k_order;
-                    if (k_order - 1.0).abs() > 1e-6 {
-                        term *= ck.powf(k_order - 1.0);
+            // Reverse rate from detailed balance whatever the empirical orders: r = F (1 - Q/K), written as
+            // r_rev = (k_f / K) prod c^(order - nu_reactant + nu_product) so that it stays finite when a reactant is
+            // absent (the reaction then runs backward from its products). Q runs over the stoichiometric species in
+            // solution: pure solids and the solvent have unit activity. A gas product leaves the liquid as it forms, so a
+            // reaction that makes gas never runs backward, and neither can one whose solid product is absent.
+            let mut r_rev = 0.0;
+            let solid_product_absent = rxn.products.iter().any(|&(idx, _)| self.species_names[idx].ends_with("(s)") && concs[idx] <= 1e-15);
+            if k_eq > 0.0 && k_fwd > 0.0 && rxn.gas_products.is_empty() && !solid_product_absent {
+                let mut expo: Vec<(usize, f64)> = rxn.orders_reactants.clone();
+                let add = |idx: usize, e: f64, expo: &mut Vec<(usize, f64)>| {
+                    if let Some(x) = expo.iter_mut().find(|(i, _)| *i == idx) {
+                        x.1 += e;
+                    } else {
+                        expo.push((idx, e));
                     }
-                    for &(m_idx, m_order) in &rxn.orders_products {
-                        if m_idx != k_idx {
-                            let cm = concs[m_idx].max(0.0);
-                            term *= cm.powf(m_order);
+                };
+                for (sign, list) in [(-1.0, &rxn.reactants), (1.0, &rxn.products)] {
+                    for &(idx, nu) in list.iter() {
+                        let sp = &self.species_names[idx];
+                        if sp.ends_with("(s)") || sp == crate::vessel::AQUEOUS_SOLVENT {
+                            continue;
+                        }
+                        add(idx, sign * nu, &mut expo);
+                    }
+                }
+                // the reverse needs every species it consumes (positive exponent) present
+                if expo.iter().all(|&(idx, e)| e <= 1e-12 || concs[idx] > 1e-15) {
+                    let mut ln_r = (k_fwd / k_eq).ln();
+                    for &(idx, e) in &expo {
+                        if e.abs() > 1e-12 {
+                            ln_r += e * concs[idx].max(1e-15).ln();
                         }
                     }
-                    dr_dc[r_idx][k_idx] -= term;
+                    r_rev = ln_r.min(690.0).exp();
+                    for &(idx, e) in &expo {
+                        if e.abs() > 1e-12 {
+                            push(row, idx, -r_rev * e / concs[idx].max(1e-15));
+                        }
+                    }
                 }
             }
+
+            rates[r_idx] = f_fwd - r_rev;
         }
 
-        (rates, dr_dc)
+        (rates, deriv)
     }
 
     /// Evaluates extent derivatives d xi / dt (mol/s) and Jacobian J_{rk} = d (d xi_r / dt) / d xi_k
@@ -308,52 +321,50 @@ impl KineticExtentSystem {
         ionic_strength: f64,
         solid_moles: &HashMap<String, f64>,
     ) -> (Vec<f64>, Vec<Vec<f64>>) {
-        let num_rxns = self.reactions.len();
-        let num_spec = self.species_names.len();
-        let v = vol_l.max(1e-6);
-
-        // Species moles at current extent xi: n(xi) = n0 + Nu^T * xi
-        let mut concs = vec![0.0; num_spec];
-        for i in 0..num_spec {
-            let mut mol = initial_moles[i];
-            for r in 0..num_rxns {
-                mol += self.nu[r][i] * xi[r];
-            }
-            concs[i] = (mol / v).max(0.0);
-        }
-
-        let (rates, dr_dc) = self.compute_rates_and_derivatives(
-            &concs,
-            temp_k,
-            pressure_pa,
-            ionic_strength,
-            solid_moles,
-        );
-
-        // f_r = rate_r * V (mol/s)
-        let mut f = vec![0.0; num_rxns];
-        for r in 0..num_rxns {
-            f[r] = rates[r] * v;
-        }
-
-        // Jacobian J_{rk} = d f_r / d xi_k = sum_i (d rate_r / d c_i) * (d c_i / d xi_k) * V
-        // Since d c_i / d xi_k = nu[k][i] / V, J_{rk} = sum_i dr_dc[r][i] * nu[k][i]
-        let mut jac = vec![vec![0.0; num_rxns]; num_rxns];
-        for r in 0..num_rxns {
-            for k in 0..num_rxns {
-                let mut sum = 0.0;
-                for i in 0..num_spec {
-                    sum += dr_dc[r][i] * self.nu[k][i];
-                }
-                jac[r][k] = sum;
-            }
-        }
-
-        (f, jac)
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
+        let (f, jac) = self.f_and_jac(xi, initial_moles, vol_l, &consts, true);
+        (f, jac.unwrap_or_default())
     }
 
-    /// Integrates the extent system over interval `dt_s` using adaptive L-stable ROS2
-    /// Returns (final_extents, rates_mol_per_l_s)
+    fn concs_at(&self, xi: &[f64], initial_moles: &[f64], v: f64) -> Vec<f64> {
+        let mut concs: Vec<f64> = initial_moles.to_vec();
+        for (r, row) in self.nu_by_rxn.iter().enumerate() {
+            if xi[r] != 0.0 {
+                for &(i, nu) in row {
+                    concs[i] += nu * xi[r];
+                }
+            }
+        }
+        for c in concs.iter_mut() {
+            *c = (*c / v).max(0.0);
+        }
+        concs
+    }
+
+    fn f_and_jac(&self, xi: &[f64], initial_moles: &[f64], vol_l: f64, consts: &[(f64, f64)], want_jac: bool) -> (Vec<f64>, Option<Vec<Vec<f64>>>) {
+        let num_rxns = self.reactions.len();
+        let v = vol_l.max(1e-6);
+        let concs = self.concs_at(xi, initial_moles, v);
+        let (rates, deriv) = self.rates_sparse(&concs, consts);
+        // f_r = rate_r * V (mol/s)
+        let f: Vec<f64> = rates.iter().map(|r| r * v).collect();
+        if !want_jac {
+            return (f, None);
+        }
+        // J_{rk} = d f_r / d xi_k = sum_i (d rate_r / d c_i) * nu[k][i] (the V cancels against dc_i / dxi_k = nu / V)
+        let mut jac = vec![vec![0.0; num_rxns]; num_rxns];
+        for (r, row) in deriv.iter().enumerate() {
+            for &(i, d) in row {
+                for &(k, nu) in &self.nu_by_species[i] {
+                    jac[r][k] += d * nu;
+                }
+            }
+        }
+        (f, Some(jac))
+    }
+
+    /// Integrates the extent system over interval `dt_s` with L-stable ROS2 sub-steps of at most 50 ms (halved on a
+    /// positivity failure). Returns (final_extents, rates_mol_per_l_s)
     pub fn integrate_extent_step(
         &self,
         initial_moles: &[f64],
@@ -369,11 +380,19 @@ impl KineticExtentSystem {
         if num_rxns == 0 || dt_s <= 0.0 || dt_s.is_nan() {
             return (vec![0.0; num_rxns], vec![0.0; num_rxns]);
         }
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
 
         let gamma = 1.0 - 1.0 / std::f64::consts::SQRT_2; // ~0.2928932188
         let mut xi = vec![0.0; num_rxns];
         let mut t_sub = 0.0;
-        let mut h = dt_s.min(0.05); // sub-step <= 50 ms guarantees < 0.1% integration error
+        let mut h = dt_s.min(0.05);
+        let moles_at = |xi: &[f64], i: usize| -> f64 {
+            let mut m = initial_moles[i];
+            for &(r, nu) in &self.nu_by_species[i] {
+                m += nu * xi[r];
+            }
+            m
+        };
 
         while t_sub < dt_s - 1e-12 {
             let cur_h = h.min(dt_s - t_sub);
@@ -381,17 +400,10 @@ impl KineticExtentSystem {
                 break;
             }
 
-            let (f0, jac) = self.extent_f_and_jacobian(
-                &xi,
-                initial_moles,
-                vol_l,
-                temp_k,
-                pressure_pa,
-                ionic_strength,
-                solid_moles,
-            );
+            let (f0, jac) = self.f_and_jac(&xi, initial_moles, vol_l, &consts, true);
+            let jac = jac.unwrap_or_default();
 
-            // Matrix W = I - gamma * cur_h * J
+            // W = I - gamma h J, factorised once for both stages
             let mut w = vec![vec![0.0; num_rxns]; num_rxns];
             for i in 0..num_rxns {
                 for j in 0..num_rxns {
@@ -399,91 +411,53 @@ impl KineticExtentSystem {
                 }
                 w[i][i] += 1.0;
             }
+            let lu = LuFactors::new(w);
 
-            // Stage 1: solve W * k1 = f0
-            let k1 = solve_linear_system(&w, &f0);
+            // Stage 1: W k1 = f0
+            let k1 = lu.solve(&f0);
+            let xi_star: Vec<f64> = (0..num_rxns).map(|r| xi[r] + cur_h * k1[r]).collect();
+            let (f_star, _) = self.f_and_jac(&xi_star, initial_moles, vol_l, &consts, false);
 
-            // Intermediate extent xi* = xi + cur_h * k1
-            let mut xi_star = vec![0.0; num_rxns];
-            for r in 0..num_rxns {
-                xi_star[r] = xi[r] + cur_h * k1[r];
-            }
-
-            let (f_star, _) = self.extent_f_and_jacobian(
-                &xi_star,
-                initial_moles,
-                vol_l,
-                temp_k,
-                pressure_pa,
-                ionic_strength,
-                solid_moles,
-            );
-
-            // Stage 2: RHS2 = f_star - 2 * gamma * cur_h * J * k1
-            let mut jk1 = vec![0.0; num_rxns];
-            for i in 0..num_rxns {
-                for j in 0..num_rxns {
-                    jk1[i] += jac[i][j] * k1[j];
-                }
-            }
-
+            // Stage 2: W k2 = f* - 2 gamma h J k1
             let mut rhs2 = vec![0.0; num_rxns];
             for i in 0..num_rxns {
-                rhs2[i] = f_star[i] - 2.0 * gamma * cur_h * jk1[i];
+                let mut jk1 = 0.0;
+                for j in 0..num_rxns {
+                    jk1 += jac[i][j] * k1[j];
+                }
+                rhs2[i] = f_star[i] - 2.0 * gamma * cur_h * jk1;
             }
-
-            let k2 = solve_linear_system(&w, &rhs2);
+            let k2 = lu.solve(&rhs2);
 
             // Candidate increment: delta_xi = 0.5 * cur_h * (k1 + k2)
-            let mut delta_xi = vec![0.0; num_rxns];
-            for r in 0..num_rxns {
-                delta_xi[r] = 0.5 * cur_h * (k1[r] + k2[r]);
-            }
+            let delta_xi: Vec<f64> = (0..num_rxns).map(|r| 0.5 * cur_h * (k1[r] + k2[r])).collect();
+            let cand: Vec<f64> = (0..num_rxns).map(|r| xi[r] + delta_xi[r]).collect();
 
-            // Positivity check: ensure no reactant drops below -1e-12
-            let mut non_negative = true;
-            for i in 0..num_spec {
-                let mut cand_mol = initial_moles[i];
-                for r in 0..num_rxns {
-                    cand_mol += self.nu[r][i] * (xi[r] + delta_xi[r]);
-                }
-                if cand_mol < -1e-12 {
-                    non_negative = false;
-                    break;
-                }
-            }
+            // Positivity check: no species may drop below -1e-12 mol
+            let non_negative = (0..num_spec).all(|i| moles_at(&cand, i) >= -1e-12);
 
             if !non_negative {
                 // Reject step and halve step size
                 h *= 0.5;
                 if h < 1e-8 {
-                    // Limiting reactant boundary reached: find maximum non-negative scale alpha in [0, 1]
+                    // Limiting reactant boundary reached: largest non-negative fraction alpha of the step, then the rest
+                    // of the interval has nothing left to convert along this direction
                     let mut alpha = 1.0_f64;
                     for i in 0..num_spec {
-                        let mut cur_mol = initial_moles[i];
-                        let mut d_mol = 0.0;
-                        for r in 0..num_rxns {
-                            cur_mol += self.nu[r][i] * xi[r];
-                            d_mol += self.nu[r][i] * delta_xi[r];
-                        }
+                        let cur_mol = moles_at(&xi, i);
+                        let d_mol: f64 = self.nu_by_species[i].iter().map(|&(r, nu)| nu * delta_xi[r]).sum();
                         if d_mol < -1e-15 && cur_mol > 0.0 {
-                            let a = cur_mol / (-d_mol);
-                            if a < alpha {
-                                alpha = a;
-                            }
+                            alpha = alpha.min(cur_mol / (-d_mol));
                         }
                     }
-                    alpha = alpha.clamp(0.0, 1.0);
+                    let alpha = alpha.clamp(0.0, 1.0);
                     for r in 0..num_rxns {
                         xi[r] += alpha * delta_xi[r];
                     }
                     break;
                 }
             } else {
-                // Step accepted
-                for r in 0..num_rxns {
-                    xi[r] += delta_xi[r];
-                }
+                xi = cand;
                 t_sub += cur_h;
                 h = 0.05_f64.min(dt_s - t_sub);
                 if h <= 1e-10 {
@@ -494,12 +468,78 @@ impl KineticExtentSystem {
 
         // Final rates in mol/(L*s)
         let v = vol_l.max(1e-6);
-        let mut final_rates = vec![0.0; num_rxns];
-        for r in 0..num_rxns {
-            final_rates[r] = xi[r] / (v * dt_s);
-        }
-
+        let final_rates: Vec<f64> = xi.iter().map(|x| x / (v * dt_s)).collect();
         (xi, final_rates)
+    }
+}
+
+/// LU factorisation with partial pivoting of a small dense matrix (factor once, solve several right-hand sides).
+pub struct LuFactors {
+    lu: Vec<Vec<f64>>,
+    perm: Vec<usize>,
+}
+
+impl LuFactors {
+    pub fn new(mut a: Vec<Vec<f64>>) -> Self {
+        let n = a.len();
+        let mut perm: Vec<usize> = (0..n).collect();
+        for col in 0..n {
+            let mut max_row = col;
+            let mut max_val = a[col][col].abs();
+            for row in (col + 1)..n {
+                if a[row][col].abs() > max_val {
+                    max_val = a[row][col].abs();
+                    max_row = row;
+                }
+            }
+            if max_row != col {
+                a.swap(col, max_row);
+                perm.swap(col, max_row);
+            }
+            let pivot = a[col][col];
+            if pivot.abs() < 1e-15 || !pivot.is_finite() {
+                continue;
+            }
+            let (top, bottom) = a.split_at_mut(col + 1);
+            let prow = &top[col];
+            for row in bottom.iter_mut() {
+                let factor = row[col] / pivot;
+                row[col] = factor;
+                if factor != 0.0 {
+                    for c in (col + 1)..n {
+                        row[c] -= factor * prow[c];
+                    }
+                }
+            }
+        }
+        LuFactors { lu: a, perm }
+    }
+
+    pub fn solve(&self, b: &[f64]) -> Vec<f64> {
+        let n = b.len();
+        let mut y: Vec<f64> = self.perm.iter().map(|&p| b[p]).collect();
+        for i in 0..n {
+            let mut sum = y[i];
+            for j in 0..i {
+                sum -= self.lu[i][j] * y[j];
+            }
+            y[i] = sum;
+        }
+        let mut x = vec![0.0; n];
+        for i in (0..n).rev() {
+            let mut sum = y[i];
+            for j in (i + 1)..n {
+                sum -= self.lu[i][j] * x[j];
+            }
+            let diag = self.lu[i][i];
+            x[i] = if diag.abs() > 1e-15 && diag.is_finite() {
+                let val = sum / diag;
+                if val.is_finite() { val } else { 0.0 }
+            } else {
+                0.0
+            };
+        }
+        x
     }
 }
 

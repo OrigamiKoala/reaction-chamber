@@ -402,13 +402,16 @@ impl Vessel {
         let c_ref = [&cathode];
         let ea = ec::potential_for_current(&a_ref, halves, &ctx, 0.0);
         let ec = ec::potential_for_current(&c_ref, halves, &ctx, 0.0);
-        let cell_v = (ec - ea).abs();
+        // a voltmeter reads the signed potential of the cathode lead against the anode lead: a cell wired the other way
+        // round reads negative
+        let cell_v = ec - ea;
 
         let mut rows: Vec<ElectrodeReactionRow> = Vec::new();
         for (role, el) in [("anode", &anode), ("cathode", &cathode)] {
             for h in halves.iter() {
                 let e0 = h.e0(t_k, p_pa);
-                let matches_el = h.ox.iter().any(|(s, _)| s.starts_with(&el.element)) || h.red.iter().any(|(s, _)| s.starts_with(&el.element));
+                let has_el = |s: &str| crate::ions::species_elements(s).map_or(false, |e| e.contains_key(&el.element));
+                let matches_el = h.ox.iter().any(|(s, _)| has_el(s)) || h.red.iter().any(|(s, _)| has_el(s));
                 let matches_water = h.ox.iter().any(|(s, _)| s == "H+" || s == "O2(g)") || h.red.iter().any(|(s, _)| s == "H2(g)" || s == "OH-");
                 if matches_el || matches_water {
                     rows.push(ElectrodeReactionRow {
