@@ -580,26 +580,6 @@ export class Lab {
 
     if (mode === 'drops') await this.sim.dose(vesselId, { reagent_id: e.id, drops: Math.round(amount) });
     else if (mode === 'g') {
-      // The engine may dissolve a soluble solid instantly; keep a pile that visibly dissolves away instead of
-      // letting the powder vanish the moment it lands (metals are consumed by reaction, not dissolved).
-      // Inert compounds are different: the engine tracks their undissolved solid itself (snapshot `solids`), so a
-      // ghost pile would draw it twice.
-      const inert = item.kind === 'imported' && item.model?.phase_model === 'inert';
-      if (!inert && !looksLikeMetal(e.formula, e.name)) {
-        const own = item.kind === 'imported' && /^#[0-9a-f]{6}$/i.test(item.bottle.color) ? item.bottle.color : undefined;
-        this.visual.add(vesselId, {
-          key: e.id,
-          name: e.name,
-          formula: e.formula,
-          kind: 'solid',
-          rgb: hexToLinear(knownReagentColor(e.id) ?? own ?? '#f4f3ef'),
-          mass_g: amount,
-          volume_ml: 0,
-          density_g_ml: e.density_g_ml || 1.6,
-          mw: 0,
-          ghost: { species: Object.keys(e.composition) },
-        });
-      }
       await this.sim.dose(vesselId, { reagent_id: e.id, mass_g: amount });
     } else await this.sim.dose(vesselId, { reagent_id: e.id, volume_ml: amount });
     if (e.ghs.includes('GHS02')) this.flammableAdded.add(vesselId);

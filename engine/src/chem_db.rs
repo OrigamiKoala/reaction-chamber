@@ -873,43 +873,6 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
             tier: ProvenanceTier::Tabulated,
             source: "Diffusion-controlled Redox Kinetics".to_string(),
         },
-        // 5. Magnesium dissolution in acid: Mg(s) + 2 H+ -> Mg+2 + H2(g)
-        GeneralKineticRxn {
-            id: "mg_acid_dissolution".to_string(),
-            equation: "Mg(s) + 2 H+ -> Mg+2 + H2(g)".to_string(),
-            reactants: [("Mg(s)".to_string(), 1.0), ("H+".to_string(), 2.0)].into(),
-            products: [("Mg+2".to_string(), 1.0)].into(),
-            gas_products: [("H2(g)".to_string(), 1.0)].into(),
-            // surface reaction, first order in [H+]
-            orders: Some([("H+".to_string(), 1.0)].into()),
-            arrhenius_a: 475.0,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 20000.0,
-            delta_h_kj: -467.0,
-            catalyst_species: None,
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "CRC Handbook".to_string(),
-        },
-        // 6. Ethanol combustion: C2H5OH + 3 O2 -> 2 CO2(g) + 3 H2O
-        GeneralKineticRxn {
-            id: "ethanol_combustion".to_string(),
-            equation: "C2H5OH + 3 O2 -> 2 CO2(g) + 3 H2O".to_string(),
-            reactants: [("C2H5OH".to_string(), 1.0), ("O2".to_string(), 3.0)].into(),
-            products: [("H2O".to_string(), 3.0)].into(),
-            gas_products: [("CO2(g)".to_string(), 2.0)].into(),
-            orders: None,
-            arrhenius_a: 1e9,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 120000.0,
-            delta_h_kj: -1367.0,
-            catalyst_species: None,
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "NIST WebBook".to_string(),
-        },
     ];
     if let Ok(lock) = CUSTOM_KINETICS.lock() {
         for rxn in lock.iter() {

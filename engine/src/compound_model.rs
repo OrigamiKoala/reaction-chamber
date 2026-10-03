@@ -196,6 +196,9 @@ fn known_neutral_species() -> HashMap<String, Vec<String>> {
             add(k);
         }
     }
+    for &(id, _) in KNOWN_NEUTRAL_INCHIKEYS {
+        add(id);
+    }
     out
 }
 

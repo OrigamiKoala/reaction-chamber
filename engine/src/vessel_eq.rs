@@ -231,8 +231,12 @@ impl Vessel {
                 if y.abs() < 100.0 * eps_mol {
                     continue;
                 }
-                self.eq_moved = true;
                 let min = self.minerals[idx].clone();
+                let is_granular = self.particle_populations.get(&min.solid_species).map_or(false, |p| p.mean_diameter_m() >= 100e-6);
+                if y > 0.0 && is_granular {
+                    continue;
+                }
+                self.eq_moved = true;
                 for (ion, &c) in &min.dissolved_products {
                     let m = self.species_mol.entry(ion.clone()).or_default();
                     *m = (*m + c * y).max(0.0);

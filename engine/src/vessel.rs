@@ -329,6 +329,9 @@ pub struct Vessel {
     /// State for the generic reaction log (precipitate / gas / colour / temperature events).
     pub ev: crate::vessel_ext::EventState,
     pub phases: crate::phases::PhaseState,
+    /// Particle populations for heterogeneous solid transfer (moments mu0-mu3).
+    pub particle_populations: HashMap<String, crate::transfer::ParticlePopulation>,
+    pub burning_fuel: Option<String>,
 }
 
 impl Vessel {
@@ -383,6 +386,8 @@ impl Vessel {
             debug_network_generator: false,
             ev: crate::vessel_ext::EventState::default(),
             phases: crate::phases::PhaseState::new(temp_k),
+            particle_populations: HashMap::new(),
+            burning_fuel: None,
         };
         v.update_phases();
         let compounds: Vec<CompoundThermo> = v.compounds.values().cloned().collect();
@@ -477,6 +482,14 @@ impl Vessel {
     }
 
     pub fn dose(&mut self, dose: DoseRequest) -> Result<(), String> {
+        self.dose_with_opt_diameter(dose, None)
+    }
+
+    pub fn dose_with_diameter(&mut self, dose: DoseRequest, particle_diameter_um: f64) -> Result<(), String> {
+        self.dose_with_opt_diameter(dose, Some(particle_diameter_um))
+    }
+
+    fn dose_with_opt_diameter(&mut self, dose: DoseRequest, override_diameter_um: Option<f64>) -> Result<(), String> {
         let entry = self.catalog.get(&dose.reagent_id)
             .ok_or_else(|| format!("Unknown reagent: {}", dose.reagent_id))?
             .clone();
@@ -507,6 +520,12 @@ impl Vessel {
                 if species.ends_with("(s)") {
                     *self.solid_mol.entry(species.clone()).or_insert(0.0) += mol;
                     *self.initial_solids.entry(species.clone()).or_insert(0.0) += mol;
+                    let props = self.solid_props(species);
+                    let d_m = override_diameter_um.map(|u| u * 1e-6).unwrap_or(props.particle_um * 1e-6);
+                    let solid_mass_g = mol * chem_db::get_species_thermo(species).mw;
+                    self.particle_populations.entry(species.clone())
+                        .and_modify(|p| p.add_solid(solid_mass_g, props.density_g_ml, d_m))
+                        .or_insert_with(|| crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mass_g, props.density_g_ml, d_m));
                 } else {
                     // Non-solid components of a solid reagent (water of crystallisation, instantly dissolving
                     // ions of multi-ion salts) go straight into solution.
@@ -626,7 +645,13 @@ impl Vessel {
         }
         for (sp, mol) in portion.solid_mol {
             *self.solid_mol.entry(sp.clone()).or_insert(0.0) += mol;
-            *self.initial_solids.entry(sp).or_insert(0.0) += mol;
+            *self.initial_solids.entry(sp.clone()).or_insert(0.0) += mol;
+            let props = self.solid_props(&sp);
+            let d_m = props.particle_um * 1e-6;
+            let solid_mass_g = mol * chem_db::get_species_thermo(&sp).mw;
+            self.particle_populations.entry(sp.clone())
+                .and_modify(|p| p.add_solid(solid_mass_g, props.density_g_ml, d_m))
+                .or_insert_with(|| crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mass_g, props.density_g_ml, d_m));
         }
         for (sp, mol) in book {
             self.ledger.book_in(&sp, mol);
@@ -815,6 +840,15 @@ impl Vessel {
         // 1c. Thermal decomposition of solids (solid -> solid + gas via GEM driving force)
         let q_decomp = self.step_thermal_decomposition(dt_s);
         reaction_heat_joules += q_decomp;
+
+        // 1d. Heterogeneous metal acid corrosion (Butler-Volmer mixed potential)
+        let q_corrosion = self.step_corrosion(dt_s);
+        reaction_heat_joules += q_corrosion;
+
+        // 1e. Heterogeneous solid dissolution and growth (Sherwood transport)
+        let q_dissolution = self.step_dissolution_and_growth(dt_s);
+        reaction_heat_joules += q_dissolution;
+        eprintln!("AFTER 1e: solid={:?}, species={:?}", self.solid_mol, self.species_mol);
 
         // 2. Generalized aqueous equilibria & mineral precipitation
         for _ in 0..5 {
@@ -1101,7 +1135,13 @@ impl Vessel {
         let mut q_joules = 0.0;
         let mut total_heat_w = 0.0;
 
+        let mut main_fuel = None;
+        let mut max_fuel_mol = 0.0;
         for (fuel, mol, mw, dh_c) in combustible_fuels {
+            if mol > max_fuel_mol {
+                max_fuel_mol = mol;
+                main_fuel = Some(fuel.clone());
+            }
             let frac = mol / total_fuel_mol;
             let fuel_burn_g_s = burn_g_s * frac;
             let fuel_burn_mol_s = fuel_burn_g_s / mw.max(1.0);
@@ -1117,7 +1157,198 @@ impl Vessel {
             q_joules += heat_w * 0.15 * dt_s;
         }
 
+        self.burning_fuel = main_fuel;
         self.flame_power_w = total_heat_w;
+        q_joules
+    }
+
+    pub fn set_particle_population(&mut self, species: &str, pop: crate::transfer::ParticlePopulation) {
+        self.particle_populations.insert(species.to_string(), pop);
+    }
+
+    /// Heterogeneous metal acid corrosion via Butler-Volmer mixed potential model.
+    pub(crate) fn step_corrosion(&mut self, dt_s: f64) -> f64 {
+        if dt_s <= 0.0 || self.solid_mol.is_empty() || self.aqueous_volume_ml() <= 1e-6 {
+            return 0.0;
+        }
+        let ph = self.current_ph();
+        let t_k = self.temperature_k;
+        let mut q_joules = 0.0;
+        let solid_keys: Vec<String> = self.solid_mol.keys().cloned().collect();
+
+        for sp in solid_keys {
+            let solid_mol = match self.solid_mol.get(&sp).copied() {
+                Some(m) if m > 1e-12 => m,
+                _ => continue,
+            };
+            let base_name = sp.trim_end_matches("(s)").trim();
+            if !crate::transfer::corrosion::is_corrodible_metal(base_name) {
+                continue;
+            }
+
+            let area_m2 = if let Some(pop) = self.particle_populations.get(&sp) {
+                pop.surface_area_m2().max(1e-4)
+            } else {
+                0.001
+            };
+
+            let res = crate::transfer::corrosion::step_corrosion(base_name, ph, t_k, area_m2, dt_s);
+
+            if res.mol_metal_dissolved > 0.0 {
+                let actual_diss = res.mol_metal_dissolved.min(solid_mol);
+                let ratio = if res.mol_metal_dissolved > 0.0 { actual_diss / res.mol_metal_dissolved } else { 0.0 };
+
+                let props = self.solid_props(&sp);
+                if let Some(sm) = self.solid_mol.get_mut(&sp) {
+                    *sm = (*sm - actual_diss).max(0.0);
+                }
+                if let Some(pop) = self.particle_populations.get_mut(&sp) {
+                    let mw = chem_db::get_species_thermo(&sp).mw;
+                    pop.scale_to_mass((solid_mol - actual_diss).max(0.0) * mw, props.density_g_ml);
+                }
+
+                let cation = format!("{}+2", base_name);
+                *self.species_mol.entry(cation).or_insert(0.0) += actual_diss;
+
+                let h_cons = res.mol_h_consumed * ratio;
+                if let Some(h) = self.species_mol.get_mut("H+") {
+                    *h = (*h - h_cons).max(0.0);
+                }
+
+                let h2_mol = res.mol_h2_gas * ratio;
+                if h2_mol > 0.0 {
+                    if self.sealed {
+                        *self.headspace_gas_mol.entry("H2(g)".to_string()).or_insert(0.0) += h2_mol;
+                    } else {
+                        let ml_s = (h2_mol / dt_s) * 24400.0;
+                        self.gas_fluxes.push(GasFlux {
+                            species: "H2(g)".to_string(),
+                            rate_ml_s: ml_s,
+                            bubble_diameter_mm: 1.5,
+                            nucleation: "solid".to_string(),
+                        });
+                        self.gas.escaped_mol += h2_mol;
+                    }
+                    self.ledger.book_out("H2(g)", h2_mol);
+                    self.push_event(VesselEventKind::GasEvolved, format!("Hydrogen gas evolved from {} corrosion", base_name), 0.4);
+                }
+
+                q_joules += res.heat_j * ratio;
+            }
+        }
+
+        self.solid_mol.retain(|_, m| *m > 1e-12);
+        q_joules
+    }
+
+    /// Rate-limited heterogeneous solid dissolution and growth via Sherwood mass-transfer correlation.
+    pub(crate) fn step_dissolution_and_growth(&mut self, dt_s: f64) -> f64 {
+        if dt_s <= 0.0 || self.solid_mol.is_empty() || self.total_liquid_volume_ml() <= 1e-6 {
+            return 0.0;
+        }
+        let vol_l = (self.reaction_volume_ml() / 1000.0).max(1e-9);
+        let t_k = self.temperature_k;
+        let stirring = self.controls.stirring.unwrap_or(false);
+        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
+        let eta_fluid = crate::transport::viscosity_water_pa_s(t_k);
+        let rho_fluid = 1000.0;
+        let nu_fluid = eta_fluid / rho_fluid;
+        let diff_fluid = 1.5e-9 * (t_k / 298.15) * (crate::transport::viscosity_water_pa_s(298.15) / eta_fluid);
+
+        let mut q_joules = 0.0;
+        let solid_keys: Vec<String> = self.solid_mol.keys().cloned().collect();
+
+        for sp in solid_keys {
+            let solid_mol = match self.solid_mol.get(&sp).copied() {
+                Some(m) if m > 1e-12 => m,
+                _ => continue,
+            };
+            let props = self.solid_props(&sp);
+            let mw = chem_db::get_species_thermo(&sp).mw.max(10.0);
+            let rho_g_ml = props.density_g_ml.max(0.1);
+
+            let mut pop = self.particle_populations.remove(&sp).unwrap_or_else(|| {
+                crate::transfer::ParticlePopulation::from_mass_and_diameter(solid_mol * mw, rho_g_ml, props.particle_um * 1e-6)
+            });
+
+            let mut c_sat_mol_m3 = 0.0;
+            let mut c_bulk_mol_m3 = 0.0;
+            let mut dh_diss_j = 0.0;
+            let mut ions_produced: Vec<(String, f64)> = Vec::new();
+
+            if let Some(min) = self.minerals.iter().find(|m| m.solid_species == sp).cloned() {
+                if !min.dissolved_products.is_empty() {
+                    let log_ksp = min.log_ksp_at(t_k);
+                    let ksp = 10.0_f64.powf(log_ksp);
+                    let nu_sum: f64 = min.dissolved_products.values().sum();
+                    let nu_prod: f64 = min.dissolved_products.values().map(|c| c.powf(*c)).product();
+                    let s_sat_mol_l = (ksp / nu_prod.max(1e-30)).powf(1.0 / nu_sum.max(1.0));
+                    c_sat_mol_m3 = s_sat_mol_l * 1000.0;
+
+                    let mut s_bulk_mol_l = f64::INFINITY;
+                    for (ion, &coeff) in &min.dissolved_products {
+                        let amt = self.species_mol.get(ion).copied().unwrap_or(0.0);
+                        let conc = (amt / vol_l) / coeff;
+                        s_bulk_mol_l = s_bulk_mol_l.min(conc);
+                        ions_produced.push((ion.clone(), coeff));
+                    }
+                    if s_bulk_mol_l.is_infinite() {
+                        s_bulk_mol_l = 0.0;
+                    }
+                    c_bulk_mol_m3 = (s_bulk_mol_l.max(0.0)) * 1000.0;
+                    dh_diss_j = min.delta_h_kj * 1000.0;
+                }
+            } else if let Some(c) = self.compound_for(&sp) {
+                let aq_key = self.liquid_key_of_solid(&sp).unwrap_or_else(|| sp.trim_end_matches("(s)").to_string());
+                let is_partitionable = self.molecule(&aq_key).map_or(false, |m| m.partitionable());
+                if !is_partitionable {
+                    let sol_g_l = c.solubility_g_per_l.unwrap_or(10.0);
+                    let s_sat_mol_l = sol_g_l / mw;
+                    c_sat_mol_m3 = s_sat_mol_l * 1000.0;
+                    let amt = self.species_mol.get(&aq_key).copied().unwrap_or(0.0);
+                    c_bulk_mol_m3 = (amt / vol_l) * 1000.0;
+                    ions_produced.push((aq_key, 1.0));
+                    dh_diss_j = c.dh_fus_kj_mol.map(|d| d * 1000.0).unwrap_or(15000.0);
+                }
+            }
+
+            if c_sat_mol_m3 > 0.0 && c_bulk_mol_m3 < c_sat_mol_m3 {
+                let res = crate::transfer::dissolution::step_particle_dissolution(
+                    &mut pop,
+                    solid_mol,
+                    mw,
+                    rho_g_ml,
+                    diff_fluid,
+                    nu_fluid,
+                    stir_rpm,
+                    c_sat_mol_m3,
+                    c_bulk_mol_m3,
+                    dt_s,
+                );
+
+                if res.moles_dissolved > 0.0 {
+                    let dm = res.moles_dissolved;
+                    for (prod, coeff) in ions_produced {
+                        *self.species_mol.entry(prod).or_insert(0.0) += coeff * dm;
+                    }
+                    if let Some(sm) = self.solid_mol.get_mut(&sp) {
+                        *sm = (*sm - dm).max(0.0);
+                    }
+                    q_joules -= dm * dh_diss_j;
+                }
+
+                if res.fully_depleted {
+                    self.solid_mol.remove(&sp);
+                    self.push_event(VesselEventKind::SolidDissolved, format!("{} dissolved completely", props.name), 0.3);
+                } else {
+                    self.particle_populations.insert(sp, pop);
+                }
+            } else {
+                self.particle_populations.insert(sp, pop);
+            }
+        }
+
+        self.solid_mol.retain(|_, m| *m > 1e-12);
         q_joules
     }
 
@@ -1455,13 +1686,19 @@ impl Vessel {
             let init_mol = *self.initial_solids.get(sp).unwrap_or(&mol);
             let rem_frac = (mol / init_mol.max(1e-9)).clamp(0.0, 1.0);
 
+            let d_um = if let Some(pop) = self.particle_populations.get(sp) {
+                pop.mean_diameter_m() * 1e6
+            } else {
+                props.particle_um
+            };
+
             solids.push(SolidVisual {
                 species: sp.clone(),
                 name: props.name.clone(),
                 mass_g,
                 settled_volume_ml: settled_vol,
                 suspended_fraction: self.ev.susp.get(sp).copied().unwrap_or(if kind == SolidKind::Curds || kind == SolidKind::Gel { 0.8 } else { 0.2 }),
-                particle_diameter_um: props.particle_um,
+                particle_diameter_um: d_um,
                 rgb: props.rgb,
                 kind,
                 floating: if density < 1.0 || (kind == SolidKind::Metal && self.gas_fluxes.iter().any(|g| g.rate_ml_s > 0.01)) { Some(true) } else { None },
@@ -1506,12 +1743,14 @@ impl Vessel {
         }
 
         let flame = if self.flame_active {
+            let fuel_name = self.burning_fuel.clone().unwrap_or_else(|| "Ethanol".to_string());
+            let app = crate::transfer::combustion::fuel_flame_appearance(&fuel_name);
             Some(FlameVisual {
-                fuel: "Ethanol".to_string(),
+                fuel: fuel_name,
                 power_w: self.flame_power_w,
-                luminosity: 0.05,
+                luminosity: app.luminosity,
                 flame_temp_k: 1200.0,
-                emitter_rgb: None,
+                emitter_rgb: app.emitter_rgb,
             })
         } else {
             None

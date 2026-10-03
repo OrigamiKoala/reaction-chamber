@@ -55,9 +55,6 @@ export function absorbanceFromRgb(rgb: [number, number, number], pathCm = 3): nu
   return out;
 }
 
-/** Shrinking-core dissolution constant: the cube root of a pile's mass falls by DISSOLVE_C/3 per second. */
-const DISSOLVE_C = 0.2;
-
 export class VisualContents {
   private items = new Map<string, VisualItem[]>();
   private lastT = new Map<string, number>();
@@ -157,25 +154,17 @@ export class VisualContents {
       species.push(row(it, mass, it.mw || 60, 'aqueous', total));
     }
 
-    // ---- solids
+    // ---- solids (unmodelable visual fallbacks only)
     const wet = total > 0.5;
-    const c = DISSOLVE_C * (stirring ? 3 : 1);
     for (const it of list) {
       if (it.kind !== 'solid') continue;
-      let m = it.mass_g;
-      if (it.ghost) {
-        if (wet && dtSim > 0 && m > 0) m = Math.pow(Math.max(0, Math.cbrt(m) - (c * dtSim) / 3), 3);
-        it.mass_g = m;
-        const engineG = snap.solids.filter((s) => it.ghost!.species.includes(s.species)).reduce((s, x) => s + x.mass_g, 0);
-        m = Math.max(0, m - engineG);
-      } else {
-        massAdd += m;
-        species.push(row(it, m, it.mw || 100, 'solid', total));
-      }
+      const m = it.mass_g;
+      massAdd += m;
+      species.push(row(it, m, it.mw || 100, 'solid', total));
       if (m <= 1e-5) continue;
       const density = Math.min(25, Math.max(0.3, it.density_g_ml || 1.5));
       solids.push({
-        species: it.ghost ? `ghost:${it.key}` : it.key,
+        species: it.key,
         name: it.name,
         mass_g: m,
         settled_volume_ml: (m / density) * 1.6,

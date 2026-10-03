@@ -32,12 +32,7 @@ use crate::physics::R_GAS;
 use crate::vessel::*;
 use crate::vle::{self, Critical, LiquidVolume, PsatModel, Volatile};
 
-/// Liquid-side mass-transfer coefficient of a dissolved gas across the free surface of an unstirred liquid, m/s
-/// (diffusion across a ~2 mm stagnant layer, D ~ 2e-9 m2/s). Stage 8 replaces this and the next constant by a
-/// Sherwood-number correlation of the stirring rate and the vessel geometry.
-const K_L_STILL_M_S: f64 = 1.0e-6;
-/// The same with the liquid stirred (surface renewal; typical stirred-beaker values are 2e-5 to 1e-4 m/s).
-const K_L_STIRRED_M_S: f64 = 5.0e-5;
+/// Liquid-side mass-transfer coefficient of a dissolved gas is computed via crate::transfer::gas_transfer.
 /// First-order release of dissolved gas as bubbles when the dissolved-gas tension exceeds the ambient pressure
 /// (the earlier engine's unstirred CO2 degassing constant, now general), 1/s; stirring multiplies it by 3.5.
 const K_BUBBLE_PER_S: f64 = 0.15;
@@ -581,10 +576,29 @@ impl Vessel {
             let dh_sub = vol.latent_heat_j_mol(t) + self.molecule(&vol.id).map_or(0.0, |m| m.dh_dissolve_ideal(t));
             heat += dn * dh_sub;
         }
+        let r_cm = self.config.inner_radius_cm.max(0.5);
+        let area_cm2 = std::f64::consts::PI * r_cm.powi(2);
+        let total_h_cm = self.config.capacity_ml / area_cm2;
+        let liq_h_cm = self.total_liquid_volume_ml() / area_cm2;
+        let lip_m = ((total_h_cm - liq_h_cm).max(0.5) * 0.01).clamp(0.005, 0.20);
+
         for (ph, row) in phases.iter().zip(&parts) {
             for (c, p_surface) in ph.comps.iter().zip(row) {
                 let p_inf = atm.iter().find(|(k, _)| *k == c.vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
-                let flux = K_GAS_FILM_M_S * area * (p_surface - p_inf) / (R_GAS * t); // mol/s, + = evaporation
+                let flux = if *p_surface > p_inf {
+                    let (flux_mol_s, _) = crate::transfer::evaporation::sub_boiling_evaporation_rates(
+                        t,
+                        area,
+                        lip_m,
+                        *p_surface,
+                        p_inf,
+                        c.vol.mw,
+                        c.vol.latent_heat_j_mol(t),
+                    );
+                    flux_mol_s
+                } else {
+                    K_GAS_FILM_M_S * area * (p_surface - p_inf) / (R_GAS * t)
+                };
                 let mut dn = flux * dt_s;
                 if dn > 0.0 {
                     dn = dn.min(c.mol);
@@ -694,11 +708,12 @@ impl Vessel {
         let ionic = self.ionic_strength_molal();
         let ln_gamma = 0.1 * ionic * std::f64::consts::LN_10; // Setschenow salting-out of a neutral solute
         let stirring = self.controls.stirring.unwrap_or(false);
+        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
         let aq_ml = self.aqueous_volume_ml().max(1e-6);
         let depth_m = (aq_ml / (self.surface_area_m2() * 1e6)).max(1e-4);
-        let k_l = if stirring { K_L_STIRRED_M_S } else { K_L_STILL_M_S };
+        let k_l = crate::transfer::gas_transfer::gas_liquid_kl_m_s(stir_rpm, depth_m);
         let lam_surface = k_l / depth_m;
-        let lam_bubble = K_BUBBLE_PER_S * if stirring { 3.5 } else { 1.0 };
+        let lam_bubble = K_BUBBLE_PER_S * (1.0 + (stir_rpm / 300.0) * 2.5);
         let p_ext = self.p_ext_pa();
         let phases = self.vle_phases(t);
         let p_liq = self.phase_partials(&phases, t).1;

@@ -37,6 +37,7 @@ pub mod volume;
 pub mod props;
 pub mod activity;
 pub mod transport;
+pub mod transfer;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;

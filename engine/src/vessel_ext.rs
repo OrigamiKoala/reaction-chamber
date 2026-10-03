@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::chem_db;
 use crate::compound_thermo::is_metal_element;
 use crate::ions;
 use crate::optics;
@@ -243,17 +244,40 @@ impl Vessel {
     /// seconds (faster for large/dense particles, aggregated 10x); stirring keeps solids suspended.
     pub fn update_suspension(&mut self, dt_s: f64) {
         let stirring = self.controls.stirring.unwrap_or(false);
+        let stir_rpm = self.controls.stir_rpm.unwrap_or(if stirring { 300.0 } else { 0.0 });
         let dust = self.dust_mol();
         let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > dust).map(|(k, _)| k.clone()).collect();
         self.ev.susp.retain(|k, _| live.contains(k));
+        let t_k = self.temperature_k;
+        let r_cm = self.config.inner_radius_cm.max(0.5);
+        let area_cm2 = std::f64::consts::PI * r_cm.powi(2);
+        let liq_h_m = ((self.total_liquid_volume_ml() / area_cm2) * 0.01).max(0.01);
+        let rho_fluid = 1000.0;
+        let eta_fluid = crate::transport::viscosity_water_pa_s(t_k);
+
         for sp in live {
             let props = self.solid_props(&sp);
-            let d_m = props.particle_um * 1e-6 * 10.0; // flocculated aggregates
-            let v = ((props.density_g_ml - 1.0).max(0.05) * 1000.0 * 9.81 * d_m * d_m / (18.0 * 1.0e-3)).max(1e-9);
-            let tau = (0.04 / v).clamp(8.0, 300.0);
+            let d_m = self.particle_populations.get(&sp)
+                .map(|p| p.mean_diameter_m())
+                .unwrap_or(props.particle_um * 1e-6);
+            let rho_p = props.density_g_ml * 1000.0;
+            let solid_vol_m3 = self.solid_mol.get(&sp).copied().unwrap_or(0.0) * chem_db::get_species_thermo(&sp).mw * 1e-3 / rho_p.max(100.0);
+            let total_liq_m3 = (self.total_liquid_volume_ml() * 1e-6).max(1e-9);
+            let phi_solid = (solid_vol_m3 / total_liq_m3).clamp(0.0, 0.5);
+            let i_molal = self.ionic_strength_molal();
+            let ccc = 0.01; // critical coagulation concentration ~ 10 mM for 1:1 electrolytes
+            let agg_factor = if props.kind == SolidKind::Curds || props.kind == SolidKind::Gel {
+                1.0 + 7.0 * (i_molal / (i_molal + ccc))
+            } else {
+                1.0 + 3.0 * (i_molal / (i_molal + ccc))
+            };
+            let d_eff = d_m * agg_factor;
+            let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, rho_fluid, eta_fluid, phi_solid, t_k);
+
             let cur = self.ev.susp.entry(sp).or_insert(1.0);
-            if stirring {
-                *cur += (0.9 - *cur) * (1.0 - (-dt_s / 3.0).exp());
+            if stirring || stir_rpm > 10.0 {
+                let target = (stir_rpm / 300.0).clamp(0.2, 0.95);
+                *cur += (target - *cur) * (1.0 - (-dt_s / 2.0).exp());
             } else {
                 let floor = 0.02;
                 *cur = floor + (*cur - floor) * (-dt_s / tau).exp();
