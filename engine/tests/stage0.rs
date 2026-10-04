@@ -587,7 +587,9 @@ fn s0_9_portion_carries_its_own_heat_capacity() {
     let c_glass = 110.0 * 0.84 * 0.15;
     let expected = (298.15 * (c_water + c_glass) + 340.0 * c_etoh) / (c_water + c_glass + c_etoh);
     a.add_portion(p).unwrap();
-    assert!((a.temperature_k - expected).abs() < 0.3, "{} vs {}", a.temperature_k, expected);
+    // calorimetry plus the heat of mixing of ethanol into water (x_ethanol = 0.07, H^E about -0.4 kJ/mol over 3.6 mol: 2-6 K)
+    let rise = a.temperature_k - expected;
+    assert!(rise > 1.5 && rise < 6.5, "{} vs calorimetric {}", a.temperature_k, expected);
 }
 
 // ---- 0.10 solver hygiene ---------------------------------------------------------------------------------------------

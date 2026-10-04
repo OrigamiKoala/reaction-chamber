@@ -3,7 +3,7 @@
 //! The vessel's temperature is advanced from process heats (each reaction's heat, the latent heats, the heater and the
 //! losses); `enthalpy_state_j` is the independent check: the enthalpy `H(T, n) = sum_i n_i H_i(T)` of everything the vessel
 //! holds (every liquid phase, the solids, the headspace gas and the part of the glass that follows the contents), from the
-//! species records' formation enthalpies and heat-capacity models (`thermo::functions::try_thermo_state`). For a closed
+//! species records' formation enthalpies and heat-capacity models plus the excess enthalpy of the liquid phases (`mixing.rs`) (`thermo::functions::try_thermo_state`). For a closed
 //! vessel the change of this function over any interval must equal the energy the surroundings supplied
 //! (`Vessel::external_energy_j`); `energy_audit` reports the difference, the defect, and which species the state function
 //! could not evaluate (no formation data: they carry no energy in it, nothing is invented).
@@ -90,6 +90,9 @@ impl Vessel {
         for k in keys {
             add(&mut out, k, "g", self.headspace_gas_mol[k]);
         }
+        // the excess (mixing) enthalpy of the liquid phases: the species enthalpies above are pure-state values
+        let phases: Vec<&std::collections::HashMap<String, f64>> = self.liquid_maps().collect();
+        out.h_j += self.liquid_excess_enthalpy_j(&phases, t);
         out.h_j += self.glass_heat_capacity() * (t - 298.15);
         out.uncovered.sort();
         out

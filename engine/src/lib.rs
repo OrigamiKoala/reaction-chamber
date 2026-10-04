@@ -15,6 +15,7 @@ pub mod joback;
 pub mod benson;
 pub mod hydration;
 pub mod molecule;
+pub mod mixing;
 pub mod lle;
 pub mod eos;
 pub mod vle;

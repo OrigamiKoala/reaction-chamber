@@ -27,7 +27,6 @@ use crate::lle;
 use crate::molecule::{self, IonEnv, Mixture, Molecule, SolidModel};
 use crate::optics::{self, N_BINS};
 use crate::types::ProvenanceTier;
-use crate::physics::R_GAS;
 use crate::vessel::*;
 
 /// Specific heat assumed for an aqueous solute or species no record describes, J/(g K): dilute aqueous solutions are
@@ -685,23 +684,46 @@ impl Vessel {
         Solved { n_liq, n_sol, lle }
     }
 
-    /// Excess enthalpy (J) of a set of liquid phases (amounts per component, the ion phase carrying the ions):
-    /// `H^E = -R T^2 d(sum n_i ln gamma_i)/dT`, by central difference of the activity model in temperature. Totals, not
-    /// partial molar values, so large transfers (a solvent freezing almost completely) are balanced exactly.
+    /// Excess enthalpy (J) of a set of liquid phases (amounts per component, the ion phase carrying the ions): the activity
+    /// model's `H^E = -R T^2 d(sum n_i ln gamma_i)/dT`, by central difference in temperature, with measured binary rows
+    /// substituted where the table has them (`mixing.rs`). Totals, not partial molar values, so large transfers (a solvent
+    /// freezing almost completely) are balanced exactly.
     fn excess_enthalpy(&self, comps: &[(String, Arc<Molecule>)], t_k: f64, phases: &[Vec<f64>], env: Option<&IonEnv>, ion_phase: Option<usize>) -> f64 {
-        let dt = 0.5;
         let arcs: Vec<Arc<Molecule>> = comps.iter().map(|(_, m)| m.clone()).collect();
-        let (m1, m2) = (Mixture::new(arcs.clone(), t_k - dt), Mixture::new(arcs, t_k + dt));
-        let mut dg = 0.0;
-        for (p, ph) in phases.iter().enumerate() {
-            if ph.iter().sum::<f64>() <= 0.0 {
-                continue;
+        // The electrolytes are left out: their activity terms (Pitzer / Debye-Hueckel at fixed parameters, the salting-out of
+        // neutral solutes) are Gibbs-energy models without enthalpy data, and their temperature derivative is not a heat; the
+        // enthalpy of ions in solution is in their formation data.
+        let _ = (env, ion_phase);
+        let envs: Vec<Option<&IonEnv>> = vec![None; phases.len()];
+        crate::mixing::excess_enthalpy_j(&arcs, t_k, phases, &envs)
+    }
+
+    /// Excess enthalpy (J) of the liquid phases given by their species amounts (molecular components only, see
+    /// `excess_enthalpy`). Components without an activity model carry no excess enthalpy.
+    pub(crate) fn liquid_excess_enthalpy_j(&self, phases: &[&HashMap<String, f64>], t_k: f64) -> f64 {
+        let mut keys: BTreeSet<String> = BTreeSet::new();
+        for m in phases {
+            for (k, &v) in m.iter() {
+                if v > TINY_MOL {
+                    keys.insert(k.clone());
+                }
             }
-            let e = if ion_phase == Some(p) { env } else { None };
-            let (g1, g2) = (m1.ln_gamma(ph, e), m2.ln_gamma(ph, e));
-            dg += (0..ph.len()).map(|i| ph[i] * (g2[i] - g1[i])).sum::<f64>();
         }
-        -R_GAS * t_k * t_k * dg / (2.0 * dt)
+        let comps: Vec<(String, Arc<Molecule>)> = keys.into_iter().filter_map(|k| self.molecule(&k).filter(|m| m.partitionable()).map(|m| (k, m))).collect();
+        if comps.is_empty() {
+            return 0.0;
+        }
+        let amounts: Vec<Vec<f64>> = phases.iter().map(|m| comps.iter().map(|(k, _)| m.get(k).copied().unwrap_or(0.0)).collect()).collect();
+        let envs: Vec<Option<&IonEnv>> = vec![None; phases.len()];
+        let arcs: Vec<Arc<Molecule>> = comps.iter().map(|(_, m)| m.clone()).collect();
+        crate::mixing::excess_enthalpy_j(&arcs, t_k, &amounts, &envs)
+    }
+
+    /// Heat (J, positive warms the contents) released when the liquid amounts `added` are mixed into the liquid
+    /// `before` (the primary phase before the addition): `-(H^E(mixture) - H^E(before) - sum H^E(each added phase alone))`.
+    pub(crate) fn mixing_heat_j(&self, before: &HashMap<String, f64>, added: &[&HashMap<String, f64>], after: &HashMap<String, f64>, t_k: f64) -> f64 {
+        let h_added: f64 = added.iter().map(|m| self.liquid_excess_enthalpy_j(&[*m], t_k)).sum();
+        -(self.liquid_excess_enthalpy_j(&[after], t_k) - self.liquid_excess_enthalpy_j(&[before], t_k) - h_added)
     }
 
     /// Re-establishes the liquid-liquid and solid-liquid equilibrium of the vessel at conserved enthalpy: moves material
@@ -757,7 +779,9 @@ impl Vessel {
                     moved = true;
                 }
             }
-            if moved {
+            // (also when only the liquids rearrange: a mixture that splits into layers gives back the mixing heat the dose booked
+            // for the homogeneous liquid it started as)
+            if moved || multi {
                 q += this.excess_enthalpy(&comps, t, &init_phases, env.as_ref(), Some(0)) - this.excess_enthalpy(&comps, t, &s.lle.phases, env.as_ref(), s.lle.ion_phase);
             }
             q

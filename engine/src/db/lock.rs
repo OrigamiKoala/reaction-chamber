@@ -33,6 +33,8 @@ unsafe impl<T: Send + Sync> Sync for StoreLock<T> {}
 thread_local! {
     /// Addresses of the locks this thread currently holds (one entry per read guard, one per write guard).
     static HELD: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+    /// Addresses of the locks this thread currently holds for *writing* (a subset of `HELD`).
+    static WRITING: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The store is being written.
@@ -78,12 +80,17 @@ impl<T> StoreLock<T> {
         Ok(ReadGuard { lock: self })
     }
 
-    /// Shared access if no writer is active (a writer waiting does not count), else `Err`: lets a caller that may run while
-    /// this thread itself holds the write lock report "unknown" instead of waiting for itself.
+    /// Shared access, waiting for a writer on *another* thread (registrations are short); `Err` only when this thread itself
+    /// holds the write lock, where waiting would never end: a caller that may run inside a registration reports "unknown"
+    /// instead of waiting for itself. (Reporting "unknown" for a foreign writer too made a lookup that raced with a
+    /// registration on another thread look like "no such species": a parallel test lost its network that way.)
     pub fn try_read(&self) -> Result<ReadGuard<'_, T>, WouldBlock> {
-        let mut st = self.state();
-        if st.writer {
+        if WRITING.with(|w| w.borrow().contains(&self.addr())) {
             return Err(WouldBlock);
+        }
+        let mut st = self.state();
+        while st.writer {
+            st = self.cv.wait(st).unwrap_or_else(|e| e.into_inner());
         }
         st.readers += 1;
         drop(st);
@@ -105,6 +112,7 @@ impl<T> StoreLock<T> {
         st.writer = true;
         drop(st);
         HELD.with(|h| h.borrow_mut().push(self.addr()));
+        WRITING.with(|w| w.borrow_mut().push(self.addr()));
         Ok(WriteGuard { lock: self })
     }
 }
@@ -155,6 +163,12 @@ impl<T> DerefMut for WriteGuard<'_, T> {
 
 impl<T> Drop for WriteGuard<'_, T> {
     fn drop(&mut self) {
+        let _ = WRITING.try_with(|w| {
+            let mut w = w.borrow_mut();
+            if let Some(pos) = w.iter().rposition(|a| *a == self.lock.addr()) {
+                w.swap_remove(pos);
+            }
+        });
         release_held(self.lock.addr());
         let mut st = self.lock.state();
         st.writer = false;
@@ -212,5 +226,29 @@ mod tests {
             h.join().unwrap();
         }
         assert_eq!(*lock.read().unwrap(), 4000);
+    }
+
+    /// `try_read` waits for a writer on another thread (so a lookup racing with a registration sees the registered store, not
+    /// "unknown") but refuses at once when this thread is the writer.
+    #[test]
+    fn try_read_waits_for_a_foreign_writer_and_refuses_a_self_writer() {
+        let lock = Arc::new(StoreLock::new(1_i32));
+        let l2 = lock.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            let mut w = l2.write().unwrap();
+            tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            *w = 2;
+        });
+        rx.recv().unwrap();
+        // the writer is active: the read waits for it and then sees its value
+        assert_eq!(*lock.try_read().expect("foreign writer finishes"), 2);
+        writer.join().unwrap();
+        {
+            let _w = lock.write().unwrap();
+            assert!(lock.try_read().is_err(), "this thread holds the write lock: unknown, not a self-deadlock");
+        }
+        assert!(lock.try_read().is_ok());
     }
 }

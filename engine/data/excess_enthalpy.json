@@ -1,0 +1,8 @@
+{
+  "model": "Redlich-Kister excess molar enthalpy of binary liquid mixtures: H_E = x_a x_b sum_k A_k (x_a - x_b)^k, J per mole of mixture; combined over the pairs of a multicomponent phase by Kohler's rule",
+  "tier": "estimated",
+  "source": "Approximate points of the water + ethanol excess enthalpy at 25 C recalled from textbook / DECHEMA-type compilations (minimum about -0.77 kJ/mol near x_ethanol = 0.25, vanishing towards pure ethanol), fitted here by a 4-term Redlich-Kister series; verify against a measured set before relying on the second digit. A pair that is not listed has no row: the group-contribution model (UNIFAC, `molecule.rs`) supplies its excess enthalpy from the temperature dependence of its activity coefficients, and a listed pair replaces that model for its own binary contribution only.",
+  "pairs": [
+    {"a": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "b": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "A_J_mol": [-2093.1, 3062.7, -1846.2, 1025.5], "T_K": 298.15, "note": "ethanol + water"}
+  ]
+}

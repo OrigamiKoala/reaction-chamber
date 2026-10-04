@@ -376,7 +376,12 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             None => ("inert", vec![(inert_id.clone(), 1.0)]),
         }
     };
+    // A weak acid whose dissolved form is its own neutral molecule (acetic acid) is that molecule in every liquid phase it
+    // enters (it partitions, mixes and has a liquid density); its ionisation is the aqueous equilibrium row, not a property
+    // of the compound.
+    let acid_is_molecule = kind == "acid" && species.len() == 1 && (species[0].1 - 1.0).abs() < 1e-9 && ions::species_charge(&species[0].0) == 0;
     let phase_model = match kind {
+        "acid" if acid_is_molecule => "neutral",
         "salt" | "acid" | "base" => "ionic",
         "molecule" => "neutral",
         _ => "inert",
@@ -504,6 +509,10 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         thermo.species = m.solid_species.trim_end_matches("(s)").to_string();
     } else if kind == "molecule" {
         thermo.species = species[0].0.trim_end_matches("(s)").to_string();
+    } else if kind == "acid" && neat_species.is_some() {
+        // a weak acid whose dissolved form is its own neutral molecule (acetic acid): the import describes that molecule's
+        // liquid and solid (density, melting, vapour pressure), so the vessel's molecule model must find it by that key
+        thermo.species = species[0].0.trim_end_matches("(aq)").to_string();
     }
 
     let density_g_ml = if gas_species.is_some() {

@@ -360,6 +360,8 @@ pub fn ionic_ln_water_activity(species_mol: &HashMap<String, f64>, t_k: f64) -> 
     if ions.is_empty() {
         return 0.0;
     }
+    // a fixed order: the sums (and the choice between equal ions) must not depend on the hash order of the caller's map
+    ions.sort_by(|a, b| a.0.cmp(b.0));
     let two_i: f64 = ions.iter().map(|(_, z, m)| m * z * z).sum();
     let i_tot = 0.5 * two_i;
     let sum_m: f64 = ions.iter().map(|(_, _, m)| *m).sum();

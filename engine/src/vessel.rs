@@ -763,6 +763,8 @@ impl Vessel {
         let mut total_mass_added_g = 0.0;
         // heat capacity of what is already in the vessel (before this dose goes in)
         let cp_before = self.contents_heat_capacity() + self.glass_heat_capacity();
+        let liquid_before = self.species_mol.clone();
+        let mut liquid_added: HashMap<String, f64> = HashMap::new();
         let mut added: Vec<(String, f64, bool)> = Vec::new();
 
         if entry.form == "gas" {
@@ -820,6 +822,7 @@ impl Vessel {
                 let mol = mol_per_ml * scale;
                 total_mass_added_g += mol * chem_db::get_species_thermo(species).mw;
                 *self.species_mol.entry(species.clone()).or_insert(0.0) += mol;
+                *liquid_added.entry(species.clone()).or_insert(0.0) += mol;
                 added.push((species.clone(), mol, false));
             }
         }
@@ -831,6 +834,11 @@ impl Vessel {
         let cp_added = self.entry_cp_j_g_k(&entry) * total_mass_added_g;
         if cp_before + cp_added > 1e-6 {
             self.temperature_k = (self.temperature_k * cp_before + temp_add * cp_added) / (cp_before + cp_added);
+        }
+        // the excess enthalpy of the new mixture against its parts (miscible liquids warm or cool on mixing)
+        if !liquid_added.is_empty() && cp_before + cp_added > 1e-6 {
+            let q = self.mixing_heat_j(&liquid_before, &[&liquid_added], &self.species_mol, self.temperature_k);
+            self.temperature_k += q / (cp_before + cp_added);
         }
 
         self.settle_after_addition();
@@ -914,6 +922,8 @@ impl Vessel {
         }
         let cp_current = self.contents_heat_capacity() + self.glass_heat_capacity();
         let head_before = self.headspace_volume_m3();
+        let liquid_before = self.species_mol.clone();
+        let (portion_aq, portion_org) = (portion.aqueous_mol.clone(), portion.organic_mol.clone());
 
         for (sp, mol) in portion.aqueous_mol {
             *self.species_mol.entry(sp).or_insert(0.0) += mol;
@@ -941,6 +951,9 @@ impl Vessel {
 
         if added_mass > 0.0 && cp_current + cp_added > 1e-6 {
             self.temperature_k = (self.temperature_k * cp_current + portion.temperature_k * cp_added) / (cp_current + cp_added);
+            // heat of mixing of the portion's liquid phases with what was there
+            let q = self.mixing_heat_j(&liquid_before, &[&portion_aq, &portion_org], &self.species_mol, self.temperature_k);
+            self.temperature_k += q / (cp_current + cp_added);
         }
 
         self.settle_after_addition();

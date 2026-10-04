@@ -760,7 +760,12 @@ impl Vessel {
             let mut nu: Vec<(usize, f64)> = Vec::new();
             let mut nu_solv: Vec<(usize, f64)> = Vec::new();
             let mut ok = true;
-            for (r, &c) in &eq.reactants {
+            // sorted by species id: the order of the unknowns (and so of the linear algebra) must not depend on the hash order
+            let mut reactants: Vec<(&String, &f64)> = eq.reactants.iter().collect();
+            reactants.sort_by(|a, b| a.0.cmp(b.0));
+            let mut products: Vec<(&String, &f64)> = eq.products.iter().collect();
+            products.sort_by(|a, b| a.0.cmp(b.0));
+            for (r, &c) in reactants {
                 if r != crate::db::seed::WATER {
                     ok &= amount(self, r) > TINY;
                     nu.push((get_idx(r, &mut names), -c));
@@ -768,7 +773,7 @@ impl Vessel {
                     nu_solv.push((get_idx(r, &mut names), -c));
                 }
             }
-            for (p, &c) in &eq.products {
+            for (p, &c) in products {
                 if p != crate::db::seed::WATER {
                     ok &= amount(self, p) > TINY;
                     nu.push((get_idx(p, &mut names), c));
@@ -804,7 +809,9 @@ impl Vessel {
                 continue;
             }
             let mut nu: Vec<(usize, f64)> = Vec::new();
-            for (ion, &c) in &m.dissolved_products {
+            let mut ions: Vec<(&String, &f64)> = m.dissolved_products.iter().collect();
+            ions.sort_by(|a, b| a.0.cmp(b.0));
+            for (ion, &c) in ions {
                 nu.push((get_idx(ion, &mut names), c));
             }
             let (ln_ksp, dh_j) = Self::mineral_ln_ksp(m, t_k);

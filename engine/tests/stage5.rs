@@ -284,6 +284,8 @@ fn s5_4_water_and_ethanol_mix_with_the_tabulated_excess_volume() {
     let mut v = vessel_at(293.15, 250.0);
     ml(&mut v, "water", 50.0);
     ml(&mut v, "ethanol", 50.0);
+    // the mixing heat warmed the liquid (about 9 K, `mixing.rs`); the tabulated excess volume is at 20 C
+    v.temperature_k = 293.15;
     run(&mut v, 2.0, 0.1);
     let vol = v.snapshot().total_liquid_ml;
     println!("[s5_4] 50 + 50 mL water/ethanol -> {:.2} mL, layers: {}", vol, layer_summary(&v));

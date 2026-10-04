@@ -6,6 +6,11 @@
 use reaction_chamber_engine::chem_db;
 use reaction_chamber_engine::vessel::*;
 
+/// The species store is global and keeps what a vessel derives (ion pairs, oxidised forms of organic species), which later
+/// vessels see as candidates: tests of this file that run vessels at the same time change each other's store mid-run, so
+/// they take turns.
+static STORE_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> f64 {
@@ -136,6 +141,7 @@ fn catalog_ids() -> Vec<(String, bool)> {
 
 #[test]
 fn random_mixtures_keep_every_invariant() {
+    let _turn = STORE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let ids = catalog_ids();
     let n: u64 = std::env::var("AUDIT_N").ok().and_then(|s| s.parse().ok()).unwrap_or(40);
     for seed in 0..n {
@@ -147,12 +153,17 @@ fn random_mixtures_keep_every_invariant() {
 
 #[test]
 fn identical_runs_are_bit_identical() {
+    let _turn = STORE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let ids = catalog_ids();
     let n: u64 = std::env::var("AUDIT_N").ok().and_then(|s| s.parse().ok()).unwrap_or(25);
     let mut bad: Vec<String> = Vec::new();
     for seed in 100..100 + n {
         let sc = make_scenario(seed, &ids);
         let label = format!("seed {} [{}]", seed, sc.doses.iter().map(|d| d.reagent_id.as_str()).collect::<Vec<_>>().join("+"));
+        // The species store is global and keeps what a vessel derives (ion pairs, the oxidised forms of organic species): a
+        // vessel that finds them already registered starts from a richer store than the first one did. The first run warms
+        // the store up; the two compared runs then see the same one and may differ only by hash order.
+        let _warm = run(&sc, false, &label);
         let a = run(&sc, false, &label);
         let b = run(&sc, false, &label);
         if a != b {
@@ -177,6 +188,8 @@ fn identical_runs_are_bit_identical() {
             diff(&digest(&ja), &digest(&jb), "", &mut worst);
             if worst.0 > 0.0 {
                 eprintln!("{}: runs differ, worst relative difference {:e} at {}", label, worst.0, worst.1);
+                eprintln!("  run a: {}\n  run b: {}", digest(&ja), digest(&jb));
+                eprintln!("  run a: {}\n  run b: {}", digest(&ja), digest(&jb));
                 bad.push(format!("{}: {:e} at {}", label, worst.0, worst.1));
             }
         }
@@ -223,6 +236,7 @@ fn diff(a: &serde_json::Value, b: &serde_json::Value, path: &str, worst: &mut (f
 /// Drawing liquid off and pouring it back (a pipette, a pour between vessels) must not create or destroy anything.
 #[test]
 fn draw_off_and_return_conserves_atoms_and_mass() {
+    let _turn = STORE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let ids = catalog_ids();
     let n: u64 = std::env::var("AUDIT_N").ok().and_then(|s| s.parse().ok()).unwrap_or(40);
     for seed in 500..500 + n {
