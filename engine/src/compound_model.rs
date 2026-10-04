@@ -62,6 +62,11 @@ pub struct CompoundRequest {
     /// Standard heat of combustion (kJ/mol, negative = exothermic); gives the enthalpy of formation by Hess's law.
     #[serde(default)]
     pub dh_comb_kj_mol: Option<f64>,
+    /// Physical form of a solid reagent ("piece" | "turnings" | "granules" | "powder", see `solid_forms.rs`). Absent: an
+    /// elemental metal is stocked as granules (bulk metal is lumps, turnings or foil, not a 30 um powder), any other solid
+    /// keeps its own grain size.
+    #[serde(default)]
+    pub solid_form: Option<String>,
     /// Water solubility at ~25 C, g/L.
     #[serde(default)]
     pub solubility_g_per_l: Option<f64>,
@@ -439,7 +444,12 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             }
         }
     };
+    // A weak acid whose dissolved form is its own neutral molecule (acetic acid) is that molecule in every liquid phase it
+    // enters (it partitions, mixes and has a liquid density); its ionisation is the aqueous equilibrium row, not a property
+    // of the compound.
+    let acid_is_molecule = kind == "acid" && species.len() == 1 && (species[0].1 - 1.0).abs() < 1e-9 && ions::species_charge(&species[0].0) == 0;
     let phase_model = match kind {
+        "acid" if acid_is_molecule => "neutral",
         "salt" | "acid" | "base" => "ionic",
         "molecule" => "neutral",
         _ => "inert",
@@ -567,6 +577,10 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         thermo.species = m.solid_species.trim_end_matches("(s)").to_string();
     } else if kind == "molecule" {
         thermo.species = species[0].0.trim_end_matches("(s)").to_string();
+    } else if kind == "acid" && neat_species.is_some() {
+        // a weak acid whose dissolved form is its own neutral molecule (acetic acid): the import describes that molecule's
+        // liquid and solid (density, melting, vapour pressure), so the vessel's molecule model must find it by that key
+        thermo.species = species[0].0.trim_end_matches("(aq)").to_string();
     }
 
     let density_g_ml = if gas_species.is_some() {
@@ -595,7 +609,14 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         by_mass,
         dropper: None,
         inchi_key: req.inchi_key.clone(),
-        solid_form: None,
+        solid_form: if by_mass {
+            req.solid_form.clone().or_else(|| {
+                let single_metal = elems.len() == 1 && elems.keys().all(|e| crate::compound_thermo::is_metal_element(e));
+                single_metal.then(|| "granules".to_string())
+            })
+        } else {
+            None
+        },
         particle_um: None,
     };
     let desc = species.iter().map(|(s, n)| if (*n - 1.0).abs() < 1e-9 { s.clone() } else { format!("{}{}", n, s) }).collect::<Vec<_>>().join(" + ");

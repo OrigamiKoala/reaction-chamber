@@ -457,6 +457,7 @@ export class VesselEffects {
       this.foamTarget = Math.max(0, Math.min(1, snap.foam || 0));
       this.condLevel = Math.max(0, Math.min(1, snap.condensation || 0));
       this.liquid.setBoil(boilVigour(snap.boil_intensity || 0));
+      this.liquid.setSupercritical(!!snap.gas_phase?.supercritical);
       this.glowTarget = snap.burst ? 0 : glowBrightness(snap.temperature_k);
       if (this.glowTarget > 0) {
         const hue = blackbodyHue(snap.temperature_k);
@@ -533,7 +534,10 @@ export class VesselEffects {
         sr += s.rgb[0] * susp;
         sg += s.rgb[1] * susp;
         sb += s.rgb[2] * susp;
-        diam += (s.suspended_diameter_um && s.suspended_diameter_um > 0 ? s.suspended_diameter_um : s.particle_diameter_um) * susp;
+        // the size the cloud is seen at: what is suspended, grown into flocs where the electrolyte makes them (a gel's primary
+        // particles are nanometres; the flocs the engine's settling law uses are what the eye sees)
+        const primary = s.suspended_diameter_um && s.suspended_diameter_um > 0 ? s.suspended_diameter_um : s.particle_diameter_um;
+        diam += Math.max(primary, s.floc_diameter_um ?? 0) * susp;
         vel += (s.settling_velocity_mm_s ?? 0) * susp;
       }
       if (s.kind === 'crystal') {

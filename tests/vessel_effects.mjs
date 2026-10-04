@@ -20,11 +20,12 @@ import { getProfile } from '${web}/src/render/glass_profiles';
 import { LiquidBody } from '${web}/src/render/liquid_material';
 import { VesselEffects } from '${web}/src/render/effects';
 import { createGlassware } from '${web}/src/bench/glassware';
-export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware };
+import { collectedGasTint } from '${web}/src/bench/gas_collection';
+export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, collectedGasTint };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const mod = await import('data:text/javascript;base64,' + Buffer.from(out.outputFiles[0].text).toString('base64'));
-const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware } = mod;
+const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, collectedGasTint } = mod;
 
 const dir = path.join(web, 'src', 'wasm', 'engine');
 const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
@@ -400,6 +401,42 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     for (let i = 0; i < 60; i++) none.tick(1 / 60, i / 60);
     const g2 = none.group.children.find((c) => c.children && c.children.some((k) => k.isInstancedMesh && k.material && k.material.flatShading));
     assert.ok(g2 && !g2.visible, 'no bath');
+  });
+}
+
+// ---------------------------------------------------------------- finite bath, collected gas colour
+{
+  const h = vessel();
+  dose(h, { reagent_id: 'water', volume_ml: 100 });
+  ctl(h, { bath: { temperature_k: 273.15, mass_g: 400, ice_fraction: 0.5 } });
+  run(h, 5);
+  const s0 = snap(h);
+  assert.ok(s0.bath && s0.bath.ice_fraction > 0.3, 'the engine reports a finite bath with ice');
+  const cubesOf = (sn) => {
+    const g = createGlassware({ id: 'vb', name: 'Beaker', type: 'beaker-250', capacityMl: 250, currentVolumeMl: 0, liquidColor: '#ffffff', liquidOpacity: 0.8, temperatureK: 295, isSealed: false, stirring: false, contents: [] });
+    g.applyVisual(sn, 0.05, null);
+    for (let i = 0; i < 90; i++) g.tick(1 / 60, i / 60);
+    const grp = g.group.children.find((c) => c.children && c.children.some((k) => k.isInstancedMesh && k.material && k.material.flatShading));
+    return grp.children.filter((k) => k.isInstancedMesh).reduce((a, k) => a + (k.visible ? k.count : 0), 0);
+  };
+  ok('a bath with ice left shows cubes, a melted one shows none and is drawn as water', () => {
+    const full = cubesOf(s0);
+    const melted = JSON.parse(JSON.stringify(s0));
+    melted.bath.ice_fraction = 0;
+    melted.bath.temperature_k = 285;
+    const some = JSON.parse(JSON.stringify(s0));
+    some.bath.ice_fraction = 0.04;
+    assert.ok(full >= 6, 'cubes ' + full);
+    assert.equal(cubesOf(melted), 0);
+    const f = cubesOf(some);
+    assert.ok(f >= 1 && f < full, `thinned: ${f} of ${full}`);
+  });
+  ok('a collected coloured gas tints the column, a colourless one does not', () => {
+    assert.equal(collectedGasTint([{ rgb: [1, 1, 1], opacity: 0 }]), null);
+    const t = collectedGasTint([{ rgb: [0.8, 0.9, 0.2], opacity: 0.3 }, { opacity: 0 }]);
+    assert.ok(t && t.opacity > 0.25 && /^#[0-9a-f]{6}$/.test(t.hex));
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(t.hex.slice(i, i + 2), 16));
+    assert.ok(b < r && b < g, 'yellow-green: ' + t.hex);
   });
 }
 

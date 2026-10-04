@@ -45,7 +45,8 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   assert.equal(snap(src).sealed, true, 'linking stoppers the flask');
   dose(src, { reagent_id: 'hcl_1m', volume_ml: 30 });
   const mgMol = 0.0035; // 0.085 g
-  dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305 });
+  // (a powder: the test is about collecting the gas, not about how fast a ribbon dissolves)
+  dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305, solid_form: 'powder' });
   let maxP = 0;
   const s = run([src, syr], 150, (all) => (maxP = Math.max(maxP, all[src].pressure_atm)));
   const gs = s[syr].gas;
@@ -104,8 +105,12 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   assert.ok(g.escaped_mol > 0.0005, 'excess escaped');
   // (the escaped gas is a mixture of air and CO2: its CO2 share is unknown, so check what is certain)
   const co2Collected = molOf(g.species, 'CO2(g)');
-  assert.ok(co2Collected + molOf(s[src].gas.species, 'CO2(g)') + carbonInSolution(s[src]) <= total + 0.0003, 'no carbon created');
-  assert.ok(co2Collected + molOf(s[src].gas.species, 'CO2(g)') + carbonInSolution(s[src]) + g.escaped_mol >= total - 0.0003, 'carbon accounted for');
+  // (a grain dissolves from its surface at a rate that does not depend on its size, so the coarse grains of the later doses are
+  // still dissolving: the bicarbonate that is still solid is carbon too)
+  const carbonSolid = s[src].solids.filter((x) => x.species === 'NaHCO3(s)').reduce((a, x) => a + x.mass_g / 84.007, 0);
+  const carbon = co2Collected + molOf(s[src].gas.species, 'CO2(g)') + carbonInSolution(s[src]) + carbonSolid;
+  assert.ok(carbon <= total + 0.0003, 'no carbon created');
+  assert.ok(carbon + g.escaped_mol >= total - 0.0003, 'carbon accounted for');
   assert.equal(s[src].sealed, true, 'connected flask keeps its stopper');
   console.log(`  ok overfilled syringe: ${g.volume_ml.toFixed(1)} mL, ${(g.escaped_mol * 1000).toFixed(1)} mmol escaped`);
   eng.vessel_free(src);

@@ -74,8 +74,11 @@ impl ParticlePopulation {
         if self.mu2 > 0.0 && self.mu3 > 0.0 { (self.mu3 / self.mu2).max(MIN_PARTICLE_M) } else { self.mean_diameter_m() }
     }
 
-    /// Rescales the population to a new solid volume (m3), keeping the particle count (shrinking-core dissolution or
-    /// uniform growth). A population whose volume reaches zero is emptied.
+    /// Rescales the population to a new solid volume (m3). Growth is uniform (every particle keeps its place in the
+    /// distribution, the count is kept). A population that loses volume by dissolving loses it from the *surface*: every
+    /// particle's diameter falls by the same amount (a rate set by the film or the surface step, not by the size), so the
+    /// smallest particles vanish first, the count falls and the distribution narrows towards its large end
+    /// (`dissolve_to_volume`). A population whose volume reaches zero is emptied.
     pub fn scale_to_volume(&mut self, new_volume_m3: f64) {
         let v0 = self.volume_m3();
         if new_volume_m3 <= 1e-30 || v0 <= 1e-30 || self.mu0 <= 0.0 {
@@ -84,10 +87,72 @@ impl ParticlePopulation {
             }
             return;
         }
+        if new_volume_m3 < v0 * (1.0 - 1e-9) {
+            self.dissolve_to_volume(new_volume_m3);
+            return;
+        }
         let k = (new_volume_m3 / v0).cbrt();
         self.mu1 *= k;
         self.mu2 *= k * k;
         self.mu3 *= k * k * k;
+    }
+
+    /// Dissolution to a smaller volume: all diameters shrink by one common amount `delta` (particles smaller than `delta`
+    /// disappear). The distribution is the log-normal closure of the moments (`psd.rs`), integrated on a fixed grid; the
+    /// new moments are the old ones scaled by the integrals of the shrunk distribution, so the volume is met exactly and a
+    /// monodisperse population keeps its count and shrinks uniformly (shrinking core).
+    fn dissolve_to_volume(&mut self, new_volume_m3: f64) {
+        let ln = super::psd::LogNormal::from_population(self);
+        let s = ln.sigma_g.max(1.0).ln();
+        let r = (new_volume_m3 / self.volume_m3()).clamp(0.0, 1.0);
+        if s < 1e-6 {
+            // one size: the shrinking core
+            let k = r.cbrt();
+            self.mu1 *= k;
+            self.mu2 *= k * k;
+            self.mu3 *= k * k * k;
+            return;
+        }
+        // grid in z = ln(d / d_g) / s: weights are the normal density times the cell width
+        const N: usize = 240;
+        let (z0, z1) = (-5.5f64, 5.5f64);
+        let dz = (z1 - z0) / N as f64;
+        let mut d = [0.0f64; N];
+        let mut w = [0.0f64; N];
+        let mut wsum = 0.0;
+        for i in 0..N {
+            let z = z0 + (i as f64 + 0.5) * dz;
+            d[i] = ln.d_g_m * (s * z).exp();
+            w[i] = (-0.5 * z * z).exp();
+            wsum += w[i];
+        }
+        for x in w.iter_mut() {
+            *x /= wsum;
+        }
+        let moment = |delta: f64, k: i32| -> f64 { (0..N).filter(|&i| d[i] > delta).map(|i| w[i] * (d[i] - delta).powi(k)).sum() };
+        let v_ref = moment(0.0, 3);
+        if v_ref <= 0.0 {
+            return;
+        }
+        // bisection on the shrink: the remaining volume fraction falls monotonically from 1 (delta = 0) to 0 (delta = d_max)
+        let (mut lo, mut hi) = (0.0f64, d[N - 1]);
+        for _ in 0..80 {
+            let mid = 0.5 * (lo + hi);
+            if moment(mid, 3) / v_ref > r {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let delta = 0.5 * (lo + hi);
+        let (m0, m1, m2) = (moment(delta, 0) / moment(0.0, 0), moment(delta, 1) / moment(0.0, 1), moment(delta, 2) / moment(0.0, 2));
+        self.mu0 *= m0;
+        self.mu1 *= m1;
+        self.mu2 *= m2;
+        self.mu3 *= r;
+        if self.mu0 < 1e-12 || self.mu3 < 1e-30 {
+            *self = Self::default();
+        }
     }
 
     /// Adds fresh particles of one size.
@@ -167,6 +232,35 @@ mod tests {
         pop.scale_to_volume(v / 8.0);
         assert!((pop.mu0 - n).abs() < 1e-9 * n);
         assert!((pop.mean_diameter_m() - 100e-6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dissolution_removes_the_fines_first() {
+        // a spread population: half of the particles are small
+        let mut pop = ParticlePopulation::from_count_and_diameter(1.0e6, 20e-6);
+        pop.add(1.0e6, 200e-6);
+        let (n0, v0, d0) = (pop.mu0, pop.volume_m3(), pop.mean_diameter_m());
+        // dissolve 40 % of the volume: the 20 um particles lose their size (their volume is 0.1 % of the big ones)
+        pop.scale_to_volume(0.6 * v0);
+        assert!((pop.volume_m3() / (0.6 * v0) - 1.0).abs() < 1e-9, "volume is met exactly");
+        // (the log-normal closure smooths a two-size mixture, so the fall is gentler than the two-size picture's 50 %)
+        assert!(pop.mu0 < 0.9 * n0, "the count falls as the fines vanish: {} of {}", pop.mu0, n0);
+        assert!(pop.mean_diameter_m() > 0.0 && pop.mean_diameter_m() < d0 * 1.0001 + 1e-12);
+        // the moments stay those of a real set of particles (Cauchy-Schwarz)
+        assert!(pop.mu1 * pop.mu1 <= pop.mu0 * pop.mu2 * (1.0 + 1e-9));
+        assert!(pop.mu2 * pop.mu2 <= pop.mu1 * pop.mu3 * (1.0 + 1e-9));
+    }
+
+    #[test]
+    fn growth_keeps_the_count_and_one_size_shrinks_as_a_core() {
+        let mut pop = ParticlePopulation::from_count_and_diameter(1.0e6, 20e-6);
+        pop.add(1.0e6, 200e-6);
+        let (n0, v0) = (pop.mu0, pop.volume_m3());
+        pop.scale_to_volume(1.5 * v0);
+        assert!((pop.mu0 - n0).abs() < 1e-9 * n0, "growth is uniform");
+        let mut mono = ParticlePopulation::from_count_and_diameter(1.0e6, 100e-6);
+        mono.scale_to_volume(0.125 * mono.volume_m3());
+        assert!((mono.mu0 - 1.0e6).abs() < 1.0 && (mono.mean_diameter_m() - 50e-6).abs() < 1e-9);
     }
 
     #[test]
