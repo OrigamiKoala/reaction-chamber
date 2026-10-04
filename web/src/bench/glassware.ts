@@ -586,7 +586,7 @@ export function createGlassware(state: VesselState): VesselBundle {
       if (bath) {
         // the basin stays on the bench; the vessel is in it only while it stands there
         bath.group.position.y = groundY - group.position.y;
-        bath.update(dt, time, bundle.lastSnapshot?.bath_k, lift < 2 && !burst);
+        bath.update(dt, time, bundle.lastSnapshot?.bath?.temperature_k ?? bundle.lastSnapshot?.bath_k, lift < 2 && !burst, bundle.lastSnapshot?.bath?.ice_fraction);
       }
       blob.visible = k > 0.02 && !burst;
       blob.scale.set(blobX * (1 + lift * 0.04), 1, blobZ * (1 + lift * 0.04));

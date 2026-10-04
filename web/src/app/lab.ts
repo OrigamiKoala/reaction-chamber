@@ -12,8 +12,6 @@ export type { LabFlowSink, LabFlowSource } from './flow';
 import { VisualContents, VisualItem, hexToLinear } from './visual_contents';
 import { effectiveThermo } from '../pubchem/parser';
 import { knownReagentColor } from './reagent_colors';
-import { looksLikeMetal } from '../equipment/bottle';
-import { applyPieceMetals } from './piece_metals';
 import { glasswareSpec } from './glassware_catalog';
 import { ReactionClock, ClockInfo } from './reaction_clock';
 import { canReceiveFiltrate, filterMode, filtrateStep, filtrationRateMlS, isFunnelType } from '../bench/filtration_math';
@@ -138,10 +136,6 @@ export class Lab {
     const v = this.vessels.get(id);
     if (!v) return null;
     const snap = this.visual.apply(id, engineSnap, this.ctl(id).stirring);
-    // A metal the user added as a piece (ribbon, turnings, granules) is drawn as pieces; the engine models every solid as a
-    // particle population and reports it as a bed. A metal that formed in the vessel (cemented copper) stays a powder.
-    const pieces = this.pieceMetals.get(id);
-    if (pieces && pieces.size) applyPieceMetals(snap, pieces);
     this.latest.set(id, snap);
     if (this.clock(id).observe(engineSnap)) this.onReactionStarted?.(id, this.clock(id).info(snap.t_sim_s).reason ?? 'Reaction started');
     v.currentVolumeMl = snap.total_liquid_ml;
@@ -400,8 +394,6 @@ export class Lab {
   }
 
   private electroSurfaceY = new Map<string, number>();
-  /** Species of metals added to a vessel as pieces (ribbon, turnings): drawn as pieces, not as the powder bed the engine reports. */
-  private pieceMetals = new Map<string, Set<string>>();
 
   public updateElectroVisuals(id: string) {
     const c = this.ctl(id);
@@ -642,11 +634,6 @@ export class Lab {
     if (!this.vessels.has(vesselId)) throw new Error('That vessel is no longer on the bench.');
     const e = this.engineEntry(item);
     const mode = amountMode(item);
-    if (e && mode === 'g' && looksLikeMetal(e.formula, e.name)) {
-      const set = this.pieceMetals.get(vesselId) ?? new Set<string>();
-      for (const sp of Object.keys(e.composition)) set.add(sp);
-      this.pieceMetals.set(vesselId, set);
-    }
     if (!e && item.kind === 'imported') {
       const b = item.bottle;
       // The engine could not model the formula at all (modelable=false): keep what was added as visible contents
@@ -779,13 +766,6 @@ export class Lab {
     if (!this.vessels.has(src) || !this.vessels.has(tgt) || !(ml > 0)) return;
     const taken = await this.takePortion(src, tgt, ml, opts?.solids ?? true);
     if (!this.vessels.has(tgt)) return;
-    // metal pieces that travel with the portion stay pieces in the target
-    const pieces = this.pieceMetals.get(src);
-    if (pieces && pieces.size && (opts?.solids ?? true)) {
-      const set = this.pieceMetals.get(tgt) ?? new Set<string>();
-      for (const sp of pieces) set.add(sp);
-      this.pieceMetals.set(tgt, set);
-    }
     await this.insertPortion(tgt, taken);
   }
 
@@ -866,7 +846,6 @@ export class Lab {
     await this.sim.removeLiquid(id, 1e5, true);
     this.visual.clear(id);
     this.flammableAdded.delete(id);
-    this.pieceMetals.delete(id);
     await this.sim.fetchSnapshot(id);
   }
 

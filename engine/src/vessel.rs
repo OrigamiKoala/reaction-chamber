@@ -345,7 +345,7 @@ pub struct DoseRequest {
     pub solid_form: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Portion {
     pub volume_ml: f64,
     pub temperature_k: f64,
@@ -355,6 +355,9 @@ pub struct Portion {
     /// The particle populations of the solids drawn off with the liquid (they keep their size).
     #[serde(default)]
     pub particles: HashMap<String, crate::transfer::ParticlePopulation>,
+    /// The physical form (`solid_forms.json`) of the loose-piece solids drawn off: pieces stay pieces in the next vessel.
+    #[serde(default)]
+    pub solid_forms: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -932,6 +935,9 @@ impl Vessel {
             *self.species_mol.entry(sp).or_insert(0.0) += mol;
         }
         for (sp, mol) in portion.solid_mol {
+            if let Some(f) = portion.solid_forms.get(&sp) {
+                self.solid_forms.insert(sp.clone(), f.clone());
+            }
             *self.solid_mol.entry(sp.clone()).or_insert(0.0) += mol;
             *self.initial_solids.entry(sp.clone()).or_insert(0.0) += mol;
             match portion.particles.get(&sp) {
@@ -973,6 +979,7 @@ impl Vessel {
         let total_vol: f64 = vols.iter().sum();
         if total_vol <= 1e-6 {
             return Ok(Portion {
+                solid_forms: HashMap::new(),
                 volume_ml: 0.0,
                 temperature_k: self.temperature_k,
                 aqueous_mol: HashMap::new(),
@@ -1032,7 +1039,8 @@ impl Vessel {
             self.ledger.book_out(sp, *mol);
         }
         self.update_phases();
-        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol, particles: s_pop }
+        let forms: HashMap<String, String> = s_mol.keys().filter_map(|sp| self.solid_forms.get(sp).map(|f| (sp.clone(), f.clone()))).collect();
+        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol, particles: s_pop, solid_forms: forms }
     }
 
     /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first, then the next one, in the order

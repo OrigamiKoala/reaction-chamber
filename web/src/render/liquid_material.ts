@@ -708,6 +708,10 @@ export class LiquidBody {
   public setBoil(intensity: number) {
     this.boil = Math.max(0, Math.min(1, intensity));
   }
+  /** Above a component's critical temperature liquid and gas are one fluid: no meniscus climbs the wall. */
+  public setSupercritical(on: boolean) {
+    this.uniforms.uMeniscus.value = on ? 0 : 0.09;
+  }
   public setGasAgitation(v: number) {
     this.gasAgitation = Math.max(0, Math.min(1, v));
   }

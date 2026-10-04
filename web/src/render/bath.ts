@@ -191,8 +191,12 @@ export class BathVisual {
     for (const m of [this.basinFront, this.waterFront, this.iceFront]) m.renderOrder = base + 8;
   }
 
-  /** `shown`: the vessel stands in the bath (not lifted out); `bathK`: the engine's bath temperature, null = none. */
-  public update(dt: number, time: number, bathK: number | null | undefined, shown: boolean) {
+  /**
+   * `shown`: the vessel stands in the bath (not lifted out); `bathK`: the engine's bath temperature, null = none;
+   * `iceFraction`: the mass fraction of a finite bath that is still ice (`snapshot.bath`), absent for an infinite reservoir
+   * (ice then follows the temperature alone). The cubes thin out and shrink as the ice melts.
+   */
+  public update(dt: number, time: number, bathK: number | null | undefined, shown: boolean, iceFraction?: number) {
     const has = bathVisible(bathK) && shown;
     this.level += ((has ? 1 : 0) - this.level) * Math.min(1, dt * 5);
     if (bathVisible(bathK)) this.bathK = bathK;
@@ -202,7 +206,9 @@ export class BathVisual {
     const k = this.bathK as number;
     this.group.scale.set(1, 0.4 + 0.6 * this.level, 1);
     for (const m of this.basinMats) m.opacity = 0.3 * this.level;
-    const slush = k <= ICE_BATH_MAX_K;
+    const finite = typeof iceFraction === 'number' && Number.isFinite(iceFraction);
+    const iceLeft = finite ? THREE.MathUtils.clamp(iceFraction as number, 0, 1) : 1;
+    const slush = finite ? iceLeft > 0.002 : k <= ICE_BATH_MAX_K;
     // colder water is a deeper, cloudier blue; a bath above the glow threshold would emit (never in a real bath)
     const cold = THREE.MathUtils.clamp((300 - k) / 40, 0, 1);
     const hue = k > 780 ? blackbodyHue(k) : null;
@@ -215,7 +221,9 @@ export class BathVisual {
     this.surfaceMat.opacity = 0.5 * this.level;
 
     // ice: cubes on the camera's side of the vessel are drawn after it, the others before
-    const n = slush ? this.cubes.length : 0;
+    // (a finite bath keeps one cube until its last ice is gone, then fewer and smaller ones as it melts)
+    const share = finite ? Math.min(1, 0.12 + iceLeft * 2.5) : 1;
+    const n = slush && this.cubes.length > 0 ? Math.min(this.cubes.length, Math.max(1, Math.round(this.cubes.length * share))) : 0;
     this.group.updateWorldMatrix(true, false);
     this.camLocal.copy(this.camWorld);
     this.group.worldToLocal(this.camLocal);
@@ -233,7 +241,7 @@ export class BathVisual {
         const bob = Math.sin(time * 0.9 + c.ph) * 0.035;
         pos.set(Math.cos(a) * c.r, this.hWater - c.s * 0.38 + bob, Math.sin(a) * c.r);
         q.setFromEuler(e.set(c.ph * 0.3 + Math.sin(time * 0.3 + c.ph) * 0.1, c.ph + time * 0.04 * c.tumble, Math.cos(time * 0.27 + c.ph) * 0.1));
-        sc.setScalar(c.s * (0.85 + 0.15 * this.level));
+        sc.setScalar(c.s * (0.85 + 0.15 * this.level) * (finite ? 0.55 + 0.45 * Math.min(1, iceLeft * 3) : 1));
         m.compose(pos, q, sc);
         if (pos.x * this.camLocal.x + pos.z * this.camLocal.z > 0) this.iceFront.setMatrixAt(nf++, m);
         else this.iceBack.setMatrixAt(nb++, m);

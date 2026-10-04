@@ -17,6 +17,7 @@ import init, {
   vessel_equilibrate,
   step_all,
   optics_tables_json,
+  electrode_materials,
   vessel_uvvis_scan,
   vessel_nmr_spectrum,
   vessel_ms_spectrum,
@@ -230,6 +231,11 @@ self.onmessage = async (e: MessageEvent) => {
           payload: JSON.parse(res),
           requestId,
         });
+        break;
+      }
+
+      case 'ELECTRODE_MATERIALS': {
+        self.postMessage({ type: 'ELECTRODE_MATERIALS_RESPONSE', payload: electrode_materials(), requestId });
         break;
       }
 

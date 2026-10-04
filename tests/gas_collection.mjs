@@ -45,7 +45,8 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   assert.equal(snap(src).sealed, true, 'linking stoppers the flask');
   dose(src, { reagent_id: 'hcl_1m', volume_ml: 30 });
   const mgMol = 0.0035; // 0.085 g
-  dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305 });
+  // (a powder: the test is about collecting the gas, not about how fast a ribbon dissolves)
+  dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305, solid_form: 'powder' });
   let maxP = 0;
   const s = run([src, syr], 60, (all) => (maxP = Math.max(maxP, all[src].pressure_atm)));
   const gs = s[syr].gas;

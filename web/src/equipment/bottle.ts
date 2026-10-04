@@ -25,6 +25,8 @@ export interface BottleInput {
   form?: 'solid' | 'liquid' | 'solution' | 'gas';
   dropper?: boolean;
   by_mass?: boolean;
+  /** Physical form of a solid ('piece' | 'turnings' | 'granules' | 'powder'), from the engine's reagent entry. */
+  solid_form?: string;
   /** Content colour hint ('#rrggbb'); otherwise guessed generically from formula/name. */
   colorHex?: string;
 }
@@ -236,9 +238,9 @@ export function defaultContentColor(solid: boolean): string {
   return solid ? '#f4f3ef' : '#f2f6f8';
 }
 
-/** True if a formula looks like a bare metal (ribbon / granules visuals). */
-export function looksLikeMetal(formula: string, name = ''): boolean {
-  return /^(Mg|Zn|Al|Fe|Cu|Sn|Pb|Ni|Ca|Na|K|Li)$/.test(formula.trim()) || /ribbon|turnings|granules|wire|foil/i.test(name);
+/** True for the forms the engine keeps as separate pieces (`solid_forms.json`: `loose_pieces`): they are poured and drawn as pieces. */
+export function isLoosePieceForm(form?: string): boolean {
+  return form === 'piece' || form === 'turnings' || form === 'granules';
 }
 
 // ------------------------------------------------------------------ label
@@ -665,6 +667,7 @@ export function entryToBottleInput(entry: ReagentCatalogEntry): BottleInput {
     form: entry.form,
     dropper: entry.dropper,
     by_mass: entry.by_mass,
+    solid_form: entry.solid_form,
   };
 }
 

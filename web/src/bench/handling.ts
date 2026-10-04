@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { VesselBundle } from './glassware';
 import type { BottleAssembly } from '../equipment/bottle';
-import { looksLikeMetal, makePipette } from '../equipment/bottle';
+import { isLoosePieceForm, makePipette } from '../equipment/bottle';
 import type { ReagentShelf } from './shelf';
 import { Animator, DropFall, GasPlume, MetalPieces, PourStream, PowderStream, poseTask } from './animations';
 import {
@@ -603,7 +603,7 @@ export class HandlingController {
     if (a.kind === 'dropper') return 'drops';
     if (a.kind === 'jar') {
       const m = this.host.shelf.getMeta(h.id);
-      return m && looksLikeMetal(m.formula, m.name) && (m.form === 'solid' || !!m.by_mass) ? 'metal' : 'powder';
+      return m && isLoosePieceForm(m.solid_form) && (m.form === 'solid' || !!m.by_mass) ? 'metal' : 'powder';
     }
     // a gas reagent (cylinder / lecture bottle) is released as a plume, not poured as a liquid
     if (this.host.shelf.getMeta(h.id)?.form === 'gas') return 'gas';

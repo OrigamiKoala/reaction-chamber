@@ -172,6 +172,7 @@ fn baso4_mixture(s: f64) -> Vessel {
         organic_mol: HashMap::new(),
         solid_mol: HashMap::new(),
         particles: HashMap::new(),
+        ..Default::default()
     };
     // the portion is electroneutral (Ba+2 + SO4-2), so no spectator ions are needed
     v.add_portion(portion).unwrap();
@@ -304,7 +305,7 @@ fn gate3b_zinc_cements_copper_out_of_copper_sulfate() {
     let mut v = beaker(250.0, 3.5, 298.15);
     ml(&mut v, "water", 50.0);
     grams(&mut v, "s8_cu", 0.2, 200.0);
-    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("Zn+2".to_string(), 0.005), ("SO4-2".to_string(), 0.005)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("Zn+2".to_string(), 0.005), ("SO4-2".to_string(), 0.005)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new(), ..Default::default() }).unwrap();
     run(&mut v, 120.0, 0.5);
     assert!(solid_of(&v, "Zn(s)") < 1e-9, "copper must not reduce zinc ions");
 }
@@ -316,7 +317,7 @@ fn co2_tau(rpm: f64, total_s: f64, dt: f64) -> f64 {
     let mut v = beaker(250.0, 3.5, 298.15);
     ml(&mut v, "water", 100.0);
     v.set_controls(VesselControls { stirring: Some(rpm > 0.0), stir_rpm: Some(rpm), ..Default::default() });
-    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), 0.0035)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+    v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), 0.0035)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new(), ..Default::default() }).unwrap();
     let co2 = |v: &Vessel| v.species_mol.get("CO2(aq)").copied().unwrap_or(0.0) + v.species_mol.get("HCO3-").copied().unwrap_or(0.0);
     let c0 = co2(&v);
     let mut t = 0.0;
@@ -350,7 +351,7 @@ fn gate5_co2_hydration_delays_the_ph_change() {
             ml(&mut v, naoh, base_ml);
         }
         ml(&mut v, "water", 50.0);
-        v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), co2_mol)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new() }).unwrap();
+        v.add_portion(Portion { volume_ml: 0.0, temperature_k: 298.15, aqueous_mol: [("CO2(aq)".to_string(), co2_mol)].into(), organic_mol: HashMap::new(), solid_mol: HashMap::new(), particles: HashMap::new(), ..Default::default() }).unwrap();
         run(&mut v, t, 0.05);
         v.current_ph()
     };

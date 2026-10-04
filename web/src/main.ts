@@ -1,6 +1,7 @@
 // Composition root: wires the 3D bench (BenchScene contract), the WASM simulation and the UI panels.
 import './style.css';
 import { BenchScene } from './bench/scene';
+import { setMaterialLooks } from './equipment/electrochem';
 import { SimController } from './sim/sim_controller';
 import { BottleState, SpeciesRecord } from './types';
 import { effectiveThermo, vaporPressurePoints } from './pubchem/parser';
@@ -264,7 +265,7 @@ async function initApp() {
             if (hex) bench.setBottleContentColor(entry.id, hex);
           });
       } else if (!shelvedImports.has(it.id)) {
-        bench.addBottle(it.bottle, itemPhase(it));
+        bench.addBottle(it.bottle, itemPhase(it), it.model?.entry?.solid_form);
         shelvedImports.add(it.id);
       }
     } catch (err) {
@@ -720,6 +721,15 @@ async function initApp() {
     setOpticsDataVersion(optics.data_version);
   } catch (err) {
     console.warn('[Main] optics tables unavailable', err);
+  }
+  try {
+    setMaterialLooks(await withTimeout(sim.electrodeMaterials(), 20000, 'Loading electrode materials'));
+    // the rods already on the console take the engine's colours
+    const ec = bench.instruments?.electrochem;
+    const pn = ec?.panel;
+    if (ec && pn) ec.setMaterials(pn.anode, pn.cathode);
+  } catch (err) {
+    console.warn('[Main] electrode materials unavailable', err);
   }
   setLoading('Stocking the reagent shelf…');
   try {

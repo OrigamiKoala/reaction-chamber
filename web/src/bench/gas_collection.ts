@@ -361,14 +361,18 @@ export class GasTubes {
     try {
       b.lastSnapshot = snap;
       const vol = Math.max(0, Math.min(g.capacity_ml || b.profile.nominalMl, g.volume_ml));
+      // a coloured gas (chlorine, nitrogen dioxide) tints the column; the engine gives the hue and visibility of the gas
+      // across the vessel's width from its absorption cross-sections (colourless gases keep the neutral look)
+      const tint = collectedGasTint(g.species);
+      const look = (hex: string, opacity: number): [string, number] => (tint && tint.opacity > opacity ? [tint.hex, tint.opacity] : [hex, opacity]);
       if (g.collector === 'syringe') {
         b.setPlungerMl(plungerMl(vol, g.capacity_ml || b.profile.nominalMl));
-        b.liquid.setSimple(vol, '#ffffff', 0);
+        b.liquid.setSimple(vol, ...look('#ffffff', 0));
       } else if (g.collector === 'over_water') {
-        b.liquid.setSimple(vol, '#cfe3f0', 0.22);
+        b.liquid.setSimple(vol, ...look('#cfe3f0', 0.22));
       } else {
         b.setLidVisible(true);
-        b.liquid.setSimple(vol, '#e4edf1', 0.1);
+        b.liquid.setSimple(vol, ...look('#e4edf1', 0.1));
       }
       b.effects.applySnapshot(snap);
     } catch (e) {
@@ -376,4 +380,23 @@ export class GasTubes {
     }
     return true;
   }
+}
+
+/** Hue and visibility of the collected gas: the species' own colours (engine `gas.species[].rgb`, linear sRGB) weighted by how visible each is. */
+export function collectedGasTint(species: readonly { rgb?: readonly number[]; opacity?: number }[]): { hex: string; opacity: number } | null {
+  let w = 0;
+  const acc = [0, 0, 0];
+  for (const s of species) {
+    const o = s.opacity ?? 0;
+    if (!s.rgb || s.rgb.length !== 3 || !(o > 0.01)) continue;
+    w += o;
+    for (let i = 0; i < 3; i++) acc[i] += o * s.rgb[i];
+  }
+  if (!(w > 0.01)) return null;
+  const enc = (v: number) => {
+    const x = Math.min(1, Math.max(0, v / w));
+    return Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055));
+  };
+  const hex = '#' + [0, 1, 2].map((i) => enc(acc[i]).toString(16).padStart(2, '0')).join('');
+  return { hex, opacity: Math.min(0.6, w) };
 }

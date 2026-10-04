@@ -458,6 +458,16 @@ export interface ElectrodeReactionRow {
   e0_v: number;
 }
 
+/** One electrode material of the console (engine `electrode_materials`): colour and density come from the solid's record. */
+export interface ElectrodeMaterialInfo {
+  symbol: string;
+  e0_v?: number | null;
+  inert: boolean;
+  /** Linear-sRGB colour of the bulk metal. */
+  rgb?: [number, number, number] | null;
+  density_g_ml?: number | null;
+}
+
 export interface ElectrodeVisual {
   material: string;
   mass_change_g: number;
@@ -533,6 +543,9 @@ export interface Portion {
   organic_mol: Record<string, number>;
   /** Solids carried over with the slurry (species → mol); suspended fraction goes first. */
   solid_mol: Record<string, number>;
+  /** Particle populations of those solids (they keep their size) and the physical form of the loose-piece ones. */
+  particles?: Record<string, unknown>;
+  solid_forms?: Record<string, string>;
 }
 
 export interface VesselControls {
@@ -582,6 +595,10 @@ export interface ReagentCatalogEntry {
   dropper?: boolean;
   /** InChIKey of the main species (identity; absent for pseudo-reagents such as starch solution). */
   inchi_key?: string;
+  /** Physical form of a solid reagent: 'piece' | 'turnings' | 'granules' | 'powder' (absent = the solid's own grain size). */
+  solid_form?: string;
+  /** Grain size (um) of the reagent's own form, e.g. the thickness of a ribbon. */
+  particle_um?: number;
 }
 
 /** Messages the simulation worker understands (added to the existing PING/WASM_ROUNDTRIP/... set). */
@@ -601,6 +618,7 @@ export type SimRequest =
   | { type: 'VESSEL_EQUILIBRATE'; payload: { handle: number; max_sim_s?: number }; requestId: string }
   | { type: 'STEP_ALL'; payload: { handles: number[]; dt_s: number }; requestId: string }
   | { type: 'OPTICS_TABLES'; payload: {}; requestId: string }
+  | { type: 'ELECTRODE_MATERIALS'; payload: {}; requestId: string }
   | { type: 'UVVIS_SCAN'; payload: { handle: number; layer?: number; nm_min: number; nm_max: number; step_nm: number; path_cm: number }; requestId: string }
   | { type: 'NMR_SPECTRUM'; payload: { handle: number; layer?: number; nucleus: string; solvent: string; scans: number; seed: number }; requestId: string }
   | { type: 'MS_SPECTRUM'; payload: { handle: number; layer?: number; mode: string; seed: number }; requestId: string }
@@ -615,6 +633,8 @@ export interface CompoundRequest {
   id: string;
   name: string;
   formula: string;
+  /** Physical form of a solid reagent ('piece' | 'turnings' | 'granules' | 'powder'); absent: bulk elemental metal is granules. */
+  solid_form?: string;
   smiles?: string;
   /** Standard InChIKey: identity. The engine matches built-in molecules and keys inert compounds on it. */
   inchi_key?: string;

@@ -5,6 +5,7 @@ import {
   VesselControls,
   VesselSnapshot,
   OpticsTables,
+  ElectrodeMaterialInfo,
   ReagentCatalogEntry,
   CompoundRequest,
   CompoundModel,
@@ -62,6 +63,11 @@ export class SimController {
 
   public async getOpticsTables(): Promise<OpticsTables> {
     return this.sendRequest<OpticsTables>('OPTICS_TABLES');
+  }
+
+  /** The electrode materials the console offers, with the colour and density of each solid's record. */
+  public async electrodeMaterials(): Promise<ElectrodeMaterialInfo[]> {
+    return this.sendRequest<ElectrodeMaterialInfo[]>('ELECTRODE_MATERIALS');
   }
 
   /** UV-vis scan of liquid layer `layer` of a vessel (engine `vessel_uvvis_scan`): species absorbance, turbidity, contributors. */

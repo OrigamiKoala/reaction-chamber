@@ -62,6 +62,11 @@ pub struct CompoundRequest {
     /// Standard heat of combustion (kJ/mol, negative = exothermic); gives the enthalpy of formation by Hess's law.
     #[serde(default)]
     pub dh_comb_kj_mol: Option<f64>,
+    /// Physical form of a solid reagent ("piece" | "turnings" | "granules" | "powder", see `solid_forms.rs`). Absent: an
+    /// elemental metal is stocked as granules (bulk metal is lumps, turnings or foil, not a 30 um powder), any other solid
+    /// keeps its own grain size.
+    #[serde(default)]
+    pub solid_form: Option<String>,
     /// Water solubility at ~25 C, g/L.
     #[serde(default)]
     pub solubility_g_per_l: Option<f64>,
@@ -541,7 +546,14 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         by_mass,
         dropper: None,
         inchi_key: req.inchi_key.clone(),
-        solid_form: None,
+        solid_form: if by_mass {
+            req.solid_form.clone().or_else(|| {
+                let single_metal = elems.len() == 1 && elems.keys().all(|e| crate::compound_thermo::is_metal_element(e));
+                single_metal.then(|| "granules".to_string())
+            })
+        } else {
+            None
+        },
         particle_um: None,
     };
     let desc = species.iter().map(|(s, n)| if (*n - 1.0).abs() < 1e-9 { s.clone() } else { format!("{}{}", n, s) }).collect::<Vec<_>>().join(" + ");

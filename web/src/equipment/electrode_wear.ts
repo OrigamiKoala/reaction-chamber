@@ -10,8 +10,10 @@ import { DIP_CM, ELECTRODE_RADIUS } from '../render/electrode_geometry';
 /** Wetted side area of one rod standing `DIP_CM` in the liquid, cm2. */
 export const WETTED_ROD_AREA_CM2 = 2 * Math.PI * ELECTRODE_RADIUS * DIP_CM;
 
-/** Density used for a mass change the engine reports without a deposit record (visual stand-in, g/mL; see ALGORITHM-IMPROVEMENT.md section 7). */
+/** Density used only when neither the deposit's record nor the electrode material's record gives one (visual stand-in, g/mL). */
 const FALLBACK_DENSITY_G_ML = 8;
+
+const usable = (rho: number | null | undefined): rho is number => typeof rho === 'number' && rho > 0.05;
 
 /** A film is opaque once it is a few hundred nanometres thick (copper looks copper from ~0.5 um). */
 const OPAQUE_UM = 0.5;
@@ -34,7 +36,7 @@ export function cathodeLook(v: ElectrodeVisual | undefined): WearLook {
   const dep = v.deposit;
   const mass = dep ? dep.mass_g : Math.max(0, v.mass_change_g);
   if (!(mass > 0)) return NONE;
-  const rho = dep && dep.density_g_ml && dep.density_g_ml > 0.05 ? dep.density_g_ml : FALLBACK_DENSITY_G_ML;
+  const rho = dep && usable(dep.density_g_ml) ? dep.density_g_ml : usable(v.density_g_ml) ? v.density_g_ml : FALLBACK_DENSITY_G_ML;
   const t = (mass / (rho * WETTED_ROD_AREA_CM2)) * 1e4;
   return { thicknessUm: t, coverage: 1 - Math.exp(-t / OPAQUE_UM), shrinkCm: 0, rgb: dep ? dep.rgb : null };
 }
@@ -43,6 +45,6 @@ export function anodeLook(v: ElectrodeVisual | undefined): WearLook {
   if (!v) return NONE;
   const lost = Math.max(0, -v.mass_change_g);
   if (!(lost > 0)) return NONE;
-  const t = (lost / (FALLBACK_DENSITY_G_ML * WETTED_ROD_AREA_CM2)) * 1e4;
+  const t = (lost / ((usable(v.density_g_ml) ? v.density_g_ml : FALLBACK_DENSITY_G_ML) * WETTED_ROD_AREA_CM2)) * 1e4;
   return { thicknessUm: t, coverage: Math.min(0.7, 1 - Math.exp(-t / 2)), shrinkCm: Math.min(ELECTRODE_RADIUS * 0.5, t * 1e-4), rgb: null };
 }
