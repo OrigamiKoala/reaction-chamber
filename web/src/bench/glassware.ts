@@ -14,6 +14,7 @@ import {
 } from '../render/glass_profiles';
 import { createGlassMesh, createSolidMesh, polyGlass } from '../render/glass_material';
 import { LiquidBody } from '../render/liquid_material';
+import { BathVisual } from '../render/bath';
 import { blobShadowTexture, graduationTexture, labelTexture, ringGlowTexture, softSpriteTexture } from '../render/textures';
 import { buildAccessories, buildSupport } from '../render/glass_accessories';
 import { createGenericBottle } from '../equipment/bottle';
@@ -409,6 +410,10 @@ export function createGlassware(state: VesselState): VesselBundle {
   blob.raycast = () => {};
   group.add(blob);
 
+  // the thermal bath the vessel stands in (the engine's `bath_k`): a basin of water, with floating ice for an ice bath
+  const bath = p.support === 'stand' ? null : new BathVisual(footprint, height);
+  if (bath) group.add(bath.group);
+
   // Coloured light the liquid casts onto the worktop (a tinted caustic, thrown away from the key light), only for liquids
   // that actually have a colour; the colour is the one the shader shows, so it follows the engine's spectra.
   const causticMat = new THREE.MeshBasicMaterial({
@@ -578,6 +583,11 @@ export function createGlassware(state: VesselState): VesselBundle {
       blob.position.y = groundY - group.position.y + 0.04;
       ring.position.y = groundY - group.position.y + 0.06;
       const k = Math.max(0, 1 - lift / 25);
+      if (bath) {
+        // the basin stays on the bench; the vessel is in it only while it stands there
+        bath.group.position.y = groundY - group.position.y;
+        bath.update(dt, time, bundle.lastSnapshot?.bath_k, lift < 2 && !burst);
+      }
       blob.visible = k > 0.02 && !burst;
       blob.scale.set(blobX * (1 + lift * 0.04), 1, blobZ * (1 + lift * 0.04));
       // tinted caustic: thrown along the light's horizontal direction by the height of the liquid column
@@ -614,6 +624,7 @@ export function createGlassware(state: VesselState): VesselBundle {
       effects.setRenderOrderBase(base);
       ring.renderOrder = base;
       blob.renderOrder = base;
+      bath?.setRenderOrder(base);
     },
 
     setGroundY: (y: number) => {
@@ -674,6 +685,7 @@ export function createGlassware(state: VesselState): VesselBundle {
     dispose: () => {
       liquid.dispose();
       effects.dispose();
+      bath?.dispose();
       ringMat.dispose();
       for (const m of bandMats) m.dispose();
       proxyGeo.dispose();

@@ -31,7 +31,7 @@ fn ensure_stage9_reagents() {
         label: "Ethyl Acetate".to_string(),
         by_mass: false,
         dropper: None,
-        inchi_key: Some("XEKOWRVHYACXOJ-UHFFFAOYSA-N".to_string()),
+        inchi_key: Some("XEKOWRVHYACXOJ-UHFFFAOYSA-N".to_string()), solid_form: None, particle_um: None,
     });
 
     let mut comp_etbr = HashMap::new();
@@ -51,7 +51,7 @@ fn ensure_stage9_reagents() {
         label: "Bromoethane".to_string(),
         by_mass: false,
         dropper: None,
-        inchi_key: Some("RDHPKYGYEGBPIA-UHFFFAOYSA-N".to_string()),
+        inchi_key: Some("RDHPKYGYEGBPIA-UHFFFAOYSA-N".to_string()), solid_form: None, particle_um: None,
     });
 }
 
@@ -114,7 +114,7 @@ fn test_gate1_ethyl_acetate_saponification() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(298.15),
+        temperature_k: Some(298.15), solid_form: None,
     }).unwrap();
 
     vessel.dose(DoseRequest {
@@ -122,7 +122,7 @@ fn test_gate1_ethyl_acetate_saponification() {
         volume_ml: Some(10.0), // 0.010 mol OH-
         mass_g: None,
         drops: None,
-        temperature_k: Some(298.15),
+        temperature_k: Some(298.15), solid_form: None,
     }).unwrap();
 
     vessel.dose(DoseRequest {
@@ -130,7 +130,7 @@ fn test_gate1_ethyl_acetate_saponification() {
         volume_ml: Some(1.0), // ~0.0102 mol ethyl acetate
         mass_g: None,
         drops: None,
-        temperature_k: Some(298.15),
+        temperature_k: Some(298.15), solid_form: None,
     }).unwrap();
 
     // Verify saponification reaction was registered in vessel

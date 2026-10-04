@@ -48,7 +48,8 @@ const SUP: Record<string, string> = { '0': '⁰', '1': '¹', '2': '²', '3': '³
  */
 export function prettyFormula(f: string): string {
   if (!f) return '';
-  let core = f;
+  // isomers share a formula and are told apart by an internal `#HASH` suffix of the engine id ("C6H14#VLKZOEOY(g)"): never shown
+  let core = f.replace(/#[A-Za-z0-9]+/, '');
   let phase = '';
   const ph = core.match(/\((s|l|g|aq)\)$/);
   if (ph) {

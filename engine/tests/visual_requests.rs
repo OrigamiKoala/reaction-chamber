@@ -31,7 +31,7 @@ fn test_v1_v2_v3_solid_morphology_volume_and_floating() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // Directly insert solid ice (H2O(s)) with density ~0.917 g/mL
@@ -64,7 +64,7 @@ fn test_v4_metal_pieces_excluded_from_turbidity() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // Add copper metal granules/pieces: diameter 500 um (>= 200 um)
@@ -125,7 +125,7 @@ fn test_v6_v7_electrolysis_budget_and_electrode_visuals() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     // Add NaCl 0.1 M
     v.species_mol.insert("Na+".into(), 0.01);
@@ -164,7 +164,7 @@ fn test_v6_v7_electrolysis_budget_and_electrode_visuals() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     v_cu.species_mol.insert("Cu+2".into(), 0.01);
     v_cu.species_mol.insert("SO4-2".into(), 0.01);
@@ -196,7 +196,7 @@ fn test_v8_liquid_layer_species_and_name_always_populated() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let snap = v.snapshot();
@@ -221,7 +221,7 @@ fn test_v9_pure_water_baseline_absorbance() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let snap = v.snapshot();
@@ -280,7 +280,7 @@ fn test_v12_boil_vapour_origin_and_unclamped_intensity() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(375.0),
+        temperature_k: Some(375.0), solid_form: None,
     }).unwrap();
 
     // Set heat input to vigorous boil

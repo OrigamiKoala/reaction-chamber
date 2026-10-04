@@ -131,6 +131,11 @@ pub struct SolidVisual {
     /// Total particle surface, cm2.
     #[serde(default)]
     pub surface_area_cm2: f64,
+    /// Mass-weighted mean size (um) of what the particles settle as in this liquid: the primary size, grown into flocs where
+    /// the electrolyte is at or beyond the critical coagulation concentration (Schulze-Hardy, `transfer/settling.rs`). A
+    /// nanometre-scale hydroxide sol (`particle_diameter_um` of a few nm) has a floc size of micrometres once salted.
+    #[serde(default)]
+    pub floc_diameter_um: f64,
 }
 
 fn default_solid_morphology() -> String {
@@ -272,6 +277,9 @@ pub struct VesselSnapshot {
     pub temperature_k: f64,
     pub room_k: f64,
     pub bath_k: Option<f64>,
+    /// The bath as an object (finite mass, ice fraction) when the controls gave one; `bath_k` alone is an infinite reservoir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bath: Option<crate::bath::BathVisual>,
     pub pressure_atm: f64,
     pub sealed: bool,
     pub burst: bool,
@@ -331,6 +339,10 @@ pub struct DoseRequest {
     pub mass_g: Option<f64>,
     pub drops: Option<f64>,
     pub temperature_k: Option<f64>,
+    /// Physical form of a solid reagent (`piece`, `turnings`, `granules`, `powder`); absent = the catalog entry's form, else
+    /// the solid's own grain size. The form sets the starting grain size and whether the solid is a bed or loose pieces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solid_form: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -352,6 +364,9 @@ pub struct VesselControls {
     pub stir_rpm: Option<f64>,
     pub sealed: Option<bool>,
     pub bath_k: Option<Option<f64>>,
+    /// A finite bath with mass and ice (`Some(Some(spec))`) or none (`Some(None)`); replaces `bath_k`'s infinite reservoir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bath: Option<Option<crate::bath::BathSpec>>,
     /// Thermal conductance (W/K) between the vessel and its bath; absent = from the vessel's geometry and the wall
     /// (`heat_transfer::bath_coupling_w_per_k`). A thermostatted jacket or a vigorously stirred slurry bath couples harder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -392,6 +407,8 @@ pub struct Vessel {
     pub temperature_k: f64,
     pub room_k: f64,
     pub bath_k: Option<f64>,
+    /// The finite bath, when the controls gave one (`VesselControls::bath`): its temperature drives `bath_k`.
+    pub bath: Option<crate::bath::BathState>,
     pub pressure_atm: f64,
     pub sealed: bool,
     pub burst: bool,
@@ -402,6 +419,11 @@ pub struct Vessel {
     pub extra_liquids: Vec<HashMap<String, f64>>,
     pub solid_mol: HashMap<String, f64>,
     pub initial_solids: HashMap<String, f64>,
+    /// Moles of each solid that formed from the vessel's own liquid (ice that froze in the beaker, a crystal cake) as opposed
+    /// to what was added as a solid: a frozen liquid is cast to the vessel (a monolith), added pieces are not.
+    pub solid_cast_mol: HashMap<String, f64>,
+    /// The physical form a solid was dosed in (`solid_forms.json`: piece, turnings, granules, powder).
+    pub solid_forms: HashMap<String, String>,
     /// The closed gas inventory of a sealed vessel: air captured at sealing, the vapour of its liquids (species id
     /// "X(g)") and evolved gas, all one gas phase. Empty for an open vessel, whose gas phase is the atmosphere.
     pub headspace_gas_mol: HashMap<String, f64>,
@@ -498,6 +520,7 @@ impl Vessel {
             temperature_k: temp_k,
             room_k,
             bath_k: None,
+            bath: None,
             pressure_atm: 1.0,
             sealed,
             burst: false,
@@ -506,6 +529,8 @@ impl Vessel {
             extra_liquids: Vec::new(),
             solid_mol: HashMap::new(),
             initial_solids: HashMap::new(),
+            solid_cast_mol: HashMap::new(),
+            solid_forms: HashMap::new(),
             headspace_gas_mol: HashMap::new(),
             atmosphere: Default::default(),
             vle_cache: RefCell::new(Default::default()),
@@ -640,6 +665,9 @@ impl Vessel {
         }
         self.network_cap_reached = cap;
         self.network_edge = edge;
+        // oxidised forms of the organic species present become candidates of the redox discovery
+        let present: Vec<String> = (0..(1 + self.extra_liquids.len())).flat_map(|p| self.liquid_phase_map(p).iter().filter(|(_, &n)| n > 1e-12).map(|(k, _)| k.clone()).collect::<Vec<_>>()).collect();
+        crate::network_generator::register_redox_partners(&present);
     }
 
     /// The molecular map of liquid phase `p` (0 = primary).
@@ -756,7 +784,19 @@ impl Vessel {
                 if species.ends_with("(s)") {
                     *self.solid_mol.entry(species.clone()).or_insert(0.0) += mol;
                     *self.initial_solids.entry(species.clone()).or_insert(0.0) += mol;
-                    self.add_solid_particles(species, mol, override_diameter_um.map(|u| u * 1e-6));
+                    // the form the solid was added in: its grain size (unless the caller set one) and its morphology
+                    let form = dose.solid_form.clone().or_else(|| entry.solid_form.clone());
+                    // the reagent's own grain size belongs to its own form: another form asked for gets that form's size
+                    let own_um = if dose.solid_form.is_none() || dose.solid_form == entry.solid_form { entry.particle_um } else { None };
+                    let form_um = form.as_deref().and_then(|f| crate::solid_forms::form_diameter_um(f, own_um));
+                    if let Some(f) = &form {
+                        if crate::solid_forms::is_loose_pieces(f) {
+                            self.solid_forms.insert(species.clone(), f.clone());
+                        } else {
+                            self.solid_forms.remove(species);
+                        }
+                    }
+                    self.add_solid_particles(species, mol, override_diameter_um.or(form_um).map(|u| u * 1e-6));
                 } else {
                     // Non-solid components of a solid reagent (water of crystallisation, instantly dissolving
                     // ions of multi-ion salts) go straight into solution.
@@ -1048,8 +1088,23 @@ impl Vessel {
             }
         }
         if let Some(b) = controls.bath_k {
+            // an infinite reservoir at a fixed temperature replaces any finite bath
+            self.bath = None;
             self.bath_k = b;
             self.controls.bath_k = Some(b);
+        }
+        if let Some(spec) = &controls.bath {
+            match spec {
+                Some(sp) => {
+                    let state = crate::bath::BathState::new(sp);
+                    self.bath_k = Some(state.t_k);
+                    self.bath = Some(state);
+                }
+                None => {
+                    self.bath = None;
+                    self.bath_k = None;
+                }
+            }
         }
         if let Some(g) = controls.bath_coupling_w_k {
             self.controls.bath_coupling_w_k = Some(g);
@@ -1436,13 +1491,26 @@ impl Vessel {
         // External heater / hot plate
         let heater_w = self.controls.heater_w.unwrap_or(0.0);
         let burner_w = self.controls.burner_w.unwrap_or(0.0);
-        external_j += (heater_w + burner_w) * dt_s;
+        // a hot plate passes on what its surface temperature allows (`heat_transfer::hot_plate_heat_w`): the knob sets the
+        // power, the plate top cannot exceed its limit, so a vessel emptied by boiling does not run away to 1300 K
+        let plate_w = crate::heat_transfer::hot_plate_heat_w(heater_w, self.temperature_k, self.room_k, self.config.inner_radius_cm / 100.0);
+        external_j += (plate_w + burner_w) * dt_s;
 
         // Thermal bath coupling: liquid film, glass wall and bath film in series over the wetted wall and base
         if let Some(t_bath) = self.bath_k {
             let r_m = self.config.inner_radius_cm / 100.0;
             let k_bath = self.controls.bath_coupling_w_k.unwrap_or_else(|| crate::heat_transfer::bath_coupling_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.stir_rpm() > 0.0));
-            external_j += k_bath * (t_bath - self.temperature_k) * dt_s;
+            let q_into_vessel_w = k_bath * (t_bath - self.temperature_k);
+            external_j += q_into_vessel_w * dt_s;
+            // a finite bath pays for it: what the vessel takes leaves the bath's ice and water, the room warms or cools the
+            // bath through its open surface and walls
+            if let Some(b) = &mut self.bath {
+                let r_bath = 1.75 * r_m;
+                let volume_ml = (b.mass_g() / 0.998).max(1.0);
+                let g_room = crate::heat_transfer::ambient_loss_w_per_k(r_bath, volume_ml * 1.25, volume_ml, b.t_k, self.room_k, false).max(0.5);
+                b.step(q_into_vessel_w, g_room, self.room_k, dt_s);
+                self.bath_k = Some(b.t_k);
+            }
         }
 
         // Loss to the room: natural convection and radiation from the wall, conduction through the base (the coefficient
@@ -1564,14 +1632,7 @@ impl Vessel {
 
             let pop = self.particle_populations.get(sp);
             let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
-            let is_ice = self.solid_is_frozen_liquid(sp);
-            let morphology = if props.kind == SolidKind::Metal && d_um >= 200.0 {
-                "pieces".to_string()
-            } else if is_ice {
-                if total_liq_ml <= 0.001 { "monolith".to_string() } else { "pieces".to_string() }
-            } else {
-                "bed".to_string()
-            };
+            let morphology = self.solid_morphology(sp, &props, d_um).to_string();
             let settled_vol = if morphology == "bed" {
                 volume_ml * 1.6
             } else {
@@ -1606,7 +1667,8 @@ impl Vessel {
                 (if wsum > 1e-12 { vsum / wsum } else { 0.0 }, pop.map_or(0.0, |p| p.surface_area_m2() * 1e4))
             };
 
-            let (suspended_fraction, suspended_diameter_um) = if props.kind == SolidKind::Metal && d_um >= 200.0 {
+            // only a bed of grains in a liquid can be suspended: pieces and monoliths never are, and nothing is without a liquid
+            let (suspended_fraction, suspended_diameter_um) = if morphology != "bed" || layers.is_empty() {
                 (0.0, 0.0)
             } else {
                 (
@@ -1636,6 +1698,7 @@ impl Vessel {
                 floating
             };
 
+            let floc_diameter_um = self.floc_diameter_m(&props, &view) * 1e6;
             solids.push(SolidVisual {
                 species: sp.clone(),
                 name: props.name.clone(),
@@ -1657,6 +1720,7 @@ impl Vessel {
                 remaining_fraction: Some(rem_frac),
                 settling_velocity_mm_s: settle_mm_s,
                 surface_area_cm2: area_cm2,
+                floc_diameter_um,
             });
         }
 
@@ -1815,6 +1879,7 @@ impl Vessel {
             temperature_k: self.temperature_k,
             room_k: self.room_k,
             bath_k: self.bath_k,
+            bath: self.bath.as_ref().map(|b| b.visual()),
             pressure_atm: self.pressure_atm,
             sealed: self.sealed,
             burst: self.burst,
@@ -2078,6 +2143,23 @@ impl Vessel {
         sum.abs()
     }
 
+    /// What a solid is in the vessel: `monolith` (a frozen liquid cast to the vessel), `pieces` (a solid dosed in a loose form,
+    /// a large metal grain, ice that was added), or `bed` (grains that settle or stay suspended).
+    pub(crate) fn solid_morphology(&self, sp: &str, props: &crate::vessel_ext::SolidProps, d_um: f64) -> &'static str {
+        let mol = self.solid_mol.get(sp).copied().unwrap_or(0.0);
+        let cast_fraction = (self.solid_cast_mol.get(sp).copied().unwrap_or(0.0) / mol.max(1e-300)).clamp(0.0, 1.0);
+        let is_ice = self.solid_is_frozen_liquid(sp);
+        if is_ice && cast_fraction >= 0.5 {
+            "monolith"
+        } else if self.solid_forms.contains_key(sp) || (props.kind == SolidKind::Metal && d_um >= 200.0) || (is_ice && self.total_liquid_volume_ml() > 0.001) {
+            "pieces"
+        } else if is_ice {
+            "monolith"
+        } else {
+            "bed"
+        }
+    }
+
     /// Extinction (1/cm) and single-scattering albedo per bin of the suspended solids in a medium of index `n_medium`: every
     /// size class of every solid is a Mie / Rayleigh-Gans population with the solid's own refractive index and absorption.
     /// Solids are summed in sorted order, so the result never depends on hash order.
@@ -2100,7 +2182,8 @@ impl Vessel {
             let props = self.solid_props(sp);
             let pop = self.particle_populations.get(sp);
             let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
-            if props.kind == SolidKind::Metal && d_um >= 200.0 {
+            // loose pieces and cast masses do not scatter like a slurry
+            if self.solid_morphology(sp, &props, d_um) != "bed" {
                 continue;
             }
             let thermo = chem_db::get_species_thermo(sp);

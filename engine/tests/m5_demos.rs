@@ -24,7 +24,7 @@ fn test_m5_demo1_copper_ammonia_complex() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let snap1 = v.snapshot();
@@ -39,7 +39,7 @@ fn test_m5_demo1_copper_ammonia_complex() {
         volume_ml: None,
         mass_g: None,
         drops: Some(1.0),
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     let _snap2 = v.snapshot();
     let cu_oh2 = *v.solid_mol.get("Cu(OH)2(s)").unwrap_or(&0.0);
@@ -52,7 +52,7 @@ fn test_m5_demo1_copper_ammonia_complex() {
         volume_ml: Some(20.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     // (Stage 8: the precipitate dissolves at the rate its surface delivers it, not at the instant of the dose)
     for _ in 0..240 {
@@ -81,7 +81,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // 3 drops phenolphthalein
@@ -90,7 +90,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
         volume_ml: None,
         mass_g: None,
         drops: Some(3.0),
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let init_t = v.temperature_k;
@@ -105,7 +105,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
         volume_ml: Some(24.5),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     let snap_sub = v.snapshot();
     assert!(snap_sub.ph.unwrap() < 7.0, "Sub-equivalence remains acidic");
@@ -116,7 +116,7 @@ fn test_m5_demo2_phenolphthalein_titration() {
         volume_ml: Some(0.6),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     let snap_end = v.snapshot();
     let ph_end = snap_end.ph.unwrap();
@@ -139,7 +139,7 @@ fn test_m5_demo3_baking_soda_vinegar_open_and_sealed() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let init_t = v_open.temperature_k;
@@ -148,7 +148,7 @@ fn test_m5_demo3_baking_soda_vinegar_open_and_sealed() {
         volume_ml: None,
         mass_g: Some(5.0),
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // Simulate 20 seconds
@@ -181,7 +181,7 @@ fn test_m5_demo3_baking_soda_vinegar_open_and_sealed() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     v_sealed.dose(DoseRequest {
@@ -189,7 +189,7 @@ fn test_m5_demo3_baking_soda_vinegar_open_and_sealed() {
         volume_ml: None,
         mass_g: Some(5.0),
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let mut stopper_popped = false;
@@ -214,7 +214,7 @@ fn test_m5_demo4_catalysed_h2o2_decomposition() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let t_init = v.temperature_k;
@@ -231,7 +231,7 @@ fn test_m5_demo4_catalysed_h2o2_decomposition() {
         volume_ml: None,
         mass_g: Some(0.5),
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // Run for 40 seconds
@@ -255,7 +255,7 @@ fn test_m5_demo5_agcl_precipitation() {
         volume_ml: Some(10.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // 10 mL 0.10 M NaCl (0.0010 mol Cl-)
@@ -264,7 +264,7 @@ fn test_m5_demo5_agcl_precipitation() {
         volume_ml: Some(10.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let snap = v.snapshot();
@@ -278,7 +278,7 @@ fn test_m5_demo5_agcl_precipitation() {
         volume_ml: Some(10.0), // Ksp/K_f give full dissolution from ~10 mL of 2 M NH3
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let agcl_after_nh3 = *v.solid_mol.get("AgCl(s)").unwrap_or(&0.0);
@@ -297,7 +297,7 @@ fn test_m5_demo6_cobalt_chloride_equilibrium() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // At room temp (22 °C): both pink and blue forms present
@@ -330,7 +330,7 @@ fn test_m5_demo7_iodine_clock() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(293.15),
+        temperature_k: Some(293.15), solid_form: None,
     }).unwrap();
 
     // KI 0.05 M (25 mL)
@@ -339,7 +339,7 @@ fn test_m5_demo7_iodine_clock() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(293.15),
+        temperature_k: Some(293.15), solid_form: None,
     }).unwrap();
 
     // Thiosulfate 0.002 M (25 mL)
@@ -348,7 +348,7 @@ fn test_m5_demo7_iodine_clock() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(293.15),
+        temperature_k: Some(293.15), solid_form: None,
     }).unwrap();
 
     // Starch 1%
@@ -357,7 +357,7 @@ fn test_m5_demo7_iodine_clock() {
         volume_ml: Some(2.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(293.15),
+        temperature_k: Some(293.15), solid_form: None,
     }).unwrap();
 
     let mut t_switch_20 = 0.0;
@@ -383,7 +383,7 @@ fn test_m5_demo8_iron_thiocyanate_le_chatelier() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // 25 mL 0.1 M KSCN
@@ -392,7 +392,7 @@ fn test_m5_demo8_iron_thiocyanate_le_chatelier() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let complex1 = *v.species_mol.get("Fe(SCN)+2").unwrap_or(&0.0);
@@ -404,7 +404,7 @@ fn test_m5_demo8_iron_thiocyanate_le_chatelier() {
         volume_ml: Some(10.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     let complex2 = *v.species_mol.get("Fe(SCN)+2").unwrap_or(&0.0);
     assert!(complex2 > complex1, "Adding Fe3+ shifts equilibrium to more complex (Le Chatelier)");
@@ -421,7 +421,7 @@ fn test_m5_demo9_neutralisation_calorimetry() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(295.15),
+        temperature_k: Some(295.15), solid_form: None,
     }).unwrap();
 
     // 50 mL 1.0 M NaOH
@@ -430,7 +430,7 @@ fn test_m5_demo9_neutralisation_calorimetry() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(295.15),
+        temperature_k: Some(295.15), solid_form: None,
     }).unwrap();
 
     let delta_t = v.temperature_k - 295.15;
@@ -448,7 +448,7 @@ fn test_m5_demo10_water_heating_boiling_steam() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(295.15),
+        temperature_k: Some(295.15), solid_form: None,
     }).unwrap();
 
     // 600 W heater
@@ -485,7 +485,7 @@ fn test_m5_demo11_ethanol_combustion() {
         volume_ml: Some(20.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(295.15),
+        temperature_k: Some(295.15), solid_form: None,
     }).unwrap();
 
     // Igniter held at vessel
@@ -515,7 +515,7 @@ fn test_m5_demo12_mg_acid_reaction() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: Some(295.15),
+        temperature_k: Some(295.15), solid_form: None,
     }).unwrap();
 
     let t_init = v.temperature_k;
@@ -526,7 +526,7 @@ fn test_m5_demo12_mg_acid_reaction() {
         volume_ml: None,
         mass_g: Some(0.2),
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     for _ in 0..30 {

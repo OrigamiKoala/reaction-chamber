@@ -423,3 +423,105 @@ Known limits of the new pieces: a soft cation can still precipitate its hydroxid
 **Test infrastructure.** The multi-minute test runs were partly a *deadlock*: the species store was behind a `std::sync::RwLock`, which blocks new readers while a writer waits, and the engine takes nested read guards (e.g. `henry_species` held one across `try_thermo_state`), so a parallel test registering a species hung every thread (load 0; found with `gdb -p <pid> -batch -ex "thread apply all bt"`). `db/lock.rs` (`StoreLock`) lets readers in whenever no writer is active and panics on a write request while the thread holds a guard of the same lock. The other cost was LTO re-linking for each of the 30 test binaries: `cargo rtest` (profile `release-test`: same opt-level, no fat LTO) builds cold in 1 min instead of 4 min 45 s with identical results; the full suite then runs in about 1 min. The 50-species benchmark gate times five batches and takes the best, so CPU contention cannot fail it.
 
 **Still open** (carried forward): E5 (ionic equilibria and ion transfer per phase), organic redox data (`k_self` rows) and templates for carbonyl addition / aldol / alcohol oxidation / electrophilic aromatic substitution, mixing heats (UNIFAC gives the wrong sign for water + ethanol), MS validation against a database, 13C shift accuracy, nothing verified in a browser.
+
+
+### 6.6 Fifth pass (2026-10-04): the "still open" list of 6.5, organic templates and organic redox
+
+Gates: `engine/tests/open_items_d.rs` (7), `reaction_templates.rs` unit tests, the rest of `cargo rtest` (see "Status of the run" below).
+
+| Item | Status | What was done / what is left |
+|---|---|---|
+| Carbonyl addition templates | **done (data)** | `data/reaction_templates.json` gained `carbonyl_hydration` (formaldehyde / aldehyde / ketone rule rows, neutral / acid / base variants), `hemiacetal_formation`, `carbinolamine_formation`, `imine_formation` (carbinolamine dehydration). Acid derivatives are excluded by structure (a carbonyl carbon with a heteroatom is no ketone); the OH / NH of a hydrate, hemiacetal or carbinolamine is not a nucleophile (`[OX2;H1][CX4][OX2,NX3]` forbid), which stops oligomer chains |
+| Aldol | **done (data)** | `aldol_addition` (base catalysis, OH- first order, donor / acceptor rules by aldehyde / ketone) and `aldol_dehydration` (E1cB, acid variant) |
+| Electrophilic aromatic substitution | **done** | `eas_halogenation` (Cl2 / Br2 / I2) and `eas_nitration` (nitrate, H+ squared). New mechanism: a template modifier may carry a **Hammett-Brown relation** (`hammett: {rho, reactant, center, ortho_steric}`): the substituents of the ring (classified by the pKa module's group perception, `pka_structure::ring_sigma_plus`, constants of `data/hammett_plus.json`, sigma+ for ortho / para, sigma_m for meta) shift the activation energy so that log k/k0 = rho sum sigma+ at 298 K, with a steric cost per ortho substituent. Orientation emerges per ring position (phenol: o / p fast, m 1e6 slower). A ring with an unlisted substituent or a five-membered heteroaromatic gets no rate. Base rates are per ring position (benzene / 6) and per X-X match; k0 values are class estimates |
+| Acyl substitution | **done (data)** | `acyl_halide_substitution`, `anhydride_substitution` (water, alcohol, amine nucleophiles) |
+| Aromaticity perception in the generator | **fixed** | PubChem writes benzene as `C1=CC=CC=C1`; templates read it as an alkene. `resolve_molecule` now perceives aromaticity (`Molecule::perceived`: Hueckel perception that keeps implicit hydrogens re-derivable, unlike `aromatized`) |
+| Thermodynamic screening of the expansion | **new** | A candidate enters the core only by its **net** flux `k_f prod c (1 - Q/K)` (K from data; no K = irreversible): the hydrate of a hydrate, an adduct with K 1e-15, no longer seed growth. Plus a heavy-atom cap on products (`max(20, 2 x the largest starting species)`). Without these the first aldol / hemiacetal templates ran the generator into hundreds of oligomers (9 minutes) |
+| Benson rows | **added** | CO-(H)2, C-(O)2(H)2, C-(O)2(C)(H), C-(O)2(C)2 (acetals, gem-diols), CO-(Cd)(H) / (C), Cd-(CO)(H) / (C) (enones), N_I-(C), N_I-(H) (imines), C-(O)(N)(C)(H) / (H)2 (carbinolamines, interpolated). Imine nitrogens and C=N carbons are now covered. Effect: acetaldehyde hydration K = 9 (measured 1.06; Joback alone gave 3e-5 with dH +44 kJ). **Known weakness:** ketone hydrates come out with K of order 1 (measured 1e-3); the aqueous state chain (Trouton / hydration groups) carries 10-20 kJ/mol errors |
+| Organic redox | **done (class rates)** | Templates with a `redox` entry are oxidation half-reactions (primary alcohol -> aldehyde, secondary alcohol -> ketone, aldehyde + water -> acid): no kinetic reaction, but their products are registered in the species store (`register_redox_partners`, called by `update_network`, closure depth 3) so the Gibbs-driven discovery has partners, and `gem/rates.rs::self_exchange_k` returns the template's rate constant for a couple the templates relate (`class_self_exchange_k`). The value is a **rate-scale constant** (1e-22 M-1 s-1, Speculative): the Marcus cross relation against permanganate is saturated, so it is calibrated to acidic permanganate + ethanol / 2-propanol k of 0.2 / 0.6 M-1 s-1; tert-butanol has no oxidised form; nothing is oxidised by dissolved O2. Dichromate stays inert: no Cr(III) species in the seed and Cr is not labile |
+| Electrode channels | **changed** | Half-reactions that change the oxygen count of a non-labile element (carbonate -> alcohol, sulfate -> sulfide, nitrate -> ammonia) are no longer channels of the cell (`is_bond_rearranging`): they carried nothing and made the cell depend on which species the store held (a determinism test failure) |
+| Complex species records | **added** | `ensure_complex_record`: a complex / ion pair that only a K row describes (MgOH+, CuSO4 pair ...) gets a species record (dfG from the reactants and log K, dfH from the row's dH, Cp additive; Estimated), so the energy audit and thermo lookups cover it |
+| E5 per-phase ionic equilibria | **open** | unchanged |
+| Mixing heats (water + ethanol) | **open** | unchanged: no process books the heat of mixing of miscible liquids; UNIFAC (original, VLE-fitted) gives the wrong sign. Plan: measured excess enthalpies as Redlich-Kister rows by InChIKey pair with a residual correction of UNIFAC, and an `H^E` term in the vessel enthalpy state |
+| MS validation, 13C accuracy | **open** | unchanged (no database available offline) |
+
+Known issues of this pass: `open_items_c` (`rate_rules_follow_the_solvent_class`, `edge_candidates_are_promoted_when_the_solution_changes`) failed once each in about one of three parallel runs and passes alone: a race on the global species store (registrations by parallel tests while the generator resolves species) that predates this pass but became visible; not yet traced. Tier of every new rate: Estimated (recalled literature order of magnitude, sources on each rule); the organic redox constant is Speculative.
+
+
+---
+
+## 7. Visual layer, second pass (2026-10-04): what the renderer now draws, what it still has to guess
+
+Method: a probe harness feeds REAL engine snapshots (built WASM) through the vessel visuals (`tests/vessel_effects.mjs`,
+`tests/renderer_fuzz.mjs`: 400 random mixtures / heating / stirring in 11 kinds of glassware, plus synthetic fume / flame / foam
+fields, all rendered with no effect failing and every renderer buffer finite) and compares what the snapshot says with what is
+drawn. Nothing in the engine was changed; this section lists what the renderer needs from it. Status of section 5 first.
+
+### 7.1 Section 5 (V1-V12) as found in the snapshots
+
+| # | Status in the snapshot | Renderer today |
+|---|---|---|
+| V1 `morphology`, `volume_ml` | Reported, but **wrong where it matters**: a vessel frozen solid (50 mL water at 255 K) reports `H2O(s)` 49.9 g as `morphology "bed"`, `floating true`, `d 985 um`; a dosed Mg ribbon (0.3 g, dry) is `bed`, `d 30 um` | `volume_ml` is used (the 1.6 packing divisor is only a fallback). `pieces` / `monolith` are honoured; for the frozen mass the old rule (floating, dry, > 12 mL = a cast block) still decides |
+| V2 / V3 `layer_index` | `None` for every non-floating solid (a bed in a two-layer vessel never says which layer it rests in) | A floating solid rides the top of its layer (`LiquidBody.layerTopsY`); beds always sit on the floor |
+| V4 metal turbidity | Fixed (a fizzing ribbon no longer clouds the liquid) | |
+| V5 gas flux aggregation | Fixed | |
+| V6 electrolysis cost | Fixed (< 0.03 ms/step) | |
+| V7 electrode deposit | **Not met**: see W3 below | Cathode deposit / anode wear are drawn as soon as the numbers are non-zero |
+| V8 layer name / species | Fixed (isomers carry ids like `C6H14#VLKZOEOY`; the renderer strips the hash for display) | |
+| V9 water baseline | Fixed (Pope and Fry); the shader's fixed tint can go once checked in a browser | still there |
+| V11 / V12 events, boil | Fixed | |
+
+### 7.2 New findings (the renderer cannot fix these)
+
+| # | Where | Observation | Renderer stand-in | Engine fix |
+|---|---|---|---|---|
+| W1 | Frozen solvent morphology | See V1: a frozen liquid is `bed`, `susp 0.05`, `d 985 um` | Block for a large dry floating solid | `monolith` for the solid phase formed from the vessel's own liquid (cast to the vessel), `pieces` for added cubes; no suspended fraction for a monolith |
+| W2 | Dosed form of a solid | `mg_ribbon` is dosed as a 30 um particle population, `suspended_fraction 0.20` **in a dry vessel**; the ribbon's size never leaves the catalog. A cemented / precipitated metal (Cu on Mg, `d 10 um`, `bed`) is indistinguishable from it | `Lab` tags metals added by hand (`looksLikeMetal` regex on formula / name in `equipment/bottle.ts`) as `pieces`; every other metal is a powder bed with a metallic sheen. A tagged piece is not suspended and the layer's turbidity loses its share by projected area (`app/piece_metals.ts`; a Mg ribbon in HCl is reported as a 0.25 /cm haze). The regex is a stand-in. `suspended_fraction` is ignored without a liquid | `DoseRequest` should carry the physical form (`piece`, `turnings`, `powder`) from the catalog entry; the population starts with that size and morphology; `suspended_fraction = 0` without a liquid phase |
+| W3 | Electrode mass changes | Cu / Cu in 0.1 M CuSO4, 4 V, 5 cm2, 200 s: 13.04 C passed, Faraday gives 4.29 mg Cu each way; the snapshot says anode -0.75 mg, **cathode 0, no deposit**; `Cu2S`, `CuS`, `Cu(OH)2` rows exist (mass 0) in a cell that has no sulfide. `ElectrodeVisual` has no density | Film opacity from thickness = mass / (rho A) with rho = deposit density, else **8 g/mL (stand-in)** over the rod's wetted area | Book the discharge of the cathode metal ion as deposit (or as mass change when the cathode is the same metal), conserve Faraday's law, drop the sulfide channels, add `density_g_ml` and `area_cm2` to `ElectrodeVisual` |
+| W4 | Dry heating | A beaker at 600 W after its ethanol (hexane) boiled off reaches 1296 K (1238 K) in 120 s; the fuzz sees 8-9 % of random states above 780 K | Incandescence from the blackbody of the contents' temperature (dull red from 780 K, `render/blackbody.ts`, Draper point) | The heater is a power into the contents with no surface-temperature cap: a hot plate saturates near 620 K (surface setpoint), the glass transmits through its base resistance, radiation and convection grow with T^4; borosilicate softens near 1100 K and cracks on thermal shock |
+| W5 | Thermal baths | `bath_k` is an infinite thermal reservoir: the ice bath never melts or warms, a hot bath neither cools nor steams | Basin of water with floating ice at `bath_k <= 276 K` (`render/bath.ts`), clear water otherwise | A bath with mass and heat capacity (melting ice, evaporation, stirring) as a real object with its own snapshot (`bath: {temperature_k, ice_fraction, mass_g}`) |
+| W6 | Floc size of gels | `Cu(OH)2`, `Mg(OH)2`, `CuS` report `particle_diameter_um 0` | 10 um stand-in for the sprite size (`suspendedSpriteCm`) | Floc size from the Schulze-Hardy / Smoluchowski model already used for settling |
+| W7 | Beds at interfaces | A dense solid in a vessel with two layers should rest on the lighter layer's floor (the interface) | Bed on the vessel floor | `layer_index` for every solid; per-layer settling in `transfer/settling.rs` |
+| W8 | Electrode metal colours | `equipment/electrochem.ts MATERIAL_COLORS`: 12 hand-written rod colours | Table | `electrode_materials()` should return the solid record's colour (the same `Cu(s)` record that colours a copper bed) and density |
+| W9 | Collected-gas colour | A gas collector's column is always colourless (`#e4edf1` at 10 % opacity): Cl2 / NO2 collected over water are coloured | None | `gas.species[].rgb` from the gas optics (`optics/gas.rs` cross-sections) |
+| W10 | Supercritical fluid | `gas_phase.supercritical` is shown in the Details drawer only; liquid and gas should merge (no meniscus) | None | n/a (render: drop the meniscus when set) |
+| W11 | Visual-only imports | `app/visual_contents.ts`: unmodelable imports are a 30 um powder with `suspended_fraction 0.1`, a liquid is always mixed into the aqueous layer at n = 1.333 | As given | Section 5 V10: model every PubChem compound as an inert molecule |
+
+### 7.3 Visual-only constants added or changed in this pass (all in the renderer, none is chemistry)
+
+`suspendedSpriteCm` (sprite = 0.022 cm + 0.7 x true diameter, max 0.25 cm: a floor that keeps a 2 um haze visible; coarse crystals are
+true size); `crystalSpriteScale`; `METAL_PIECE_MIN_UM = 200` (only used when a snapshot has no `morphology`); the glow ramp
+(780 K to 1300 K on a log scale of the blackbody luminance) and its 0.3 opacity; flame soot colours (blackbody hue at the engine's
+`flame_temp_k` seen at exposures 4.5 x outer / 9 x core, so a hotter flame is paler); the bath basin (radius 1.75 x footprint,
+height half the vessel, ice cubes 1.1-2 cm, one per 4.5 cm2 of ring); electrode film opacity (1 - exp(-t / 0.5 um)); the
+8 g/mL electrode density (W3).
+
+### 7.4 What the renderer does with data it had been ignoring
+
+`SolidVisual.volume_ml` / `morphology` / `layer_index`, `ElectrodeVisual` (film on the cathode, tarnish and thinning of the
+anode), `gas_phase` (Details drawer: open / sealed, composition, EOS, supercritical), per-layer pH (electrode reading with the
+molal pH and junction potential as a tooltip), `flame_temp_k` (soot colour), `bath_k` (the basin), the engine's suspended
+particle diameter (sprite size), the liquid's refractive index (pour stream), crystal diameter (bed glitter size), and a rule
+that a dry powder is all bed.
+
+### 7.5 Engine response (2026-10-04)
+
+Gates: `engine/tests/section7.rs` (9), `heat_transfer` and `bath` unit tests. Web types updated in `web/src/types/sim.ts` (the renderer files were left to the visual session).
+
+| # | Status | What the engine does now |
+|---|---|---|
+| W1 | **done** | `solid_cast_mol` tracks the part of a solid that formed from the vessel's own liquid (`phase_flash`). `solid_morphology()`: cast ice is `monolith`, added ice / loose forms / metal grains >= 200 um are `pieces`, else `bed`. Pieces and monoliths report `suspended_fraction 0`, `suspended_diameter_um 0`, and do not scatter like a slurry |
+| W2 | **done** | `DoseRequest.solid_form` and catalog fields `solid_form` / `particle_um` (`data/solid_forms.json`: piece 1 mm, turnings 1.5 mm, granules 3 mm, powder 30 um). The Mg ribbon is a 300 um piece (a ribbon's equivalent sphere is about 3 x thickness), stays `pieces`, and dissolves more slowly than powder. Nothing is suspended in a dry vessel. The web's `looksLikeMetal` regex can go once the renderer reads `morphology`. Tests that need a fast Mg now see the ribbon's real rate (`gas.rs` Mg + HCl takes the full 120 s) |
+| W3 | **done** | Electrode mass is booked per electrode from its own flows (the net extent cancels for Cu / Cu): Cu / Cu 12.7 C -> anode -4.20 mg (Faraday 4.19), cathode +3.63 mg (the rest goes to Cu+ and other channels). A Pt cathode plates a deposit and the Pt anode stays 0. Sulfide channels are gone (see 6.6). `ElectrodeVisual` gained `density_g_ml` and `area_cm2`; the anode can carry a deposit |
+| W4 | **done** | `heat_transfer::hot_plate_heat_w`: the plate top settles where the element power equals conduction through the base (500 W/m2K) plus its own losses, capped at 623 K; a vessel that is hot takes less than the knob's power, one above the limit nothing. A dry beaker on 600 W stays below 640 K. The burner is not capped |
+| W5 | **done (no steam)** | `bath.rs`: `VesselControls.bath = {temperature_k, mass_g, ice_fraction, melt_k}` makes a finite bath (ice holds `melt_k` while any is left, melts, then warms; cools through the room). `snapshot.bath = {temperature_k, ice_fraction, mass_g}`. `bath_k` alone remains an infinite reservoir. Evaporation of a hot bath is not modelled |
+| W6 | **done** | `SolidVisual.floc_diameter_um`: the primary size grown into flocs by the Schulze-Hardy law that settling already uses (a 4 nm Cu(OH)2 sol reports micrometre flocs once salted). `particle_diameter_um` is the primary size (4 nm, not 0) |
+| W7 | **already true / partial** | every solid in a layered vessel has `layer_index`; per-layer settling (a bed resting on an interface) is still not in `transfer/settling.rs` |
+| W8 | **done** | `electrode_materials()` returns `rgb` (optical record of the solid, else grey) and `density_g_ml` per material |
+| W9 | **done** | `GasInfo.species[].rgb` / `opacity` from the gas absorption cross-sections across the vessel width (Cl2 yellow-green, H2 none) |
+| W10 | n/a | renderer only |
+| W11 | **already true** | `compound_model` reports `modelable: false` only for an unparseable formula, an unknown element or an unrepresentable species; everything else is an engine compound, so `visual_contents.ts` is a fallback for those three cases |
+
+Behaviour changes to know: the Mg ribbon default (above), the hot plate's delivered power (tests that integrate heater power use `hot_plate_heat_w`), and the electrode channel set.
+
+**Status of the run (end of this session):** `cargo rtest` passes (33 suites) except one intermittent `open_items_c` test (`edge_candidates_are_promoted_when_the_solution_changes` in the last full run, `rate_rules_follow_the_solvent_class` in an earlier one; both pass alone, 6 of 6 repeated runs of the file pass); `npx tsc --noEmit` is clean with the new types in `sim.ts`; the node suites and `npm run build` were NOT re-run after the engine changes (WASM not rebuilt: `cd engine && cargo build --release --target wasm32-unknown-unknown` + `wasm-bindgen`, then `npm run build` and the node suites, are the next steps); nothing verified in a browser.

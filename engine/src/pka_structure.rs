@@ -56,6 +56,18 @@ fn params() -> &'static Params {
     P.get_or_init(|| serde_json::from_str(include_str!("../data/pka_structure.json")).expect("data/pka_structure.json"))
 }
 
+#[derive(Deserialize)]
+struct PlusParams {
+    sigma: HashMap<String, [f64; 2]>,
+    aza: [f64; 2],
+    ortho_steric_kj: f64,
+}
+
+fn plus_params() -> &'static PlusParams {
+    static P: OnceLock<PlusParams> = OnceLock::new();
+    P.get_or_init(|| serde_json::from_str(include_str!("../data/hammett_plus.json")).expect("data/hammett_plus.json"))
+}
+
 /// An ionisable site of a molecule.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Site {
@@ -273,6 +285,68 @@ fn ring_shift(mol: &Mol, r0: usize, exclude: &HashSet<usize>, rho: f64, para_min
         }
     }
     -rho * weighted_sum(contrib)
+}
+
+/// The electronic environment of the ring position an electrophile attacks (`ring_sigma_plus`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RingSigma {
+    /// Sum of the substituent constants seen from the attacked position (sigma+ for ortho and para, sigma_m for meta);
+    /// negative where the ring is activated. Brown's additivity: no damping, the rates multiply.
+    pub sum: f64,
+    /// Number of substituents on the two ortho positions (each hinders the approach).
+    pub n_ortho: usize,
+}
+
+/// Sum of the electrophilic substituent constants of the six-membered aromatic ring through atom `r0` of the molecule, as
+/// seen from `r0` (the carbon being substituted), by the group of every ring substituent (`group_at`) and its position
+/// (ortho and para count with sigma+, meta with sigma_m). None when `r0` is not in a six-membered aromatic ring or a
+/// substituent has no constant: a rate nothing can estimate is not invented.
+pub fn ring_sigma_plus(molecule: &crate::smiles::Molecule, r0: usize) -> Option<RingSigma> {
+    let mol = Mol::from_molecule(molecule);
+    if r0 >= mol.n() || !mol.atoms[r0].arom {
+        return None;
+    }
+    let ring_nbrs: Vec<usize> = mol.nbrs(r0).filter(|&j| mol.atoms[j].arom).collect();
+    if ring_nbrs.len() < 2 {
+        return None;
+    }
+    let ring = mol.smallest_ring_through(r0, ring_nbrs[0]);
+    if ring.len() != 6 {
+        return None;
+    }
+    let p = plus_params();
+    let pos = ring.iter().position(|&a| a == r0)?;
+    let (mut sum, mut n_ortho) = (0.0, 0);
+    for k in 1..6 {
+        let a = ring[(pos + k) % 6];
+        let rd = k.min(6 - k); // 1 ortho, 2 meta, 3 para
+        let pick = |row: [f64; 2]| if rd == 2 { row[0] } else { row[1] };
+        if !mol.is(a, "C") {
+            sum += pick(p.aza);
+            continue;
+        }
+        for s in mol.nbrs(a).collect::<Vec<_>>() {
+            if ring.contains(&s) {
+                continue;
+            }
+            let name = match group_at(&mol, s, a) {
+                Some(("OH", _)) if mol.atoms[s].charge == -1 => "O-",
+                Some((nm, _)) => nm,
+                None if mol.is(s, "C") && !mol.atoms[s].arom => "alkyl",
+                None => return None,
+            };
+            sum += pick(*p.sigma.get(name)?);
+            if rd == 1 {
+                n_ortho += 1;
+            }
+        }
+    }
+    Some(RingSigma { sum, n_ortho })
+}
+
+/// Steric cost (kJ/mol) of one ortho substituent on the activation energy of an electrophilic substitution.
+pub fn ortho_steric_kj() -> f64 {
+    plus_params().ortho_steric_kj
 }
 
 fn class_value(name: &'static str) -> &'static Class {

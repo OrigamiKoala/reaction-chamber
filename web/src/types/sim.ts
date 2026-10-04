@@ -85,6 +85,11 @@ export interface SolidVisual {
   settling_velocity_mm_s?: number;
   /** Total particle surface, cm2. */
   surface_area_cm2?: number;
+  /**
+   * Mass-weighted mean size (um) the particles settle as in this liquid: the primary size grown into flocs where the
+   * electrolyte is at or beyond the critical coagulation concentration (a hydroxide sol of a few nm is micrometre flocs once salted).
+   */
+  floc_diameter_um?: number;
   /** True when the solid is floating or clinging (e.g. a metal ribbon fizzing) rather than a bed. */
   floating?: boolean;
   /** Liquid layer index the solid floats in/on, if floating. */
@@ -329,7 +334,8 @@ export type CollectorKind = 'syringe' | 'over_water' | 'jar';
 export interface GasInfo {
   /** Set for gas syringes / gas collection tubes / gas jars. */
   collector: CollectorKind | null;
-  species: { species: string; mol: number }[];
+  /** `rgb` is the hue of the gas across the vessel's width at its concentration (from its absorption cross-sections; absent = colourless as far as the model knows), `opacity` how visible (0..1). */
+  species: { species: string; mol: number; rgb?: [number, number, number]; opacity?: number }[];
   total_mol: number;
   /** Volume the gas occupies at the vessel temperature and ambient pressure, mL. */
   volume_ml: number;
@@ -378,6 +384,8 @@ export interface VesselSnapshot {
   room_k: number;
   /** Liquid-phase temperature of the thermal bath if one is attached, else null. */
   bath_k: number | null;
+  /** The bath as an object (finite mass, ice fraction) when `VesselControls.bath` gave one; `bath_k` alone is an infinite reservoir. */
+  bath?: BathVisual;
   /** Total gas pressure, atm. Open vessel: the atmosphere's pressure (1.0 by default). Sealed: equation of state of the closed gas mixture. */
   pressure_atm: number;
   sealed: boolean;
@@ -454,6 +462,10 @@ export interface ElectrodeVisual {
   material: string;
   mass_change_g: number;
   deposit?: SolidVisual;
+  /** Density of the electrode's own material (g/mL) from the species store's solid record; 0 when it has none. */
+  density_g_ml?: number;
+  /** Wetted area the console specified, cm2. */
+  area_cm2?: number;
 }
 
 export interface ElectroReadout {
@@ -484,6 +496,21 @@ export interface VesselConfig {
   burst_atm?: number;
 }
 
+export interface BathVisual {
+  temperature_k: number;
+  /** Mass fraction of the bath that is ice (it holds its melting point while any is left). */
+  ice_fraction: number;
+  mass_g: number;
+}
+
+/** A finite bath: `mass_g` of water-ice mixture; with ice it sits at `melt_k` (273.15 K by default, colder for a salted bath). */
+export interface BathSpec {
+  temperature_k: number;
+  mass_g: number;
+  ice_fraction?: number;
+  melt_k?: number;
+}
+
 /** A thing poured/dosed into a vessel. Engine resolves ids against its species/reagent catalog. */
 export interface DoseRequest {
   /** Catalog reagent id (see ReagentCatalogEntry) */
@@ -493,6 +520,8 @@ export interface DoseRequest {
   mass_g?: number;      // solids
   drops?: number;       // 0.05 mL each, for droppers
   temperature_k?: number;
+  /** Physical form of a solid: 'piece' | 'turnings' | 'granules' | 'powder'. Absent = the catalog entry's form. Sets the grain size and whether it stays separate pieces. */
+  solid_form?: string;
 }
 
 /** Carried between vessels on pour so species are conserved. */
@@ -511,8 +540,10 @@ export interface VesselControls {
   stirring?: boolean;          // magnetic stirrer
   stir_rpm?: number;
   sealed?: boolean;
-  /** Thermal bath (ice bath = 273.15). null removes it. */
+  /** Thermal bath (ice bath = 273.15). null removes it. An infinite reservoir; use `bath` for one with mass and ice. */
   bath_k?: number | null;
+  /** A finite bath (melting ice, warming water, cooling through the room); null removes it. */
+  bath?: BathSpec | null;
   /** Thermal conductance (W/K) of the vessel-bath contact; absent = from the vessel's geometry and wall (engine `heat_transfer`). */
   bath_coupling_w_k?: number;
   /** Burner/igniter held at the vessel: ignites flammable vapour when true. */

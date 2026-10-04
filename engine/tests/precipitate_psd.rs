@@ -25,7 +25,7 @@ fn import_kcl() {
 }
 
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 /// 0.1 M AgNO3 + 0.1 M KCl, `each_ml` of each, into `water_ml` of water; stepped for `settle_s` of simulated time.

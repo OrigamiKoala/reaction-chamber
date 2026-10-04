@@ -17,7 +17,8 @@ import { getProfile } from '${web}/src/render/glass_profiles';
 import { LiquidBody } from '${web}/src/render/liquid_material';
 import { VesselEffects } from '${web}/src/render/effects';
 import { makeBubbleMaterial } from '${web}/src/render/particles';
-export { getProfile, LiquidBody, VesselEffects, makeBubbleMaterial };
+import { makeFlameMaterial } from '${web}/src/render/flame';
+export { getProfile, LiquidBody, VesselEffects, makeBubbleMaterial, makeFlameMaterial };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const mod = await import('data:text/javascript;base64,' + Buffer.from(out.outputFiles[0].text).toString('base64'));
@@ -60,4 +61,6 @@ const check = (name, vs, fs) => {
 const abs = liquid.absorbMat;
 check('liquid-absorb', abs.vertexShader, abs.fragmentShader);
 check('condensation', fx.condMat.vertexShader, fx.condMat.fragmentShader);
+const flame = mod.makeFlameMaterial(0);
+check('flame', flame.vertexShader, flame.fragmentShader);
 console.log('shader_validate: passed');

@@ -11,6 +11,14 @@
 //! `per_match` modifier once per occurrence of its pattern; `unless` conditions exclude). A rule may instead give an
 //! Evans-Polanyi line, `Ea = E0 + alpha dHr`, which the generator completes with the reaction enthalpy of the species data.
 //! `degeneracy` multiplies the rate by the number of hydrogens on an atom (the statistical factor of an abstraction).
+//! A template with a `redox` entry is an *oxidation half-reaction*, not a kinetic reaction: it names no rate rule and the
+//! generator never builds a reaction from it. It says which molecule an oxidant converts a species into (an alcohol into the
+//! carbonyl compound, an aldehyde into the acid), so that the oxidised form is a registered species the Gibbs-driven redox
+//! discovery (`gem/discovery.rs`) can pair with an oxidant, and gives the self-exchange rate constant of that couple, from
+//! which the Marcus cross relation derives the rate against any oxidant (`gem/rates.rs`).
+//! A modifier may carry a Hammett-Brown relation (`hammett`: rho and the ring atom attacked): the substituents of the
+//! aromatic ring shift the activation energy so that `log k / k0 = rho sum sigma+` at 298 K (`pka_structure::ring_sigma_plus`);
+//! the ortho substituents add a steric cost; a ring whose substituents have no constant gets no rate.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -18,6 +26,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::smarts::{self, MolView, Pattern};
+use crate::physics::R_GAS as R_GAS_J;
 use crate::smiles::{self, Molecule};
 
 // ------------------------------------------------------------------------------------------------ raw (JSON) forms
@@ -44,6 +53,17 @@ struct RawTemplate {
     rules: Vec<RawRule>,
     #[serde(default)]
     modifiers: Vec<RawModifier>,
+    #[serde(default)]
+    redox: Option<RawRedox>,
+}
+
+#[derive(Deserialize)]
+struct RawRedox {
+    electrons: u32,
+    /// self-exchange rate constant of the couple, M-1 s-1
+    k_self: f64,
+    #[serde(default)]
+    source: String,
 }
 
 #[derive(Deserialize)]
@@ -133,10 +153,24 @@ struct RawModifier {
     ea_add_kj: f64,
     #[serde(default)]
     per_match: bool,
+    #[serde(default)]
+    hammett: Option<RawHammett>,
     /// where the factor comes from (documentation of the data)
     #[serde(default)]
     #[allow(dead_code)]
     source: String,
+}
+
+#[derive(Deserialize)]
+struct RawHammett {
+    rho: f64,
+    #[serde(default)]
+    reactant: usize,
+    #[serde(default)]
+    center: usize,
+    /// charge the ortho steric cost of `pka_structure::ortho_steric_kj` per substituent beside the attacked atom
+    #[serde(default)]
+    ortho_steric: bool,
 }
 
 fn one() -> f64 {
@@ -176,6 +210,14 @@ pub struct Rule {
 }
 
 #[derive(Clone, Debug)]
+pub struct Hammett {
+    rho: f64,
+    reactant: usize,
+    center: usize,
+    ortho_steric: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct Modifier {
     pub id: String,
     when: Vec<Cond>,
@@ -183,6 +225,7 @@ pub struct Modifier {
     a_factor: f64,
     ea_add_j: f64,
     per_match: bool,
+    hammett: Option<Hammett>,
 }
 
 #[derive(Clone, Debug)]
@@ -212,6 +255,14 @@ enum Edit {
     HDelta((usize, usize), i32),
 }
 
+/// The redox half-reaction a template stands for (see the module documentation).
+#[derive(Clone, Debug)]
+pub struct Redox {
+    pub electrons: u32,
+    pub k_self: f64,
+    pub source: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Template {
     pub id: String,
@@ -222,6 +273,7 @@ pub struct Template {
     extra_products: Vec<Molecule>,
     degeneracy: Option<(usize, usize)>,
     pub variants: Vec<Variant>,
+    pub redox: Option<Redox>,
 }
 
 /// One matching of a template: the molecule of each slot and the molecule atom matched by every pattern atom.
@@ -275,6 +327,7 @@ fn compile_modifier(m: &RawModifier, template: &str) -> Modifier {
         a_factor: m.a_factor,
         ea_add_j: m.ea_add_kj * 1000.0,
         per_match: m.per_match,
+        hammett: m.hammett.as_ref().map(|h| Hammett { rho: h.rho, reactant: h.reactant, center: h.center, ortho_steric: h.ortho_steric }),
     }
 }
 
@@ -330,6 +383,7 @@ fn compile(raw: RawTemplate) -> Template {
         extra_products: raw.extra_products.iter().map(|s| smiles::parse(s).unwrap_or_else(|| panic!("template {}: product {} does not parse", id, s))).collect(),
         degeneracy: raw.degeneracy.map(|d| (d.h_of[0], d.h_of[1])),
         variants,
+        redox: raw.redox.map(|r| Redox { electrons: r.electrons, k_self: r.k_self, source: r.source }),
     }
 }
 
@@ -544,6 +598,7 @@ impl Template {
                 _ => continue,
             };
             let mut ea_add = 0.0;
+            let mut assessable = true;
             for m in &v.modifiers {
                 if !self.all_hold(&m.when, inst, solvent) || m.unless.iter().any(|c| self.cond_count(c, inst, solvent) > 0) {
                     continue;
@@ -551,6 +606,15 @@ impl Template {
                 let times = if m.per_match { m.when.first().map_or(1, |c| self.cond_count(c, inst, solvent)) } else { 1 };
                 a *= m.a_factor.powi(times as i32);
                 ea_add += m.ea_add_j * times as f64;
+                if let Some(h) = &m.hammett {
+                    match self.hammett_shift_j(h, inst) {
+                        Some(shift) => ea_add += shift,
+                        None => assessable = false,
+                    }
+                }
+            }
+            if !assessable {
+                continue;
             }
             if let Some((slot, atom)) = self.degeneracy {
                 if let (Some(mol), Some(map)) = (inst.mols.get(slot), inst.maps.get(slot)) {
@@ -568,10 +632,66 @@ impl Template {
         out
     }
 
+    /// Change of the activation energy (J/mol) the substituents of an aromatic ring make, from the Hammett-Brown relation
+    /// `log10(k/k0) = rho sum sigma+` at 298.15 K (an enthalpic shift, so rho falls with temperature like 1/T), plus the
+    /// steric cost of the ortho substituents. None when the ring cannot be assessed.
+    fn hammett_shift_j(&self, h: &Hammett, inst: &Instance) -> Option<f64> {
+        let mol = inst.mols.get(h.reactant)?;
+        let atom = *inst.maps.get(h.reactant)?.get(h.center)?;
+        let r = crate::pka_structure::ring_sigma_plus(mol, atom)?;
+        let mut shift = -h.rho * r.sum * std::f64::consts::LN_10 * R_GAS_J * 298.15;
+        if h.ortho_steric {
+            shift += r.n_ortho as f64 * crate::pka_structure::ortho_steric_kj() * 1000.0;
+        }
+        Some(shift)
+    }
+
     /// The reacting atoms of an instance as a short key (`slot.atom`), for reaction ids.
     pub fn centre_key(&self, inst: &Instance) -> String {
         inst.maps.iter().enumerate().map(|(s, m)| format!("{}.{}", s, m.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("-"))).collect::<Vec<_>>().join("_")
     }
+}
+
+// ------------------------------------------------------------------------------------------------ oxidation half-reactions
+
+/// An oxidised form of a molecule by one of the oxidation half-reaction templates.
+#[derive(Clone, Debug)]
+pub struct OxidisedForm {
+    pub template: String,
+    pub product: Molecule,
+    pub electrons: u32,
+    pub k_self: f64,
+    pub source: String,
+}
+
+/// The forms an oxidant can turn `mol` into: for every oxidation template (`redox` entry) the slot-0 matches of the molecule
+/// rewritten (the other slot, when there is one, is water). One product per match; duplicates by isomorphism are dropped.
+pub fn oxidised_forms(mol: &Molecule) -> Vec<OxidisedForm> {
+    let water = smiles::parse("O").expect("water");
+    let mut out: Vec<OxidisedForm> = Vec::new();
+    for t in templates().iter().filter(|t| t.redox.is_some()) {
+        let redox = t.redox.as_ref().unwrap();
+        let w_maps = if t.n_slots() == 2 { t.slot_matches(1, &water) } else { Vec::new() };
+        if t.n_slots() == 2 && w_maps.is_empty() {
+            continue;
+        }
+        for m in t.slot_matches(0, mol) {
+            let inst = Instance {
+                template: t,
+                mols: if t.n_slots() == 2 { vec![mol, &water] } else { vec![mol] },
+                maps: if t.n_slots() == 2 { vec![&m, &w_maps[0]] } else { vec![&m] },
+            };
+            let Some(mut pieces) = t.products(&inst) else { continue };
+            if pieces.len() != 1 {
+                continue;
+            }
+            let product = pieces.remove(0);
+            if !out.iter().any(|o| o.product.is_isomorphic(&product)) {
+                out.push(OxidisedForm { template: t.id.clone(), product, electrons: redox.electrons, k_self: redox.k_self, source: redox.source.clone() });
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -607,7 +727,7 @@ mod tests {
     #[test]
     fn every_template_compiles_and_has_rules() {
         let t = templates();
-        assert!(t.len() >= 9);
+        assert!(t.len() >= 19);
         for x in t {
             assert!(x.n_slots() >= 1 && !x.variants.is_empty(), "{}", x.id);
         }
@@ -631,6 +751,92 @@ mod tests {
         // SN1 releases a proton and a halide
         let sn1 = run("sn1_solvolysis", &["CC(C)(C)Cl", "O"]);
         assert!(sn1.len() == 3 && has(&sn1, "[H+]") && has(&sn1, "[Cl-]") && has(&sn1, "CC(C)(C)O"), "{:?}", sn1);
+    }
+
+    #[test]
+    fn carbonyl_aldol_aromatic_and_acyl_templates_rewrite_the_graph() {
+        // hydration, hemiacetal, carbinolamine, imine
+        let hyd = run("carbonyl_hydration", &["CC=O", "O"]);
+        assert!(hyd.len() == 1 && has(&hyd, "CC(O)O"), "{:?}", hyd);
+        let hem = run("hemiacetal_formation", &["CC=O", "CO"]);
+        assert!(hem.len() == 1 && has(&hem, "CC(O)OC"), "{:?}", hem);
+        let cbn = run("carbinolamine_formation", &["CC=O", "CN"]);
+        assert!(cbn.len() == 1 && has(&cbn, "CC(O)NC"), "{:?}", cbn);
+        let imine = run("imine_formation", &["CC(O)NC"]);
+        assert!(imine.len() == 2 && has(&imine, "CC=NC") && has(&imine, "O"), "{:?}", imine);
+        // a ketone is no acid derivative, an ester / acid chloride / amide are
+        let t = find("carbonyl_hydration");
+        assert!(!t.slot_matches(0, &mol("CC(C)=O")).is_empty());
+        for no in ["CC(=O)OC", "CC(=O)Cl", "CC(=O)N", "CC(=O)O", "O=C=O"] {
+            assert!(t.slot_matches(0, &mol(no)).is_empty(), "{} is no ketone / aldehyde", no);
+        }
+        // aldol addition and dehydration
+        let ald = run("aldol_addition", &["CC=O", "CC=O"]);
+        assert!(ald.len() == 1 && has(&ald, "CC(O)CC=O"), "{:?}", ald);
+        let enone = run("aldol_dehydration", &["CC(O)CC=O"]);
+        // the pattern anchors on the carbonyl carbon: 3-hydroxybutanal gives but-2-enal + water
+        assert!(enone.len() == 2 && has(&enone, "CC=CC=O") && has(&enone, "O"), "{:?}", enone);
+        // electrophilic aromatic substitution: the hydrogen leaves as a proton, the halogen pair splits, nitrate gives hydroxide
+        let br = run("eas_halogenation", &["c1ccccc1O", "BrBr"]);
+        assert!(br.len() == 3 && has(&br, "[Br-]") && has(&br, "[H+]") && (has(&br, "Oc1ccccc1Br") || has(&br, "Oc1ccc(Br)cc1") || has(&br, "Oc1cccc(Br)c1")), "{:?}", br);
+        let nit = run("eas_nitration", &["c1ccccc1", "[O-][N+](=O)[O-]"]);
+        assert!(nit.len() == 2 && has(&nit, "O=[N+]([O-])c1ccccc1") && has(&nit, "[OH-]"), "{:?}", nit);
+        // acyl halide and anhydride
+        let acl = run("acyl_halide_substitution", &["CC(=O)Cl", "O"]);
+        assert!(acl.len() == 3 && has(&acl, "CC(=O)O") && has(&acl, "[Cl-]") && has(&acl, "[H+]"), "{:?}", acl);
+        let est = run("acyl_halide_substitution", &["CC(=O)Cl", "CCO"]);
+        assert!(has(&est, "CC(=O)OCC"), "{:?}", est);
+        let amd = run("acyl_halide_substitution", &["CC(=O)Cl", "N"]);
+        assert!(has(&amd, "CC(N)=O"), "{:?}", amd);
+        let anh = run("anhydride_substitution", &["CC(=O)OC(C)=O", "O"]);
+        assert!(anh.len() == 2 && anh.iter().all(|p| mol(p).is_isomorphic(&mol("CC(=O)O"))), "{:?}", anh);
+    }
+
+    #[test]
+    fn hammett_relation_sets_the_ring_rates() {
+        let rate = |arene: &str, atom_h: usize| -> f64 {
+            // the `atom_h`-th aromatic CH of the arene as the attacked position
+            let t = find("eas_halogenation");
+            let m = mol(arene);
+            let maps = t.slot_matches(0, &m);
+            let br = mol("BrBr");
+            let bm = t.slot_matches(1, &br);
+            let inst = Instance { template: t, mols: vec![&m, &br], maps: vec![&maps[atom_h], &bm[0]] };
+            let r = t.rates(&inst, "water");
+            assert!(!r.is_empty(), "{} must be assessable", arene);
+            r[0].a * (-r[0].ea_j.unwrap() / (8.314462618 * 298.15)).exp()
+        };
+        // benzene: all six positions alike; phenol: para (index follows atom order c1ccc(O)cc1 -> CH at 0,1,3,4... ) vs meta
+        let benzene = rate("c1ccccc1", 0);
+        let toluene_para = {
+            let t = find("eas_halogenation");
+            let m = mol("Cc1ccccc1");
+            let maps = t.slot_matches(0, &m);
+            // the CH farthest from the methyl carbon (index 1) is the para one: atom 4
+            let k = maps.iter().position(|mp| mp[0] == 4).unwrap();
+            let br = mol("BrBr");
+            let bm = t.slot_matches(1, &br);
+            let r = t.rates(&Instance { template: t, mols: vec![&m, &br], maps: vec![&maps[k], &bm[0]] }, "water");
+            r[0].a * (-r[0].ea_j.unwrap() / (8.314462618 * 298.15)).exp()
+        };
+        // sigma+ para of methyl -0.31, rho -12.1: partial rate factor 10^3.75 = 5.6e3 (Br2 / HOAc: toluene p 2.4e3)
+        let f = toluene_para / benzene;
+        assert!(f > 1.0e3 && f < 2.0e4, "toluene para partial rate factor {}", f);
+        // nitrobenzene is deactivated: meta position (sigma_m 0.71) far slower than benzene
+        let nb = mol("c1ccccc1[N+](=O)[O-]");
+        let t = find("eas_halogenation");
+        let maps = t.slot_matches(0, &nb);
+        let meta = maps.iter().find(|mp| mp[0] == 2).unwrap();
+        let br = mol("BrBr");
+        let bm = t.slot_matches(1, &br);
+        let r = t.rates(&Instance { template: t, mols: vec![&nb, &br], maps: vec![meta, &bm[0]] }, "water");
+        let k_meta = r[0].a * (-r[0].ea_j.unwrap() / (8.314462618 * 298.15)).exp();
+        assert!(k_meta / benzene < 1.0e-6, "nitrobenzene meta {:e}", k_meta / benzene);
+        // a five-membered heteroaromatic ring has no constants: no rate is proposed
+        let fur = mol("c1ccoc1");
+        let maps = t.slot_matches(0, &fur);
+        assert!(!maps.is_empty());
+        assert!(t.rates(&Instance { template: t, mols: vec![&fur, &br], maps: vec![&maps[0], &bm[0]] }, "water").is_empty());
     }
 
     #[test]
@@ -693,6 +899,7 @@ mod tests {
             extra_products: vec![],
             degeneracy: None,
             variants: vec![Variant { tag: String::new(), catalysts: vec![], rules: vec![r], modifiers: vec![] }],
+            redox: None,
         };
         let m = mol("C");
         let maps = t.slot_matches(0, &m);

@@ -28,10 +28,10 @@ fn import_ik(id: &str, name: &str, formula: &str, smiles: Option<&str>, state: &
 }
 
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn dose_g(v: &mut Vessel, id: &str, g: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn solid(v: &Vessel, sp: &str) -> f64 { v.solid_mol.get(sp).copied().unwrap_or(0.0) }
 

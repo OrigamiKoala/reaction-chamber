@@ -32,6 +32,8 @@ pub mod gas;
 pub mod vessel_eq;
 pub mod templates;
 pub mod reaction_templates;
+pub mod solid_forms;
+pub mod bath;
 pub mod network_generator;
 pub mod db;
 pub mod thermo;

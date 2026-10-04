@@ -5,8 +5,9 @@ import { LiquidBody } from './liquid_material';
 import { SpriteParticles, BubbleSystem } from './particles';
 import { FlameCluster } from './flame';
 import { softSpriteTexture, smokePuffTexture, dropletsTexture } from './textures';
-import { SolidPieces, getRibbonGeo, BED_PACKING, PieceSolid } from './solid_pieces';
+import { SolidPieces, getRibbonGeo, BED_PACKING, METAL_PIECE_MIN_UM, PieceSolid } from './solid_pieces';
 import { ELECTRODE_X, ELECTRODE_RADIUS, electrodeBottomY } from './electrode_geometry';
+import { blackbodyHue, glowBrightness } from './blackbody';
 
 export { getRibbonGeo };
 
@@ -97,6 +98,36 @@ const tmpS = new THREE.Vector3();
 const tmpP = new THREE.Vector3();
 const tmpC = new THREE.Color();
 
+/**
+ * World size (cm) of a suspended-particle sprite from the engine's mass-weighted mean diameter of the suspended part.
+ * Real particles of a few micrometres are far below a pixel at bench distance, so a floor keeps the cloud visible; coarse
+ * crystals (a millimetre and up) are drawn at their true size, so a settling precipitate visibly goes from a coarse
+ * glitter to a fine haze as the big grains fall out first.
+ */
+export function suspendedSpriteCm(diameterUm: number): number {
+  const d = Number.isFinite(diameterUm) && diameterUm > 0 ? diameterUm : 10;
+  return Math.min(0.25, 0.022 + 0.7 * d * 1e-4);
+}
+
+/**
+ * Radius scale (cm) of a bed crystal's octahedron from the engine's mean crystal diameter: millimetre crystals are drawn
+ * about their real size, a fine crystalline sand is kept just visible.
+ */
+export function crystalSpriteScale(diameterUm: number): number {
+  const d = Number.isFinite(diameterUm) && diameterUm > 0 ? diameterUm : 500;
+  return Math.max(0.035, Math.min(0.22, 0.5 * d * 1e-4 * 1.8));
+}
+
+/**
+ * Visible flame height (cm) of a diffusion flame of heat-release `powerW` over a pool of diameter `poolDiameterCm`
+ * (Heskestad: L = 0.235 Q^(2/5) - 1.02 D, Q in kW, lengths in m). A 10 W candle is ~3 cm, 1.4 kW over a beaker ~20 cm.
+ */
+export function flameHeightCm(powerW: number, poolDiameterCm: number): number {
+  const q = Math.max(0, powerW) / 1000;
+  const l = 0.235 * Math.pow(q, 0.4) - 1.02 * (poolDiameterCm / 100);
+  return Math.max(1.2, Math.min(60, l * 100));
+}
+
 function rnd(a: number, b: number) {
   return a + Math.random() * (b - a);
 }
@@ -155,6 +186,7 @@ export class VesselEffects {
 
   private crystals: THREE.InstancedMesh;
   private crystalCount = 0;
+  private crystalSize = 0.12;
   private crystalPolar: { a: number; f: number; s: number; rot: number }[] = [];
   private lumps: THREE.InstancedMesh;
   private lumpCount = 0;
@@ -164,6 +196,12 @@ export class VesselEffects {
   private pieces: SolidPieces;
   /** Settled solids, bottom first: each one's colour and bed volume (mixed beds are mottled, not averaged). */
   private bedLayers: { rgb: [number, number, number]; vol: number }[] = [];
+
+  /** Incandescence of a vessel and its contents above ~780 K (additive shell on the inner wall). */
+  private glow: THREE.Mesh;
+  private glowMat: THREE.MeshBasicMaterial;
+  private glowLevel = 0;
+  private glowTarget = 0;
 
   private stirBar: THREE.Mesh;
   private stirRpm = 0;
@@ -306,6 +344,26 @@ export class VesselEffects {
     this.pieces = new SolidPieces(p);
     this.group.add(this.pieces.group);
 
+    // incandescence
+    {
+      const pts: THREE.Vector2[] = [];
+      for (const q of p.inner) if (q.y <= p.innerTopY) pts.push(new THREE.Vector2(Math.max(0, q.x - 0.015), q.y + 0.01));
+      this.glowMat = new THREE.MeshBasicMaterial({
+        color: 0xff4000,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide,
+        toneMapped: false,
+      });
+      this.glow = new THREE.Mesh(new THREE.LatheGeometry(pts, 40), this.glowMat);
+      this.glow.visible = false;
+      this.glow.raycast = () => {};
+      this.glow.frustumCulled = false;
+      this.group.add(this.glow);
+    }
+
     // stir bar
     this.stirBar = new THREE.Mesh(
       getStirBarGeo(),
@@ -342,6 +400,7 @@ export class VesselEffects {
     this.splash.setRenderOrder(base + 4);
     this.smoke.setRenderOrder(base + 6);
     this.cond.renderOrder = base + 4;
+    this.glow.renderOrder = base + 4;
     this.crystals.renderOrder = base + 4;
     this.lumps.renderOrder = base + 4;
     this.flame.group.children.forEach((c) => (c.renderOrder = base + 4));
@@ -398,8 +457,15 @@ export class VesselEffects {
       this.foamTarget = Math.max(0, Math.min(1, snap.foam || 0));
       this.condLevel = Math.max(0, Math.min(1, snap.condensation || 0));
       this.liquid.setBoil(boilVigour(snap.boil_intensity || 0));
+      this.glowTarget = snap.burst ? 0 : glowBrightness(snap.temperature_k);
+      if (this.glowTarget > 0) {
+        const hue = blackbodyHue(snap.temperature_k);
+        this.glowMat.color.setRGB(hue[0], hue[1], hue[2]);
+      }
       let gas = 0;
-      for (const g of snap.gas_fluxes || []) gas += g.rate_ml_s;
+      // gas released by a reaction clouds the liquid with micro-bubbles; the vapour of a boiling liquid is the boil path's
+      // (large bubbles born on the hot floor, surface agitation), not a haze
+      for (const g of snap.gas_fluxes || []) if (g.origin !== 'boil') gas += g.rate_ml_s;
       this.liquid.setGasAgitation(Math.min(1, gas / 4));
     });
   }
@@ -411,12 +477,14 @@ export class VesselEffects {
     let suspMass = 0;
     let sr = 0, sg = 0, sb = 0;
     let crystalMass = 0;
+    let crystalDiam = 0;
     let lumpMass = 0;
     let lumpSusp = 0;
     let rough = 0.92;
     let diam = 0;
     let vel = 0;
     const lumpCol = new THREE.Color(1, 1, 1);
+    let metalPowderVol = 0;
     const floaters: Array<PieceSolid & { floating: boolean }> = [];
     const metals: Array<PieceSolid & { floating: boolean }> = [];
     const layers: { rgb: [number, number, number]; vol: number }[] = [];
@@ -424,14 +492,21 @@ export class VesselEffects {
       if (s.mass_g <= 1e-6) continue;
       const piece = (): PieceSolid & { floating: boolean } => ({
         rgb: s.rgb,
-        // the engine reports bed bulk volume; a single piece / frozen mass has no packing voids
-        volumeMl: Math.max(0, s.settled_volume_ml) / BED_PACKING,
+        // the solid's own volume as the engine reports it; older snapshots only have the bed's bulk volume (a single piece
+        // or a frozen mass has no packing voids, so that is divided by the packing factor)
+        volumeMl: s.volume_ml !== undefined && s.volume_ml >= 0 ? s.volume_ml : Math.max(0, s.settled_volume_ml) / BED_PACKING,
         remaining: s.remaining_fraction ?? 1,
         kind: s.kind,
         diameterUm: s.particle_diameter_um,
         floating: !!s.floating,
+        morphology: s.morphology,
+        layer: s.layer_index ?? null,
       });
-      if (s.kind === 'metal') {
+      // A metal is a ribbon / granules / a rod only when the engine says it is a piece; a cemented or precipitated metal
+      // (copper on magnesium, silver mirror dust) is a powder and settles like any other solid, just with a metallic sheen.
+      const metalPowder =
+        s.kind === 'metal' && (s.morphology === 'bed' || s.morphology === 'film' || (s.morphology === undefined && s.particle_diameter_um < METAL_PIECE_MIN_UM));
+      if (s.kind === 'metal' && !metalPowder) {
         metals.push(piece());
         continue;
       }
@@ -440,17 +515,20 @@ export class VesselEffects {
         floaters.push(piece());
         continue;
       }
-      const settled = 1 - Math.max(0, Math.min(1, s.suspended_fraction));
+      // nothing can be suspended without a liquid: a dry powder lies entirely in the bed whatever the fraction says
+      const suspFrac = totalMl > 0.05 ? Math.max(0, Math.min(1, s.suspended_fraction)) : 0;
+      const settled = 1 - suspFrac;
       const v = Math.max(0, s.settled_volume_ml) * settled;
       bedVol += v;
       if (v > 1e-5) layers.push({ rgb: s.rgb, vol: v });
+      if (metalPowder) metalPowderVol += v;
       // colour weights: the share of the bed's *volume* (surface area) each solid covers, not its mass
       const w = v + 1e-9;
       r += s.rgb[0] * w;
       g += s.rgb[1] * w;
       b += s.rgb[2] * w;
       wsum += w;
-      const susp = s.mass_g * s.suspended_fraction;
+      const susp = s.mass_g * suspFrac;
       if (totalMl > 0.05) {
         suspMass += susp;
         sr += s.rgb[0] * susp;
@@ -461,6 +539,7 @@ export class VesselEffects {
       }
       if (s.kind === 'crystal') {
         crystalMass += s.mass_g * settled;
+        crystalDiam += s.particle_diameter_um * s.mass_g * settled;
         rough = Math.min(rough, 0.35);
       }
       if (s.kind === 'gel' || s.kind === 'curds') {
@@ -473,7 +552,10 @@ export class VesselEffects {
     this.bedTargetVol = bedVol;
     this.bedLayers = layers;
     if (wsum > 0) this.bedColorTarget.setRGB(r / wsum, g / wsum, b / wsum);
-    this.bedMat.roughness = rough;
+    // a bed of metal powder (cemented copper, silver) has a sheen: metalness follows its share of the bed
+    const metalShare = bedVol > 1e-9 ? Math.min(1, metalPowderVol / bedVol) : 0;
+    this.bedMat.metalness = 0.6 * metalShare;
+    this.bedMat.roughness = metalShare > 0.5 ? Math.min(rough, 0.5) : rough;
     // suspended cloud
     if (suspMass > 1e-5) {
       this.suspendedColor.setRGB(sr / suspMass, sg / suspMass, sb / suspMass);
@@ -485,8 +567,12 @@ export class VesselEffects {
     }
     // crystals sparkle on the bed
     const nCr = crystalMass > 1e-4 ? Math.min(48, Math.floor(6 + Math.sqrt(crystalMass) * 40)) : 0;
-    if (nCr !== this.crystalCount) {
+    // the sparkle follows the engine's crystal size (a sand of 0.1 mm glints less than 2 mm crystals)
+    const crUm = crystalMass > 1e-9 ? crystalDiam / crystalMass : 0;
+    const crSize = crystalSpriteScale(crUm);
+    if (nCr !== this.crystalCount || Math.abs(crSize - this.crystalSize) > 0.25 * this.crystalSize) {
       this.crystalCount = nCr;
+      this.crystalSize = crSize;
       this.layoutCrystals(wsum > 0 ? this.bedColorTarget : new THREE.Color(1, 1, 1));
     }
     // gel / curd lumps
@@ -510,7 +596,7 @@ export class VesselEffects {
       this.crystalPolar.push({
         a: prand(i, 1) * Math.PI * 2,
         f: Math.sqrt(prand(i, 2)),
-        s: (0.07 + prand(i, 3) * 0.13) * Math.min(1.2, p.rimInnerRadius / 3),
+        s: this.crystalSize * (0.6 + prand(i, 3) * 0.8) * Math.min(1.2, p.rimInnerRadius / 3),
         rot: prand(i, 4),
       });
       this.crystals.setColorAt(i, tmpC.copy(col).multiplyScalar(0.85 + prand(i, 8) * 0.25));
@@ -894,6 +980,13 @@ export class VesselEffects {
       this.updateFoam(time, fill, hasLiquid, col);
     });
 
+    // ---- incandescence
+    this.safe('glow', () => {
+      this.glowLevel += (this.glowTarget - this.glowLevel) * Math.min(1, dt * 1.5);
+      this.glow.visible = this.glowLevel > 0.01 && !this.burst;
+      this.glowMat.opacity = this.glowLevel * 0.55;
+    });
+
     // ---- condensation
     this.safe('condensation', () => {
       const condA = this.cond.visible ? (this.condMat.uniforms.uAmount.value as number) : 0;
@@ -952,7 +1045,7 @@ export class VesselEffects {
           const rr = Math.sqrt(Math.random()) * R;
           const shade = rnd(0.85, 1.1);
           const sc = this.suspendedColor;
-          const sz = rnd(0.025, 0.055) * Math.min(1.0, Math.max(0.5, p.rimInnerRadius / 3)); // fine-grain world-size diameter (cm)
+          const sz = suspendedSpriteCm(this.suspendedDiameterUm) * rnd(0.75, 1.3) * Math.min(1.0, Math.max(0.5, p.rimInnerRadius / 3)); // world-size diameter (cm)
           this.precip.spawn(Math.cos(a) * rr, y, Math.sin(a) * rr, 0, 0, 0, rnd(5, 10), sz, sz * 1.2, 0.7, sc.r * shade, sc.g * shade, sc.b * shade, 0, 0, 0);
         }
       } else if (this.precip.live > want + 10) {
@@ -976,7 +1069,7 @@ export class VesselEffects {
     // ---- floating pieces / frozen mass / film / metal
     this.safe('solid pieces', () => {
       const fizz = snap ? snap.gas_fluxes.some((g) => g.nucleation === 'solid' && g.rate_ml_s > 0.01) : false;
-      this.pieces.update(dt, time, { fill, hasLiquid, bedY: Math.max(this.bedLevelY(), p.innerBottomY), stirRpm: this.stirRpm, fizz, burst: this.burst, up: this.liquid.uniforms.uUpObj.value });
+      this.pieces.update(dt, time, { fill, hasLiquid, bedY: Math.max(this.bedLevelY(), p.innerBottomY), stirRpm: this.stirRpm, fizz, burst: this.burst, up: this.liquid.uniforms.uUpObj.value, layerTops: this.liquid.layerTopsY() });
     });
 
     // ---- stir bar
@@ -994,10 +1087,10 @@ export class VesselEffects {
     this.safe('flame', () => {
       const fl = snap?.flame;
       if (fl && fl.power_w > 0.5 && !this.burst) {
-        const h = Math.min(24, 3.5 + Math.sqrt(fl.power_w) * 1.6);
+        const h = flameHeightCm(fl.power_w, surfR * 2);
         const w = Math.max(1.5, surfR * 1.5);
         const em = fl.emitter_rgb ? new THREE.Color(fl.emitter_rgb[0], fl.emitter_rgb[1], fl.emitter_rgb[2]) : undefined;
-        this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), emitter: em, emitterAmount: em ? Math.min(0.9, fl.metal_share ?? 0) : 0 });
+        this.flame.configure(surfR * 0.6, w, h, { luminosity: Math.max(0, Math.min(1, fl.luminosity)), base: em, emitter: em, emitterAmount: em ? Math.min(0.9, fl.metal_share ?? 0) : 0, sootTempK: fl.flame_temp_k });
         this.flame.setTarget(Math.min(1.6, 0.6 + fl.power_w / 300));
         this.flame.group.position.y = hasLiquid ? fill : p.innerBottomY + 0.2;
       } else {
@@ -1498,6 +1591,8 @@ export class VesselEffects {
     this.foamMat.dispose();
     this.foam.dispose();
     this.condMat.dispose();
+    this.glow.geometry.dispose();
+    this.glowMat.dispose();
     this.bedMat.dispose();
     this.bedSide?.geometry.dispose();
     this.bedTop?.geometry.dispose();

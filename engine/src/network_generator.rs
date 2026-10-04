@@ -23,6 +23,10 @@ pub const DEFAULT_MAX_REACTIONS: usize = 500;
 pub const DEFAULT_FLUX_THRESHOLD_ABS: f64 = 1.0e-11; // M/s
 /// Candidates below the flux threshold kept as the edge of the network.
 pub const MAX_EDGE_REACTIONS: usize = 400;
+/// A product may have at most this many heavy atoms, or twice those of the largest species the expansion started from if
+/// that is more: addition chemistry (aldol, hemiacetal, acyl transfer) is otherwise an open-ended oligomerisation, which
+/// RMG-style generators cut with a size limit as well.
+pub const MIN_HEAVY_ATOM_CAP: usize = 20;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeneratedReaction {
@@ -153,6 +157,8 @@ impl NetworkGenerator {
         let mut total_flux = 0.0;
         let mut cache = MatchCache { mols: HashMap::new(), matches: HashMap::new() };
         let all_templates = reaction_templates::templates();
+        let largest_start = initial_concs.keys().filter_map(|sp| cache.mol(sp).map(|m| m.atoms.len())).max().unwrap_or(0);
+        let heavy_cap = MIN_HEAVY_ATOM_CAP.max(2 * largest_start);
 
         // Iterative expansion queue (RMG rate-based expansion)
         let mut queue: Vec<String> = active_species_set.iter().cloned().collect();
@@ -169,6 +175,10 @@ impl NetworkGenerator {
             // every instance of every template in which the current species takes a slot
             let mut candidates: Vec<GeneratedReaction> = Vec::new();
             for (ti, tpl) in all_templates.iter().enumerate() {
+                // an oxidation half-reaction is not a kinetic reaction: it only names the oxidised form of a species
+                if tpl.redox.is_some() {
+                    continue;
+                }
                 for slot in 0..tpl.n_slots() {
                     let mine = cache.slot_matches(ti, tpl, slot, &current);
                     if mine.is_empty() {
@@ -177,7 +187,7 @@ impl NetworkGenerator {
                     match tpl.n_slots() {
                         1 => {
                             for m in &mine {
-                                self.consider(tpl, &[&current], &[m], &mut cache, &species_concs, t, medium, solvent_class, &mut candidates);
+                                self.consider(tpl, &[&current], &[m], &mut cache, &species_concs, t, medium, solvent_class, heavy_cap, &mut candidates);
                             }
                         }
                         2 => {
@@ -191,7 +201,7 @@ impl NetworkGenerator {
                                         } else {
                                             ([partner.as_str(), current.as_str()], [o, m])
                                         };
-                                        self.consider(tpl, &species, &maps, &mut cache, &species_concs, t, medium, solvent_class, &mut candidates);
+                                        self.consider(tpl, &species, &maps, &mut cache, &species_concs, t, medium, solvent_class, heavy_cap, &mut candidates);
                                     }
                                 }
                             }
@@ -211,7 +221,7 @@ impl NetworkGenerator {
                 if !bal.balanced {
                     continue;
                 }
-                let flux = rate_at(&cand, &species_concs);
+                let flux = net_rate_at(&cand, &species_concs);
                 if flux >= self.config.flux_threshold_abs {
                     seen.insert(cand.id.clone());
                     total_flux += flux;
@@ -263,6 +273,7 @@ impl NetworkGenerator {
         temp_k: f64,
         medium: Medium,
         solvent_class: &str,
+        heavy_cap: usize,
         out: &mut Vec<GeneratedReaction>,
     ) {
         let mols: Vec<Molecule> = match species.iter().map(|s| cache.mol(s).cloned()).collect::<Option<Vec<_>>>() {
@@ -275,6 +286,9 @@ impl NetworkGenerator {
             return;
         }
         let Some(product_mols) = tpl.products(&inst) else { return };
+        if product_mols.iter().any(|m| m.atoms.len() > heavy_cap) {
+            return;
+        }
         let mut products: HashMap<String, f64> = HashMap::new();
         for pm in &product_mols {
             *products.entry(register_or_find_species(pm)).or_insert(0.0) += 1.0;
@@ -453,16 +467,59 @@ fn rate_at(r: &GeneratedReaction, concs: &HashMap<String, f64>) -> f64 {
     rate
 }
 
+/// Net rate of a candidate at the generation concentrations: the forward rate times `1 - Q/K` when the reaction has an
+/// equilibrium constant from data (a reaction without one is irreversible and runs forward). A product that the
+/// thermodynamics forbids (the hydrate of a hydrate, an adduct with K of 1e-15) has no net flux however fast the forward
+/// step is, so it does not enter the network and does not seed further expansion.
+fn net_rate_at(r: &GeneratedReaction, concs: &HashMap<String, f64>) -> f64 {
+    let fwd = rate_at(r, concs);
+    if !r.k_eq_from_data || r.k_eq <= 0.0 || fwd <= 0.0 {
+        return fwd;
+    }
+    let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-12);
+    let mut ln_q = 0.0;
+    for (sp, &nu) in &r.products {
+        if sp != crate::vessel::AQUEOUS_SOLVENT {
+            ln_q += nu * conc(sp).ln();
+        }
+    }
+    for (sp, &nu) in &r.reactants {
+        if sp != crate::vessel::AQUEOUS_SOLVENT {
+            ln_q -= nu * conc(sp).ln();
+        }
+    }
+    let approach = (ln_q - r.k_eq.ln()).min(0.0).exp(); // Q/K, at most 1: past equilibrium the net flux is zero
+    fwd * (1.0 - approach).max(0.0)
+}
+
 impl GeneratedReaction {
     /// Rate (M/s) of the reaction in a solution with the given concentrations (mol/L) at `temp_k`, from its Arrhenius
     /// parameters and rate-law orders (catalysts included): the quantity the vessel's kinetics evaluates every step. Used to
     /// re-evaluate the edge of the network.
     pub fn rate_in(&self, concs: &HashMap<String, f64>, temp_k: f64) -> f64 {
-        let mut rate = self.arrhenius_a * (-self.arrhenius_ea / (R_IDEAL * temp_k.max(100.0))).clamp(-700.0, 700.0).exp();
+        let t = temp_k.max(100.0);
+        let mut rate = self.arrhenius_a * (-self.arrhenius_ea / (R_IDEAL * t)).clamp(-700.0, 700.0).exp();
         for (sp, &ord) in &self.orders {
             if ord > 0.0 {
                 rate *= concs.get(sp).copied().unwrap_or(0.0).max(0.0).powf(ord);
             }
+        }
+        // a reaction with an equilibrium constant from data runs at its net rate (the same screening as the expansion)
+        if self.k_eq_from_data && self.k_eq_298 > 0.0 && rate > 0.0 {
+            let ln_k = self.k_eq_298.ln() - self.delta_h_kj * 1000.0 / R_IDEAL * (1.0 / t - 1.0 / 298.15);
+            let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-12);
+            let mut ln_q = 0.0;
+            for (sp, &nu) in &self.products {
+                if sp != crate::vessel::AQUEOUS_SOLVENT {
+                    ln_q += nu * conc(sp).ln();
+                }
+            }
+            for (sp, &nu) in &self.reactants {
+                if sp != crate::vessel::AQUEOUS_SOLVENT {
+                    ln_q -= nu * conc(sp).ln();
+                }
+            }
+            rate *= (1.0 - (ln_q - ln_k).min(0.0).exp()).max(0.0);
         }
         rate
     }
@@ -487,17 +544,20 @@ fn reaction_k_298(reactants: &HashMap<String, f64>, products: &HashMap<String, f
 // ==============================================================================================
 
 /// Resolves a species string to a molecular graph.
+///
+/// The graph is aromaticity-perceived (`Molecule::perceived`): PubChem writes benzene as `C1=CC=CC=C1`, and a template that
+/// reads that as an alkene would add bromine to it.
 pub fn resolve_molecule(species: &str) -> Option<Molecule> {
     if let Some(m) = smiles::parse(species) {
         if !m.atoms.is_empty() {
-            return Some(m);
+            return Some(m.perceived());
         }
     }
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         if let Some(rec) = store.get(species).or_else(|| store.get_by_name(species)) {
             if let Some(ref smi) = rec.identity.smiles {
                 if let Some(m) = smiles::parse(smi) {
-                    return Some(m);
+                    return Some(m.perceived());
                 }
             }
         }
@@ -505,11 +565,53 @@ pub fn resolve_molecule(species: &str) -> Option<Molecule> {
     for cat in crate::chem_db::get_reagent_catalog() {
         if cat.id == species || cat.name.eq_ignore_ascii_case(species) {
             if let Some(m) = smiles::parse(&cat.formula) {
-                return Some(m);
+                return Some(m.perceived());
             }
         }
     }
     None
+}
+
+/// Registers the oxidised forms of the species that have a structure, and theirs in turn (alcohol, aldehyde, acid), so the
+/// Gibbs-driven redox discovery finds a partner for them in the species store. Nothing is added to the vessel: the forms
+/// only become candidates; whether anything is oxidised, and how fast, is decided by the driving force against the oxidant
+/// that is present and the couple's self-exchange rate (`gem/rates.rs`).
+pub fn register_redox_partners(species: &[String]) {
+    let mut queue: Vec<(String, usize)> = species.iter().map(|s| (s.clone(), 0)).collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    while let Some((sp, depth)) = queue.pop() {
+        if !seen.insert(sp.clone()) || depth > 3 {
+            continue;
+        }
+        let Some(m) = resolve_molecule(&sp) else { continue };
+        if m.atoms.iter().any(|a| a.charge != 0) {
+            continue;
+        }
+        for form in reaction_templates::oxidised_forms(&m) {
+            let id = register_or_find_species(&form.product);
+            queue.push((id, depth + 1));
+        }
+    }
+}
+
+/// Self-exchange rate constant (M-1 s-1) of the couple `a` (reduced) / `b` (oxidised) when `b` is what an oxidation
+/// half-reaction template makes of `a`, in either order; None when no template relates them. Memoised: ids do not change
+/// their structure.
+pub fn class_self_exchange_k(a: &str, b: &str) -> Option<f64> {
+    use std::sync::Mutex;
+    static MEMO: std::sync::OnceLock<Mutex<HashMap<(String, String), Option<f64>>>> = std::sync::OnceLock::new();
+    let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = if a <= b { (a.to_string(), b.to_string()) } else { (b.to_string(), a.to_string()) };
+    if let Some(v) = memo.lock().ok().and_then(|m| m.get(&key).copied()) {
+        return v;
+    }
+    let (ma, mb) = (resolve_molecule(a)?, resolve_molecule(b)?);
+    let by = |x: &Molecule, y: &Molecule| reaction_templates::oxidised_forms(x).into_iter().find(|f| f.product.is_isomorphic(y)).map(|f| f.k_self);
+    let found = by(&ma, &mb).or_else(|| by(&mb, &ma));
+    if let Ok(mut m) = memo.lock() {
+        m.insert(key, found);
+    }
+    found
 }
 
 /// Isomer tag of a compound id (`C5H12O#3F9A1C07`): 8 hex digits of the FNV-1a hash of the SMILES. Stripping the brackets

@@ -11,10 +11,10 @@ fn beaker() -> Vessel {
     })
 }
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn dose_g(v: &mut Vessel, id: &str, g: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn import_solid(id: &str, formula: &str) {
     let m = model_compound(&CompoundRequest {

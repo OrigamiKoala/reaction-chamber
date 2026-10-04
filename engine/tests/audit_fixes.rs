@@ -62,10 +62,10 @@ fn put(v: &mut Vessel, species: &[(&str, f64)]) {
     }
 }
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn dose_g(v: &mut Vessel, id: &str, g: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn run(v: &mut Vessel, seconds: f64, dt: f64) {
     for _ in 0..(seconds / dt) as usize {

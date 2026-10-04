@@ -86,6 +86,12 @@ pub struct ReagentCatalogEntry {
     /// InChIKey of the main species (identity for matching imports against catalog reagents).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inchi_key: Option<String>,
+    /// Physical form of a solid reagent (`piece`, `turnings`, `granules`, `powder`; see `solid_forms.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solid_form: Option<String>,
+    /// Grain size of that form, um, when the reagent's own differs from the form's default (the thickness of a ribbon).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub particle_um: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

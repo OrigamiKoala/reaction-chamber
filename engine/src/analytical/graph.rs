@@ -65,6 +65,17 @@ impl Mol {
         Some(whole.split())
     }
 
+    /// The graph of a `smiles::Molecule` with the atom order kept (no hydrogen atoms are folded away: a template works on
+    /// molecules whose hydrogens are counts). Kekule rings are perceived aromatic first.
+    pub fn from_molecule(m: &smiles::Molecule) -> Mol {
+        let p = m.perceived();
+        let atoms = (0..p.atoms.len())
+            .map(|i| GAtom { el: p.atoms[i].element.clone(), arom: p.atoms[i].aromatic, charge: p.atoms[i].charge, h: p.hydrogens(i) })
+            .collect();
+        let adj = (0..p.atoms.len()).map(|i| p.neighbours(i)).collect();
+        Mol { atoms, adj }
+    }
+
     fn split(&self) -> Vec<Mol> {
         let n = self.atoms.len();
         let mut comp: Vec<Option<usize>> = vec![None; n];

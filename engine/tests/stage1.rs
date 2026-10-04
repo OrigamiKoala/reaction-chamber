@@ -45,9 +45,9 @@ fn s1_1_llnl_comparison_within_0_3_log_units() {
 #[test]
 fn s1_2_existing_precipitation_unchanged() {
     let mut v = beaker();
-    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(50.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
-    v.dose(DoseRequest { reagent_id: "agno3_0_1m".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
-    v.dose(DoseRequest { reagent_id: "nacl_0_1m".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(50.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: "agno3_0_1m".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: "nacl_0_1m".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 
     let snap = v.snapshot();
     let agcl = snap.solids.iter().find(|s| s.species == "AgCl(s)");

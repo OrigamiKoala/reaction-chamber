@@ -267,28 +267,28 @@ fn test_g5_iodine_clock_gate() {
             volume_ml: Some(25.0),
             mass_g: None,
             drops: None,
-            temperature_k: Some(temp_k),
+            temperature_k: Some(temp_k), solid_form: None,
         }).unwrap();
         v.dose(DoseRequest {
             reagent_id: "ki_0_05m".to_string(),
             volume_ml: Some(25.0),
             mass_g: None,
             drops: None,
-            temperature_k: Some(temp_k),
+            temperature_k: Some(temp_k), solid_form: None,
         }).unwrap();
         v.dose(DoseRequest {
             reagent_id: "na2s2o3_0_002m".to_string(),
             volume_ml: Some(25.0),
             mass_g: None,
             drops: None,
-            temperature_k: Some(temp_k),
+            temperature_k: Some(temp_k), solid_form: None,
         }).unwrap();
         v.dose(DoseRequest {
             reagent_id: "starch_sol".to_string(),
             volume_ml: Some(2.0),
             mass_g: None,
             drops: None,
-            temperature_k: Some(temp_k),
+            temperature_k: Some(temp_k), solid_form: None,
         }).unwrap();
 
         // Initial iodine atoms

@@ -67,6 +67,14 @@ pub struct GasState {
 pub struct GasAmount {
     pub species: String,
     pub mol: f64,
+    /// Hue of the gas seen through the vessel's width at the concentration the vessel holds it (from the gas's absorption
+    /// cross-sections, `optics/gas.rs`); absent for a gas with no visible absorption data (colourless as far as the model
+    /// knows). A collector holding chlorine is yellow-green, one holding nitrogen dioxide red-brown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<[f64; 3]>,
+    /// How visible it is: 1 - luminance transmittance across the vessel (0 colourless, towards 1 opaque).
+    #[serde(default)]
+    pub opacity: f64,
 }
 
 /// What the snapshot reports about gas in a vessel. For a collector: the collected gas. For anything else: the evolved
@@ -166,10 +174,18 @@ impl Vessel {
             evolved = self.evolved_headspace();
             &evolved
         };
+        // concentration of each gas in the space it fills (mol/L) and the path across the vessel
+        let total_mol: f64 = src.values().filter(|m| **m > 0.0).sum();
+        let p_gas = if collector.is_some() { self.dry_gas_pressure_atm() } else { self.p_ext_atm() };
+        let space_l = if collector.is_some() { (gas_volume_ml(total_mol, self.temperature_k, p_gas) / 1000.0).max(1e-6) } else { (self.headspace_volume_m3() * 1000.0).max(1e-6) };
+        let path_cm = 2.0 * self.config.inner_radius_cm.max(0.3);
         let mut species: Vec<GasAmount> = src
             .iter()
             .filter(|(_, &m)| m > 0.0)
-            .map(|(s, &m)| GasAmount { species: s.clone(), mol: m })
+            .map(|(s, &m)| {
+                let look = crate::optics::gas::plume_look(&[(s.as_str(), m / space_l)], path_cm);
+                GasAmount { species: s.clone(), mol: m, rgb: look.as_ref().filter(|l| l.opacity > 0.005).map(|l| l.rgb), opacity: look.map_or(0.0, |l| l.opacity) }
+            })
             .collect();
         species.sort_by(|a, b| b.mol.partial_cmp(&a.mol).unwrap_or(std::cmp::Ordering::Equal).then(a.species.cmp(&b.species)));
         let total: f64 = species.iter().fold(0.0, |a, g| a + g.mol);
@@ -397,9 +413,9 @@ mod tests {
         // the liquid goes in first, then the stopper (the air captured is the air that is really there)
         let mut src = mk("erlenmeyer-250", 250.0, false);
         let mut dst = mk("gas-syringe-100", 100.0, false);
-        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
         stopper(&mut src);
-        src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.3), drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.3), drops: None, temperature_k: None, solid_form: None }).unwrap();
         let mut moved = 0.0;
         let mut lost_total = 0.0;
         let mut max_p = 0.0f64;
@@ -441,10 +457,10 @@ mod tests {
         let mut src = mk("erlenmeyer-250", 250.0, false);
         // (a 250 mL syringe: the flask pushes out 84 mL of hydrogen plus the thermal expansion of its air)
         let mut dst = mk("gas-syringe-250", 250.0, false);
-        src.dose(DoseRequest { reagent_id: "hcl_1m".into(), volume_ml: Some(30.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "hcl_1m".into(), volume_ml: Some(30.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
         stopper(&mut src);
         // 0.0851 g Mg = 3.5 mmol -> 3.5 mmol H2 (~84 mL), HCl in excess (30 mmol)
-        src.dose(DoseRequest { reagent_id: "mg_ribbon".into(), volume_ml: None, mass_g: Some(0.0851), drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "mg_ribbon".into(), volume_ml: None, mass_g: Some(0.0851), drops: None, temperature_k: None, solid_form: None }).unwrap();
         let mut moved = 0.0;
         for _ in 0..1200 {
             src.step(0.1).unwrap();
@@ -464,14 +480,14 @@ mod tests {
     fn full_collector_escapes_and_still_conserves() {
         let mut src = mk("erlenmeyer-250", 250.0, false);
         let mut dst = mk("gas-syringe-100", 100.0, false);
-        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
         stopper(&mut src);
         let mut moved = 0.0;
         let mut lost = 0.0;
         // 5 g of NaHCO3 added in 0.25 g portions (as a manual pour would): ~1.4 L of CO2 for a 100 mL syringe
         for i in 0..3000 {
             if i % 5 == 0 && i < 100 {
-                src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.25), drops: None, temperature_k: None }).unwrap();
+                src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.25), drops: None, temperature_k: None, solid_form: None }).unwrap();
             }
             src.step(0.1).unwrap();
             let (m, l) = step_link(&mut src, &mut dst, 0.1);
@@ -506,8 +522,8 @@ mod tests {
         // without the stopper the gas escapes to the room: the tube cannot collect it
         let mut src = mk("erlenmeyer-250", 250.0, false);
         let mut dst = mk("gas-syringe-100", 100.0, false);
-        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
-        src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.3), drops: None, temperature_k: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "ch3cooh_5pct".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
+        src.dose(DoseRequest { reagent_id: "nahco3_s".into(), volume_ml: None, mass_g: Some(0.3), drops: None, temperature_k: None, solid_form: None }).unwrap();
         for _ in 0..100 {
             src.step(0.1).unwrap();
             step_link(&mut src, &mut dst, 0.1);

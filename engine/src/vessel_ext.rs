@@ -153,6 +153,70 @@ fn capitalise(s: &str) -> String {
     }
 }
 
+/// A complex or ion pair that only an association row describes has no species record, so its enthalpy would be missing
+/// from the vessel's energy state (`vessel_energy`) and its formation data from the thermodynamic lookups. Gives it one from
+/// the row: dfG = sum of the reactants' dfG + the row's reaction Gibbs energy at 298.15 K, dfH = sum of the reactants' dfH +
+/// the row's reaction enthalpy (0 for a row that gives none), Cp = sum of the reactants' (dCp = 0): tier Estimated, labelled
+/// as derived from the association constant. Does nothing when the species already has data or a reactant lacks it.
+fn ensure_complex_record(eq: &crate::chem_db::GeneralEquilibrium) {
+    use crate::db::record::{Datum, Identity, PhaseData, PhaseThermo, SpeciesRecord};
+    use crate::thermo::functions::{phase_of_id, try_thermo_state};
+    use crate::types::ProvenanceTier;
+    if eq.products.len() != 1 {
+        return;
+    }
+    let (prod, &nu) = eq.products.iter().next().unwrap();
+    if nu != 1.0 || prod.ends_with("(s)") || prod.ends_with("(g)") || try_thermo_state(prod, "aq", 298.15, 1.0e5).is_some() {
+        return;
+    }
+    let (mut dfh, mut dfg, mut cp) = (0.0, 0.0, 0.0);
+    for (sp, &c) in &eq.reactants {
+        let Some(st) = try_thermo_state(sp, phase_of_id(sp), 298.15, 1.0e5) else { return };
+        dfh += c * st.h_j_mol / 1000.0;
+        dfg += c * st.mu0_j_mol / 1000.0;
+        cp += c * st.cp_j_mol_k;
+    }
+    dfg += -crate::physics::R_GAS * 298.15 * std::f64::consts::LN_10 * eq.log_k_298 / 1000.0;
+    dfh += eq.delta_h_kj;
+    let source = format!("derived from the association row {} (log K {:.2}, dCp = 0)", eq.id, eq.log_k_298);
+    let datum = |v: f64, unit: &str| Datum::new(v, unit, ProvenanceTier::Estimated, &source);
+    let thermo = PhaseThermo {
+        model: "point+cp".to_string(),
+        tier: ProvenanceTier::Estimated,
+        source: source.clone(),
+        dfH: Some(datum(dfh, "kJ/mol")),
+        dfG: Some(datum(dfg, "kJ/mol")),
+        S: Some(datum((dfh - dfg) * 1000.0 / 298.15, "J/(mol K)")),
+        cp: Some(datum(cp, "J/(mol K)")),
+        ranges: None,
+        params: None,
+    };
+    let mut phases = HashMap::new();
+    phases.insert("aq".to_string(), PhaseData { thermo: Some(thermo), volume: None, rho: None, polymorph: None, specific_area: None });
+    let global = crate::db::SpeciesStore::global();
+    let mut store = match global.write() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let mut rec = store.get(prod).cloned().unwrap_or_else(|| SpeciesRecord {
+        id: prod.clone(),
+        identity: Identity { inchikey: None, smiles: None, formula: prod.clone(), charge: ions::species_charge(prod), cas: None, cid: None, names: vec![prod.clone()], db_names: HashMap::new() },
+        phases: HashMap::new(),
+        critical: None,
+        points: Vec::new(),
+        vapor_pressure: None,
+        unifac_groups: None,
+        acid_base: Vec::new(),
+        redox: Vec::new(),
+        optics: None,
+        transport: None,
+        kinetics_refs: Vec::new(),
+        rejected: Vec::new(),
+    });
+    rec.phases.extend(phases);
+    store.register(rec);
+}
+
 impl Vessel {
     // ------------------------------------------------------------------------------------------ appearance
     /// Appearance of a solid species. Colour comes from `optics::solid` (a measured colour, else Kubelka-Munk reflectance from
@@ -333,6 +397,7 @@ impl Vessel {
                         }
                         self.ev.checked_pairs.insert(key);
                         if !self.equilibria.iter().any(|e| e.id == eq.id) && !self.species_has_a_row(&eq) {
+                            ensure_complex_record(&eq);
                             self.register_equilibrium(eq);
                         }
                     }
@@ -348,6 +413,7 @@ impl Vessel {
         for eq in new_rows {
             self.ev.checked_pairs.insert(("cplx".to_string(), eq.id.clone()));
             if !self.equilibria.iter().any(|e| e.id == eq.id) && !self.species_has_a_row(&eq) {
+                ensure_complex_record(&eq);
                 self.register_equilibrium(eq);
             }
         }
@@ -465,6 +531,21 @@ impl Vessel {
         let s_sum: f64 = s.iter().sum();
         let suspended_d = if s_sum > 1e-9 { d.iter().zip(s.iter()).map(|(d, s)| d * s).sum::<f64>() / s_sum } else { ln.mass_median_m() };
         SizeView { class_d_m: d, class_susp: s, suspended_d_m: suspended_d, sigma_g: ln.sigma_g }
+    }
+
+    /// Mass-weighted mean effective (flocculated) diameter, m, of the size classes of solid `sp` in the current liquid: each
+    /// class grows from its primary size toward 20 Brownian-limit diameters as the electrolyte's coagulation index passes
+    /// 0.3 -> 1 (the same law `update_suspension` settles with).
+    pub(crate) fn floc_diameter_m(&self, props: &SolidProps, view: &SizeView) -> f64 {
+        let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-9);
+        let ions: Vec<(f64, f64)> = self.species_mol.iter().filter(|(s, m)| **m > 0.0 && ions::species_charge(s) != 0).map(|(s, m)| (m / vol_l, ions::species_charge(s) as f64)).collect();
+        let gamma_index = crate::transfer::settling::coagulation_index(&ions);
+        let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
+        let hyd = self.hydro_state();
+        let rho_p = props.density_g_ml * 1000.0;
+        let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * self.temperature_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
+        let n = view.class_d_m.len().max(1) as f64;
+        view.class_d_m.iter().map(|&d| d + w * ((20.0 * d_pe1).max(d) - d)).sum::<f64>() / n
     }
 
     // ------------------------------------------------------------------------------------------ events

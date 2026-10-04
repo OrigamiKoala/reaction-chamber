@@ -196,6 +196,8 @@ interface Held {
   bodyR: number;
   mouthR: number;
   color: string;
+  /** Refractive index of the liquid being carried (a vessel's top layer); the stream refracts like it. */
+  ior?: number;
   homeYaw: number;
   lock: Lock | null;
   /** After pulling out of a target, don't re-lock onto it until the object has left its capture zone. */
@@ -457,6 +459,7 @@ export class HandlingController {
         bodyR: vb.profile.maxOuterRadius,
         mouthR: vb.profile.rimInnerRadius,
         color: vb.getLiquidColorHex(),
+        ior: vb.lastSnapshot?.layers?.length ? vb.lastSnapshot.layers[vb.lastSnapshot.layers.length - 1].refractive_index : undefined,
         homeYaw: 0,
         lock: null,
         exitFrom: null,
@@ -693,7 +696,7 @@ export class HandlingController {
     const rect = this.host.dom.getBoundingClientRect();
     const fx: Fx = { target: t };
     try {
-      if (kind === 'liquid') fx.stream = new PourStream(this.host.scene, h.color);
+      if (kind === 'liquid') fx.stream = new PourStream(this.host.scene, h.color, h.ior);
       else if (kind === 'gas') fx.gas = new GasPlume(this.host.scene, h.color);
       else if (kind === 'powder') fx.powder = new PowderStream(this.host.scene, h.color);
       else if (kind === 'metal') fx.metal = new MetalPieces(this.host.scene, h.color);

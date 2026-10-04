@@ -370,6 +370,25 @@ impl Molecule {
         out
     }
 
+    /// `aromatized` for chemistry on the graph: Kekule rings are perceived aromatic (the form the reaction templates and
+    /// group patterns are written for), and the atoms of the organic subset keep *implicit* hydrogens (`aromatized`
+    /// freezes every count, which would stop a template edit from re-deriving them). A bracket atom (`[nH]`, `[O-]`) keeps
+    /// the count it was written with. Atom order is unchanged.
+    pub fn perceived(&self) -> Molecule {
+        let mut out = self.aromatized();
+        for i in 0..out.atoms.len() {
+            if self.atoms[i].explicit_h.is_none() && out.atoms[i].charge == 0 {
+                if let Some(frozen) = out.atoms[i].explicit_h {
+                    out.atoms[i].explicit_h = None;
+                    if out.hydrogens(i) != frozen {
+                        out.atoms[i].explicit_h = Some(frozen);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Number of acidic hydroxyl groups on a carbonyl carbon: carboxylic acids, and the two OH of carbonic acid.
     /// Neutral oxygens only (carboxylate and ester oxygens do not count).
     pub fn carboxylic_acid_oh_count(&self) -> usize {

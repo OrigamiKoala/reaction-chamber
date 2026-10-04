@@ -44,7 +44,9 @@ pub struct EtRate {
 }
 
 /// Self-exchange rate constant of the couple `a` / `b` (two forms of one redox element): the record's datum when the store
-/// has one, else the estimate by couple class. Returns (k, from_data).
+/// has one, else the class value of the oxidation half-reaction template that relates the two structures
+/// (`data/reaction_templates.json`, tier Speculative), else the estimate by composition. Returns (k, from_data), where
+/// `from_data` is true for the first two.
 pub fn self_exchange_k(a: &str, b: &str) -> (f64, bool) {
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         for (x, y) in [(a, b), (b, a)] {
@@ -56,6 +58,10 @@ pub fn self_exchange_k(a: &str, b: &str) -> (f64, bool) {
                 }
             }
         }
+    }
+    // a couple that an oxidation half-reaction template relates (alcohol / carbonyl, aldehyde / acid): the class value
+    if let Some(k) = crate::network_generator::class_self_exchange_k(a, b) {
+        return (k, true);
     }
     let same_atoms = match (crate::ions::species_elements(a), crate::ions::species_elements(b)) {
         (Some(ea), Some(eb)) => ea == eb,

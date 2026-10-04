@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { ElectroReadout, ElectrolysisSpec } from '../types/sim';
 import { LcdDisplay, frontPlate, roundedBox, setWorldPose } from './lcd';
 import { Control3D, Knob, PushButton, Rocker, Selector, place } from '../bench/controls3d';
-import { ELECTRODE_LENGTH, ELECTRODE_RADIUS, ELECTRODE_X, electrodeBottomY } from '../render/electrode_geometry';
+import { DIP_CM, ELECTRODE_LENGTH, ELECTRODE_RADIUS, ELECTRODE_X, electrodeBottomY } from '../render/electrode_geometry';
+import { anodeLook, cathodeLook } from './electrode_wear';
 
 import { ELECTRODE_MATERIALS, ElectrodeMaterial } from './electrode_materials';
 export { ELECTRODE_MATERIALS };
@@ -73,6 +74,11 @@ export class ElectrochemStation {
   private cathodeRod: THREE.Mesh;
   private anodeMat: THREE.MeshStandardMaterial;
   private cathodeMat: THREE.MeshStandardMaterial;
+  /** Sleeves over the dipped end of each rod: the cathode's deposit, the anode's tarnish. */
+  private anodeFilm: THREE.Mesh;
+  private cathodeFilm: THREE.Mesh;
+  private anodeFilmMat: THREE.MeshStandardMaterial;
+  private cathodeFilmMat: THREE.MeshStandardMaterial;
 
   private currentReadout: ElectroReadout | null = null;
   private powerLed: THREE.Mesh;
@@ -255,6 +261,20 @@ export class ElectrochemStation {
     const blackClip = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.0, 12), blackCableMat);
     blackClip.position.set(1.4, 4.2, 0);
 
+    // films over the dipped end of the rods (grown / worn by the engine's electrode mass changes, see `setWear`)
+    const filmGeo = new THREE.CylinderGeometry(ELECTRODE_RADIUS + 0.006, ELECTRODE_RADIUS + 0.006, DIP_CM, 20, 1, true);
+    this.anodeFilmMat = new THREE.MeshStandardMaterial({ color: 0x40382e, roughness: 0.85, metalness: 0.2, transparent: true, opacity: 0, depthWrite: false });
+    this.cathodeFilmMat = new THREE.MeshStandardMaterial({ color: 0xb86542, roughness: 0.75, metalness: 0.45, transparent: true, opacity: 0, depthWrite: false });
+    this.anodeFilm = new THREE.Mesh(filmGeo, this.anodeFilmMat);
+    this.cathodeFilm = new THREE.Mesh(filmGeo, this.cathodeFilmMat);
+    for (const f of [this.anodeFilm, this.cathodeFilm]) {
+      f.position.y = -ELECTRODE_LENGTH / 2 + DIP_CM / 2;
+      f.visible = false;
+      f.raycast = () => {};
+    }
+    this.anodeRod.add(this.anodeFilm);
+    this.cathodeRod.add(this.cathodeFilm);
+
     this.anodeRod.position.set(-ELECTRODE_X, 0, 0);
     this.cathodeRod.position.set(ELECTRODE_X, 0, 0);
 
@@ -350,6 +370,28 @@ export class ElectrochemStation {
     } else {
       this.updateDisplay(0, 0, false);
     }
+    this.setWear(r);
+  }
+
+  /**
+   * Shows what the current has done to the rods: the cathode's deposit (colour and matte finish of whatever plated out)
+   * and the anode's tarnish and thinning, from the engine's per-electrode mass changes.
+   */
+  public setWear(r: ElectroReadout | null) {
+    const anode = anodeLook(r?.electrodes?.[0]);
+    const cathode = cathodeLook(r?.electrodes?.[1]);
+    this.anodeFilm.visible = anode.coverage > 0.01;
+    this.anodeFilmMat.opacity = anode.coverage;
+    this.anodeFilmMat.color.copy(this.anodeMat.color).multiplyScalar(0.5);
+    const shrink = anode.shrinkCm > 0 ? Math.max(0.5, 1 - anode.shrinkCm / ELECTRODE_RADIUS) : 1;
+    this.anodeRod.scale.set(shrink, 1, shrink);
+    this.cathodeFilm.visible = cathode.coverage > 0.01;
+    this.cathodeFilmMat.opacity = cathode.coverage;
+    if (cathode.rgb) this.cathodeFilmMat.color.setRGB(cathode.rgb[0], cathode.rgb[1], cathode.rgb[2]);
+    else this.cathodeFilmMat.color.copy(this.cathodeMat.color);
+    // the film is a touch thicker than the rod's skin as it grows (true to scale: tens of micrometres)
+    const grow = 1 + Math.min(0.5, cathode.thicknessUm * 1e-4 / ELECTRODE_RADIUS);
+    this.cathodeFilm.scale.set(grow, 1, grow);
   }
 
   public readout(): ElectroReadout | null {
@@ -384,6 +426,7 @@ export class ElectrochemStation {
 
   public detach() {
     this.electrodesGroup.visible = false;
+    this.setWear(null);
     this.redCable.geometry.dispose();
     this.redCable.geometry = new THREE.BufferGeometry();
     this.blackCable.geometry.dispose();

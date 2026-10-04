@@ -20,11 +20,12 @@ import { getProfile } from '${web}/src/render/glass_profiles';
 import { LiquidBody } from '${web}/src/render/liquid_material';
 import { VesselEffects } from '${web}/src/render/effects';
 import { createGlassware } from '${web}/src/bench/glassware';
-export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware };
+import { applyPieceMetals } from '${web}/src/app/piece_metals';
+export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, applyPieceMetals };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const mod = await import('data:text/javascript;base64,' + Buffer.from(out.outputFiles[0].text).toString('base64'));
-const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware } = mod;
+const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, applyPieceMetals } = mod;
 
 const dir = path.join(web, 'src', 'wasm', 'engine');
 const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
@@ -71,7 +72,16 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   dose(h, { reagent_id: 'mg_ribbon', mass_g: 0.3 });
   run(h, 2);
   const s = snap(h);
+  // the Lab tags metals the user added as pieces (the engine reports every solid as a particle population: a bed)
+  const turb0 = Math.max(...s.layers[0].scatter_per_cm);
+  applyPieceMetals(s, new Set(['Mg(s)']));
+  const turb1 = Math.max(...s.layers[0].scatter_per_cm);
   const { fx } = show(s);
+  ok('a metal added as a piece neither clouds the liquid nor counts as suspended', () => {
+    assert.ok(turb0 > 0.05, 'the engine reports a turbid layer: ' + turb0);
+    assert.ok(turb1 < turb0 * 0.25, `turbidity ${turb0.toFixed(3)} -> ${turb1.toFixed(3)}`);
+    assert.ok(s.solids.every((x) => x.kind !== 'metal' || (x.morphology === 'pieces' && x.suspended_fraction === 0)));
+  });
   ok('a fizzing metal ribbon is shown and bubbles come off', () => {
     const r = fx.pieces.ribbons[0];
     assert.ok(r.mesh.visible, 'ribbon visible');
@@ -212,6 +222,112 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   });
 }
 
+// ---------------------------------------------------------------- engine morphology, metal powders, dry solids, layers, glow
+{
+  const h = vessel();
+  dose(h, { reagent_id: 'water', volume_ml: 60 });
+  const s0 = clone(snap(h));
+  const solid = (sp, kind, vol, extra = {}) => ({
+    species: sp, name: sp, mass_g: vol * 5, settled_volume_ml: vol * 1.6, volume_ml: vol, suspended_fraction: 0, particle_diameter_um: 30,
+    rgb: [0.55, 0.2, 0.08], kind, remaining_fraction: 1, settling_velocity_mm_s: 0, morphology: 'bed', ...extra,
+  });
+  {
+    const s = clone(s0);
+    s.solids.push(solid('Cu(s)', 'metal', 0.4, { particle_diameter_um: 10 }));
+    const { fx } = show(s, 2);
+    ok('a cemented metal powder (morphology bed) is a bed with a metallic sheen, not a ribbon', () => {
+      assert.ok(fx.bedTargetVol > 0.3, 'bed volume ' + fx.bedTargetVol);
+      assert.ok(!fx.pieces.ribbons[0].mesh.visible && !fx.pieces.metalMesh.visible, 'no ribbon or granules');
+      assert.ok(fx.bedMat.metalness > 0.3, 'metalness ' + fx.bedMat.metalness);
+    });
+  }
+  {
+    const s = clone(s0);
+    s.solids.push(solid('Mg(s)', 'metal', 0.17, { particle_diameter_um: 30, morphology: 'pieces' }));
+    const { fx } = show(s, 2);
+    ok('a metal the engine reports as pieces stays a ribbon', () => {
+      assert.ok(fx.pieces.ribbons[0].mesh.visible, 'ribbon');
+      assert.equal(fx.bedTargetVol, 0);
+    });
+  }
+  {
+    // a dry powder cannot be suspended: the whole of it lies in the bed whatever the fraction says
+    const dry = vessel();
+    const s = clone(snap(dry));
+    s.solids.push(solid('NaX(s)', 'powder', 1.0, { suspended_fraction: 0.2, rgb: [0.9, 0.9, 0.9] }));
+    const { fx } = show(s, 1);
+    ok('a dry powder is all bed (no suspended share without a liquid)', () => {
+      assert.ok(Math.abs(fx.bedTargetVol - 1.6) < 1e-6, 'bed ' + fx.bedTargetVol);
+      assert.equal(fx.suspendedTargetCount, 0);
+    });
+  }
+  {
+    // the size of the suspended particles follows the engine's mass-weighted diameter: coarse crystals glitter, fines haze
+    const mk = (d) => {
+      const s = clone(s0);
+      s.solids.push(solid('P(s)', 'powder', 0.3, { suspended_fraction: 1, suspended_diameter_um: d, particle_diameter_um: d, rgb: [0.9, 0.9, 0.5] }));
+      return show(s, 3).fx;
+    };
+    const fine = mk(2), coarse = mk(900);
+    const mean = (fx) => {
+      let a = 0;
+      for (let i = 0; i < fx.precip.live; i++) a += fx.precip.size0[i];
+      return a / Math.max(1, fx.precip.live);
+    };
+    ok('suspended sprites are larger for coarse crystals than for fines', () => {
+      assert.ok(fine.precip.live > 20 && coarse.precip.live > 20, `live ${fine.precip.live}/${coarse.precip.live}`);
+      assert.ok(mean(coarse) > mean(fine) * 2, `sizes ${mean(fine).toFixed(3)} vs ${mean(coarse).toFixed(3)}`);
+    });
+  }
+  {
+    // a frozen sheet in a liquid is one piece riding the surface; a floating solid sits on the layer the engine names
+    const s = clone(s0);
+    s.solids.push(solid('H2O(s)', 'crystal', 20, { floating: true, morphology: 'monolith', particle_diameter_um: 20000, rgb: [0.88, 0.9, 0.93] }));
+    const { fx, liquid } = show(s, 1);
+    ok('a floating monolith is a single piece at the surface', () => {
+      assert.equal(fx.pieces.floatMesh.count, 1);
+      assert.ok(fx.pieces.floatMesh.visible);
+      const m = new THREE.Matrix4();
+      const v = new THREE.Vector3();
+      fx.pieces.floatMesh.getMatrixAt(0, m);
+      v.setFromMatrixPosition(m);
+      assert.ok(Math.abs(v.y - liquid.fillY) < 1.5, `at ${v.y} surface ${liquid.fillY}`);
+    });
+  }
+  {
+    const s = clone(s0);
+    // two layers: 40 mL of aqueous below, 20 mL of organic on top; a wax disc rides the top of the lower layer
+    s.layers = [clone(s0.layers[0]), clone(s0.layers[0])];
+    s.layers[0].volume_ml = 40;
+    s.layers[1].volume_ml = 20;
+    s.layers[1].phase = 'organic';
+    s.solids.push(solid('wax(s)', 'powder', 1.5, { floating: true, layer_index: 0, particle_diameter_um: 5000, rgb: [0.95, 0.93, 0.8] }));
+    const { fx, liquid, p } = show(s, 1);
+    ok('a floating solid rides the interface of the layer the engine names, not the free surface', () => {
+      const tops = liquid.layerTopsY();
+      assert.equal(tops.length, 2);
+      assert.ok(tops[1] > tops[0] + 0.5);
+      const m = new THREE.Matrix4();
+      const v = new THREE.Vector3();
+      fx.pieces.floatMesh.getMatrixAt(0, m);
+      v.setFromMatrixPosition(m);
+      assert.ok(Math.abs(v.y - tops[0]) < 1.0, `piece at ${v.y.toFixed(2)}, interface ${tops[0].toFixed(2)}, surface ${tops[1].toFixed(2)}`);
+      void p;
+    });
+  }
+  {
+    const hot = clone(s0);
+    hot.temperature_k = 1100;
+    const cool = clone(s0);
+    const a = show(hot, 4).fx, b = show(cool, 1).fx;
+    ok('a vessel above ~780 K glows, one at room temperature does not', () => {
+      assert.ok(a.glow.visible && a.glowMat.opacity > 0.05, 'glow ' + a.glowMat.opacity);
+      assert.ok(a.glowMat.color.r > a.glowMat.color.b, 'red-orange glow');
+      assert.ok(!b.glow.visible);
+    });
+  }
+}
+
 // ---------------------------------------------------------------- electrolysis
 {
   const h = vessel();
@@ -254,6 +370,40 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     b2.applyVisual(snap(h2), 0.05, null);
     for (let i = 0; i < 120; i++) b2.tick(1 / 60, i / 60);
     assert.ok(!b2.group.children.some((c2) => c2.material && c2.material.blending === THREE.AdditiveBlending && c2.material.map && c2.visible && c2.material.opacity > 0.02 && c2.scale.x > 1.1 && c2.material.opacity > 0.05), 'clear water: no caustic');
+  });
+}
+
+// ---------------------------------------------------------------- thermal bath around a vessel
+{
+  const h = vessel();
+  dose(h, { reagent_id: 'water', volume_ml: 100 });
+  ctl(h, { bath_k: 273.15 });
+  run(h, 5);
+  const s = snap(h);
+  assert.equal(s.bath_k, 273.15, 'engine reports the bath');
+  const mk = () => createGlassware({ id: 'v3', name: 'Beaker', type: 'beaker-250', capacityMl: 250, currentVolumeMl: 0, liquidColor: '#ffffff', liquidOpacity: 0.8, temperatureK: 295, isSealed: false, stirring: false, contents: [] });
+  const b = mk();
+  b.applyVisual(s, 0.05, null);
+  for (let i = 0; i < 90; i++) b.tick(1 / 60, i / 60);
+  const bathGroup = () => b.group.children.find((c) => c.children && c.children.some((k) => k.isInstancedMesh && k.material && k.material.flatShading));
+  ok('an ice bath draws a basin of water with floating ice around the vessel', () => {
+    const g = bathGroup();
+    assert.ok(g && g.visible, 'bath visible');
+    const ice = g.children.filter((k) => k.isInstancedMesh);
+    const cubes = ice.reduce((a, k) => a + (k.visible ? k.count : 0), 0);
+    assert.ok(cubes >= 6, 'ice cubes ' + cubes);
+  });
+  ok('the bath is only drawn while the vessel stands in it, and not at all without one', () => {
+    b.group.position.y = 12; // lifted out
+    for (let i = 0; i < 120; i++) b.tick(1 / 60, 2 + i / 60);
+    assert.ok(!bathGroup().visible, 'basin stays behind when the vessel is lifted: hidden once the vessel is out');
+    const none = mk();
+    const s2 = JSON.parse(JSON.stringify(s));
+    s2.bath_k = null;
+    none.applyVisual(s2, 0.05, null);
+    for (let i = 0; i < 60; i++) none.tick(1 / 60, i / 60);
+    const g2 = none.group.children.find((c) => c.children && c.children.some((k) => k.isInstancedMesh && k.material && k.material.flatShading));
+    assert.ok(g2 && !g2.visible, 'no bath');
   });
 }
 

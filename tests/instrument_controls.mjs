@@ -279,6 +279,17 @@ await ok('potentiostat: knobs, selectors and rocker report; setPanel is silent',
   assert.equal(p.dipped, true);
 });
 
+await ok('potentiostat electrodes: the cathode takes the deposit, the anode wears, and both clear on detach', () => {
+  const mk = (a, c) => ({ electrodes: [{ material: 'Cu', mass_change_g: a }, { material: 'Pt', mass_change_g: c, deposit: c > 0 ? { species: 'Cu(s)', name: 'copper', mass_g: c, density_g_ml: 8.96, rgb: [0.7, 0.25, 0.1] } : undefined }] });
+  ec.setWear(mk(-0.3, 0.2));
+  assert.ok(ec.cathodeFilm.visible && ec.cathodeFilmMat.opacity > 0.9, 'cathode film');
+  assert.ok(Math.abs(ec.cathodeFilmMat.color.r - 0.7) < 1e-6, 'deposit colour');
+  assert.ok(ec.anodeFilm.visible && ec.anodeFilmMat.opacity > 0.3, 'anode tarnish');
+  assert.ok(ec.anodeRod.scale.x < 1 && ec.anodeRod.scale.x > 0.5, 'anode thinner ' + ec.anodeRod.scale.x);
+  ec.detach();
+  assert.ok(!ec.cathodeFilm.visible && !ec.anodeFilm.visible && ec.anodeRod.scale.x === 1, 'cleared');
+});
+
 await ok('spectrophotometer: wavelength knob, blank resets the reading, buttons call back', () => {
   const lam = rig.get('spectro.lambda');
   rig.begin(lam, ev(0, 300));

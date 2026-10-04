@@ -27,7 +27,7 @@ fn vessel(t: f64, sealed: bool, capacity: f64) -> Vessel {
 }
 
 fn ml(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 fn run(v: &mut Vessel, seconds: f64, dt: f64) {
@@ -368,7 +368,7 @@ fn s4_10_open_carbonated_water_relaxes_toward_the_air_value() {
 #[test]
 fn s4_11_ammonia_leaves_a_hot_stirred_open_solution() {
     let mut v = vessel(295.15, false, 250.0);
-    v.dose(DoseRequest { reagent_id: "nh3_2m".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: Some(363.15) }).unwrap();
+    v.dose(DoseRequest { reagent_id: "nh3_2m".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: Some(363.15), solid_form: None }).unwrap();
     v.set_controls(VesselControls { stirring: Some(true), bath_coupling_w_k: Some(25.0), bath_k: Some(Some(363.15)), ..Default::default() });
     let total = |v: &Vessel| sp(v, "NH3") + sp(v, "NH4+");
     let n0 = total(&v);
@@ -455,7 +455,7 @@ fn s4_15_gas_dosing_goes_into_the_headspace_or_dissolves() {
     let entry = ReagentCatalogEntry {
         id: "s4_co2_gas".into(), name: "Carbon dioxide gas".into(), formula: "CO2".into(), form: "gas".into(),
         concentration_m: None, density_g_ml: 0.0018, ghs: vec![], signal_word: String::new(), bottle_colour: "clear".into(),
-        composition: [("CO2(g)".to_string(), 1.0)].into(), label: "CO2".into(), by_mass: false, dropper: None, inchi_key: None,
+        composition: [("CO2(g)".to_string(), 1.0)].into(), label: "CO2".into(), by_mass: false, dropper: None, inchi_key: None, solid_form: None, particle_um: None,
     };
     chem_db::register_custom_reagent(entry);
     let mut v = vessel(298.15, false, 250.0);

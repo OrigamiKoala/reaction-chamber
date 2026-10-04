@@ -16,7 +16,7 @@ fn beaker() -> Vessel {
     })
 }
 fn dose_g(v: &mut Vessel, id: &str, g: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn import_solid(id: &str, formula: &str) {
     let m = model_compound(&CompoundRequest {
@@ -29,7 +29,7 @@ fn import_solid(id: &str, formula: &str) {
 }
 fn mix() -> Vessel {
     let mut v = beaker();
-    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(100.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
     dose_g(&mut v, "t_ZnNO32", 2.0);
     dose_g(&mut v, "t_NaIO3", 1.0);
     v

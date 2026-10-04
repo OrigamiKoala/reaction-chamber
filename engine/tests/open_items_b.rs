@@ -324,7 +324,7 @@ mod energy {
     }
 
     pub fn dose(v: &mut Vessel, id: &str, ml: Option<f64>, g: Option<f64>) {
-        v.dose(DoseRequest { reagent_id: id.into(), volume_ml: ml, mass_g: g, drops: None, temperature_k: Some(298.15) }).unwrap();
+        v.dose(DoseRequest { reagent_id: id.into(), volume_ml: ml, mass_g: g, drops: None, temperature_k: Some(298.15), solid_form: None }).unwrap();
     }
 
     /// Doses `parts` (each into its own fresh vessel first, to get the enthalpy that goes in), then together, runs `seconds`

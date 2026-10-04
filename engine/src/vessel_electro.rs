@@ -63,6 +63,12 @@ pub struct ElectrodeVisual {
     pub mass_change_g: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deposit: Option<SolidVisual>,
+    /// Density of the electrode's own material (g/mL), from its solid record; 0 when the store has none.
+    #[serde(default)]
+    pub density_g_ml: f64,
+    /// Wetted area the console specified, cm2.
+    #[serde(default)]
+    pub area_cm2: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -87,6 +93,8 @@ pub struct ElectroState {
     pub anode_mass_change_g: f64,
     pub cathode_mass_change_g: f64,
     pub cathode_deposit_mol: HashMap<String, f64>,
+    /// What plated on the anode (a metal deposited there while the electrode is the cathode of another half-cycle)
+    pub anode_deposit_mol: HashMap<String, f64>,
     /// Moles of each solid the electrodes took up (+) or gave up (-): plating and electrode dissolution.
     pub electrode_exchange_mol: HashMap<String, f64>,
     /// Open-circuit mixed potential of the conducting solids (V vs SHE), when there are any.
@@ -107,6 +115,7 @@ impl Vessel {
             self.electro.anode_mass_change_g = 0.0;
             self.electro.cathode_mass_change_g = 0.0;
             self.electro.cathode_deposit_mol.clear();
+            self.electro.anode_deposit_mol.clear();
         }
         self.electro.spec = spec;
     }
@@ -383,21 +392,11 @@ impl Vessel {
     }
 
     fn build_electrode_visuals(&self, spec: &ElectrolysisSpec) -> Vec<ElectrodeVisual> {
-        let anode_vis = ElectrodeVisual {
-            material: spec.anode.material.clone(),
-            mass_change_g: self.electro.anode_mass_change_g,
-            deposit: None,
-        };
-        let deposit = self
-            .electro
-            .cathode_deposit_mol
-            .iter()
-            .filter(|(_, &m)| m > 1e-9)
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(sp, &mol)| {
+        // the film an electrode carries: the species that plated on it the most (Faraday's law fixes its mass)
+        let film = |deposits: &HashMap<String, f64>, area_cm2: f64| -> Option<SolidVisual> {
+            deposits.iter().filter(|(_, &m)| m > 1e-9).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0))).map(|(sp, &mol)| {
                 let props = self.solid_props(sp);
-                let mw = chem_db::get_species_thermo(sp).mw;
-                let mass_g = mol * mw;
+                let mass_g = mol * chem_db::get_species_thermo(sp).mw;
                 let density = props.density_g_ml;
                 let volume_ml = if density > 1e-9 { mass_g / density } else { 0.0 };
                 SolidVisual {
@@ -420,15 +419,28 @@ impl Vessel {
                     layer_index: None,
                     remaining_fraction: Some(1.0),
                     settling_velocity_mm_s: 0.0,
-                    surface_area_cm2: spec.cathode.area_cm2,
+                    surface_area_cm2: area_cm2,
+                    floc_diameter_um: 0.0,
                 }
-            });
-        let cathode_vis = ElectrodeVisual {
-            material: spec.cathode.material.clone(),
-            mass_change_g: self.electro.cathode_mass_change_g,
-            deposit,
+            })
         };
-        vec![anode_vis, cathode_vis]
+        let own_density = |material: &str| electrode_appearance(&material_element(material)).1.unwrap_or(0.0);
+        vec![
+            ElectrodeVisual {
+                material: spec.anode.material.clone(),
+                mass_change_g: self.electro.anode_mass_change_g,
+                deposit: film(&self.electro.anode_deposit_mol, spec.anode.area_cm2),
+                density_g_ml: own_density(&spec.anode.material),
+                area_cm2: spec.anode.area_cm2,
+            },
+            ElectrodeVisual {
+                material: spec.cathode.material.clone(),
+                mass_change_g: self.electro.cathode_mass_change_g,
+                deposit: film(&self.electro.cathode_deposit_mol, spec.cathode.area_cm2),
+                density_g_ml: own_density(&spec.cathode.material),
+                area_cm2: spec.cathode.area_cm2,
+            },
+        ]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -555,11 +567,17 @@ impl Vessel {
                 e_ox += -ne;
             }
         }
+        // the same trimming applies to the per-electrode flows (the electrode bookkeeping below)
+        let (mut trim_red, mut trim_ox) = (1.0, 1.0);
         if (e_red > 0.0) != (e_ox > 0.0) {
             // electrons have nowhere to come from (or go to): no current flows
             xi.values_mut().for_each(|r| *r = 0.0);
+            trim_red = 0.0;
+            trim_ox = 0.0;
         } else if e_red > 0.0 && (e_red - e_ox).abs() > 0.0 {
             let (s_red, s_ox) = if e_red > e_ox { (e_ox / e_red, 1.0) } else { (1.0, e_red / e_ox) };
+            trim_red = s_red;
+            trim_ox = s_ox;
             for (&hi, rate) in xi.iter_mut() {
                 *rate *= if *rate > 0.0 { s_red } else { s_ox };
                 let _ = hi;
@@ -591,6 +609,25 @@ impl Vessel {
         let mut dh_total = 0.0;
         let t_k = self.temperature_k;
         let p_pa = self.pressure_atm * 101_325.0;
+        // what each electrode does to its own solid: the net extent above cancels when both electrodes are the same metal
+        // (copper dissolving at the anode and plating on the cathode is no change of the solution), so the mass an electrode
+        // gains or loses is booked from its own flows (Faraday: m = Q M / (n F))
+        if is_cell {
+            for f in flows {
+                let h = &halves[f.half];
+                let ext_e = -f.net_oxidation_a / (h.n_e * crate::physics::FARADAY) * dt_s * scale * if f.net_oxidation_a < 0.0 { trim_red } else { trim_ox };
+                if ext_e.abs() < 1e-30 {
+                    continue;
+                }
+                for (sp, c) in h.red.iter().filter(|(sp, _)| sp.ends_with("(s)")) {
+                    let own = electrodes[f.electrode].active_species.as_deref() == Some(sp.as_str());
+                    let d_mol = c * ext_e; // > 0 plates, < 0 dissolves
+                    if d_mol > 0.0 || own {
+                        self.book_electrode_solid(sp, d_mol, f.electrode);
+                    }
+                }
+            }
+        }
         for (&hi, &rate) in &xi {
             let h = &halves[hi];
             let ext = rate * dt_s * scale;
@@ -625,6 +662,30 @@ impl Vessel {
         heat
     }
 
+    /// Books `d_mol` of solid `sp` plated on (> 0) or dissolved from (< 0) electrode `electrode` (0 = anode, 1 = cathode):
+    /// the electrode's mass change, the deposit it carries, and the vessel's element ledger (the atoms leave / enter the
+    /// vessel through the electrode).
+    fn book_electrode_solid(&mut self, sp: &str, d_mol: f64, electrode: usize) {
+        *self.electro.electrode_exchange_mol.entry(sp.to_string()).or_default() += d_mol;
+        let mw = chem_db::get_species_thermo(sp).mw;
+        if electrode == 0 {
+            self.electro.anode_mass_change_g += d_mol * mw;
+            if d_mol > 0.0 {
+                *self.electro.anode_deposit_mol.entry(sp.to_string()).or_default() += d_mol;
+            }
+        } else {
+            self.electro.cathode_mass_change_g += d_mol * mw;
+            if d_mol > 0.0 {
+                *self.electro.cathode_deposit_mol.entry(sp.to_string()).or_default() += d_mol;
+            }
+        }
+        if d_mol > 0.0 {
+            self.ledger.book_out(sp, d_mol);
+        } else {
+            self.ledger.book_in(sp, -d_mol);
+        }
+    }
+
     /// Amount (mol) of a reactant available to an electrode reaction; infinite for the solvent, for gases (only produced
     /// here) and for an electrode's own material.
     fn amount_for_electrode(&self, sp: &str, electrodes: &[Electrode], flows: &[ChannelFlow], half: usize, is_cell: bool) -> f64 {
@@ -654,26 +715,11 @@ impl Vessel {
             return;
         }
         if sp.ends_with("(s)") {
-            // plating on (or dissolution of) an electrode of a cell stays on the electrode: its atoms leave / enter the vessel
+            // plating on (or dissolution of) an electrode of a cell stays on the electrode (booked per electrode in
+            // `apply_flows`, `book_electrode_solid`): its atoms leave / enter the vessel through the electrode, not the pool
             if is_cell {
                 let own = flows.iter().any(|f| f.half == half && electrodes[f.electrode].active_species.as_deref() == Some(sp));
                 if d_mol > 0.0 || own {
-                    *self.electro.electrode_exchange_mol.entry(sp.to_string()).or_default() += d_mol;
-                    let mw = chem_db::get_species_thermo(sp).mw;
-                    let el_idx = flows.iter().find(|f| f.half == half).map(|f| f.electrode);
-                    if el_idx == Some(0) {
-                        self.electro.anode_mass_change_g += d_mol * mw;
-                    } else if el_idx == Some(1) {
-                        self.electro.cathode_mass_change_g += d_mol * mw;
-                        if d_mol > 0.0 {
-                            *self.electro.cathode_deposit_mol.entry(sp.to_string()).or_default() += d_mol;
-                        }
-                    }
-                    if d_mol > 0.0 {
-                        self.ledger.book_out(sp, d_mol);
-                    } else {
-                        self.ledger.book_in(sp, -d_mol);
-                    }
                     return;
                 }
             }
@@ -745,6 +791,25 @@ pub struct ElectrodeMaterialInfo {
     pub e0_v: Option<f64>,
     /// True for an inert electrode (carries current, takes part in no reaction itself).
     pub inert: bool,
+    /// Colour of the bulk metal (linear sRGB) from the solid's optical record, else the Speculative grey of a metal; the
+    /// same record colours a bed of the metal's powder.
+    #[serde(default)]
+    pub rgb: Option<[f64; 3]>,
+    /// Density of the solid (g/mL) from its store record; absent when the store has none.
+    #[serde(default)]
+    pub density_g_ml: Option<f64>,
+}
+
+/// Bulk colour and density of an electrode material from the species store's solid record (`El(s)`).
+fn electrode_appearance(symbol: &str) -> (Option<[f64; 3]>, Option<f64>) {
+    use crate::optics::solid as osolid;
+    let id = format!("{}(s)", symbol);
+    let density = crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(&id).and_then(|r| r.phases.get("s").and_then(|p| p.rho.as_ref().map(|d| d.value))));
+    let record = crate::optics::records::lookup(&id);
+    let mw = chem_db::get_species_thermo(&id).mw;
+    let spec = osolid::SolidSpec { ions: &[], density_g_ml: density.unwrap_or(8.0), mw, particle_um: 30.0, record: record.as_ref(), measured_colour: None, is_metal: true };
+    let rgb = osolid::look(&spec).map(|l| l.rgb).or(Some([0.55, 0.56, 0.58]));
+    (rgb, density)
 }
 
 /// Metals whose cation couple lies below this standard potential (V) react violently with the water of the cell: Na, K, Ca,
@@ -809,10 +874,14 @@ pub fn electrode_materials() -> Vec<ElectrodeMaterialInfo> {
     let mut out: Vec<ElectrodeMaterialInfo> = data
         .inert
         .iter()
-        .map(|f| ElectrodeMaterialInfo { symbol: f.clone(), e0_v: e0.get(f).copied(), inert: true })
+        .map(|f| {
+            let (rgb, density_g_ml) = electrode_appearance(f);
+            ElectrodeMaterialInfo { symbol: f.clone(), e0_v: e0.get(f).copied(), inert: true, rgb, density_g_ml }
+        })
         .collect();
     for m in metals {
-        out.push(ElectrodeMaterialInfo { e0_v: e0.get(&m).copied(), symbol: m, inert: false });
+        let (rgb, density_g_ml) = electrode_appearance(&m);
+        out.push(ElectrodeMaterialInfo { e0_v: e0.get(&m).copied(), symbol: m, inert: false, rgb, density_g_ml });
     }
     out
 }

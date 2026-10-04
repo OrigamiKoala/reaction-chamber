@@ -1,0 +1,9 @@
+{
+ "_comment": "Physical forms a solid reagent is dosed in (src/solid_forms.rs). `diameter_um` is the volume-equivalent grain diameter the dosed population starts with (a reagent entry may give its own `particle_um`, e.g. the thickness of a ribbon); `loose_pieces` marks forms that stay separate objects on the vessel floor and in the liquid (never a suspended slurry, never a settled bed): their morphology in the snapshot is `pieces`. A form not listed here leaves the solid's own grain size and morphology. Sizes are typical bench stock (a ribbon about 1 mm effective thickness, turnings 1-2 mm, granules 2-5 mm, a laboratory powder tens of micrometres); tier Estimated.",
+ "forms": {
+  "piece": { "diameter_um": 1000.0, "loose_pieces": true },
+  "turnings": { "diameter_um": 1500.0, "loose_pieces": true },
+  "granules": { "diameter_um": 3000.0, "loose_pieces": true },
+  "powder": { "diameter_um": 30.0, "loose_pieces": false }
+ }
+}

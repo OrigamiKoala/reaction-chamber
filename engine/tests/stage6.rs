@@ -43,7 +43,7 @@ fn dose_solid(v: &mut Vessel, id: &str, mass_g: f64) {
         volume_ml: None,
         mass_g: Some(mass_g),
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 }
 
@@ -53,7 +53,7 @@ fn dose_liquid(v: &mut Vessel, id: &str, vol_ml: f64) {
         volume_ml: Some(vol_ml),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 }
 

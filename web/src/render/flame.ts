@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { blackbodyHue } from './blackbody';
 
 /**
  * Procedural flame: a cylindrical billboard (rotates about world Y to face the camera) with an fbm-distorted
@@ -13,12 +14,26 @@ const flameGeo = (() => {
 export interface FlameParams {
   /** 0 = clean blue (ethanol/premixed), 1 = sooty yellow */
   luminosity: number;
+  /** Colour of the flame's own light (the engine's `emitter_rgb`, scaled to its brightest channel): the premixed blue of a clean flame. */
+  base: THREE.Color;
   /** Optional flame-test emitter colour (linear rgb) and its weight. */
   emitter: THREE.Color;
   emitterAmount: number;
   intensity: number;
   width: number;
   height: number;
+  /** Colour temperature of the soot's emission, K (the engine's `flame_temp_k`): sets the orange-to-yellow of the luminous part. */
+  sootTempK: number;
+}
+
+/**
+ * Colours of the luminous (sooty) part of a flame from the temperature of the glowing soot: its blackbody hue seen at the
+ * two exposures the eye / a camera gives the outer envelope and the core (the brightest part clips toward yellow-white).
+ */
+export function sootColours(tK: number): { outer: [number, number, number]; core: [number, number, number] } {
+  const hue = blackbodyHue(tK);
+  const at = (e: number): [number, number, number] => [Math.min(1, hue[0] * e), Math.min(1, hue[1] * e), Math.min(1, hue[2] * e)];
+  return { outer: at(4.5), core: at(9) };
 }
 
 export function makeFlameMaterial(seed = 0): THREE.ShaderMaterial {
@@ -32,6 +47,9 @@ export function makeFlameMaterial(seed = 0): THREE.ShaderMaterial {
       uIntensity: { value: 0 },
       uSize: { value: new THREE.Vector2(2, 5) },
       uInnerCone: { value: 1 },
+      uBase: { value: new THREE.Color(0.18, 0.38, 1.0) },
+      uSootOuter: { value: new THREE.Color().setRGB(...sootColours(1400).outer) },
+      uSootCore: { value: new THREE.Color().setRGB(...sootColours(1400).core) },
     },
     vertexShader: /* glsl */ `
       uniform vec2 uSize;
@@ -52,6 +70,9 @@ export function makeFlameMaterial(seed = 0): THREE.ShaderMaterial {
       uniform float uEmitAmt;
       uniform float uIntensity;
       uniform float uInnerCone;
+      uniform vec3 uBase;
+      uniform vec3 uSootOuter;
+      uniform vec3 uSootCore;
       varying vec2 vUv;
       float hash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
       float noise( vec2 p ) {
@@ -80,8 +101,8 @@ export function makeFlameMaterial(seed = 0): THREE.ShaderMaterial {
         float ih = 0.42;
         float iw = 0.5 * w * max( 0.0, 1.0 - y / ih );
         float inner = smoothstep( 1.0, 0.3, abs( x ) / max( iw, 1e-3 ) ) * step( y, ih ) * uInnerCone;
-        vec3 blue = vec3( 0.18, 0.38, 1.0 );
-        vec3 hot = mix( vec3( 1.0, 0.42, 0.08 ), vec3( 1.0, 0.86, 0.5 ), smoothstep( 0.2, 1.0, 1.0 - d ) );
+        vec3 blue = uBase;
+        vec3 hot = mix( uSootOuter, uSootCore, smoothstep( 0.2, 1.0, 1.0 - d ) );
         vec3 outer = mix( blue * 0.55, hot, uLum );
         outer = mix( outer, uEmit * 1.2, uEmitAmt );
         float a = body * mix( 0.35, 1.0, uLum ) + body * uEmitAmt * 0.5;
@@ -133,7 +154,16 @@ export class FlameCluster {
       m.uniforms.uSize.value.set(width * s, height * s * (0.85 + 0.3 * Math.sin(i * 2.1)));
       if (p.luminosity !== undefined) m.uniforms.uLum.value = p.luminosity;
       if (p.emitter) m.uniforms.uEmit.value.copy(p.emitter);
+      if (p.base) {
+        const mx = Math.max(p.base.r, p.base.g, p.base.b, 1e-6);
+        m.uniforms.uBase.value.setRGB(p.base.r / mx, p.base.g / mx, p.base.b / mx);
+      }
       if (p.emitterAmount !== undefined) m.uniforms.uEmitAmt.value = p.emitterAmount;
+      if (p.sootTempK !== undefined && p.sootTempK > 500) {
+        const c = sootColours(p.sootTempK);
+        m.uniforms.uSootOuter.value.setRGB(...c.outer);
+        m.uniforms.uSootCore.value.setRGB(...c.core);
+      }
     }
   }
 

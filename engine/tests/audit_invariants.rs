@@ -51,6 +51,7 @@ fn make_scenario(seed: u64, ids: &[(String, bool)]) -> Scenario {
             mass_g: if *is_mass { Some(0.1 + 3.0 * r.next()) } else { None },
             drops: None,
             temperature_k: None,
+            solid_form: None,
         });
     }
     Scenario {

@@ -532,6 +532,8 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         by_mass,
         dropper: None,
         inchi_key: req.inchi_key.clone(),
+        solid_form: None,
+        particle_um: None,
     };
     let desc = species.iter().map(|(s, n)| if (*n - 1.0).abs() < 1e-9 { s.clone() } else { format!("{}{}", n, s) }).collect::<Vec<_>>().join(" + ");
     let reason = if kind == "inert" {

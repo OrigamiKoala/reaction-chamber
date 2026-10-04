@@ -24,11 +24,11 @@ fn beaker(capacity_ml: f64, radius_cm: f64, t: f64) -> Vessel {
 }
 
 fn ml(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 fn grams(v: &mut Vessel, id: &str, x: f64, diameter_um: f64) {
-    v.dose_with_diameter(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None }, diameter_um).unwrap();
+    v.dose_with_diameter(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None, solid_form: None }, diameter_um).unwrap();
 }
 
 fn run(v: &mut Vessel, seconds: f64, dt: f64) {
@@ -54,7 +54,7 @@ fn solid_reagent(id: &str, species: &str, mw: f64, density: f64) {
         label: species.to_string(),
         by_mass: true,
         dropper: None,
-        inchi_key: None,
+        inchi_key: None, solid_form: None, particle_um: None,
     });
 }
 

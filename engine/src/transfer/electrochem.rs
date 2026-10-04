@@ -379,7 +379,7 @@ pub fn discover_half_reactions(present: &[String], extra_elements: &[String], t_
                 if !(a_present || b_present || own) {
                     continue;
                 }
-                if let Some(h) = balance_half_acid(a, b, &el).filter(|h| h.has_data(t_k, 101_325.0)) {
+                if let Some(h) = balance_half_acid(a, b, &el).filter(|h| h.has_data(t_k, 101_325.0) && !is_bond_rearranging(h)) {
                     if seen.insert(h.signature()) {
                         out.push(h.clone());
                     }
@@ -447,6 +447,42 @@ pub fn exchange_current_a_m2(h: &HalfReaction, e: &Electrode) -> (f64, bool) {
         return (1e-6, false); // ~ 1e-10 A/cm2: sluggish on an unlisted surface
     }
     (I0_DEFAULT_A_M2, false)
+}
+
+/// Whether a half-reaction turns a non-labile element's oxo form into a form with a different number of oxygen atoms per
+/// atom of the element (carbonate to an alcohol, sulfate to sulfide, nitrate to ammonia, chlorate to chloride). Such an
+/// electrode reaction is irreversible on bench time scales (the rate-determining step is the oxygen-atom rearrangement, not
+/// the electron transfer; compare the homogeneous `K_SELF_BOND_REARRANGING` of `gem/rates.rs`), so it is no channel of the
+/// cell: its current would be many orders below the others at any overpotential, and a channel that never carries current
+/// only makes the cell depend on which species the store happens to hold. Halogens (X2 / X-), metals of labile elements
+/// and water / hydrogen / oxygen never count.
+pub fn is_bond_rearranging(h: &HalfReaction) -> bool {
+    let side = |m: &[(String, f64)], el: &str| -> Option<f64> {
+        let (mut o, mut e) = (0.0, 0.0);
+        for (sp, c) in m {
+            let elems = crate::ions::species_elements(sp)?;
+            let n_el = elems.get(el).copied().unwrap_or(0.0);
+            if n_el > 0.0 {
+                o += c * elems.get("O").copied().unwrap_or(0.0);
+                e += c * n_el;
+            }
+        }
+        if e > 0.0 { Some(o / e) } else { None }
+    };
+    let ox: Vec<(String, f64)> = h.ox.iter().map(|(s, c)| (s.clone(), *c)).collect();
+    let red: Vec<(String, f64)> = h.red.iter().map(|(s, c)| (s.clone(), *c)).collect();
+    let mut elements: Vec<String> = ox.iter().chain(red.iter()).filter_map(|(s, _)| crate::ions::species_elements(s)).flat_map(|m| m.into_keys()).collect();
+    elements.sort();
+    elements.dedup();
+    elements.iter().filter(|e| !matches!(e.as_str(), "H" | "O")).any(|el| {
+        if crate::gem::redox::is_labile_redox_element(el) {
+            return false;
+        }
+        match (side(&ox, el), side(&red, el)) {
+            (Some(a), Some(b)) => (a - b).abs() >= 1.0,
+            _ => false,
+        }
+    })
 }
 
 /// Transfer coefficients (cathodic, anodic) of a half-reaction: they add up to the number of electrons so that the

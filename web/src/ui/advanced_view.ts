@@ -17,6 +17,15 @@ const SERIES = {
   press: '#6a4fb3',
 };
 
+/** Tooltip of a layer's pH cell: what the electrode reads against the thermodynamic molal pH and the junction potential. */
+function phTitle(l: { ph?: number; ph_activity?: number; ph_junction_mv?: number; water_mole_fraction?: number }): string {
+  const parts: string[] = [];
+  if (l.ph_activity !== undefined) parts.push(`molal pH ${l.ph_activity.toFixed(2)}`);
+  if (l.ph_junction_mv !== undefined) parts.push(`junction ${l.ph_junction_mv.toFixed(1)} mV`);
+  if (l.water_mole_fraction !== undefined) parts.push(`x(H2O) ${l.water_mole_fraction.toFixed(2)}`);
+  return parts.join(' · ');
+}
+
 export class AdvancedView {
   public readonly el: HTMLElement;
   public isVisible = false;
@@ -57,12 +66,16 @@ export class AdvancedView {
         <section class="d-sec">
           <h3 class="eyebrow">Appearance (what the engine tells the renderer)</h3>
           <div class="table-wrap"><table class="dtable">
-            <thead><tr><th>Liquid layer</th><th class="num">mL</th><th class="num">ρ g/mL</th><th class="num">n</th><th>Solvent</th><th>Colour from</th><th>Data</th></tr></thead>
+            <thead><tr><th>Liquid layer</th><th class="num">mL</th><th class="num">ρ g/mL</th><th class="num">n</th><th class="num">pH</th><th>Solvent</th><th>Colour from</th><th>Data</th></tr></thead>
             <tbody data-k="layers"></tbody></table></div>
           <div class="table-wrap"><table class="dtable">
             <thead><tr><th>Solid</th><th>Form</th><th class="num">g</th><th class="num">d (µm)</th><th class="num">σg</th><th class="num">Suspended</th><th class="num">Settles mm/s</th><th>Colour from</th><th>Data</th></tr></thead>
             <tbody data-k="solids"></tbody></table></div>
           <dl class="kv" data-k="visual"></dl>
+        </section>
+        <section class="d-sec">
+          <h3 class="eyebrow">Gas phase</h3>
+          <dl class="kv" data-k="gasphase"></dl>
         </section>
         <section class="d-sec">
           <h3 class="eyebrow">Reactions</h3>
@@ -201,14 +214,15 @@ export class AdvancedView {
             const name = l.name ?? l.species ?? (l.phase === 'aqueous' ? 'aqueous' : 'organic');
             return `<tr><td>${esc(name)} <span class="muted">${esc(look)}</span></td>
               <td class="num mono">${l.volume_ml.toFixed(1)}</td><td class="num mono">${l.density_g_ml.toFixed(3)}</td><td class="num mono">${l.refractive_index.toFixed(3)}</td>
+              <td class="num mono" title="${esc(phTitle(l))}">${l.ph !== undefined && l.ph !== null ? l.ph.toFixed(2) : '—'}</td>
               <td>${esc(l.solvent_class ?? '—')}</td><td class="src">${esc((l.colour_sources ?? []).join('; ') || '—')}</td><td>${tier(l.colour_tier)}</td></tr>`;
           })
           .join('')
-      : '<tr><td colspan="7" class="empty-cell">No liquid</td></tr>';
+      : '<tr><td colspan="8" class="empty-cell">No liquid</td></tr>';
     q('solids').innerHTML = s.solids.length
       ? s.solids
           .map((x) => {
-            const form = x.floating ? `${x.kind} (floats)` : x.kind;
+            const form = `${x.kind}${x.morphology && x.morphology !== 'bed' ? ' ' + x.morphology : ''}${x.floating ? ' (floats)' : ''}`;
             return `<tr><td><span class="mono">${esc(prettyFormula(x.species))}</span> <span class="muted">${esc(x.name)}</span></td>
               <td>${esc(form)}</td><td class="num mono">${x.mass_g.toFixed(3)}</td><td class="num mono">${x.particle_diameter_um.toFixed(1)}</td>
               <td class="num mono">${x.particle_sigma_g ? x.particle_sigma_g.toFixed(2) : '—'}</td><td class="num mono">${(x.suspended_fraction * 100).toFixed(0)} %</td>
@@ -236,7 +250,35 @@ export class AdvancedView {
     if (s.foam > 0.01) rows.push(`<dt>Foam</dt><dd>${(s.foam * 100).toFixed(0)} % of the surface</dd>`);
     if (s.condensation > 0.01) rows.push(`<dt>Fogged glass</dt><dd>${(s.condensation * 100).toFixed(0)} %</dd>`);
     if (s.flame) rows.push(`<dt>Flame</dt><dd>${esc(prettyFormula(s.flame.fuel))} · ${s.flame.power_w.toFixed(0)} W · ${s.flame.flame_temp_k.toFixed(0)} K${s.flame.emitters?.length ? ' · ' + esc(s.flame.emitters.join(', ')) : ''}</dd>`);
+    for (const e of s.electrodes ?? []) {
+      const m = e.mass_change_g;
+      if (Math.abs(m) < 1e-7 && !e.deposit) continue;
+      rows.push(`<dt>${esc(e.material)} electrode</dt><dd>${m >= 0 ? '+' : '−'}${Math.abs(m * 1000).toFixed(m !== 0 && Math.abs(m) < 0.01 ? 3 : 1)} mg${e.deposit ? ' · deposit ' + esc(prettyFormula(e.deposit.species)) : ''}</dd>`);
+    }
     q('visual').innerHTML = rows.length ? rows.join('') : '<dt>Gas, vapour, flame</dt><dd>none</dd>';
+    this.renderGasPhase(s, q('gasphase'));
+  }
+
+  private renderGasPhase(s: VesselSnapshot, el: HTMLElement) {
+    const g = s.gas_phase;
+    if (!g) {
+      el.innerHTML = '<dt>Gas phase</dt><dd>—</dd>';
+      return;
+    }
+    const rows = [
+      `<dt>${g.kind === 'sealed' ? 'Sealed: closed gas' : 'Open: room atmosphere'}</dt><dd>${g.pressure_atm.toFixed(3)} atm · ${(g.temperature_k - 273.15).toFixed(1)} °C · ${esc(g.eos === 'peng-robinson' ? 'Peng–Robinson' : 'ideal gas')}</dd>`,
+    ];
+    if (g.supercritical) rows.push('<dt>Supercritical</dt><dd>a component is above its critical temperature: liquid and gas are one fluid</dd>');
+    const comp = g.species
+      .filter((x) => x.mole_fraction > 1e-4)
+      .sort((a, b) => b.mole_fraction - a.mole_fraction)
+      .map((x) => `${esc(prettyFormula(x.species.replace(/\(g\)$/, '')))} ${(x.mole_fraction * 100).toFixed(x.mole_fraction < 0.01 ? 3 : 1)} %`);
+    if (comp.length) rows.push(`<dt>Composition</dt><dd>${comp.join(' · ')}</dd>`);
+    if (g.kind === 'sealed') {
+      const mol = g.species.reduce((a, x) => a + x.mol, 0);
+      rows.push(`<dt>Headspace gas</dt><dd>${(mol * 1000).toFixed(mol < 0.01 ? 3 : 1)} mmol</dd>`);
+    }
+    el.innerHTML = rows.join('');
   }
 
   private drawPlot() {

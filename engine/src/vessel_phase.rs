@@ -912,9 +912,17 @@ impl Vessel {
                     self.solid_mol.insert(key.clone(), after);
                     if after > before {
                         *self.initial_solids.entry(key.clone()).or_insert(0.0) += after - before;
+                        // a solid that grows here formed from the vessel's own liquid: it is cast to the vessel
+                        *self.solid_cast_mol.entry(key.clone()).or_insert(0.0) += after - before;
+                    } else if before > 0.0 {
+                        // melting takes the cast and the added part alike
+                        if let Some(c) = self.solid_cast_mol.get_mut(&key) {
+                            *c *= after / before;
+                        }
                     }
                 } else {
                     self.solid_mol.remove(&key);
+                    self.solid_cast_mol.remove(&key);
                 }
             }
             // announce a solid appearing from a liquid: the solvent freezing, a solute crystallising

@@ -529,6 +529,13 @@ export class LiquidBody {
   get surfaceRadius(): number {
     return this.uniforms.uR.value;
   }
+  /** Glass-local height of the top of each liquid layer, bottom first (the last is the free surface), as drawn right now. */
+  public layerTopsY(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.targetCount; i++) out.push(this.uniforms.uLayerTop.value[i]);
+    if (out.length) out[out.length - 1] = this._fillY;
+    return out;
+  }
 
   /** Engine-driven update (20 Hz). */
   public setLayers(layers: LiquidLayer[], totalMl: number, optics: OpticsTables | null) {

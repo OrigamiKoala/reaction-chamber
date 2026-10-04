@@ -235,7 +235,7 @@ fn import_liquid(id: &str, name: &str, formula: &str, smiles: &str, density: f64
 }
 
 fn ml(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 #[test]

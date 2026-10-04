@@ -8,7 +8,7 @@ export const ELECTRODE_X = 1.4;
 export const ELECTRODE_RADIUS = 0.2;
 export const ELECTRODE_LENGTH = 9;
 /** How deep the rods stand in the liquid when there is enough of it, cm. */
-const DIP_CM = 3.2;
+export const DIP_CM = 3.2;
 /** Lowest the rod tips go above the vessel floor, cm. */
 const FLOOR_GAP_CM = 0.8;
 

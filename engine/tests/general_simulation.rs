@@ -61,7 +61,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         label: "La(NO3)3".to_string(),
         by_mass: false,
         dropper: None,
-        inchi_key: None,
+        inchi_key: None, solid_form: None, particle_um: None,
     });
 
     // 3. Dose 25 mL of La(NO3)3 (2.5e-3 mol La3+)
@@ -70,7 +70,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         volume_ml: Some(25.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let la_init = *v.species_mol.get("La+3").unwrap_or(&0.0);
@@ -83,7 +83,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         volume_ml: Some(80.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     // 1:3 mineral La(OH)3 must precipitate spontaneously
@@ -113,7 +113,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         label: "HCl 1 M".to_string(),
         by_mass: false,
         dropper: None,
-        inchi_key: None,
+        inchi_key: None, solid_form: None, particle_um: None,
     });
 
     // 10 mL of 1 M HCl = 0.010 mol H+, enough to neutralize OH- and completely dissolve La(OH)3
@@ -122,7 +122,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         volume_ml: Some(10.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let la_solid_after_acid = *v.solid_mol.get("La(OH)3(s)").unwrap_or(&0.0);
@@ -174,7 +174,7 @@ fn test_arbitrary_custom_kinetic_reaction_network() {
         label: "EtAc Alkaline".to_string(),
         by_mass: false,
         dropper: None,
-        inchi_key: None,
+        inchi_key: None, solid_form: None, particle_um: None,
     });
 
     v.dose(DoseRequest {
@@ -182,7 +182,7 @@ fn test_arbitrary_custom_kinetic_reaction_network() {
         volume_ml: Some(50.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
 
     let etac_init = *v.species_mol.get("EtAc").unwrap_or(&0.0);

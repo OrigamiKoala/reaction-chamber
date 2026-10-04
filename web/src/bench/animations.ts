@@ -118,7 +118,7 @@ function streamGeometry(p0: THREE.Vector3, dirH: THREE.Vector3, D: number, H: nu
   return g;
 }
 
-function streamMaterial(colorHex: string): { mat: THREE.MeshPhysicalMaterial; head: { value: number }; tail: { value: number }; time: { value: number } } {
+function streamMaterial(colorHex: string, ior = 1.333): { mat: THREE.MeshPhysicalMaterial; head: { value: number }; tail: { value: number }; time: { value: number } } {
   const c = new THREE.Color(colorHex);
   const lum = c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
   const head = { value: 0 };
@@ -128,7 +128,7 @@ function streamMaterial(colorHex: string): { mat: THREE.MeshPhysicalMaterial; he
     color: lum > 0.82 ? new THREE.Color(0xeef6fb) : c,
     roughness: 0.04,
     metalness: 0,
-    ior: 1.333,
+    ior: Math.min(2.333, Math.max(1.0, ior)),
     transparent: true,
     opacity: lum > 0.82 ? 0.32 : 0.82,
     envMapIntensity: 1.6,
@@ -693,7 +693,7 @@ export class PourStream {
   private static readonly RINGS = 28;
   private static readonly SEGS = 8;
 
-  constructor(private scene: THREE.Scene, colorHex: string) {
+  constructor(private scene: THREE.Scene, colorHex: string, ior = 1.333) {
     this.color = new THREE.Color(colorHex);
     const R = PourStream.RINGS;
     const S = PourStream.SEGS;
@@ -716,7 +716,7 @@ export class PourStream {
     this.geo.setAttribute('aS', new THREE.BufferAttribute(sAttr, 1));
     this.geo.setIndex(idx);
     this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
-    this.sm = streamMaterial(colorHex);
+    this.sm = streamMaterial(colorHex, ior);
     this.mesh = new THREE.Mesh(this.geo, this.sm.mat);
     this.mesh.frustumCulled = false;
     this.mesh.raycast = () => {};

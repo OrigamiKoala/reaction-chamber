@@ -1117,6 +1117,1325 @@
           "source": "acid-catalysed hydrolysis of acetamide, k_H about 8e-6 M-1 s-1 at 298 K"
         }
       ]
+    },
+    {
+      "id": "carbonyl_hydration",
+      "name": "Hydration of an aldehyde or ketone (gem-diol)",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "neutral",
+          "catalysts": [],
+          "rules": [
+            {
+              "id": "formaldehyde, water",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H2]"
+                }
+              ],
+              "a": 5750000000.0,
+              "ea_kj": 50,
+              "source": "formaldehyde hydration k about 10 s-1 at 298 K (Bell 1966), water at 55 M inside k"
+            },
+            {
+              "id": "aldehyde, water",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1]"
+                }
+              ],
+              "a": 43200000.0,
+              "ea_kj": 55,
+              "source": "acetaldehyde hydration k about 1e-2 s-1 at 298 K (Bell 1966)"
+            },
+            {
+              "id": "ketone, water",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 3250000.0,
+              "ea_kj": 60,
+              "source": "acetone hydration, order of magnitude 1e-4 s-1 (estimate: ketones are about 1e2 slower than aldehydes)"
+            }
+          ]
+        },
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "formaldehyde, H+",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H2]"
+                }
+              ],
+              "a": 10200000000.0,
+              "ea_kj": 40,
+              "source": "acid catalysis of formaldehyde hydration, kH about 1e3 M-1 s-1 (Bell 1966, recalled order of magnitude)"
+            },
+            {
+              "id": "aldehyde, H+",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1]"
+                }
+              ],
+              "a": 5090000000.0,
+              "ea_kj": 40,
+              "source": "acetaldehyde hydration, kH about 5e2 M-1 s-1 (Bell 1966)"
+            },
+            {
+              "id": "ketone, H+",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 382000000.0,
+              "ea_kj": 45,
+              "source": "ketones are about 1e2 slower than aldehydes (estimate)"
+            }
+          ]
+        },
+        {
+          "tag": "base",
+          "catalysts": [
+            {
+              "species": "OH-",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "formaldehyde, OH-",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H2]"
+                }
+              ],
+              "a": 13500000000.0,
+              "ea_kj": 35,
+              "source": "base catalysis of formaldehyde hydration, kOH about 1e4 M-1 s-1 (recalled order of magnitude)"
+            },
+            {
+              "id": "aldehyde, OH-",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1]"
+                }
+              ],
+              "a": 6770000000.0,
+              "ea_kj": 35,
+              "source": "acetaldehyde hydration, kOH about 5e3 M-1 s-1 (Bell 1966, recalled order of magnitude)"
+            },
+            {
+              "id": "ketone, OH-",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 509000000.0,
+              "ea_kj": 40,
+              "source": "ketones are about 1e2 slower than aldehydes (estimate)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hemiacetal_formation",
+      "name": "Hemiacetal / hemiketal formation (alcohol addition to a carbonyl)",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        },
+        {
+          "role": "alcohol",
+          "any_of": [
+            "[OX2;H1][CX4]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[OX2;H1][CX4][OX2,NX3]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "neutral",
+          "catalysts": [],
+          "rules": [
+            {
+              "id": "formaldehyde, alcohol",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H2]"
+                }
+              ],
+              "a": 1150000000.0,
+              "ea_kj": 50,
+              "source": "hydration rate of the carbonyl per molar of the alcohol (water 55 M), alcohols about 5x more nucleophilic than water"
+            },
+            {
+              "id": "aldehyde, alcohol",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1]"
+                }
+              ],
+              "a": 4320000.0,
+              "ea_kj": 55,
+              "source": "acetaldehyde + methanol hemiacetal formation, order of magnitude 1e-3 M-1 s-1"
+            },
+            {
+              "id": "ketone, alcohol",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 325000.0,
+              "ea_kj": 60,
+              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+            }
+          ]
+        },
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "aldehyde, alcohol, H+",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1,H2]"
+                }
+              ],
+              "a": 1020000000.0,
+              "ea_kj": 40,
+              "source": "acid catalysis of hemiacetal formation, order of magnitude 1e2 M-2 s-1 (Guthrie)"
+            },
+            {
+              "id": "ketone, alcohol, H+",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 76500000.0,
+              "ea_kj": 45,
+              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+            }
+          ]
+        },
+        {
+          "tag": "base",
+          "catalysts": [
+            {
+              "species": "OH-",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "aldehyde, alcohol, OH-",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1,H2]"
+                }
+              ],
+              "a": 1350000000.0,
+              "ea_kj": 35,
+              "source": "base catalysis of hemiacetal formation, order of magnitude 1e3 M-2 s-1 (Guthrie)"
+            },
+            {
+              "id": "ketone, alcohol, OH-",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 102000000.0,
+              "ea_kj": 40,
+              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "carbinolamine_formation",
+      "name": "Amine addition to a carbonyl (carbinolamine)",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        },
+        {
+          "role": "amine",
+          "any_of": [
+            "[NX3;H2,H3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[NX3]-[CX3]=[O,N,S]"
+            },
+            {
+              "center": 0,
+              "smarts": "[NX3]-[N,O,S]"
+            },
+            {
+              "center": 0,
+              "smarts": "[NX3][CX4][OX2,NX3]"
+            }
+          ],
+          "net_charge_max": 0
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "aldehyde + amine",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;H1,H2]"
+            }
+          ],
+          "a": 135000000.0,
+          "ea_kj": 35,
+          "source": "amine addition to an aldehyde: carbinolamine formation is fast, k of the order 1e2 M-1 s-1 for primary amines (Jencks 1964, recalled order of magnitude)"
+        },
+        {
+          "id": "ketone + amine",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;H0]"
+            }
+          ],
+          "a": 10200000.0,
+          "ea_kj": 40,
+          "source": "ketones about 1e2 slower than aldehydes (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "imine_formation",
+      "name": "Dehydration of a carbinolamine to an imine",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "carbinolamine",
+          "any_of": [
+            "[CX4]([OX2;H1])[NX3;H1,H2]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[NX3]-[CX3]=[O,N,S]"
+            },
+            {
+              "center": 0,
+              "smarts": "[NX3]-[N,O,S]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2
+        }
+      ],
+      "variants": [
+        {
+          "tag": "neutral",
+          "catalysts": [],
+          "rules": [
+            {
+              "id": "carbinolamine, water-assisted",
+              "when": [],
+              "a": 1620000000.0,
+              "ea_kj": 60,
+              "source": "carbinolamine dehydration at neutral pH, order of magnitude 1e-2..1e-1 s-1 (Jencks 1964)"
+            }
+          ]
+        },
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "carbinolamine, H+",
+              "when": [],
+              "a": 1530000000000.0,
+              "ea_kj": 45,
+              "source": "acid-catalysed carbinolamine dehydration (rate-limiting below pH 4-5), kH of the order 1e4 M-1 s-1 (Jencks 1964)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aldol_addition",
+      "name": "Base-catalysed aldol addition",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "enolisable carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])[CX4;!H0]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        },
+        {
+          "role": "acceptor carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            0,
+            2
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "base",
+          "catalysts": [
+            {
+              "species": "OH-",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "aldehyde donor",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H1]"
+                }
+              ],
+              "a": 57500000.0,
+              "ea_kj": 50,
+              "source": "hydroxide-catalysed aldol addition of acetaldehyde, k of the order 0.1 M-2 s-1 (enolisation kOH about 1 M-1 s-1 of an aldehyde, partition of the enolate between addition and reprotonation)"
+            },
+            {
+              "id": "ketone donor",
+              "when": [
+                {
+                  "reactant": 0,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a": 86400000.0,
+              "ea_kj": 55,
+              "source": "ketone enolisation by hydroxide (acetone kOH 0.22 M-1 s-1) is slower than that of an aldehyde"
+            }
+          ],
+          "modifiers": [
+            {
+              "id": "ketone acceptor",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX3;H0]"
+                }
+              ],
+              "a_factor": 0.01,
+              "source": "ketones are weaker electrophiles than aldehydes by about 1e2 (estimate)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aldol_dehydration",
+      "name": "Dehydration of a beta-hydroxy carbonyl to an enone",
+      "category": "elimination",
+      "reactants": [
+        {
+          "role": "aldol",
+          "any_of": [
+            "[CX3;A](=[OX1])[CX4;H1,H2][CX4][OX2;H1]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            3
+          ],
+          "b": [
+            0,
+            4
+          ]
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            2
+          ],
+          "b": [
+            0,
+            3
+          ],
+          "order": 2
+        }
+      ],
+      "variants": [
+        {
+          "tag": "base",
+          "catalysts": [
+            {
+              "species": "OH-",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "aldol, E1cB",
+              "when": [],
+              "a": 325000000.0,
+              "ea_kj": 60,
+              "source": "hydroxide-catalysed (E1cB) dehydration of a beta-hydroxy ketone, k of the order 1e-2 M-1 s-1 (Guthrie)"
+            }
+          ]
+        },
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "aldol, acid",
+              "when": [],
+              "a": 183000000.0,
+              "ea_kj": 70,
+              "source": "acid-catalysed dehydration of a beta-hydroxy ketone, k of the order 1e-4 M-1 s-1 (estimate)"
+            }
+          ]
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "benzylic beta carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 3,
+              "smarts": "[CX4]-c"
+            }
+          ],
+          "a_factor": 1000.0,
+          "source": "conjugation with an aryl ring stabilises the enone and the transition state by about 1e3 (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "eas_halogenation",
+      "name": "Electrophilic aromatic halogenation",
+      "category": "aromatic substitution",
+      "reactants": [
+        {
+          "role": "arene",
+          "any_of": [
+            "[cH;R]"
+          ]
+        },
+        {
+          "role": "halogen",
+          "any_of": [
+            "[Cl,Br,I][Cl,Br,I]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "benzene + Cl2",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[Cl][Cl]"
+            }
+          ],
+          "a": 27100.0,
+          "ea_kj": 60,
+          "source": "uncatalysed chlorination of benzene in a polar solvent, a class estimate of the order 1e-5 M-1 s-1 for the unactivated ring (given per ring position and per X-X match: divided by 6 x 2) (activated rings follow the Hammett relation; Brown & Stock 1957)"
+        },
+        {
+          "id": "benzene + Br2",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[Br][Br]"
+            }
+          ],
+          "a": 271.0,
+          "ea_kj": 60,
+          "source": "uncatalysed bromination of benzene in a polar solvent, a class estimate of the order 1e-7 M-1 s-1 for the unactivated ring (per ring position and per X-X match: divided by 6 x 2) (anisole then 2e2, phenol 1e4 M-1 s-1, as measured in water; Brown & Stock 1957)"
+        },
+        {
+          "id": "benzene + I2",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[I][I]"
+            }
+          ],
+          "a": 2.71,
+          "ea_kj": 60,
+          "source": "iodination of the unactivated ring by I2 (per ring position and per X-X match: divided by 6 x 2), a class estimate (it reacts only with activated rings)"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "Hammett, chlorination",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[Cl][Cl]"
+            }
+          ],
+          "hammett": {
+            "rho": -10.0,
+            "reactant": 0,
+            "center": 0,
+            "ortho_steric": true
+          },
+          "source": "rho+ = -10.0 for chlorination by Cl2 in acetic acid (Brown & Stock)"
+        },
+        {
+          "id": "Hammett, bromination",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[Br][Br]"
+            }
+          ],
+          "hammett": {
+            "rho": -12.1,
+            "reactant": 0,
+            "center": 0,
+            "ortho_steric": true
+          },
+          "source": "rho+ = -12.1 for bromination by Br2 in acetic acid / water (Brown & Stock 1957)"
+        },
+        {
+          "id": "Hammett, iodination",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[I][I]"
+            }
+          ],
+          "hammett": {
+            "rho": -5.0,
+            "reactant": 0,
+            "center": 0,
+            "ortho_steric": true
+          },
+          "source": "rho+ of the order -5 for iodination of arenes (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "eas_nitration",
+      "name": "Electrophilic aromatic nitration (nitronium from nitrate and acid)",
+      "category": "aromatic substitution",
+      "reactants": [
+        {
+          "role": "arene",
+          "any_of": [
+            "[cH;R]"
+          ]
+        },
+        {
+          "role": "nitrate",
+          "any_of": [
+            "[O-][N+](=[OX1])[OX1-]"
+          ],
+          "net_charge_max": -1
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            1,
+            1
+          ],
+          "b": [
+            1,
+            0
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 2
+            }
+          ],
+          "rules": [
+            {
+              "id": "benzene + nitrate, H+ squared",
+              "when": [],
+              "a": 45900.0,
+              "ea_kj": 70,
+              "source": "nitration of benzene (per ring position and per nitrate oxygen match: divided by 6 x 2): nitronium needs two protons (HNO3 + H+ -> NO2+ + H2O), so the rate runs with the acidity: k2 about 3e-5 M-1 s-1 in 68 % H2SO4 where [H+] is of the order 10 M, k3 = 3e-7 M-3 s-1 (Ingold 1950; Hammett h0 dependence recalled as [H+]^2)"
+            }
+          ]
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "Hammett, nitration",
+          "when": [],
+          "hammett": {
+            "rho": -6.2,
+            "reactant": 0,
+            "center": 0,
+            "ortho_steric": true
+          },
+          "source": "rho+ = -6.2 for nitration (Brown & Okamoto)"
+        }
+      ]
+    },
+    {
+      "id": "acyl_halide_substitution",
+      "name": "Nucleophilic acyl substitution of an acyl halide",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "acyl halide",
+          "any_of": [
+            "[CX3;A](=[OX1])[Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "any_of": [
+            "[OX2H2]",
+            "[OX2;H1][CX4]",
+            "[NX3;H2,H3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[NX3]-[CX3]=[O,N,S]"
+            },
+            {
+              "center": 0,
+              "smarts": "[NX3]-[N,O,S]"
+            }
+          ],
+          "net_charge_max": 0
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            2
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "acyl halide, water",
+          "when": [],
+          "a": 38200000.0,
+          "ea_kj": 45,
+          "source": "hydrolysis of acetyl chloride in water, k of the order 0.5 s-1 at 298 K (Bunton, recalled); water at 55 M inside k"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "alcohol instead of water",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX2;H1][CX4]"
+            }
+          ],
+          "a_factor": 0.04,
+          "source": "alcoholysis per molar of alcohol: about the hydrolysis rate divided by 55 times a nucleophilicity ratio of 2 (estimate)"
+        },
+        {
+          "id": "amine",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[NX3;H2,H3]"
+            }
+          ],
+          "a_factor": 200000.0,
+          "source": "aminolysis of acyl chlorides is near the encounter limit: k about 1e5-1e6 M-1 s-1 (recalled order of magnitude), against 0.5 s-1 for water"
+        },
+        {
+          "id": "aryl acyl halide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]-c"
+            }
+          ],
+          "a_factor": 0.02,
+          "source": "benzoyl chloride hydrolyses about 50x slower than acetyl chloride (conjugation; recalled)"
+        }
+      ]
+    },
+    {
+      "id": "anhydride_substitution",
+      "name": "Nucleophilic acyl substitution of an acid anhydride",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "anhydride",
+          "any_of": [
+            "[CX3;A](=[OX1])[OX2][CX3;A]=[OX1]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "any_of": [
+            "[OX2H2]",
+            "[OX2;H1][CX4]",
+            "[NX3;H2,H3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[NX3]-[CX3]=[O,N,S]"
+            },
+            {
+              "center": 0,
+              "smarts": "[NX3]-[N,O,S]"
+            }
+          ],
+          "net_charge_max": 0
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "anhydride, water",
+          "when": [],
+          "a": 162000000.0,
+          "ea_kj": 60,
+          "source": "hydrolysis of acetic anhydride, k = 5e-3 s-1 at 298 K (water at 55 M inside k; Bunton & Fendler)"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "alcohol instead of water",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX2;H1][CX4]"
+            }
+          ],
+          "a_factor": 0.1,
+          "source": "alcoholysis per molar of alcohol (estimate)"
+        },
+        {
+          "id": "amine",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[NX3;H2,H3]"
+            }
+          ],
+          "a_factor": 2000.0,
+          "source": "aminolysis of acetic anhydride, k of the order 1e2-1e3 M-1 s-1 (recalled order of magnitude)"
+        }
+      ]
+    },
+    {
+      "id": "primary_alcohol_oxidation",
+      "name": "Oxidation of a primary alcohol to an aldehyde",
+      "category": "oxidation",
+      "reactants": [
+        {
+          "role": "alcohol",
+          "any_of": [
+            "[CX4;H2,H3][OX2;H1]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX4]([OX2;H1])[OX2,NX3]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 2
+        }
+      ],
+      "redox": {
+        "electrons": 2,
+        "k_self": 1e-22,
+        "source": "rate-scale constant of an organic two-electron couple (hydride / proton-coupled transfer), tier Speculative: not a measured self-exchange (against a strongly oxidising partner the Marcus cross relation is in its saturated regime, where the value only sets the scale), chosen so that the Marcus cross relation reproduces the order of magnitude of acidic permanganate oxidations of alcohols (k of 1e-2..1 M-1 s-1 at 0.1 M acid, Stewart, Oxidation Mechanisms 1964; Waters & Littler) -- the cross relation then carries it to other oxidants by their driving force"
+      }
+    },
+    {
+      "id": "secondary_alcohol_oxidation",
+      "name": "Oxidation of a secondary alcohol to a ketone",
+      "category": "oxidation",
+      "reactants": [
+        {
+          "role": "alcohol",
+          "any_of": [
+            "[CX4;H1]([#6])([#6])[OX2;H1]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX4]([OX2;H1])[OX2,NX3]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            3
+          ],
+          "order": 2
+        }
+      ],
+      "redox": {
+        "electrons": 2,
+        "k_self": 3e-22,
+        "source": "rate-scale constant of an organic two-electron couple (hydride / proton-coupled transfer), tier Speculative: not a measured self-exchange (against a strongly oxidising partner the Marcus cross relation is in its saturated regime, where the value only sets the scale), chosen so that the Marcus cross relation reproduces the order of magnitude of acidic permanganate oxidations of alcohols (k of 1e-2..1 M-1 s-1 at 0.1 M acid, Stewart, Oxidation Mechanisms 1964; Waters & Littler) -- the cross relation then carries it to other oxidants by their driving force; secondary alcohols are oxidised about 3x faster than primary ones by permanganate and chromic acid (the C-H bond is weaker; Stewart)"
+      }
+    },
+    {
+      "id": "aldehyde_oxidation",
+      "name": "Oxidation of an aldehyde (as its hydrate) to a carboxylic acid",
+      "category": "oxidation",
+      "reactants": [
+        {
+          "role": "aldehyde",
+          "any_of": [
+            "[CX3;H1,H2;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "redox": {
+        "electrons": 2,
+        "k_self": 3.0000000000000003e-21,
+        "source": "rate-scale constant of an organic two-electron couple (hydride / proton-coupled transfer), tier Speculative: not a measured self-exchange (against a strongly oxidising partner the Marcus cross relation is in its saturated regime, where the value only sets the scale), chosen so that the Marcus cross relation reproduces the order of magnitude of acidic permanganate oxidations of alcohols (k of 1e-2..1 M-1 s-1 at 0.1 M acid, Stewart, Oxidation Mechanisms 1964; Waters & Littler) -- the cross relation then carries it to other oxidants by their driving force; aldehydes (through their hydrate) are oxidised about 30x faster than the alcohols (recalled order of magnitude)"
+      }
     }
   ]
 }

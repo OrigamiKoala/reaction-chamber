@@ -23,11 +23,11 @@ fn vessel_at(t: f64, capacity: f64) -> Vessel {
 }
 
 fn ml(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 fn grams(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 
 fn run(v: &mut Vessel, seconds: f64, dt: f64) {

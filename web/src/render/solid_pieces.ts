@@ -13,6 +13,9 @@ import { VesselProfile, heightForVolume, innerRadiusAt } from './glass_profiles'
  *  frozen mass has no packing voids, so its own volume is the bulk volume divided by that factor. */
 export const BED_PACKING = 1.6;
 
+/** A metal solid whose particles are smaller than this is a powder (cemented copper, silver dust), not a piece. */
+export const METAL_PIECE_MIN_UM = 200;
+
 export interface PieceSolid {
   rgb: [number, number, number];
   /** Volume of the material itself, mL. */
@@ -22,6 +25,10 @@ export interface PieceSolid {
   kind: SolidKind;
   /** Mean particle diameter, micrometres (a floating fine powder is a film, a coarse one is pieces). */
   diameterUm: number;
+  /** Visual form reported by the engine: 'bed' | 'monolith' | 'pieces' | 'film'. */
+  morphology?: string;
+  /** Index of the liquid layer a floating solid rides on (null: the top of the liquid). */
+  layer?: number | null;
 }
 
 let ribbonGeo: THREE.BufferGeometry | null = null;
@@ -86,6 +93,8 @@ interface Chunk {
   z: number;
   /** Which solid (index) it belongs to, for remaining-fraction shrinkage. */
   owner: number;
+  /** Height as a multiple of the radius (default 0.82: a roundish piece; a slab or a tall rod differs). */
+  hScale?: number;
 }
 
 interface RibbonSlot {
@@ -124,6 +133,8 @@ export interface PieceContext {
   burst: boolean;
   /** World up in the vessel's frame: the free surface stays level while the vessel tilts (pouring). */
   up: THREE.Vector3;
+  /** Glass-local height of the top of each liquid layer, bottom first (the last one is the free surface). */
+  layerTops?: number[];
 }
 
 /** Height of the level free surface above the nominal fill line at glass-local (x, z), as the liquid shader tilts it. */
@@ -142,6 +153,10 @@ export class SolidPieces {
   private floatRem = 1;
   private floatFloats = true;
   private floatSig = '';
+  /** One piece of the floating material is a single mass (a frozen sheet, a cast block) rather than many fragments. */
+  private floatMono = false;
+  /** Liquid layer the floating material rides on (null: the free surface). */
+  private floatLayer: number | null = null;
   // frozen mass
   private block: THREE.Mesh | null = null;
   private blockMat: THREE.MeshPhysicalMaterial;
@@ -297,6 +312,16 @@ export class SolidPieces {
     this.floatVol = vol;
     this.filmTarget = fineVol;
     this.floatFloats = list.length === 0 || list.some((s) => s.floating);
+    this.floatMono = list.some((s) => s.morphology === 'monolith');
+    // the layer of the biggest floating solid decides where the material rides
+    let big = -1;
+    this.floatLayer = null;
+    for (const s of list) {
+      if (s.layer !== null && s.layer !== undefined && s.volumeMl > big) {
+        big = s.volumeMl;
+        this.floatLayer = s.layer;
+      }
+    }
     if (vol <= 0) {
       this.floatChunks = [];
       this.floatSig = '';
@@ -307,8 +332,9 @@ export class SolidPieces {
 
   private layoutFloaters(dry: boolean) {
     const V = this.floatVol;
-    const n = Math.max(1, Math.min(MAX_FLOAT_CHUNKS, Math.ceil(V / 6)));
-    const sig = `${n}|${Math.round(V * 4)}|${dry ? 1 : 0}`;
+    // a single mass (a frozen sheet, a cast block) is one piece; loose material is a handful of fragments (about 6 mL each)
+    const n = this.floatMono ? 1 : Math.max(1, Math.min(MAX_FLOAT_CHUNKS, Math.ceil(V / 6)));
+    const sig = `${n}|${Math.round(V * 4)}|${dry ? 1 : 0}|${this.floatMono ? 1 : 0}`;
     if (sig === this.floatSig) return;
     this.floatSig = sig;
     // pieces share the volume unevenly (a few big cubes among small shards)
@@ -323,11 +349,21 @@ export class SolidPieces {
     for (let i = 0; i < n; i++) {
       const v = (V * w[i]) / wsum;
       // an irregular piece fills about half its bounding sphere
-      const r = Math.max(0.1, Math.cbrt((3 * v) / (4 * Math.PI * 0.55)));
+      let r = Math.max(0.1, Math.cbrt((3 * v) / (4 * Math.PI * 0.55)));
+      let hScale: number | undefined;
+      if (this.floatMono) {
+        // one mass wider than the vessel is a slab: keep the volume, flatten it to fit
+        const rMax = Math.max(0.3, this.p.rimInnerRadius * 0.85);
+        if (r > rMax) {
+          hScale = Math.min(3, Math.pow(r / rMax, 3) * 0.82);
+          r = rMax;
+        }
+      }
       this.floatChunks.push({
         a: i * 2.399963 + hash(i, 22) * 0.5,
-        f: Math.sqrt((i + 0.5) / n),
+        f: this.floatMono ? 0 : Math.sqrt((i + 0.5) / n),
         r,
+        hScale,
         ph: hash(i, 23) * 6.28,
         tumble: 0.2 + hash(i, 24) * 0.5,
         x: 0,
@@ -467,7 +503,8 @@ export class SolidPieces {
     const V = this.floatVol;
     const rem = Math.max(0.02, this.floatRem);
     const vEff = V * rem;
-    const showBlock = vEff > 12 && !ctx.hasLiquid;
+    // a frozen mass that fills the vessel is a cast block; so is any large single mass lying on the floor of the liquid
+    const showBlock = vEff > 12 && (!ctx.hasLiquid || (this.floatMono && !this.floatFloats));
     if (vEff < 0.004) {
       this.floatMesh.visible = false;
       if (this.block) this.block.visible = false;
@@ -489,12 +526,15 @@ export class SolidPieces {
     const swirl = ctx.stirRpm > 0 ? Math.min(2.5, (ctx.stirRpm / 60) * 6.283 * 0.07) : 0;
     const float = ctx.hasLiquid && this.floatFloats;
     const shrink = Math.cbrt(rem);
-    const yRef = float ? ctx.fill : Math.max(ctx.bedY, p.innerBottomY);
-    const rSurf = Math.max(0.2, innerRadiusAt(p, Math.min(float ? ctx.fill : p.innerBottomY + 0.5, p.innerTopY)));
+    // floating material rides the top of the layer it is in (ice on water, a wax disc between water and a dense organic)
+    const tops = ctx.layerTops;
+    const layerTop = float && this.floatLayer !== null && tops && this.floatLayer >= 0 && this.floatLayer < tops.length ? tops[this.floatLayer] : ctx.fill;
+    const yRef = float ? layerTop : Math.max(ctx.bedY, p.innerBottomY);
+    const rSurf = Math.max(0.2, innerRadiusAt(p, Math.min(float ? layerTop : p.innerBottomY + 0.5, p.innerTopY)));
     for (let i = 0; i < n; i++) {
       const c = this.floatChunks[i];
       const r = c.r * shrink;
-      const h = r * 0.82;
+      const h = r * (c.hScale ?? 0.82);
       c.a += swirl * dt + Math.sin(time * 0.31 + c.ph) * 0.0015;
       const R = Math.max(0, rSurf - r * 1.05);
       const rr = Math.min(R, c.f * R * (float ? 1 : 0.9) + Math.sin(time * 0.23 + c.ph) * 0.12 * (float ? 1 : 0));

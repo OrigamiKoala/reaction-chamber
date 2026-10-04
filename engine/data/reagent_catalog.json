@@ -28,6 +28,6 @@
     {"bottle_colour":"amber","by_mass":false,"composition":{"H2O":0.0555,"HIn_btb":0.00002},"concentration_m":0.02,"density_g_ml":1.0,"dropper":true,"form":"solution","formula":"C27H28Br2O5S","ghs":[],"id":"bromothymol_blue_drop","label":"Bromothymol Blue","name":"Bromothymol Blue (Dropper)","signal_word":""},
     {"bottle_colour":"amber","by_mass":false,"composition":{"H2O":0.0555,"HIn_mo":0.00003},"concentration_m":0.03,"density_g_ml":1.0,"dropper":true,"form":"solution","formula":"C14H14N3NaO3S","ghs":["GHS06"],"id":"methyl_orange_drop","label":"Methyl Orange","name":"Methyl Orange (Dropper)","signal_word":"Danger"},
     {"bottle_colour":"amber","by_mass":false,"composition":{"H2O":0.0555,"HIn_mr":3.7e-6},"concentration_m":0.0037,"density_g_ml":1.0,"dropper":true,"form":"solution","formula":"C15H15N3O2","ghs":["GHS07"],"id":"methyl_red_drop","label":"Methyl Red","name":"Methyl Red (Dropper)","signal_word":"Warning"},
-    {"bottle_colour":"clear","by_mass":true,"composition":{"Mg(s)":0.04114379757251595},"density_g_ml":1.74,"form":"solid","formula":"Mg","ghs":["GHS02"],"id":"mg_ribbon","inchi_key":"FYYHWMGAXLPEAU-UHFFFAOYSA-N","label":"Mg Ribbon","name":"Magnesium Ribbon","signal_word":"Danger"}
+    {"bottle_colour":"clear","by_mass":true,"composition":{"Mg(s)":0.04114379757251595},"density_g_ml":1.74,"form":"solid","formula":"Mg","ghs":["GHS02"],"id":"mg_ribbon","particle_um":300.0,"solid_form":"piece","inchi_key":"FYYHWMGAXLPEAU-UHFFFAOYSA-N","label":"Mg Ribbon","name":"Magnesium Ribbon","signal_word":"Danger"}
   ]
 }

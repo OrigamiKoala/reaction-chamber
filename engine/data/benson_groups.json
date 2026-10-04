@@ -1,5 +1,5 @@
 {
-  "_comment": "Benson group additivity for ideal-gas organic molecules at 298.15 K (src/benson.rs). Each group: [dfH kcal/mol, S cal/(mol K)] with S the intrinsic group entropy (the symmetry term -R ln sigma is applied per molecule; the C-(H)4 row is methane itself). Values are recalled from Benson, Thermochemical Kinetics, 2nd ed. (1976) and Cohen & Benson, Chem. Rev. 93 (1993) 2419; the alkane, alkene, alkyne, benzene, alcohol, ether, ketone, aldehyde, acid and amine rows are the published ones, while CO-(CB)(C), CB-(CO), CB-(N), O-(CB)(C), the C-(N)(...) and C-(CO)(...) rows were recalled less certainly (acetophenone and aniline back-calculation) and carry no gate of their own. tests/open_items_b.rs compares 39 molecules with the experimental gas-phase dfH and S. Tier of everything derived: Estimated. A molecule with an atom no group covers gets no Benson estimate (the caller falls back to Joback)",
+  "_comment": "Benson group additivity for ideal-gas organic molecules at 298.15 K (src/benson.rs). Each group: [dfH kcal/mol, S cal/(mol K)] with S the intrinsic group entropy (the symmetry term -R ln sigma is applied per molecule; the C-(H)4 row is methane itself). Values are recalled from Benson, Thermochemical Kinetics, 2nd ed. (1976) and Cohen & Benson, Chem. Rev. 93 (1993) 2419; the alkane, alkene, alkyne, benzene, alcohol, ether, ketone, aldehyde, acid and amine rows are the published ones, while CO-(CB)(C), CB-(CO), CB-(N), O-(CB)(C), the C-(N)(...) and C-(CO)(...) rows were recalled less certainly (acetophenone and aniline back-calculation) and carry no gate of their own. tests/open_items_b.rs compares 39 molecules with the experimental gas-phase dfH and S. Tier of everything derived: Estimated. The rows CO-(H)2, C-(O)2(H)2, C-(O)2(C)(H), C-(O)2(C)2 (acetals, hemiacetals, gem-diols) and CO-(Cd)(H), CO-(Cd)(C), Cd-(CO)(H), Cd-(CO)(C) (enones) were added for the carbonyl-addition and aldol templates: formaldehyde, the C-(O)2 rows against dimethoxymethane and 1,1-dimethoxyethane, the enone rows against acrolein and crotonaldehyde (recalled experimental enthalpies; N_I-(C) and N_I-(H) are the Benson imine-nitrogen rows, C-(O)(N)(C)(H) and C-(O)(N)(H)2 (carbinolamines) are interpolated from the C-(O) and C-(N) rows and unchecked; the entropies of the C-(O)2(C) rows are analogies to the C-(O)(C) rows and carry no check); A molecule with an atom no group covers gets no Benson estimate (the caller falls back to Joback)",
   "groups": {
     "C-(H)4": [-17.89, 44.5],
     "C-(C)(H)3": [-10.20, 30.41],
@@ -48,6 +48,14 @@
     "CO-(C)(H)": [-29.10, 34.93],
     "CO-(CB)(C)": [-30.90, 16.00],
     "CO-(O)(C)": [-35.10, 14.60],
+    "CO-(H)2": [-26.0, 52.3],
+    "CO-(Cd)(H)": [-27.0, 33.6],
+    "CO-(Cd)(C)": [-30.9, 16.2],
+    "C-(O)2(H)2": [-16.1, 8.3],
+    "C-(O)2(C)(H)": [-16.3, -10.5],
+    "C-(O)2(C)2": [-18.6, -31.0],
+    "Cd-(CO)(H)": [5.0, 6.38],
+    "Cd-(CO)(C)": [7.5, -14.6],
     "O-(C)2": [-23.20, 8.68],
     "O-(C)(H)": [-37.90, 29.07],
     "O-(CB)(H)": [-37.90, 29.10],
@@ -57,7 +65,11 @@
     "N-(C)(H)2": [4.80, 29.71],
     "N-(C)2(H)": [15.40, 8.94],
     "N-(C)3": [24.40, -13.46],
-    "N-(CB)(H)2": [4.80, 29.71]
+    "N-(CB)(H)2": [4.80, 29.71],
+    "N_I-(C)": [21.3, 7.5],
+    "N_I-(H)": [16.3, 27.0],
+    "C-(O)(N)(C)(H)": [-12.0, -11.0],
+    "C-(O)(N)(H)2": [-9.0, 9.0]
   },
   "gauche": {
     "_comment": "Alkane gauche correction per gauche interaction between carbon substituents of two sp3 carbons in the lowest-energy staggered conformer, kcal/mol.",

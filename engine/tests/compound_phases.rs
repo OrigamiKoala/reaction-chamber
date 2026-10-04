@@ -31,10 +31,10 @@ fn equilibrate_at(v: &mut Vessel, t: f64, seconds: f64) {
     for _ in 0..(seconds / 0.5) as usize { v.step(0.5).unwrap(); }
 }
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(ml), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn dose_g(v: &mut Vessel, id: &str, g: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(g), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn heater(v: &mut Vessel, w: f64) {
     v.set_controls(VesselControls { heater_w: Some(w), ..Default::default() });
@@ -114,7 +114,7 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
         if l0 < 1e-12 && l1 < 1e-12 && v.temperature_k > tm + 0.05 { t_before_melt_ok = false; }
         if s1 > 1e-9 && l1 > 1e-9 {
             saw_partial = true;
-            plateau_j += (150.0 - reaction_chamber_engine::heat_transfer::ambient_loss_w_per_k(0.035, 250.0, v.total_liquid_volume_ml(), t, 295.15, false) * (t - 295.15)) * dt;
+            plateau_j += (reaction_chamber_engine::heat_transfer::hot_plate_heat_w(150.0, t, 295.15, 0.025) - reaction_chamber_engine::heat_transfer::ambient_loss_w_per_k(0.035, 250.0, v.total_liquid_volume_ml(), t, 295.15, false) * (t - 295.15)) * dt;
             assert!((v.temperature_k - tm).abs() < 0.2, "T {} off the melting plateau", v.temperature_k);
         }
         if s1 <= 1e-9 && l1 > 1e-9 && v.temperature_k > tm + 3.0 { break; }
@@ -181,7 +181,7 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
                 assert!((v.temperature_k - tb).abs() < 0.01, "T {} should sit at the boiling point", v.temperature_k);
             }
             lost_at_start.get_or_insert(v.mass_lost_g);
-            boil_j += (200.0 - 0.5 * (t - 295.15)) * dt;
+            boil_j += (reaction_chamber_engine::heat_transfer::hot_plate_heat_w(200.0, t, 295.15, 0.025) - 0.5 * (t - 295.15)) * dt;
             boil_steps += 1;
         }
         if sp(&v, "C6H12") < 1e-9 { break; }
@@ -203,7 +203,7 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
         // a stopper that holds (the cyclohexane vapour pressure alone is ~1.2 atm at 360 K, above the default 2.2 atm pop)
         temperature_k: Some(360.0), room_k: Some(295.15), sealed: Some(true), stopper_pop_atm: Some(10.0), burst_atm: Some(20.0),
     });
-    s.dose(DoseRequest { reagent_id: "cp_chx_b".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: Some(360.0) }).unwrap();
+    s.dose(DoseRequest { reagent_id: "cp_chx_b".into(), volume_ml: Some(20.0), mass_g: None, drops: None, temperature_k: Some(360.0), solid_form: None }).unwrap();
     assert!(s.temperature_k > tb + 1.0);
     for _ in 0..40 { s.step(0.05).unwrap(); }
     // (the only mass that left is the air the 20 mL of liquid pushed out of the stoppered vessel: < 0.05 g)

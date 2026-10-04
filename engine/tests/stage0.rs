@@ -25,10 +25,10 @@ fn beaker() -> Vessel {
     beaker_at(298.15, false, 250.0)
 }
 fn ml(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: Some(x), mass_g: None, drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn grams(v: &mut Vessel, id: &str, x: f64) {
-    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None }).unwrap();
+    v.dose(DoseRequest { reagent_id: id.into(), volume_ml: None, mass_g: Some(x), drops: None, temperature_k: None, solid_form: None }).unwrap();
 }
 fn sp(v: &Vessel, s: &str) -> f64 {
     v.species_mol.get(s).copied().unwrap_or(0.0)
@@ -299,7 +299,7 @@ fn s0_5_unparseable_species_are_reported_not_skipped() {
         label: "Zq".into(),
         by_mass: false,
         dropper: None,
-        inchi_key: None,
+        inchi_key: None, solid_form: None, particle_um: None,
     });
     ml(&mut v, "mystery", 10.0);
     let c = v.snapshot().conservation;
@@ -343,9 +343,9 @@ fn s0_4_no_invented_organic_species_after_any_pair_of_catalog_reagents() {
             let mut v = beaker();
             for e in [&ids[i], &ids[j]] {
                 let req = if e.by_mass || e.form == "solid" {
-                    DoseRequest { reagent_id: e.id.clone(), volume_ml: None, mass_g: Some(1.0), drops: None, temperature_k: None }
+                    DoseRequest { reagent_id: e.id.clone(), volume_ml: None, mass_g: Some(1.0), drops: None, temperature_k: None, solid_form: None }
                 } else {
-                    DoseRequest { reagent_id: e.id.clone(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None }
+                    DoseRequest { reagent_id: e.id.clone(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: None, solid_form: None }
                 };
                 v.dose(req).unwrap();
             }
@@ -565,7 +565,7 @@ fn s0_9_one_gas_constant_and_one_glass_factor() {
     assert_eq!(reaction_chamber_engine::templates::R_IDEAL, reaction_chamber_engine::physics::R_GAS);
     // pouring 10 mL of 80 C water into an empty beaker: the same glass fraction as every other path
     let mut v = beaker();
-    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(353.15) }).unwrap();
+    v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(353.15), solid_form: None }).unwrap();
     // (Stage 5: 10 mL of water at 80 C is 9.718 g, its density at that temperature, not the 10.0 g the stamped 1 g/mL gave)
     let cp_water = 10.0 * 0.97179 * 4.184;
     let expected = (353.15 * cp_water + 298.15 * 110.0 * 0.84 * 0.15) / (cp_water + 110.0 * 0.84 * 0.15);
@@ -578,7 +578,7 @@ fn s0_9_portion_carries_its_own_heat_capacity() {
     let mut a = beaker();
     ml(&mut a, "water", 50.0);
     let mut src = beaker();
-    src.dose(DoseRequest { reagent_id: "ethanol".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(340.0) }).unwrap();
+    src.dose(DoseRequest { reagent_id: "ethanol".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(340.0), solid_form: None }).unwrap();
     src.temperature_k = 340.0;
     let p = src.remove_liquid(10.0, true).unwrap();
     let c_water = 50.0 * 1.0 * 4.184;

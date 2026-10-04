@@ -122,7 +122,8 @@ fn kind_of(mol: &Molecule, nbrs: &[Vec<(usize, f64)>], i: usize) -> Option<Kind>
                 0 => Some(Kind::C),
                 1 => match mol.atoms[dbl[0]].element.as_str() {
                     "O" => Some(Kind::Co),
-                    "C" => Some(Kind::Cd),
+                    // the carbon of a C=N is an alkene-type carbon (Benson's Cd group) with the imine nitrogen as its partner
+                    "C" | "N" => Some(Kind::Cd),
                     _ => None,
                 },
                 _ => None,
@@ -137,7 +138,10 @@ fn kind_of(mol: &Molecule, nbrs: &[Vec<(usize, f64)>], i: usize) -> Option<Kind>
             }
         }
         "N" => {
-            if a.aromatic || nbrs[i].iter().any(|&(_, b)| !is_close(b, 1.0)) {
+            // an amine nitrogen (single bonds only) or an imine nitrogen (one double bond to a carbon, the rest single)
+            let doubles: Vec<usize> = nbrs[i].iter().filter(|&&(_, b)| is_close(b, 2.0)).map(|&(j, _)| j).collect();
+            let others_single = nbrs[i].iter().all(|&(_, b)| is_close(b, 1.0) || is_close(b, 2.0));
+            if a.aromatic || !others_single || doubles.len() > 1 || doubles.iter().any(|&j| mol.atoms[j].element != "C" || mol.atoms[j].aromatic) {
                 None
             } else {
                 Some(Kind::N)
@@ -359,7 +363,9 @@ pub fn estimate(mol_in: &Molecule) -> Option<BensonEstimate> {
         let mut subs: Vec<Kind> = Vec::new();
         let mut skip_partner: Option<usize> = None;
         // the partner of a double / triple bond (and the carbonyl oxygen) is part of the centre, not a substituent
-        if matches!(k, Kind::Cd | Kind::Ct | Kind::Co) {
+        // an imine nitrogen is the centre `N_I` of its own groups, with its carbon as the partner
+        let imine_n = k == Kind::N && nbrs[i].iter().any(|&(_, b)| is_close(b, 2.0));
+        if matches!(k, Kind::Cd | Kind::Ct | Kind::Co) || imine_n {
             skip_partner = nbrs[i].iter().find(|&&(_, b)| b > 1.9 && !is_close(b, 1.5)).map(|&(j, _)| j);
         }
         let mut arom_nb = 0;
@@ -390,6 +396,7 @@ pub fn estimate(mol_in: &Molecule) -> Option<BensonEstimate> {
                 Kind::Cb => "CB",
                 Kind::Co => "CO",
                 Kind::O => "O",
+                Kind::N if imine_n => "N_I",
                 Kind::N => "N",
                 Kind::H => return None,
             },

@@ -82,9 +82,62 @@ pub fn bath_coupling_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred
     u * (a_wet + a_base)
 }
 
+/// Highest surface temperature (K) a laboratory hot plate's ceramic top reaches (its thermostat / element limit: about 350 C
+/// on the common stirrer-hotplates; the knob sets the *power* up to what this temperature can pass on).
+pub const HOT_PLATE_MAX_SURFACE_K: f64 = 623.15;
+/// Coefficient (W/(m^2 K)) of the vessel's base to the plate: thin borosilicate on ceramic with a small air gap.
+pub const H_BASE_TO_PLATE: f64 = 500.0;
+/// Conductance (W/K) from the plate's chassis and underside to the room (the plate's own body, besides its open top).
+pub const PLATE_BODY_LOSS_W_PER_K: f64 = 0.3;
+/// Radius (m) of the plate top of a stirrer-hotplate (a 10 cm square plate, equivalent disc).
+pub const PLATE_RADIUS_M: f64 = 0.056;
+
+/// Heat (W) a hot plate set to `power_w` actually passes into a vessel at `t_vessel` standing on it: the plate top settles at the
+/// temperature where the element's power equals the conduction through the vessel base plus the plate's own losses (the open
+/// part of its top by convection and radiation, its body), but never above `HOT_PLATE_MAX_SURFACE_K`. A vessel that is hot
+/// takes less than the nominal power; an empty one cannot pass the plate's temperature limit on.
+pub fn hot_plate_heat_w(power_w: f64, t_vessel: f64, t_room: f64, vessel_radius_m: f64) -> f64 {
+    if power_w <= 0.0 {
+        return 0.0;
+    }
+    let a_base = PI * vessel_radius_m * vessel_radius_m;
+    let g_base = H_BASE_TO_PLATE * a_base;
+    let a_open = (PI * PLATE_RADIUS_M * PLATE_RADIUS_M - a_base).max(0.0);
+    let lost = |ts: f64| a_open * (natural_convection_h(ts, t_room, 0.1) + radiation_h(ts, t_room, 0.9)) * (ts - t_room) + PLATE_BODY_LOSS_W_PER_K * (ts - t_room);
+    let into_vessel = |ts: f64| g_base * (ts - t_vessel);
+    // the element's power balance P = into_vessel(Ts) + lost(Ts) is increasing in Ts: bisect, capped at the surface limit
+    let balance = |ts: f64| into_vessel(ts) + lost(ts) - power_w;
+    if t_vessel >= HOT_PLATE_MAX_SURFACE_K {
+        return 0.0;
+    }
+    let ts = if balance(HOT_PLATE_MAX_SURFACE_K) <= 0.0 {
+        HOT_PLATE_MAX_SURFACE_K
+    } else {
+        let (mut lo, mut hi) = (t_vessel.min(t_room), HOT_PLATE_MAX_SURFACE_K);
+        for _ in 0..60 {
+            let mid = 0.5 * (lo + hi);
+            if balance(mid) > 0.0 { hi = mid } else { lo = mid }
+        }
+        0.5 * (lo + hi)
+    };
+    (into_vessel(ts)).clamp(0.0, power_w)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hot_plate_saturates_at_its_surface_limit() {
+        // a 600 W plate under a 250 mL beaker (3.5 cm radius): cold contents take most of it, hot contents little
+        let cold = hot_plate_heat_w(600.0, 295.15, 295.15, 0.035);
+        let hot = hot_plate_heat_w(600.0, 500.0, 295.15, 0.035);
+        assert!(cold > 350.0 && cold <= 600.0, "{} W into a cold beaker", cold);
+        assert!(hot < 0.6 * cold, "{} W into a 500 K beaker", hot);
+        assert_eq!(hot_plate_heat_w(600.0, 640.0, 295.15, 0.035), 0.0, "nothing flows past the surface limit");
+        // a weak plate passes what it makes
+        assert!((hot_plate_heat_w(20.0, 295.15, 295.15, 0.035) - 20.0).abs() < 8.0);
+    }
 
     #[test]
     fn beaker_of_hot_water_loses_a_fraction_of_a_watt_per_kelvin() {

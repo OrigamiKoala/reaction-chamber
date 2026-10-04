@@ -91,7 +91,7 @@ fn gate_2_agcl_solubility_ratio_in_kno3() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     // Add excess AgCl(s)
     v_pure.solid_mol.insert("AgCl(s)".into(), 0.001);
@@ -115,7 +115,7 @@ fn gate_2_agcl_solubility_ratio_in_kno3() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     // 0.1 M KNO3 in 100 mL = 0.010 mol K+ and NO3-
     *v_kno3.species_mol.entry("K+".into()).or_default() += 0.010;
@@ -152,7 +152,7 @@ fn gate_3_concentrated_6m_hcl_ph() {
         volume_ml: Some(100.0),
         mass_g: None,
         drops: None,
-        temperature_k: None,
+        temperature_k: None, solid_form: None,
     }).unwrap();
     // Add HCl moles directly to test exact 6 m solution
     *v.species_mol.entry("H+".into()).or_default() += 0.60;
