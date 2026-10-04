@@ -1,0 +1,239 @@
+{
+ "_source": "Mayr database of reactivity parameters (recalled values, tier estimated; Mayr & Patz 1994 log k = sN(N+E))",
+ "parameters": [
+  {
+   "id": "nuc_piperidine",
+   "name": "Piperidine",
+   "is_nucleophile": true,
+   "n": 18.25,
+   "s_n": 0.78,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_morpholine",
+   "name": "Morpholine",
+   "is_nucleophile": true,
+   "n": 15.39,
+   "s_n": 0.75,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_pyrrolidine",
+   "name": "Pyrrolidine",
+   "is_nucleophile": true,
+   "n": 20.21,
+   "s_n": 0.81,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_triethylamine",
+   "name": "Triethylamine",
+   "is_nucleophile": true,
+   "n": 15.8,
+   "s_n": 0.65,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_water",
+   "name": "Water",
+   "is_nucleophile": true,
+   "n": 5.2,
+   "s_n": 0.89,
+   "e": 0.0,
+   "solvent": "H2O"
+  },
+  {
+   "id": "nuc_methanol",
+   "name": "Methanol",
+   "is_nucleophile": true,
+   "n": 7.55,
+   "s_n": 0.86,
+   "e": 0.0,
+   "solvent": "MeOH"
+  },
+  {
+   "id": "nuc_ethanol",
+   "name": "Ethanol",
+   "is_nucleophile": true,
+   "n": 8.1,
+   "s_n": 0.84,
+   "e": 0.0,
+   "solvent": "EtOH"
+  },
+  {
+   "id": "nuc_hydroxide",
+   "name": "Hydroxide Ion",
+   "is_nucleophile": true,
+   "n": 14.5,
+   "s_n": 0.9,
+   "e": 0.0,
+   "solvent": "H2O"
+  },
+  {
+   "id": "nuc_methoxide",
+   "name": "Methoxide Ion",
+   "is_nucleophile": true,
+   "n": 15.8,
+   "s_n": 0.85,
+   "e": 0.0,
+   "solvent": "MeOH"
+  },
+  {
+   "id": "nuc_cyanide",
+   "name": "Cyanide Ion",
+   "is_nucleophile": true,
+   "n": 16.4,
+   "s_n": 0.72,
+   "e": 0.0,
+   "solvent": "DMSO"
+  },
+  {
+   "id": "nuc_iodide",
+   "name": "Iodide Ion",
+   "is_nucleophile": true,
+   "n": 12.1,
+   "s_n": 0.8,
+   "e": 0.0,
+   "solvent": "MeCN"
+  },
+  {
+   "id": "nuc_azide",
+   "name": "Azide Ion",
+   "is_nucleophile": true,
+   "n": 14.2,
+   "s_n": 0.78,
+   "e": 0.0,
+   "solvent": "MeCN"
+  },
+  {
+   "id": "nuc_enamine_cyclohexenyl",
+   "name": "1-Morpholinocyclohexene",
+   "is_nucleophile": true,
+   "n": 11.2,
+   "s_n": 0.92,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_allylsilane",
+   "name": "Allyltrimethylsilane",
+   "is_nucleophile": true,
+   "n": 1.82,
+   "s_n": 0.95,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "nuc_hydride_borohydride",
+   "name": "Borohydride Ion",
+   "is_nucleophile": true,
+   "n": 13.6,
+   "s_n": 0.7,
+   "e": 0.0,
+   "solvent": "H2O"
+  },
+  {
+   "id": "el_benzhydrylium_dma",
+   "name": "Bis(4-dimethylaminophenyl)methylium",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -7.02,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "el_benzhydrylium_mpa",
+   "name": "Bis(4-methoxyphenyl)methylium",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": 0.0,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "el_benzhydrylium_ph",
+   "name": "Diphenylmethylium",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": 5.9,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "el_quinone_methide",
+   "name": "Quinone Methide Acceptor",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -3.5,
+   "solvent": "CH2Cl2"
+  },
+  {
+   "id": "el_benzylidene_indandione",
+   "name": "Benzylidene Indandione",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -8.2,
+   "solvent": "DMSO"
+  },
+  {
+   "id": "el_chalcone",
+   "name": "Chalcone Michael Acceptor",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -12.5,
+   "solvent": "DMSO"
+  },
+  {
+   "id": "el_acrolein",
+   "name": "Acrolein",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -10.1,
+   "solvent": "MeCN"
+  },
+  {
+   "id": "el_methyl_vinyl_ketone",
+   "name": "Methyl Vinyl Ketone",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -11.3,
+   "solvent": "MeCN"
+  },
+  {
+   "id": "el_formaldehyde",
+   "name": "Formaldehyde",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -3.2,
+   "solvent": "H2O"
+  },
+  {
+   "id": "el_acetaldehyde",
+   "name": "Acetaldehyde",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -5.8,
+   "solvent": "H2O"
+  },
+  {
+   "id": "el_acetone",
+   "name": "Acetone",
+   "is_nucleophile": false,
+   "n": 0.0,
+   "s_n": 1.0,
+   "e": -8.9,
+   "solvent": "H2O"
+  }
+ ]
+}

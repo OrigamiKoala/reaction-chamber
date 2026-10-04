@@ -162,8 +162,8 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
         }
     }
     let aqueous_env = species_mol.contains_key(crate::vessel::AQUEOUS_SOLVENT)
-        || species_mol.contains_key("H+")
-        || species_mol.contains_key("OH-");
+        || species_mol.contains_key(crate::db::seed::PROTON)
+        || species_mol.contains_key(crate::db::seed::HYDROXIDE);
 
     if aqueous_env && !present_species.iter().any(|s| s == crate::vessel::AQUEOUS_SOLVENT) {
         present_species.push(crate::vessel::AQUEOUS_SOLVENT.to_string());
@@ -241,8 +241,8 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
 
     // 5. Try balancing each (ox_couple, red_couple) pair
     let water_id = crate::vessel::AQUEOUS_SOLVENT.to_string();
-    let h_plus = "H+".to_string();
-    let oh_minus = "OH-".to_string();
+    let h_plus = crate::db::seed::PROTON.to_string();
+    let oh_minus = crate::db::seed::HYDROXIDE.to_string();
 
     for (s_ox, p_ox, _elem_ox, ox_s, ox_p) in &oxidation_couples {
         for (s_red, p_red, _elem_red, _red_s, _red_p) in &reduction_couples {

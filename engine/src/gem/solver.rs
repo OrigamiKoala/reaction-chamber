@@ -105,7 +105,7 @@ pub fn solve_gem(
     let eval_mu = |amounts: &[f64]| -> Vec<f64> {
         let mut mu = mu0.clone();
         for i in 0..n_species {
-            if !is_solid[i] && names[i] != "H2O" {
+            if !is_solid[i] && names[i] != crate::db::seed::WATER {
                 // mu = mu0 + R*T*ln(c)
                 let c = (amounts[i] / vol_l).max(1e-30);
                 mu[i] += rt * c.ln();
@@ -143,7 +143,7 @@ pub fn solve_gem(
             for s in 0..n_rxns {
                 let mut sum = 0.0;
                 for &(i, nu_ir) in &basis[r].nu {
-                    if !is_solid[i] && names[i] != "H2O" {
+                    if !is_solid[i] && names[i] != crate::db::seed::WATER {
                         for &(j, nu_js) in &basis[s].nu {
                             if i == j {
                                 let c = n[i].max(1e-18);

@@ -12,6 +12,8 @@ pub mod ion_pairing;
 pub mod smiles;
 pub mod smarts;
 pub mod joback;
+pub mod benson;
+pub mod hydration;
 pub mod molecule;
 pub mod lle;
 pub mod eos;
@@ -29,6 +31,7 @@ pub mod vessel_ext;
 pub mod gas;
 pub mod vessel_eq;
 pub mod templates;
+pub mod reaction_templates;
 pub mod network_generator;
 pub mod db;
 pub mod thermo;
@@ -49,6 +52,8 @@ pub mod analytical;
 pub mod vessel_analytical;
 pub mod vessel_electro;
 pub mod vessel_discovered;
+pub mod vessel_energy;
+pub mod ph_electrode;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
@@ -82,6 +87,12 @@ extern "C" {
 pub fn init_engine() -> String {
     console_error_panic_hook::set_once();
     "Reaction Chamber Engine v0.4.0 (M3 Equilibrium & M4 Kinetics/Physics WASM initialized)".to_string()
+}
+
+/// The electrode materials the console offers (`vessel_electro::electrode_materials`, from the species store).
+#[wasm_bindgen]
+pub fn electrode_materials() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen_to_val(&vessel_electro::electrode_materials())
 }
 
 #[wasm_bindgen]
@@ -544,9 +555,12 @@ fn serde_wasm_bindgen_to_val<T: Serialize>(val: &T) -> Result<JsValue, JsValue> 
 }
 
 #[wasm_bindgen]
-pub fn m6_get_reaction_families() -> Result<JsValue, JsValue> {
-    let fams = templates::get_reaction_families();
-    serde_wasm_bindgen_to_val(&fams)
+pub fn m6_get_reaction_templates() -> Result<JsValue, JsValue> {
+    let list: Vec<serde_json::Value> = reaction_templates::templates()
+        .iter()
+        .map(|t| serde_json::json!({ "id": t.id, "name": t.name, "category": t.category, "slots": t.n_slots(), "variants": t.variants.len() }))
+        .collect();
+    serde_wasm_bindgen_to_val(&list)
 }
 
 #[wasm_bindgen]
@@ -776,26 +790,23 @@ mod tests {
 
     #[test]
     fn test_m6_reaction_reversibility() {
-        let fams = templates::get_reaction_families();
-        assert!(fams.len() >= 40, "Must have at least 40 reaction families, got {}", fams.len());
-
-        let ester_fam = fams.iter().find(|f| f.id == "acid_ester_hydrolysis").expect("acid ester hydrolysis");
-        assert!(ester_fam.is_reversible);
+        let tpls = reaction_templates::templates();
+        assert!(tpls.len() >= 10, "template data should hold the reaction families, got {}", tpls.len());
 
         let gen = network_generator::NetworkGenerator::new(network_generator::NetworkGeneratorConfig::default());
         let mut concs = HashMap::new();
-        concs.insert("CH3COOC2H5".to_string(), 0.5);
+        concs.insert("CCOC(C)=O".to_string(), 0.5);
         concs.insert("H2O".to_string(), 55.0);
 
         let net = gen.generate_network(&concs, 298.15, 2.0);
-        let rxn = net.reactions.iter().find(|r| r.family_id == "acid_ester_hydrolysis");
-        if let Some(r) = rxn {
-            assert!(r.k_fwd > 0.0);
-            assert!(r.k_rev > 0.0);
-            assert!(r.k_eq > 0.0);
+        for r in net.reactions.iter().filter(|r| r.k_eq_from_data) {
+            assert!(r.k_fwd > 0.0 && r.k_eq > 0.0);
             // k_rev = k_fwd / K_eq
             let expected_k_rev = r.k_fwd / r.k_eq;
             assert!((r.k_rev - expected_k_rev).abs() / expected_k_rev < 1e-6);
+        }
+        for r in net.reactions.iter().filter(|r| !r.k_eq_from_data) {
+            assert_eq!(r.k_rev, 0.0, "a reaction without formation data is irreversible");
         }
     }
 }

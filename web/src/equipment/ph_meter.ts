@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { VesselSnapshot } from '../types/sim';
+import { LiquidLayer, VesselSnapshot } from '../types/sim';
 import { GlasswareMeshBundle } from '../bench/glassware';
 import { createGlassMesh } from '../render/glass_material';
 import { LcdDisplay, roundedBox, setWorldPose } from './lcd';
@@ -19,6 +19,8 @@ export class PHMeter {
   private displayedPh: number | null = null;
   private tauSeconds: number = 3.0;
   private immersed = true;
+  /** The liquid layer the electrode tip is in (undefined: not known, the whole-vessel pH is used). */
+  private probeLayer: LiquidLayer | null | undefined = undefined;
   private cable: THREE.Mesh;
   private cableMat: THREE.MeshStandardMaterial;
   private lastCableKey = '';
@@ -145,14 +147,24 @@ export class PHMeter {
     this.immersed = on;
   }
 
+  /** The layer the tip sits in (the scene picks it from the tip height); null / undefined = unknown. */
+  public setProbeLayer(layer: LiquidLayer | null | undefined) {
+    this.probeLayer = layer;
+  }
+
   public update(snap: VesselSnapshot | null, dt: number) {
-    const isImmersed = !!snap && this.immersed && snap.total_liquid_ml > 0.1 && snap.ph !== null && !snap.burst;
+    // what the electrode reads where its tip is: the engine's electrode reading of that layer (molal pH plus the liquid
+    // junction of the KCl bridge); nothing in a layer without water or in a mostly non-aqueous solvent
+    const layer = this.probeLayer;
+    const layerPh = layer === undefined || layer === null ? undefined : layer.ph ?? null;
+    const reading = layerPh === undefined ? snap?.ph ?? null : layerPh;
+    const isImmersed = !!snap && this.immersed && snap.total_liquid_ml > 0.1 && reading !== null && !snap.burst;
     if (!isImmersed) {
       this.displayedPh = null;
       this.lcd.set('---');
       return;
     }
-    const targetPh = snap!.ph!;
+    const targetPh = reading!;
     if (this.displayedPh === null) {
       // electrodes drift in from ~7 when first dipped
       this.displayedPh = 7.0 + (targetPh - 7.0) * 0.35;

@@ -1,0 +1,29 @@
+{
+  "_comment": "Acid-base indicator dyes (src/db/seed.rs, src/chem_db.rs). Each entry is a pair of species records with their real structures (SMILES, formula checked by tests/open_items_b.rs) and one acid-base site on the acid form; the equilibrium row `acid <=> base + H+` is generated from that site (chem_db::record_acid_equilibria), not written by hand. pKa values: the transition midpoints tabulated for these dyes at 25 C (Bates, Cohn / CRC Handbook indicator tables). The enthalpy of ionisation is the class estimate of the ionised group (phenol ~ +25 kJ/mol, carboxylic and azonium ~ 0), tier Estimated. The engine's species are the balanced one-proton forms of the dye (the lactone / sultone / azo tautomers are not separate species): the colours of both forms are optical records (data/optics_seed.json). The pKa of a dye is not predictable from the structure classes of src/pka_structure.rs (extended pi systems, tautomerism), so it stays tabulated.",
+  "indicators": [
+    {
+      "name": "Phenolphthalein", "acid": "HIn_phph", "base": "In_phph-",
+      "acid_formula": "C20H14O4", "acid_smiles": "O=C1OC(c2ccccc12)(c1ccc(O)cc1)c1ccc(O)cc1",
+      "base_formula": "C20H13O4-", "base_smiles": "O=C1OC(c2ccccc12)(c1ccc([O-])cc1)c1ccc(O)cc1",
+      "pKa": 9.3, "pKa_source": "tabulated indicator transition (Bates; CRC Handbook)", "dH_kj": 25.0, "dH_source": "phenol ionisation enthalpy class estimate"
+    },
+    {
+      "name": "Bromothymol blue", "acid": "HIn_btb", "base": "In_btb-",
+      "acid_formula": "C27H28Br2O5S", "acid_smiles": "Cc1c(Br)c(O)c(C(C)C)cc1C1(OS(=O)(=O)c2ccccc21)c1cc(C(C)C)c(O)c(Br)c1C",
+      "base_formula": "C27H27Br2O5S-", "base_smiles": "Cc1c(Br)c(O)c(C(C)C)cc1C1(OS(=O)(=O)c2ccccc21)c1cc(C(C)C)c([O-])c(Br)c1C",
+      "pKa": 7.0, "pKa_source": "tabulated indicator transition (Bates; CRC Handbook)", "dH_kj": 25.0, "dH_source": "phenol ionisation enthalpy class estimate"
+    },
+    {
+      "name": "Methyl orange", "acid": "HIn_mo", "base": "In_mo-",
+      "acid_formula": "C14H15N3O3S", "acid_smiles": "CN(C)c1ccc(N=Nc2ccc(S(=O)(=O)O)cc2)cc1",
+      "base_formula": "C14H14N3O3S-", "base_smiles": "CN(C)c1ccc(N=Nc2ccc(S(=O)(=O)[O-])cc2)cc1",
+      "pKa": 3.7, "pKa_source": "tabulated indicator transition (CRC Handbook)", "dH_kj": 0.0, "dH_source": "no measured value: van 't Hoff limit"
+    },
+    {
+      "name": "Methyl red", "acid": "HIn_mr", "base": "In_mr-",
+      "acid_formula": "C15H15N3O2", "acid_smiles": "CN(C)c1ccc(N=Nc2ccccc2C(=O)O)cc1",
+      "base_formula": "C15H14N3O2-", "base_smiles": "CN(C)c1ccc(N=Nc2ccccc2C(=O)[O-])cc1",
+      "pKa": 5.0, "pKa_source": "tabulated indicator transition (Bates; CRC Handbook)", "dH_kj": 0.0, "dH_source": "carboxylic acid ionisation enthalpy class estimate"
+    }
+  ]
+}

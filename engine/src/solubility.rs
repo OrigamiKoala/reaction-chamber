@@ -77,27 +77,48 @@ pub fn solid_formula(cation: &str, n_c: i32, anion: &str, n_a: i32) -> String {
     format!("{}{}", formula_part(ions::split_charge(cation).0, n_c), formula_part(&anion_formula(anion), n_a))
 }
 
-/// True when general solubility rules (not the table) say the pair forms an insoluble solid.
+#[derive(Deserialize)]
+struct SolubilityRule {
+    anions: Vec<String>,
+    mode: String,
+    #[serde(default)]
+    cations: Vec<String>,
+    #[serde(default)]
+    include_group2: bool,
+    #[serde(default)]
+    include_charge_ge3: bool,
+    #[serde(default)]
+    exclude_group2: bool,
+}
+
+#[derive(Deserialize)]
+struct SolubilityRules {
+    always_soluble_cations: Vec<String>,
+    group2_cations: Vec<String>,
+    rules: Vec<SolubilityRule>,
+    appearance_kind_by_anion: HashMap<String, String>,
+    appearance_kind_default: String,
+}
+
+fn solubility_rules() -> &'static SolubilityRules {
+    static R: OnceLock<SolubilityRules> = OnceLock::new();
+    R.get_or_init(|| serde_json::from_str(include_str!("../data/solubility_rules.json")).expect("data/solubility_rules.json"))
+}
+
+/// True when general solubility rules (`data/solubility_rules.json`, not the Ksp table) say the pair forms an insoluble solid.
 pub fn insoluble_by_rules(cation: &str, anion: &str) -> bool {
+    let r = solubility_rules();
     // Alkali metals, ammonium and the proton give soluble salts with everything we model.
-    if matches!(cation, "Li+" | "Na+" | "K+" | "Rb+" | "Cs+" | "NH4+" | "H+" | "H3O+") {
+    if r.always_soluble_cations.iter().any(|c| c == cation) {
         return false;
     }
-    let group2 = matches!(cation, "Mg+2" | "Ca+2" | "Sr+2" | "Ba+2" | "Ra+2");
-    let transition_or_p = !group2;
-    match anion {
-        // Always soluble families
-        "NO3-" | "CH3COO-" | "HCOO-" | "ClO3-" | "ClO4-" | "ClO-" | "ClO2-" | "MnO4-" | "NO2-" | "HCO3-" | "HSO4-"
-        | "H2PO4-" | "HS-" | "HSO3-" | "HCrO4-" | "HC2O4-" | "IO4-" | "N3-" => false,
-        "Cl-" | "Br-" | "I-" | "SCN-" | "CN-" | "BrO3-" => matches!(cation, "Ag+" | "Pb+2" | "Hg2+2" | "Cu+" | "Tl+" | "Au+" | "Hg+2"),
-        "F-" => group2 || matches!(cation, "Pb+2" | "Cu+2" | "Zn+2") || cation.ends_with("+3"),
-        "SO4-2" => matches!(cation, "Ba+2" | "Sr+2" | "Pb+2" | "Ra+2" | "Hg2+2" | "Ca+2" | "Ag+"),
-        "S2O3-2" | "Cr2O7-2" | "S2O8-2" | "SeO4-2" => matches!(cation, "Ag+" | "Pb+2" | "Hg2+2" | "Tl+"),
-        "OH-" => !matches!(cation, "Ba+2" | "Sr+2" | "Ra+2"),
-        "S-2" => !group2,
-        "CrO4-2" | "MoO4-2" | "WO4-2" => !matches!(cation, "Mg+2" | "Ca+2"),
-        "CO3-2" | "PO4-3" | "HPO4-2" | "C2O4-2" | "SO3-2" | "SiO3-2" | "IO3-" | "AsO4-3" | "B4O7-2" | "C6H5O7-3" => true,
-        "Fe(CN)6-4" | "Fe(CN)6-3" => transition_or_p,
+    let group2 = r.group2_cations.iter().any(|c| c == cation);
+    let Some(rule) = r.rules.iter().find(|rule| rule.anions.iter().any(|a| a == anion)) else { return false };
+    let listed = rule.cations.iter().any(|c| c == cation);
+    match rule.mode.as_str() {
+        "always" => true,
+        "only" => listed || (rule.include_group2 && group2) || (rule.include_charge_ge3 && ions::species_charge(cation) >= 3),
+        "except" => !(listed || (rule.exclude_group2 && group2)),
         _ => false,
     }
 }
@@ -116,13 +137,7 @@ fn make_mineral(cation: &str, anion: &str, log_ksp: f64, tier: ProvenanceTier, s
     let (n_c, n_a) = (za / g, zc / g);
     let formula = solid_formula(cation, n_c, anion, n_a);
     let hue = ions::anion_solid_tint(anion).unwrap_or_else(|| ions::cation_solid_hue(cation));
-    let kind = if anion == "OH-" {
-        "gel"
-    } else if matches!(anion, "Cl-" | "Br-" | "I-") {
-        "curds"
-    } else {
-        "powder"
-    };
+    let kind = solubility_rules().appearance_kind_by_anion.get(anion).map_or(solubility_rules().appearance_kind_default.as_str(), |k| k.as_str());
     let mut dissolved = HashMap::new();
     dissolved.insert(cation.to_string(), n_c as f64);
     dissolved.insert(anion.to_string(), n_a as f64);

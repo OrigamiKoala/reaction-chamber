@@ -3,10 +3,12 @@ import { VesselSnapshot } from '../types/sim';
 import { GlasswareMeshBundle } from '../bench/glassware';
 import { createGlassMesh } from '../render/glass_material';
 import { thermometerScaleTexture } from '../render/textures';
+import { BulbState, stepBulb } from './probe_math';
 
 /**
  * 28 cm glass laboratory thermometer (red spirit, -20..110 °C, white enamel scale backing).
- * Local origin = bulb tip, axis +Y. Instrument model: first-order lag tau = 4 s, 0.1 K resolution.
+ * Local origin = bulb tip, axis +Y. Instrument model: two-node bulb (glass wall + spirit core, `probe_math.ts`: film
+ * coefficient from the stirring, conduction in the spirit, about 8 s stirred and 14 s unstirred), 0.1 K resolution.
  * The scene moves the whole `group` (see BenchScene.setSelectedVessel).
  */
 export const THERMOMETER_RADIUS = 0.34;
@@ -18,7 +20,7 @@ export class Thermometer {
   private liquidColumn: THREE.Mesh;
   private attachedBundle: GlasswareMeshBundle | null = null;
   private displayedTempK: number = 295.15;
-  private tauSeconds: number = 4.0;
+  private bulb: BulbState = { glassK: 295.15, spiritK: 295.15 };
 
   constructor() {
     this.group.name = 'instrument_thermometer';
@@ -87,10 +89,11 @@ export class Thermometer {
     return this.attachedBundle;
   }
 
-  public update(snap: VesselSnapshot | null, dt: number) {
-    const targetTempK = snap ? snap.temperature_k : this.displayedTempK;
-    const alpha = Math.min(1.0, dt / this.tauSeconds);
-    this.displayedTempK += (targetTempK - this.displayedTempK) * alpha;
+  public update(snap: VesselSnapshot | null, dt: number, stirRpm = 0) {
+    if (snap) {
+      stepBulb(this.bulb, snap.temperature_k, stirRpm, Math.min(Math.max(dt, 0), 5));
+      this.displayedTempK = this.bulb.spiritK;
+    }
 
     const tempC = this.displayedTempK - 273.15;
     const clampedC = Math.max(-25.0, Math.min(112.0, tempC));

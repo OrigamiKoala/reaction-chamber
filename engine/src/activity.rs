@@ -34,7 +34,7 @@ pub fn get_solvent_kg(phase: &LiquidPhase) -> f64 {
 /// Helper: computes molality m_i = n_i / kg_solvent in phase.
 pub fn get_molalities(phase: &LiquidPhase) -> (HashMap<String, f64>, f64) {
     let mut molalities = HashMap::new();
-    let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
+    let solvent_sp = phase.solvent_species.as_deref().unwrap_or(crate::db::seed::WATER);
     let kg_solv = get_solvent_kg(phase);
     for (sp, &mol) in &phase.species_mol {
         if sp != solvent_sp && !sp.ends_with("(s)") && !sp.ends_with("(g)") && mol > 0.0 {
@@ -47,7 +47,7 @@ pub fn get_molalities(phase: &LiquidPhase) -> (HashMap<String, f64>, f64) {
 /// Computes ionic strength I = 0.5 * sum(m_i * z_i^2) on the molality scale without allocating.
 #[inline]
 pub fn calc_molal_ionic_strength(phase: &LiquidPhase) -> f64 {
-    let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
+    let solvent_sp = phase.solvent_species.as_deref().unwrap_or(crate::db::seed::WATER);
     let kg_solv = get_solvent_kg(phase);
     let mut sum = 0.0;
     for (sp, &mol) in &phase.species_mol {
@@ -151,42 +151,49 @@ impl ActivityModel for DaviesActivity {
 }
 
 // ----------------------------------------------------------------------------
+// Ion-specific data (data/ion_interactions.json)
+// ----------------------------------------------------------------------------
+#[derive(serde::Deserialize)]
+struct PitzerRow {
+    cation: String,
+    anion: String,
+    beta0: f64,
+    beta1: f64,
+    c_phi: f64,
+    alpha: f64,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct IonData {
+    ion_size_angstrom: HashMap<String, f64>,
+    ion_size_default_by_abs_charge: HashMap<String, f64>,
+    sit_epsilon: Vec<(String, String, f64)>,
+    sit_epsilon_default: f64,
+    pitzer_binary: Vec<PitzerRow>,
+    pub(crate) ion_volume_v0_cm3_mol: HashMap<String, f64>,
+}
+
+pub(crate) fn ion_data() -> &'static IonData {
+    static D: std::sync::OnceLock<IonData> = std::sync::OnceLock::new();
+    D.get_or_init(|| serde_json::from_str(include_str!("../data/ion_interactions.json")).expect("data/ion_interactions.json"))
+}
+
+// ----------------------------------------------------------------------------
 // 3. B-Dot (Helgeson / Truesdell-Jones)
 // ----------------------------------------------------------------------------
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BDotActivity;
 
 impl BDotActivity {
+    /// Ion-size parameter a (Angstrom) of the extended Debye-Hueckel / B-dot form: the species' row of
+    /// `data/ion_interactions.json`, else the class value of its charge.
     pub fn ion_size_angstrom(species: &str) -> f64 {
-        match species {
-            "H+" => 9.0,
-            "OH-" => 3.5,
-            "Na+" => 4.0,
-            "K+" => 3.0,
-            "Li+" => 6.0,
-            "NH4+" => 2.5,
-            "Ag+" => 2.5,
-            "Ca+2" | "Ca2+" => 6.0,
-            "Mg+2" | "Mg2+" => 8.0,
-            "Ba+2" | "Ba2+" => 5.0,
-            "Fe+2" | "Fe2+" => 6.0,
-            "Fe+3" | "Fe3+" => 9.0,
-            "Cu+2" | "Cu2+" => 6.0,
-            "Zn+2" | "Zn2+" => 6.0,
-            "Pb+2" | "Pb2+" => 4.5,
-            "Cl-" => 3.0,
-            "Br-" => 3.0,
-            "I-" => 3.0,
-            "F-" => 3.5,
-            "NO3-" => 3.0,
-            "SO4-2" | "SO42-" => 4.0,
-            "HCO3-" => 4.0,
-            "CO3-2" | "CO32-" => 4.5,
-            _ => {
-                let charge = crate::chem_db::get_species_thermo(species).charge.abs();
-                if charge == 1 { 3.5 } else if charge == 2 { 5.0 } else { 6.0 }
-            }
+        let d = ion_data();
+        if let Some(a) = d.ion_size_angstrom.get(species) {
+            return *a;
         }
+        let charge = crate::chem_db::get_species_thermo(species).charge.abs();
+        d.ion_size_default_by_abs_charge.get(&charge.to_string()).copied().unwrap_or(6.0)
     }
 }
 
@@ -226,19 +233,14 @@ impl ActivityModel for BDotActivity {
 pub struct SitActivity;
 
 impl SitActivity {
+    /// SIT interaction coefficient of an ion pair (`data/ion_interactions.json`, either order), else the default.
     pub fn epsilon(ion1: &str, ion2: &str) -> f64 {
-        let (a, b) = if ion1 < ion2 { (ion1, ion2) } else { (ion2, ion1) };
-        match (a, b) {
-            ("Cl-", "Na+") => 0.03,
-            ("Cl-", "K+") => 0.00,
-            ("Cl-", "H+") => 0.12,
-            ("Ca+2" | "Ca2+", "Cl-") => 0.15,
-            ("NO3-", "Na+") => -0.04,
-            ("K+", "NO3-") => -0.08,
-            ("Ag+", "NO3-") => -0.06,
-            ("Ag+", "Cl-") => 0.00,
-            _ => 0.01,
-        }
+        let d = ion_data();
+        d.sit_epsilon
+            .iter()
+            .find(|(a, b, _)| (a == ion1 && b == ion2) || (a == ion2 && b == ion1))
+            .map(|(_, _, e)| *e)
+            .unwrap_or(d.sit_epsilon_default)
     }
 }
 
@@ -289,53 +291,13 @@ pub struct PitzerBinaryParams {
 }
 
 impl PitzerActivity {
+    /// Pitzer binary parameters of a cation-anion pair at 25 C (`data/ion_interactions.json`; the order of the two is free).
     pub fn get_params(cat: &str, an: &str) -> Option<PitzerBinaryParams> {
-        let (c, a) = (cat, an);
-        if (c == "Na+" && a == "Cl-") || (a == "Na+" && c == "Cl-") {
-            Some(PitzerBinaryParams {
-                beta0: 0.0765,
-                beta1: 0.2664,
-                c_phi: 0.00127,
-                alpha: 2.0,
-            })
-        } else if (c == "Ca+2" || c == "Ca2+") && a == "Cl-" || (a == "Ca+2" || a == "Ca2+") && c == "Cl-" {
-            Some(PitzerBinaryParams {
-                beta0: 0.3159,
-                beta1: 1.6144,
-                c_phi: -0.00034,
-                alpha: 2.0,
-            })
-        } else if (c == "H+" && a == "Cl-") || (a == "H+" && c == "Cl-") {
-            Some(PitzerBinaryParams {
-                beta0: 0.1775,
-                beta1: 0.2945,
-                c_phi: 0.0008,
-                alpha: 2.0,
-            })
-        } else if (c == "K+" && a == "NO3-") || (a == "K+" && c == "NO3-") {
-            Some(PitzerBinaryParams {
-                beta0: -0.020,
-                beta1: 0.030,
-                c_phi: -0.001,
-                alpha: 2.0,
-            })
-        } else if (c == "K+" && a == "Cl-") || (a == "K+" && c == "Cl-") {
-            Some(PitzerBinaryParams {
-                beta0: 0.04835,
-                beta1: 0.2122,
-                c_phi: -0.00084,
-                alpha: 2.0,
-            })
-        } else if (c == "Na+" && a == "OH-") || (a == "Na+" && c == "OH-") {
-            Some(PitzerBinaryParams {
-                beta0: 0.0864,
-                beta1: 0.253,
-                c_phi: 0.0044,
-                alpha: 2.0,
-            })
-        } else {
-            None
-        }
+        ion_data()
+            .pitzer_binary
+            .iter()
+            .find(|r| (r.cation == cat && r.anion == an) || (r.cation == an && r.anion == cat))
+            .map(|r| PitzerBinaryParams { beta0: r.beta0, beta1: r.beta1, c_phi: r.c_phi, alpha: r.alpha })
     }
 
     /// Single electrolyte mean activity coefficient ln(gamma_pm)
@@ -379,7 +341,7 @@ impl PitzerActivity {
 /// temperature-dependent slope. Neutral solutes (ethanol, dissolved gases) are not included: molecular solvents enter the
 /// vapour-liquid equilibrium through their own activity model (UNIFAC), and mixing the two is first-order additive.
 pub fn ionic_ln_water_activity(species_mol: &HashMap<String, f64>, t_k: f64) -> f64 {
-    let n_h2o = species_mol.get("H2O").copied().unwrap_or(0.0);
+    let n_h2o = species_mol.get(crate::db::seed::WATER).copied().unwrap_or(0.0);
     if n_h2o <= 0.0 {
         return 0.0;
     }
@@ -387,7 +349,7 @@ pub fn ionic_ln_water_activity(species_mol: &HashMap<String, f64>, t_k: f64) -> 
     // (species, charge, m)
     let mut ions: Vec<(&str, f64, f64)> = Vec::new();
     for (sp, &mol) in species_mol {
-        if mol <= 0.0 || sp == "H2O" || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
+        if mol <= 0.0 || sp == crate::db::seed::WATER || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
             continue;
         }
         let charge = crate::ions::species_charge(sp) as f64;
@@ -442,7 +404,7 @@ impl ActivityModel for PitzerActivity {
             return 0.1 * i_tot * LN_10;
         }
 
-        let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
+        let solvent_sp = phase.solvent_species.as_deref().unwrap_or(crate::db::seed::WATER);
         let kg_solv = get_solvent_kg(phase);
         let m = phase.species_mol.get(species).copied().unwrap_or(0.0) / kg_solv;
 
@@ -489,7 +451,7 @@ impl ActivityModel for PitzerActivity {
     }
 
     fn solvent_activity(&self, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
-        let solvent_sp = phase.solvent_species.as_deref().unwrap_or("H2O");
+        let solvent_sp = phase.solvent_species.as_deref().unwrap_or(crate::db::seed::WATER);
         let kg_solv = get_solvent_kg(phase);
         let mut sum_m = 0.0;
         for (sp, &mol) in &phase.species_mol {
@@ -841,7 +803,7 @@ impl ActivityModel for UnifacActivity {
     }
 
     fn solvent_activity(&self, phase: &LiquidPhase, t_k: f64, p_atm: f64) -> f64 {
-        let solvent = phase.solvent_species.as_deref().unwrap_or("H2O");
+        let solvent = phase.solvent_species.as_deref().unwrap_or(crate::db::seed::WATER);
         let total_mol: f64 = phase.species_mol.values().copied().filter(|&m| m > 0.0).sum();
         if total_mol <= 0.0 {
             return 1.0;
@@ -930,12 +892,19 @@ pub fn default_activity_model() -> DefaultActivityModel {
     DefaultActivityModel
 }
 
+/// A neutral molecule that the molecular activity model (UNIFAC) covers: it enters the vapour-liquid and liquid-liquid
+/// equilibria through its own activity coefficient, not through the electrolyte sums of the batch evaluation below
+/// (which describe the ions and the neutral solutes outside UNIFAC, such as dissolved gases).
+fn is_molecular_component(sp: &str) -> bool {
+    crate::ions::species_charge(sp) == 0 && unifac_groups(sp).is_some()
+}
+
 /// High-performance batch evaluation of aqueous activity coefficients and solvent activity a_w.
 pub fn batch_aqueous_gamma_and_aw(
     species_mol: &HashMap<String, f64>,
     t_k: f64,
 ) -> (HashMap<String, f64>, f64) {
-    let n_h2o = species_mol.get("H2O").copied().unwrap_or(0.0);
+    let n_h2o = species_mol.get(crate::db::seed::WATER).copied().unwrap_or(0.0);
     let kg_solv = (n_h2o * 0.01801528).max(1e-12);
 
     #[derive(Clone, Copy)]
@@ -950,7 +919,7 @@ pub fn batch_aqueous_gamma_and_aw(
     let mut two_i = 0.0;
 
     for (sp, &mol) in species_mol {
-        if mol <= 0.0 || sp == "H2O" || sp == "C2H5OH" || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
+        if mol <= 0.0 || sp == crate::db::seed::WATER || is_molecular_component(sp) || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
             continue;
         }
         let charge = crate::chem_db::get_species_thermo(sp).charge as f64;
@@ -979,7 +948,7 @@ pub fn batch_aqueous_gamma_and_aw(
     let sqrt_i = i_tot.max(1e-12).sqrt();
 
     let mut gamma_cache = HashMap::with_capacity(solutes.len() + 1);
-    gamma_cache.insert("H2O".to_string(), 0.0);
+    gamma_cache.insert(crate::db::seed::WATER.to_string(), 0.0);
 
     for s in &solutes {
         let ln_g = if s.charge == 0.0 {
@@ -1042,13 +1011,13 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
 ) -> (HashMap<String, f64>, f64) {
     let mut n_h2o = 0.0;
     for (i, name) in names.iter().enumerate() {
-        if name == "H2O" {
+        if name == crate::db::seed::WATER {
             n_h2o = amounts[i];
             break;
         }
     }
     if n_h2o <= 0.0 {
-        n_h2o = extra_species.get("H2O").copied().unwrap_or(0.0);
+        n_h2o = extra_species.get(crate::db::seed::WATER).copied().unwrap_or(0.0);
     }
     let kg_solv = (n_h2o * 0.01801528).max(1e-12);
 
@@ -1065,7 +1034,7 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
 
     for (i, name) in names.iter().enumerate() {
         let mol = amounts[i];
-        if mol <= 0.0 || name == "H2O" || name == "C2H5OH" || name.ends_with("(s)") || name.ends_with("(l)") || name.ends_with("(g)") {
+        if mol <= 0.0 || name == crate::db::seed::WATER || is_molecular_component(name) || name.ends_with("(s)") || name.ends_with("(l)") || name.ends_with("(g)") {
             continue;
         }
         let charge = crate::chem_db::get_species_thermo(name).charge as f64;
@@ -1080,7 +1049,7 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
     }
 
     for (sp, &mol) in extra_species {
-        if mol <= 0.0 || sp == "H2O" || sp == "C2H5OH" || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
+        if mol <= 0.0 || sp == crate::db::seed::WATER || is_molecular_component(sp) || sp.ends_with("(s)") || sp.ends_with("(l)") || sp.ends_with("(g)") {
             continue;
         }
         if names.iter().any(|n| n == sp) {
@@ -1112,7 +1081,7 @@ pub fn batch_aqueous_gamma_and_aw_from_slices(
     let sqrt_i = i_tot.max(1e-12).sqrt();
 
     let mut gamma_cache = HashMap::with_capacity(solutes.len() + 1);
-    gamma_cache.insert("H2O".to_string(), 0.0);
+    gamma_cache.insert(crate::db::seed::WATER.to_string(), 0.0);
 
     for s in &solutes {
         let ln_g = if s.charge == 0.0 {
@@ -1221,7 +1190,7 @@ mod unifac_tests {
         // charged species, species without carbon and a molecule the table has no group for: no UNIFAC (the caller falls
         // back to an ideal solution, labelled); ethers, esters, acids now have groups (the full original table)
         assert!(unifac_groups("C2H5OH").is_some());
-        assert!(unifac_groups("H2O").is_some());
+        assert!(unifac_groups(crate::db::seed::WATER).is_some());
         assert!(unifac_groups("Na+").is_none());
         assert!(unifac_groups("NoSuchSpecies").is_none());
         register_unifac_smiles("test_dme", "COC");

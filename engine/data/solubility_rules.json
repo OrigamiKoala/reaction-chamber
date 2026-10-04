@@ -1,0 +1,170 @@
+{
+ "_comment": "General solubility rules (src/solubility.rs, `insoluble_by_rules`): the fallback that says whether a cation-anion pair without a tabulated Ksp and without formation data forms an insoluble solid. Textbook rules (alkali metals, ammonium and H+ give soluble salts; nitrates, acetates, perchlorates soluble; halides soluble except Ag, Pb, Hg(I), Cu(I), Tl; sulfates except Ba, Sr, Pb, Ca, Ag; hydroxides, sulfides, carbonates, phosphates mostly insoluble ...). mode: never | always | only (insoluble with the listed cations, optionally with every group-2 cation or every cation of charge >= 3) | except (insoluble with every cation but the listed ones, optionally also not with group 2). An anion with no rule forms no solid. Tier Speculative.",
+ "always_soluble_cations": [
+  "Li+",
+  "Na+",
+  "K+",
+  "Rb+",
+  "Cs+",
+  "NH4+",
+  "H+",
+  "H3O+"
+ ],
+ "group2_cations": [
+  "Mg+2",
+  "Ca+2",
+  "Sr+2",
+  "Ba+2",
+  "Ra+2"
+ ],
+ "rules": [
+  {
+   "anions": [
+    "NO3-",
+    "CH3COO-",
+    "HCOO-",
+    "ClO3-",
+    "ClO4-",
+    "ClO-",
+    "ClO2-",
+    "MnO4-",
+    "NO2-",
+    "HCO3-",
+    "HSO4-",
+    "H2PO4-",
+    "HS-",
+    "HSO3-",
+    "HCrO4-",
+    "HC2O4-",
+    "IO4-",
+    "N3-"
+   ],
+   "mode": "never"
+  },
+  {
+   "anions": [
+    "Cl-",
+    "Br-",
+    "I-",
+    "SCN-",
+    "CN-",
+    "BrO3-"
+   ],
+   "mode": "only",
+   "cations": [
+    "Ag+",
+    "Pb+2",
+    "Hg2+2",
+    "Cu+",
+    "Tl+",
+    "Au+",
+    "Hg+2"
+   ]
+  },
+  {
+   "anions": [
+    "F-"
+   ],
+   "mode": "only",
+   "cations": [
+    "Pb+2",
+    "Cu+2",
+    "Zn+2"
+   ],
+   "include_group2": true,
+   "include_charge_ge3": true
+  },
+  {
+   "anions": [
+    "SO4-2"
+   ],
+   "mode": "only",
+   "cations": [
+    "Ba+2",
+    "Sr+2",
+    "Pb+2",
+    "Ra+2",
+    "Hg2+2",
+    "Ca+2",
+    "Ag+"
+   ]
+  },
+  {
+   "anions": [
+    "S2O3-2",
+    "Cr2O7-2",
+    "S2O8-2",
+    "SeO4-2"
+   ],
+   "mode": "only",
+   "cations": [
+    "Ag+",
+    "Pb+2",
+    "Hg2+2",
+    "Tl+"
+   ]
+  },
+  {
+   "anions": [
+    "OH-"
+   ],
+   "mode": "except",
+   "cations": [
+    "Ba+2",
+    "Sr+2",
+    "Ra+2"
+   ]
+  },
+  {
+   "anions": [
+    "S-2"
+   ],
+   "mode": "except",
+   "cations": [],
+   "exclude_group2": true
+  },
+  {
+   "anions": [
+    "CrO4-2",
+    "MoO4-2",
+    "WO4-2"
+   ],
+   "mode": "except",
+   "cations": [
+    "Mg+2",
+    "Ca+2"
+   ]
+  },
+  {
+   "anions": [
+    "CO3-2",
+    "PO4-3",
+    "HPO4-2",
+    "C2O4-2",
+    "SO3-2",
+    "SiO3-2",
+    "IO3-",
+    "AsO4-3",
+    "B4O7-2",
+    "C6H5O7-3"
+   ],
+   "mode": "always"
+  },
+  {
+   "anions": [
+    "Fe(CN)6-4",
+    "Fe(CN)6-3"
+   ],
+   "mode": "except",
+   "cations": [],
+   "exclude_group2": true
+  }
+ ],
+ "appearance_kind_by_anion": {
+  "OH-": "gel",
+  "Cl-": "curds",
+  "Br-": "curds",
+  "I-": "curds"
+ },
+ "appearance_kind_default": "powder"
+}

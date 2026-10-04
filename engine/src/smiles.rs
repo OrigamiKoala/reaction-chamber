@@ -237,6 +237,11 @@ impl Molecule {
         organic_valences(&atom.element).iter().find(|v| **v >= used).map_or(0, |v| v - used)
     }
 
+    /// Total hydrogen count of the molecule.
+    pub fn hydrogens_total(&self) -> u32 {
+        (0..self.atoms.len()).map(|i| self.hydrogens(i)).sum()
+    }
+
     /// A copy in which Kekule aromatic ring systems (as PubChem writes them: `C1=CC=CC=C1`) are marked aromatic, with
     /// aromatic bond orders (1.5) inside them, the form the group patterns are written for. Aromaticity is a Hueckel
     /// perception on ring systems: every atom of a candidate ring is sp2 (a double bond into the system, or a heteroatom lone

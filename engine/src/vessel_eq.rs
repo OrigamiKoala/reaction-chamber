@@ -417,7 +417,7 @@ impl Vessel {
         // Shortcut: with no active mineral touching this equilibrium it can only move forward (every reactant present)
         // or backward (every product present); otherwise there is nothing to solve.
         let has_supply = |sp: &String| {
-            if sp == "H2O" { return true; }
+            if sp == crate::db::seed::WATER { return true; }
             if self.species_mol.get(sp).copied().unwrap_or(0.0) > 1e-15 * solv_kg {
                 return true;
             }
@@ -439,14 +439,14 @@ impl Vessel {
         let dh_j = eq.delta_h_kj * 1000.0;
         let mut ln_act_eq = 0.0;
         for (r, &c) in &eq.reactants {
-            if r == "H2O" {
+            if r == crate::db::seed::WATER {
                 ln_act_eq -= c * ln_aw;
             } else {
                 ln_act_eq -= c * gamma_cache.get(r).copied().unwrap_or(0.0);
             }
         }
         for (p, &c) in &eq.products {
-            if p == "H2O" {
+            if p == crate::db::seed::WATER {
                 ln_act_eq += c * ln_aw;
             } else {
                 ln_act_eq += c * gamma_cache.get(p).copied().unwrap_or(0.0);
@@ -457,7 +457,7 @@ impl Vessel {
             let mut ln_q = 0.0;
             let mut can_calc_q = true;
             for (r, &c) in &eq.reactants {
-                if r != "H2O" {
+                if r != crate::db::seed::WATER {
                     let amt = self.species_mol.get(r).copied().unwrap_or(0.0);
                     if amt <= 0.0 { can_calc_q = false; break; }
                     ln_q -= c * (amt / solv_kg).ln();
@@ -465,7 +465,7 @@ impl Vessel {
             }
             if can_calc_q {
                 for (p, &c) in &eq.products {
-                    if p != "H2O" {
+                    if p != crate::db::seed::WATER {
                         let amt = self.species_mol.get(p).copied().unwrap_or(0.0);
                         if amt <= 0.0 { can_calc_q = false; break; }
                         ln_q += c * (amt / solv_kg).ln();
@@ -496,7 +496,7 @@ impl Vessel {
         let mut solvent_nu: Vec<(usize, f64)> = Vec::new();
         for (r, &c) in &eq.reactants {
             let i = index_of(r, &mut names);
-            if r == "H2O" {
+            if r == crate::db::seed::WATER {
                 solvent_nu.push((i, -c));
             } else {
                 reac.push((i, c));
@@ -504,7 +504,7 @@ impl Vessel {
         }
         for (p, &c) in &eq.products {
             let i = index_of(p, &mut names);
-            if p == "H2O" {
+            if p == crate::db::seed::WATER {
                 solvent_nu.push((i, c));
             } else {
                 prod.push((i, c));
@@ -761,7 +761,7 @@ impl Vessel {
             let mut nu_solv: Vec<(usize, f64)> = Vec::new();
             let mut ok = true;
             for (r, &c) in &eq.reactants {
-                if r != "H2O" {
+                if r != crate::db::seed::WATER {
                     ok &= amount(self, r) > TINY;
                     nu.push((get_idx(r, &mut names), -c));
                 } else {
@@ -769,7 +769,7 @@ impl Vessel {
                 }
             }
             for (p, &c) in &eq.products {
-                if p != "H2O" {
+                if p != crate::db::seed::WATER {
                     ok &= amount(self, p) > TINY;
                     nu.push((get_idx(p, &mut names), c));
                 } else {
@@ -844,7 +844,7 @@ impl Vessel {
                     c_sum += c * gamma_cache.get(&names[*i]).copied().unwrap_or(0.0);
                 }
                 for (i, c) in &rx.nu_solv {
-                    if names[*i] == "H2O" {
+                    if names[*i] == crate::db::seed::WATER {
                         c_sum += c * ln_aw;
                     }
                 }

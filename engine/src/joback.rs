@@ -88,15 +88,21 @@ impl JobackEstimate {
 
     /// Liquid standard state at 298.15 K: dfH(l) = dfH(g) - dHvap, dfG(l) = dfG(g) + RT ln(Psat / 1 bar).
     pub fn liquid_formation_kj(&self) -> (f64, f64) {
+        self.liquid_formation_from_gas_kj(self.dhf_gas_kj, self.dgf_gas_kj)
+    }
+
+    /// The same liquid reference state built on another ideal-gas formation enthalpy and Gibbs energy (e.g. Benson's)
+    /// with this estimate's vapour pressure curve.
+    pub fn liquid_formation_from_gas_kj(&self, dhf_gas_kj: f64, dgf_gas_kj: f64) -> (f64, f64) {
         let t = 298.15;
-        let dhf_l = self.dhf_gas_kj - self.dh_vap_kj();
-        let dgf_l = self.dgf_gas_kj + R_GAS * t * (self.psat_pa(t) / 1e5).ln() / 1000.0;
+        let dhf_l = dhf_gas_kj - self.dh_vap_kj();
+        let dgf_l = dgf_gas_kj + R_GAS * t * (self.psat_pa(t) / 1e5).ln() / 1000.0;
         (dhf_l, dgf_l)
     }
 }
 
 /// Atoms that lie on a ring (an atom is in a ring when one of its bonds is not a bridge).
-fn ring_atoms(mol: &Molecule) -> Vec<bool> {
+pub(crate) fn ring_atoms(mol: &Molecule) -> Vec<bool> {
     let n = mol.atoms.len();
     let mut adj: Vec<Vec<(usize, usize)>> = vec![Vec::new(); n];
     for (bi, &(a, b, _)) in mol.bonds.iter().enumerate() {

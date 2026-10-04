@@ -4,10 +4,11 @@ import { LcdDisplay, frontPlate, roundedBox, setWorldPose } from './lcd';
 import { Control3D, Knob, PushButton, Rocker, Selector, place } from '../bench/controls3d';
 import { ELECTRODE_LENGTH, ELECTRODE_RADIUS, ELECTRODE_X, electrodeBottomY } from '../render/electrode_geometry';
 
-export const ELECTRODE_MATERIALS = ['Pt', 'C', 'Cu', 'Zn', 'Ag', 'Fe', 'Al', 'Ni'] as const;
-export type ElectrodeMaterial = (typeof ELECTRODE_MATERIALS)[number];
+import { ELECTRODE_MATERIALS, ElectrodeMaterial } from './electrode_materials';
+export { ELECTRODE_MATERIALS };
+export type { ElectrodeMaterial };
 
-const MATERIAL_COLORS: Record<ElectrodeMaterial, number> = {
+const MATERIAL_COLORS: Record<string, number> = {
   Pt: 0xd8dde2,
   C: 0x222426,
   Cu: 0xb86542,
@@ -16,10 +17,14 @@ const MATERIAL_COLORS: Record<ElectrodeMaterial, number> = {
   Fe: 0x5a636a,
   Al: 0xc4cbd1,
   Ni: 0xa8b0b5,
+  Co: 0x8d97a5,
+  Mg: 0xcfd3d6,
+  Mn: 0x9a8f9a,
+  Pb: 0x6f767c,
 };
 
-/** Electrode materials on the front-panel selectors (the engine supports these six). */
-export const PANEL_MATERIALS = ['Pt', 'C', 'Cu', 'Zn', 'Ag', 'Fe'] as const;
+/** Electrode materials on the front-panel selectors: the engine's list from its species store (`electrode_materials.ts`). */
+export const PANEL_MATERIALS = ELECTRODE_MATERIALS;
 const RED_POST = new THREE.Vector3(-4, 1.9, 9.8);
 const BLACK_POST = new THREE.Vector3(4, 1.9, 9.8);
 

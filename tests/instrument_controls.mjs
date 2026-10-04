@@ -3,6 +3,7 @@
 // Covers: every instrument builds, control ids are unique, every control is pickable from the front without another control
 // in the way, knob drag / selector click / button / rocker behaviour through the real rig (incl. refusal snap-back), the
 // burner's gas tap + wire-loop pose, the NMR lift + acquisition and the GC/MS injection + scan state machines.
+import { ELECTRODE_MATERIALS } from '../web/src/equipment/electrode_materials.ts';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -257,8 +258,8 @@ await ok('potentiostat: knobs, selectors and rocker report; setPanel is silent',
   assert.deepEqual(got.mat, ['C', 'Pt']);
   const cath = rig.get('electrochem.cathode');
   rig.begin(cath, ev(0, 0), false);
-  rig.onUp(ev(0, 0, true)); // shift-click goes back (wraps to Fe)
-  assert.deepEqual(got.mat, ['C', 'Fe']);
+  rig.onUp(ev(0, 0, true)); // shift-click goes back (wraps to the last material of the console list)
+  assert.deepEqual(got.mat, ['C', ELECTRODE_MATERIALS[ELECTRODE_MATERIALS.length - 1]]);
   const power = rig.get('electrochem.power');
   rig.begin(power, ev(0, 0));
   rig.onUp(ev(0, 0));

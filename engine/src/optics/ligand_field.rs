@@ -45,6 +45,8 @@ struct Params {
     aqua_ligand: String,
     anion_ligands: HashMap<String, String>,
     anion_without_ligand: Vec<String>,
+    /// Ligand a complex anion (hexacyanoferrate, ...) offers a cation: bound through the nitrogen end of its cyanides.
+    complex_anion_ligand: String,
 }
 
 fn params() -> &'static Params {
@@ -252,7 +254,7 @@ pub fn ligand_of_anion(id: &str) -> Option<String> {
     }
     // a complex anion with a metal binds through the nitrogen end of its cyanide; an oxyanion through oxygen
     if complex_from_species_id(id).is_some() {
-        return p.anion_ligands.get("SCN-").cloned();
+        return Some(p.complex_anion_ligand.clone());
     }
     if crate::ions::anion_def(id).is_some() && id.contains('O') {
         return Some(p.aqua_ligand.clone());

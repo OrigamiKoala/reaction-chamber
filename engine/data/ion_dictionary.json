@@ -1,0 +1,702 @@
+{
+ "_comment": "Ion dictionary of the formula splitter (src/ions.rs): the polyatomic anions with their parent acids (matched in this order, most complex first, so HSO4- wins over SO4-2 + H+), the oxidation states a monatomic cation can take (most common first), the polyatomic cations, and the fallback colours of solids by cation and anion (the Speculative tier of the appearance model: general transition-metal chemistry, used only where no optical record exists). Chemical knowledge about ions, not about any reaction.",
+ "anions": [
+  {
+   "id": "Fe(CN)6-4",
+   "formula": "FeC6N6",
+   "charge": -4
+  },
+  {
+   "id": "Fe(CN)6-3",
+   "formula": "FeC6N6",
+   "charge": -3
+  },
+  {
+   "id": "C6H5O7-3",
+   "formula": "C6H5O7",
+   "charge": -3
+  },
+  {
+   "id": "B4O7-2",
+   "formula": "B4O7",
+   "charge": -2
+  },
+  {
+   "id": "S2O8-2",
+   "formula": "S2O8",
+   "charge": -2
+  },
+  {
+   "id": "Cr2O7-2",
+   "formula": "Cr2O7",
+   "charge": -2
+  },
+  {
+   "id": "S2O3-2",
+   "formula": "S2O3",
+   "charge": -2
+  },
+  {
+   "id": "CH3COO-",
+   "formula": "C2H3O2",
+   "charge": -1,
+   "acid": "CH3COOH"
+  },
+  {
+   "id": "HCOO-",
+   "formula": "CHO2",
+   "charge": -1,
+   "acid": "HCOOH"
+  },
+  {
+   "id": "C2O4-2",
+   "formula": "C2O4",
+   "charge": -2,
+   "acid": "H2C2O4"
+  },
+  {
+   "id": "HC2O4-",
+   "formula": "HC2O4",
+   "charge": -1
+  },
+  {
+   "id": "H2PO4-",
+   "formula": "H2PO4",
+   "charge": -1
+  },
+  {
+   "id": "HPO4-2",
+   "formula": "HPO4",
+   "charge": -2
+  },
+  {
+   "id": "PO4-3",
+   "formula": "PO4",
+   "charge": -3,
+   "acid": "H3PO4"
+  },
+  {
+   "id": "HCO3-",
+   "formula": "HCO3",
+   "charge": -1
+  },
+  {
+   "id": "CO3-2",
+   "formula": "CO3",
+   "charge": -2,
+   "acid": "CO2(aq)"
+  },
+  {
+   "id": "HSO4-",
+   "formula": "HSO4",
+   "charge": -1
+  },
+  {
+   "id": "HSO3-",
+   "formula": "HSO3",
+   "charge": -1
+  },
+  {
+   "id": "SO4-2",
+   "formula": "SO4",
+   "charge": -2,
+   "acid": "H2SO4"
+  },
+  {
+   "id": "SO3-2",
+   "formula": "SO3",
+   "charge": -2,
+   "acid": "H2SO3"
+  },
+  {
+   "id": "CrO4-2",
+   "formula": "CrO4",
+   "charge": -2,
+   "acid": "H2CrO4"
+  },
+  {
+   "id": "HCrO4-",
+   "formula": "HCrO4",
+   "charge": -1
+  },
+  {
+   "id": "MnO4-",
+   "formula": "MnO4",
+   "charge": -1
+  },
+  {
+   "id": "MoO4-2",
+   "formula": "MoO4",
+   "charge": -2
+  },
+  {
+   "id": "WO4-2",
+   "formula": "WO4",
+   "charge": -2
+  },
+  {
+   "id": "SeO4-2",
+   "formula": "SeO4",
+   "charge": -2
+  },
+  {
+   "id": "AsO4-3",
+   "formula": "AsO4",
+   "charge": -3
+  },
+  {
+   "id": "SiO3-2",
+   "formula": "SiO3",
+   "charge": -2
+  },
+  {
+   "id": "NO3-",
+   "formula": "NO3",
+   "charge": -1,
+   "acid": "HNO3"
+  },
+  {
+   "id": "NO2-",
+   "formula": "NO2",
+   "charge": -1,
+   "acid": "HNO2"
+  },
+  {
+   "id": "ClO4-",
+   "formula": "ClO4",
+   "charge": -1,
+   "acid": "HClO4"
+  },
+  {
+   "id": "ClO3-",
+   "formula": "ClO3",
+   "charge": -1
+  },
+  {
+   "id": "ClO2-",
+   "formula": "ClO2",
+   "charge": -1
+  },
+  {
+   "id": "ClO-",
+   "formula": "ClO",
+   "charge": -1,
+   "acid": "HClO"
+  },
+  {
+   "id": "BrO3-",
+   "formula": "BrO3",
+   "charge": -1
+  },
+  {
+   "id": "IO4-",
+   "formula": "IO4",
+   "charge": -1
+  },
+  {
+   "id": "IO3-",
+   "formula": "IO3",
+   "charge": -1
+  },
+  {
+   "id": "SCN-",
+   "formula": "SCN",
+   "charge": -1,
+   "acid": "HSCN"
+  },
+  {
+   "id": "OCN-",
+   "formula": "OCN",
+   "charge": -1
+  },
+  {
+   "id": "CN-",
+   "formula": "CN",
+   "charge": -1,
+   "acid": "HCN"
+  },
+  {
+   "id": "N3-",
+   "formula": "N3",
+   "charge": -1
+  },
+  {
+   "id": "HS-",
+   "formula": "HS",
+   "charge": -1
+  },
+  {
+   "id": "OH-",
+   "formula": "OH",
+   "charge": -1
+  },
+  {
+   "id": "F-",
+   "formula": "F",
+   "charge": -1,
+   "acid": "HF"
+  },
+  {
+   "id": "Cl-",
+   "formula": "Cl",
+   "charge": -1,
+   "acid": "HCl"
+  },
+  {
+   "id": "Br-",
+   "formula": "Br",
+   "charge": -1,
+   "acid": "HBr"
+  },
+  {
+   "id": "I-",
+   "formula": "I",
+   "charge": -1,
+   "acid": "HI"
+  },
+  {
+   "id": "S-2",
+   "formula": "S",
+   "charge": -2,
+   "acid": "H2S(aq)"
+  }
+ ],
+ "cation_charges": [
+  [
+   "H",
+   [
+    1
+   ]
+  ],
+  [
+   "Li",
+   [
+    1
+   ]
+  ],
+  [
+   "Na",
+   [
+    1
+   ]
+  ],
+  [
+   "K",
+   [
+    1
+   ]
+  ],
+  [
+   "Rb",
+   [
+    1
+   ]
+  ],
+  [
+   "Cs",
+   [
+    1
+   ]
+  ],
+  [
+   "Ag",
+   [
+    1
+   ]
+  ],
+  [
+   "Be",
+   [
+    2
+   ]
+  ],
+  [
+   "Mg",
+   [
+    2
+   ]
+  ],
+  [
+   "Ca",
+   [
+    2
+   ]
+  ],
+  [
+   "Sr",
+   [
+    2
+   ]
+  ],
+  [
+   "Ba",
+   [
+    2
+   ]
+  ],
+  [
+   "Ra",
+   [
+    2
+   ]
+  ],
+  [
+   "Zn",
+   [
+    2
+   ]
+  ],
+  [
+   "Cd",
+   [
+    2
+   ]
+  ],
+  [
+   "Cu",
+   [
+    2,
+    1
+   ]
+  ],
+  [
+   "Ni",
+   [
+    2
+   ]
+  ],
+  [
+   "Co",
+   [
+    2,
+    3
+   ]
+  ],
+  [
+   "Mn",
+   [
+    2,
+    3
+   ]
+  ],
+  [
+   "Fe",
+   [
+    3,
+    2
+   ]
+  ],
+  [
+   "Cr",
+   [
+    3,
+    2
+   ]
+  ],
+  [
+   "Al",
+   [
+    3
+   ]
+  ],
+  [
+   "Ga",
+   [
+    3
+   ]
+  ],
+  [
+   "In",
+   [
+    3
+   ]
+  ],
+  [
+   "Tl",
+   [
+    1,
+    3
+   ]
+  ],
+  [
+   "Pb",
+   [
+    2,
+    4
+   ]
+  ],
+  [
+   "Sn",
+   [
+    2,
+    4
+   ]
+  ],
+  [
+   "Hg",
+   [
+    2
+   ]
+  ],
+  [
+   "Bi",
+   [
+    3
+   ]
+  ],
+  [
+   "Sb",
+   [
+    3
+   ]
+  ],
+  [
+   "Ti",
+   [
+    4,
+    3
+   ]
+  ],
+  [
+   "V",
+   [
+    3,
+    2,
+    4
+   ]
+  ],
+  [
+   "Zr",
+   [
+    4
+   ]
+  ],
+  [
+   "Au",
+   [
+    3,
+    1
+   ]
+  ],
+  [
+   "Pt",
+   [
+    2,
+    4
+   ]
+  ],
+  [
+   "Pd",
+   [
+    2
+   ]
+  ],
+  [
+   "Ce",
+   [
+    3,
+    4
+   ]
+  ],
+  [
+   "La",
+   [
+    3
+   ]
+  ],
+  [
+   "Y",
+   [
+    3
+   ]
+  ],
+  [
+   "Sc",
+   [
+    3
+   ]
+  ],
+  [
+   "Nd",
+   [
+    3
+   ]
+  ],
+  [
+   "Gd",
+   [
+    3
+   ]
+  ],
+  [
+   "U",
+   [
+    6,
+    4
+   ]
+  ],
+  [
+   "Th",
+   [
+    4
+   ]
+  ],
+  [
+   "Mo",
+   [
+    3
+   ]
+  ]
+ ],
+ "poly_cations": [
+  {
+   "id": "NH4+",
+   "formula": "NH4",
+   "charge": 1,
+   "split": true
+  },
+  {
+   "id": "H3O+",
+   "formula": "H3O",
+   "charge": 1,
+   "split": false
+  },
+  {
+   "id": "Hg2+2",
+   "formula": "Hg2",
+   "charge": 2,
+   "split": true
+  },
+  {
+   "id": "VO+2",
+   "formula": "VO",
+   "charge": 2,
+   "split": true
+  },
+  {
+   "id": "UO2+2",
+   "formula": "UO2",
+   "charge": 2,
+   "split": true
+  }
+ ],
+ "cation_solid_hue": {
+  "Cu+2": [
+   0.1,
+   0.35,
+   0.8
+  ],
+  "Ni+2": [
+   0.25,
+   0.7,
+   0.35
+  ],
+  "Co+2": [
+   0.75,
+   0.3,
+   0.55
+  ],
+  "Fe+3": [
+   0.6,
+   0.22,
+   0.06
+  ],
+  "Fe+2": [
+   0.45,
+   0.6,
+   0.4
+  ],
+  "Cr+3": [
+   0.25,
+   0.55,
+   0.3
+  ],
+  "Mn+2": [
+   0.8,
+   0.65,
+   0.6
+  ],
+  "Zn+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Cd+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Pb+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Ca+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Mg+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Ba+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Sr+2": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Al+3": [
+   0.93,
+   0.93,
+   0.93
+  ],
+  "Ag+": [
+   0.93,
+   0.93,
+   0.93
+  ]
+ },
+ "cation_solid_hue_default": [
+  0.92,
+  0.92,
+  0.92
+ ],
+ "anion_solid_tint": {
+  "CrO4-2": [
+   0.9,
+   0.7,
+   0.05
+  ],
+  "Cr2O7-2": [
+   0.85,
+   0.3,
+   0.05
+  ],
+  "MnO4-": [
+   0.3,
+   0.02,
+   0.35
+  ],
+  "I-": [
+   0.9,
+   0.8,
+   0.3
+  ],
+  "S-2": [
+   0.2,
+   0.2,
+   0.2
+  ],
+  "Fe(CN)6-3": [
+   0.8,
+   0.35,
+   0.05
+  ]
+ }
+}

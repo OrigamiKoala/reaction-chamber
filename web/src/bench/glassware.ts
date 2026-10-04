@@ -29,6 +29,10 @@ export interface GlasswareMeshBundle {
   applyVisual: (snap: VesselSnapshot, dtSeconds: number, opticsTables?: OpticsTables | null) => void;
   /** Magnetic stir bar spin + vortex; 0 = off. */
   setStirring: (rpm: number) => void;
+  /** Stirrer speed acting on the contents now (rpm, 0 = still). */
+  stirRpm: () => number;
+  /** Group-local Y of the liquid surface when the vessel holds `ml` mL (the profile's volume -> level table, not linear). */
+  levelLocalYForVolume: (ml: number) => number;
   setSelected: (on: boolean) => void;
   /** Current apparent liquid colour (for pour streams), '#rrggbb'. */
   getLiquidColorHex: () => string;
@@ -512,6 +516,10 @@ export function createGlassware(state: VesselState): VesselBundle {
       }
       if (checkTimer <= 0) checkTimer = 0.6; // self check shortly after the contents changed (rate-limited)
     },
+
+    stirRpm: () => effects.getStirRpm(),
+
+    levelLocalYForVolume: (ml: number) => heightForVolume(p, ml) + p.baseOffsetY,
 
     setStirring: (rpm: number) => {
       effects.setStirring(rpm);

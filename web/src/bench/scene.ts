@@ -17,6 +17,7 @@ import {
 } from '../equipment';
 import { THERMOMETER_RADIUS } from '../equipment/thermometer';
 import { PH_PROBE_RADIUS } from '../equipment/ph_meter';
+import { layerIndexAtHeight } from '../equipment/probe_math';
 import { HOTPLATE_TOP_Y } from '../equipment/hotplate';
 import { BURNER_TOP_Y } from '../equipment/burner';
 import { BottleAssembly, BottleInput, createBottleAssembly, entryToBottleInput, defaultContentColor, looksLikeMetal } from '../equipment/bottle';
@@ -557,12 +558,15 @@ export class BenchScene {
     if (b) {
       const tip = b.probeLocal('ph', PH_PROBE_RADIUS).tip;
       phMeter.setImmersed(b.surfaceLocalY() - tip.y > 0.5 && this.phMotion.t >= 1);
+      // the layer the electrode tip is in (layers are bottom first, like the profile's volume -> level table)
+      const li = layerIndexAtHeight(snap.layers.map((l) => l.volume_ml), tip.y, (ml) => b.levelLocalYForVolume(ml));
+      phMeter.setProbeLayer(li >= 0 ? snap.layers[li] : snap.layers[snap.layers.length - 1] ?? null);
       const sealed = snap.sealed && !snap.burst;
       pressureGauge.attachTo(sealed ? b : null);
     } else {
       phMeter.setImmersed(false);
     }
-    thermometer.update(snap, dtSeconds);
+    thermometer.update(snap, dtSeconds, b ? b.stirRpm() : 0);
     phMeter.update(snap, dtSeconds);
     pressureGauge.update(snap, dtSeconds);
     hotPlate.update(snap, dtSeconds);

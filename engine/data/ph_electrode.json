@@ -1,0 +1,8 @@
+{
+ "_comment": "Reference (bridge) electrolyte of the glass pH electrode (src/ph_electrode.rs): the filling solution of a combination electrode, mol/L, and the lowest water mole fraction of the solvent at which a glass electrode is still calibrated (below it the meter shows nothing).",
+ "bridge_molar": {
+  "K+": 3.0,
+  "Cl-": 3.0
+ },
+ "min_water_mole_fraction": 0.5
+}

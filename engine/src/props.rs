@@ -42,7 +42,7 @@ pub fn calculate_viscosity_cp(
     total_volume_ml: f64,
     andrade: &dyn Fn(&str) -> Option<(f64, f64)>,
 ) -> f64 {
-    let h2o_mol = species_mol.get("H2O").copied().unwrap_or(0.0);
+    let h2o_mol = species_mol.get(crate::db::seed::WATER).copied().unwrap_or(0.0);
     if h2o_mol > 0.0 && total_volume_ml > 0.0 {
         // IAPWS 2008 correlation for pure liquid water
         let eta_pure_w = 0.890 * (1.4 * (298.15 / t_k - 1.0)).exp();

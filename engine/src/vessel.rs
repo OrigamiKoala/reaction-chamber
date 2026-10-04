@@ -23,11 +23,11 @@ pub(crate) const GLASS_CP_J_G_K: f64 = 0.84;
 /// Below this amount of water (mol, ~18 ng) no aqueous phase exists. Every other aqueous tolerance scales with volume.
 pub(crate) const MIN_AQUEOUS_H2O_MOL: f64 = 1e-9;
 /// Species id of the aqueous solvent (the species the aqueous equilibria, pH and ionic activities are written for).
-pub(crate) const AQUEOUS_SOLVENT: &str = "H2O";
+pub(crate) const AQUEOUS_SOLVENT: &str = crate::db::seed::WATER;
 
 /// The solvent's own ionisation row: one reactant, the solvent, and its two ions as products.
 pub(crate) fn is_autoprotolysis(e: &GeneralEquilibrium) -> bool {
-    e.reactants.len() == 1 && e.reactants.contains_key(AQUEOUS_SOLVENT) && e.products.len() == 2 && e.products.contains_key("H+") && e.products.contains_key("OH-")
+    e.reactants.len() == 1 && e.reactants.contains_key(AQUEOUS_SOLVENT) && e.products.len() == 2 && e.products.contains_key(crate::db::seed::PROTON) && e.products.contains_key(crate::db::seed::HYDROXIDE)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +64,19 @@ pub struct LiquidLayer {
     pub species: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// What a glass pH electrode with a 3 M KCl bridge reads in this layer (`ph_electrode`): the molal pH shifted by the
+    /// liquid-junction potential; absent for a layer without water and where water is under half of the solvent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ph: Option<f64>,
+    /// The thermodynamic molal pH of the layer, `-log10(m_H gamma_H)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ph_activity: Option<f64>,
+    /// Junction potential (mV, sample minus bridge) behind the difference between the two.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ph_junction_mv: Option<f64>,
+    /// Mole fraction of water among the layer's molecules (ions left out).
+    #[serde(default)]
+    pub water_mole_fraction: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,6 +378,8 @@ pub(crate) struct ActivityContext {
     pub gamma: HashMap<String, f64>,
     pub ln_aw: f64,
     pub vol_l: f64,
+    /// kg of solvent water of the primary phase: solute activities are molal (a = gamma m), like the equilibrium solver
+    pub solvent_kg: f64,
     /// partial pressure (Pa) of each gas: headspace (sealed) or atmosphere (open)
     pub gas_pa: HashMap<String, f64>,
     pub sealed: bool,
@@ -405,6 +420,10 @@ pub struct Vessel {
     pub flame_active: bool,
     pub flame_power_w: f64,
     pub recent_reaction_heat_w: f64,
+    /// Cumulative energy (J) the surroundings have put into the contents: heater, burner and bath minus the loss to the room
+    /// (the reaction and phase-change heats are internal). With `enthalpy_state_j` it makes the energy audit of
+    /// `vessel_energy`.
+    pub external_energy_j: f64,
     /// Vapour volume flow (mL/s) and mass flow (g/s) of every liquid that boiled in the last step (water, ethanol,
     /// inert compounds): the visual boil state is derived from it, not from a water-only temperature test.
     pub boil_vapour_ml_s: f64,
@@ -443,6 +462,8 @@ pub struct Vessel {
     /// solution turns acidic or hot
     pub last_network_env: (i32, i32),
     pub network_cap_reached: bool,
+    /// Candidate reactions of the generated network that were below the flux threshold (the edge), re-evaluated periodically.
+    pub network_edge: Vec<crate::network_generator::GeneratedReaction>,
     /// How the current flame looks (fuel, power, luminosity, temperature, emission colour); None when nothing burns.
     pub flame_visual: Option<FlameVisual>,
     /// Expected-nuclei clock of each supersaturated solid that has no particle yet (the induction timer).
@@ -496,6 +517,7 @@ impl Vessel {
             flame_active: false,
             flame_power_w: 0.0,
             recent_reaction_heat_w: 0.0,
+            external_energy_j: 0.0,
             boil_vapour_ml_s: 0.0,
             boil_mass_g_s: 0.0,
             eq_moved: false,
@@ -518,6 +540,7 @@ impl Vessel {
             last_smiles_species: HashSet::new(),
             last_network_env: (i32::MIN, i32::MIN),
             network_cap_reached: false,
+            network_edge: Vec::new(),
             flame_visual: None,
             nuc_clock: HashMap::new(),
             blocked_minerals: Default::default(),
@@ -589,8 +612,10 @@ impl Vessel {
         let generator = crate::network_generator::NetworkGenerator::new(
             crate::network_generator::NetworkGeneratorConfig::default()
         );
-        let gen_net = generator.generate_network(&concs, self.temperature_k, ph);
+        let solvent = self.primary_solvent_class();
+        let gen_net = generator.generate_network_in(&concs, self.temperature_k, ph, solvent);
         self.network_cap_reached = gen_net.cap_reached;
+        self.network_edge = gen_net.edge;
         for rxn in gen_net.reactions {
             if !self.kinetic_reactions.iter().any(|r| r.id == rxn.id) {
                 // the rate law carries its own orders (solvent zero order, dissolved catalysts such as H+ first order) and
@@ -608,13 +633,53 @@ impl Vessel {
                     arrhenius_ea: rxn.arrhenius_ea,
                     delta_h_kj: rxn.delta_h_kj,
                     catalyst_species: None,
-                    is_reversible: true,
-                    k_eq_298: Some(rxn.k_eq_298),
+                    // K only from the species' formation data; without it the reaction is irreversible, not given an invented K
+                    is_reversible: rxn.k_eq_from_data,
+                    k_eq_298: if rxn.k_eq_from_data { Some(rxn.k_eq_298) } else { None },
                     tier: rxn.tier,
                     source: rxn.source,
                 });
             }
         }
+    }
+
+    /// Class of the vessel's primary solvent for the solvent-dependent rate rules: water when the primary liquid phase is
+    /// aqueous, else the class of its most abundant molecular component.
+    pub fn primary_solvent_class(&self) -> &'static str {
+        if self.phase_is_aqueous(&self.species_mol) {
+            return "water";
+        }
+        let lead = self
+            .species_mol
+            .iter()
+            .filter(|(k, &n)| n > 0.0 && crate::network_generator::resolve_molecule(k).is_some())
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0)))
+            .map(|(k, _)| k.clone());
+        crate::optics::solution::solvent_class(false, self.smiles_of(lead.as_deref()).as_deref())
+    }
+
+    /// Re-evaluates the edge of the reaction network at the current contents: when a candidate has become fast (its rate at
+    /// the live concentrations reaches the generation threshold) the network is regenerated, which promotes it to the core.
+    /// Returns whether a regeneration happened.
+    pub fn promote_edge_reactions(&mut self) -> bool {
+        if self.network_edge.is_empty() || self.network_cap_reached {
+            return false;
+        }
+        let vol_l = self.reaction_volume_ml() / 1000.0;
+        if vol_l <= 0.0 {
+            return false;
+        }
+        let mut concs: HashMap<String, f64> = HashMap::new();
+        for (sp, &mol) in self.species_mol.iter().chain(self.solid_mol.iter()) {
+            concs.insert(sp.clone(), mol / vol_l);
+        }
+        let threshold = crate::network_generator::NetworkGeneratorConfig::default().flux_threshold_abs;
+        let t = self.temperature_k;
+        let fast = self.network_edge.iter().any(|e| e.rate_in(&concs, t) >= threshold);
+        if fast {
+            self.update_network();
+        }
+        fast
     }
 
     pub fn dose(&mut self, dose: DoseRequest) -> Result<(), String> {
@@ -1004,6 +1069,9 @@ impl Vessel {
                 self.last_smiles_species = cur_smiles_species;
                 self.last_network_env = env;
                 self.update_network();
+            } else if (self.t_sim_s * 0.5).floor() != ((self.t_sim_s - dt_s) * 0.5).floor() {
+                // every 2 s of simulated time the edge is checked against the live concentrations
+                self.promote_edge_reactions();
             }
         }
         // 1. Generalized chemical kinetics & combustion
@@ -1287,24 +1355,27 @@ impl Vessel {
         let cp_total = (cp_contents + cp_glass).max(1.0);
 
         let mut net_energy_j = reaction_heat_joules;
+        let mut external_j = 0.0;
 
         // External heater / hot plate
         let heater_w = self.controls.heater_w.unwrap_or(0.0);
         let burner_w = self.controls.burner_w.unwrap_or(0.0);
-        net_energy_j += (heater_w + burner_w) * dt_s;
+        external_j += (heater_w + burner_w) * dt_s;
 
         // Thermal bath coupling: liquid film, glass wall and bath film in series over the wetted wall and base
         if let Some(t_bath) = self.bath_k {
             let r_m = self.config.inner_radius_cm / 100.0;
             let k_bath = self.controls.bath_coupling_w_k.unwrap_or_else(|| crate::heat_transfer::bath_coupling_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.stir_rpm() > 0.0));
-            net_energy_j += k_bath * (t_bath - self.temperature_k) * dt_s;
+            external_j += k_bath * (t_bath - self.temperature_k) * dt_s;
         }
 
         // Loss to the room: natural convection and radiation from the wall, conduction through the base (the coefficient
         // follows the liquid height and the temperature, so a vessel cools fast while hot and slowly near room temperature)
         let r_m = self.config.inner_radius_cm / 100.0;
         let g_ambient = crate::heat_transfer::ambient_loss_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.temperature_k, self.room_k, self.bath_k.is_some());
-        net_energy_j -= g_ambient * (self.temperature_k - self.room_k) * dt_s;
+        external_j -= g_ambient * (self.temperature_k - self.room_k) * dt_s;
+        net_energy_j += external_j;
+        self.external_energy_j += external_j;
 
         let delta_t = net_energy_j / cp_total;
         self.temperature_k += delta_t;
@@ -1353,6 +1424,8 @@ impl Vessel {
         let ph = if self.has_aqueous_phase() { Some(self.current_ph()) } else { None };
         let ionic_str = if self.has_aqueous_phase() { Some(self.calc_ionic_strength()) } else { None };
 
+        // what a pH electrode reads in the water-containing phase
+        let electrode = self.ph_electrode_reading();
         // one layer per liquid phase (the phases are the liquid-liquid equilibrium's, densest first)
         let views = self.phase_views();
         let mut layers: Vec<LiquidLayer> = Vec::new();
@@ -1389,6 +1462,10 @@ impl Vessel {
                 solvent_class: po.solvent.to_string(),
                 name: lead_name,
                 species: lead_species,
+                ph: if aqueous && idx == 0 { electrode.0 } else { None },
+                ph_activity: if aqueous && idx == 0 { electrode.1 } else { None },
+                ph_junction_mv: if aqueous && idx == 0 { electrode.2 } else { None },
+                water_mole_fraction: if aqueous { electrode.3 } else { 0.0 },
             });
         }
         // densest at the bottom (first in the list for rendering order)
@@ -1833,6 +1910,28 @@ impl Vessel {
     }
 
     /// pH = -log10(m_H+ * gamma_H+) in the phase that contains water (decision D6 for other solvents).
+    /// A glass pH electrode with a 3 M KCl bridge in the water-containing phase (`ph_electrode`): (reading, thermodynamic
+    /// pH, junction potential in mV, water mole fraction of the solvent). The reading is absent when there is no aqueous
+    /// phase or water is under half of its molecules (outside the electrode's range).
+    pub fn ph_electrode_reading(&self) -> (Option<f64>, Option<f64>, Option<f64>, f64) {
+        if !self.has_aqueous_phase() || self.solvent_volume_ml() <= 0.0 {
+            return (None, None, None, 0.0);
+        }
+        let n_w = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
+        let n_other: f64 = self.species_mol.iter().filter(|(k, &v)| v > 0.0 && k.as_str() != AQUEOUS_SOLVENT && ions::species_charge(k) == 0 && !k.ends_with("(s)") && !k.ends_with("(g)")).map(|(_, v)| *v).sum();
+        let x_w = n_w / (n_w + n_other).max(1e-300);
+        let ph_a = self.current_ph();
+        if !ph_a.is_finite() {
+            return (None, None, None, x_w);
+        }
+        let t = self.temperature_k;
+        let vol_l = (self.phase_volume_ml(&self.species_mol, t) / 1000.0).max(1e-9);
+        let ions: Vec<(String, f64)> = self.species_mol.iter().filter(|(k, &v)| v > 0.0 && ions::species_charge(k) != 0).map(|(k, v)| (k.clone(), v / vol_l)).collect();
+        let ej = crate::ph_electrode::henderson_junction_v(&ions, t);
+        let reading = if x_w >= crate::ph_electrode::min_water_mole_fraction() { Some(ph_a + crate::ph_electrode::junction_ph_shift(ej, t)) } else { None };
+        (reading, Some(ph_a), Some(ej * 1000.0), x_w)
+    }
+
     pub fn current_ph(&self) -> f64 {
         if !self.has_aqueous_phase() || self.solvent_volume_ml() <= 0.0 {
             return f64::NAN;
@@ -1840,8 +1939,8 @@ impl Vessel {
         let t_k = self.temperature_k;
         let n_h2o = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
         let kg_w = (n_h2o * 0.01801528).max(1e-12);
-        let m_h = self.species_mol.get("H+").copied().unwrap_or(0.0) / kg_w;
-        let m_oh = self.species_mol.get("OH-").copied().unwrap_or(0.0) / kg_w;
+        let m_h = self.species_mol.get(crate::db::seed::PROTON).copied().unwrap_or(0.0) / kg_w;
+        let m_oh = self.species_mol.get(crate::db::seed::HYDROXIDE).copied().unwrap_or(0.0) / kg_w;
 
         let pkw = self.pkw();
 
@@ -1852,13 +1951,13 @@ impl Vessel {
         }
 
         if m_h > 0.0 && m_h >= m_oh {
-            let ln_gamma_h = gamma_cache.get("H+").copied().unwrap_or(0.0);
+            let ln_gamma_h = gamma_cache.get(crate::db::seed::PROTON).copied().unwrap_or(0.0);
             let a_h = m_h * ln_gamma_h.exp();
             return -a_h.log10();
         }
 
         if m_oh > 0.0 {
-            let ln_gamma_oh = gamma_cache.get("OH-").copied().unwrap_or(0.0);
+            let ln_gamma_oh = gamma_cache.get(crate::db::seed::HYDROXIDE).copied().unwrap_or(0.0);
             let a_oh = m_oh * ln_gamma_oh.exp();
             pkw - a_w.log10() + a_oh.log10()
         } else {

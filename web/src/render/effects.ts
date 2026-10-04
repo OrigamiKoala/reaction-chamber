@@ -366,6 +366,10 @@ export class VesselEffects {
     if (!this.stopperFlying) this.stopper.visible = on;
   }
 
+  public getStirRpm(): number {
+    return this.stirRpm;
+  }
+
   public setStirring(rpm: number) {
     this.stirRpm = Math.max(0, rpm);
     this.liquid.setStirring(this.stirRpm);

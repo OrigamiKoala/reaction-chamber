@@ -1,0 +1,153 @@
+{
+ "_comment": "Ion-specific parameters of the activity and volume models (src/activity.rs, src/volume.rs), by species id. Recalled literature values, tier Estimated: Debye-Hueckel / B-dot ion-size parameters a (Angstrom; Helgeson, Kirkham & Flowers 1981 / Truesdell & Jones 1974), SIT interaction coefficients (Grenthe et al. 1992), Pitzer binary parameters at 25 C (Pitzer & Mayorga 1973; Pitzer 1991: NaCl, KCl, HCl, CaCl2, NaOH, KNO3), standard partial molar volumes of ions at infinite dilution (HKF database / Millero 1971, cm3/mol). An ion without a row falls back to the class value of its charge (`defaults`), a pair without a Pitzer row to the extended Debye-Hueckel form.",
+ "ion_size_angstrom": {
+  "H+": 9.0,
+  "OH-": 3.5,
+  "Na+": 4.0,
+  "K+": 3.0,
+  "Li+": 6.0,
+  "NH4+": 2.5,
+  "Ag+": 2.5,
+  "Ca+2": 6.0,
+  "Mg+2": 8.0,
+  "Ba+2": 5.0,
+  "Fe+2": 6.0,
+  "Fe+3": 9.0,
+  "Cu+2": 6.0,
+  "Zn+2": 6.0,
+  "Pb+2": 4.5,
+  "Cl-": 3.0,
+  "Br-": 3.0,
+  "I-": 3.0,
+  "F-": 3.5,
+  "NO3-": 3.0,
+  "SO4-2": 4.0,
+  "HCO3-": 4.0,
+  "CO3-2": 4.5
+ },
+ "ion_size_default_by_abs_charge": {
+  "1": 3.5,
+  "2": 5.0,
+  "3": 6.0
+ },
+ "sit_epsilon": [
+  [
+   "Cl-",
+   "Na+",
+   0.03
+  ],
+  [
+   "Cl-",
+   "K+",
+   0.0
+  ],
+  [
+   "Cl-",
+   "H+",
+   0.12
+  ],
+  [
+   "Ca+2",
+   "Cl-",
+   0.15
+  ],
+  [
+   "NO3-",
+   "Na+",
+   -0.04
+  ],
+  [
+   "K+",
+   "NO3-",
+   -0.08
+  ],
+  [
+   "Ag+",
+   "NO3-",
+   -0.06
+  ],
+  [
+   "Ag+",
+   "Cl-",
+   0.0
+  ]
+ ],
+ "sit_epsilon_default": 0.01,
+ "pitzer_binary": [
+  {
+   "cation": "Na+",
+   "anion": "Cl-",
+   "beta0": 0.0765,
+   "beta1": 0.2664,
+   "c_phi": 0.00127,
+   "alpha": 2.0
+  },
+  {
+   "cation": "Ca+2",
+   "anion": "Cl-",
+   "beta0": 0.3159,
+   "beta1": 1.6144,
+   "c_phi": -0.00034,
+   "alpha": 2.0
+  },
+  {
+   "cation": "H+",
+   "anion": "Cl-",
+   "beta0": 0.1775,
+   "beta1": 0.2945,
+   "c_phi": 0.0008,
+   "alpha": 2.0
+  },
+  {
+   "cation": "K+",
+   "anion": "NO3-",
+   "beta0": -0.0816,
+   "beta1": 0.0494,
+   "c_phi": 0.0066,
+   "alpha": 2.0
+  },
+  {
+   "cation": "K+",
+   "anion": "Cl-",
+   "beta0": 0.04835,
+   "beta1": 0.2122,
+   "c_phi": -0.00084,
+   "alpha": 2.0
+  },
+  {
+   "cation": "Na+",
+   "anion": "OH-",
+   "beta0": 0.0864,
+   "beta1": 0.253,
+   "c_phi": 0.0044,
+   "alpha": 2.0
+  }
+ ],
+ "ion_volume_v0_cm3_mol": {
+  "H+": 0.0,
+  "Na+": -1.21,
+  "K+": 9.02,
+  "Li+": -0.88,
+  "NH4+": 17.9,
+  "Ag+": -5.9,
+  "Ca+2": -17.85,
+  "Mg+2": -21.17,
+  "Ba+2": -12.5,
+  "Fe+2": -24.7,
+  "Fe+3": -43.7,
+  "Cu+2": -23.5,
+  "Zn+2": -21.6,
+  "Pb+2": -7.3,
+  "Cl-": 17.83,
+  "Br-": 24.71,
+  "I-": 36.22,
+  "F-": -2.4,
+  "OH-": -4.04,
+  "NO3-": 29.0,
+  "HCO3-": 24.2,
+  "CO3-2": -3.7,
+  "HSO4-": 35.7,
+  "SO4-2": 13.98,
+  "CH3COO-": 40.5
+ }
+}

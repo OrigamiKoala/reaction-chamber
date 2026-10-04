@@ -188,9 +188,9 @@
     "Al(OH)4-": 1.0
    },
    "log_k_298": 33.58,
-   "delta_h_kj": -191.64,
+   "delta_h_kj": -49.8,
    "tier": "Tabulated",
-   "source": "PHREEQC llnl.dat"
+   "source": "PHREEQC llnl.dat (log K); the enthalpy follows from the formation enthalpies of Al+3, OH- and Al(OH)4- (llnl.dat gives it for the H+ form of the reaction)"
   },
   {
    "id": "iron_monohydroxo",
