@@ -480,7 +480,10 @@ fn i4_console_materials_are_the_engines_list() {
     let list = electrode_materials();
     let symbols: Vec<&str> = list.iter().map(|m| m.symbol.as_str()).collect();
     println!("electrode materials: {:?}", symbols);
-    assert_eq!(&symbols[..6], &["Pt", "C", "Cu", "Zn", "Ag", "Fe"], "the original six keep their positions");
+    assert_eq!(&symbols[..2], &["Pt", "C"], "the inert electrodes come first");
+    // the active metals follow by decreasing standard potential (the electrochemical series)
+    let potentials: Vec<f64> = list.iter().filter(|m| !m.inert).filter_map(|m| m.e0_v).collect();
+    assert!(potentials.windows(2).all(|w| w[0] >= w[1]), "nobler first: {:?}", potentials);
     for want in ["Mg", "Pb", "Al", "Co", "Mn"] {
         assert!(symbols.contains(&want), "{} missing from {:?}", want, symbols);
     }

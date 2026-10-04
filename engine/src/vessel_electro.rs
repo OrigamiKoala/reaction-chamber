@@ -749,12 +749,21 @@ pub struct ElectrodeMaterialInfo {
 
 /// Metals whose cation couple lies below this standard potential (V) react violently with the water of the cell: Na, K, Ca,
 /// Ba, Li. They are not electrode materials.
-const WATER_REACTIVE_E0_V: f64 = -2.5;
+#[derive(serde::Deserialize)]
+struct ElectrodeMaterialData {
+    inert: Vec<String>,
+    water_reactive_e0_v: f64,
+}
 
-/// Electrode materials the engine can use, from the species store (I4): the two inert ones (platinum, graphite) and every
-/// metal that has an aqueous cation with formation data (its half-reaction and potential follow from that data) or a solid
-/// record of its own, except the violently water-reactive ones. The first six keep the order of the original console
-/// (Pt, C, Cu, Zn, Ag, Fe), the others follow alphabetically.
+fn electrode_material_data() -> &'static ElectrodeMaterialData {
+    static DATA: std::sync::OnceLock<ElectrodeMaterialData> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| serde_json::from_str(include_str!("../data/electrode_materials.json")).expect("electrode_materials.json is valid"))
+}
+
+/// Electrode materials the engine can use, from the species store (I4) and `data/electrode_materials.json`: the inert ones
+/// (platinum, graphite) first, then every metal that has an aqueous cation with formation data (its half-reaction and
+/// potential follow from that data) or a solid record of its own, by decreasing standard potential (metals without a
+/// potential last, alphabetically), except the violently water-reactive ones.
 pub fn electrode_materials() -> Vec<ElectrodeMaterialInfo> {
     let mut e0: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
     let mut with_solid: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -788,17 +797,22 @@ pub fn electrode_materials() -> Vec<ElectrodeMaterialInfo> {
     let mut metals: Vec<String> = e0.keys().cloned().chain(with_solid.iter().cloned()).collect();
     metals.sort();
     metals.dedup();
-    metals.retain(|m| e0.get(m).map_or(true, |e| *e > WATER_REACTIVE_E0_V));
-    let first = ["Pt", "C", "Cu", "Zn", "Ag", "Fe"];
-    let mut out: Vec<ElectrodeMaterialInfo> = Vec::new();
-    for f in first {
-        let inert = f == "Pt" || f == "C";
-        out.push(ElectrodeMaterialInfo { symbol: f.to_string(), e0_v: e0.get(f).copied(), inert });
-    }
+    let data = electrode_material_data();
+    metals.retain(|m| !data.inert.contains(m) && e0.get(m).map_or(true, |e| *e > data.water_reactive_e0_v));
+    // nobler first; metals with no potential after those that have one
+    metals.sort_by(|a, b| match (e0.get(a), e0.get(b)) {
+        (Some(x), Some(y)) => y.partial_cmp(x).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
+    });
+    let mut out: Vec<ElectrodeMaterialInfo> = data
+        .inert
+        .iter()
+        .map(|f| ElectrodeMaterialInfo { symbol: f.clone(), e0_v: e0.get(f).copied(), inert: true })
+        .collect();
     for m in metals {
-        if !first.contains(&m.as_str()) {
-            out.push(ElectrodeMaterialInfo { e0_v: e0.get(&m).copied(), symbol: m, inert: false });
-        }
+        out.push(ElectrodeMaterialInfo { e0_v: e0.get(&m).copied(), symbol: m, inert: false });
     }
     out
 }

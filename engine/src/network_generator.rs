@@ -512,6 +512,18 @@ pub fn resolve_molecule(species: &str) -> Option<Molecule> {
     None
 }
 
+/// Isomer tag of a compound id (`C5H12O#3F9A1C07`): 8 hex digits of the FNV-1a hash of the SMILES. Stripping the brackets
+/// of the SMILES instead made `CCC(C)(C)O` and `CCCCCO` one id; the `#TAG` form is the one `ions.rs` and `volume.rs` already
+/// read as "formula, then isomer".
+fn isomer_tag(smiles: &str) -> String {
+    let mut h: u32 = 0x811c_9dc5;
+    for b in smiles.bytes() {
+        h ^= b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    format!("{:08X}", h)
+}
+
 /// Registers a generated product Molecule into SpeciesStore if not present.
 /// Returns the canonical species id for this product.
 pub fn register_or_find_species(mol: &Molecule) -> String {
@@ -540,7 +552,7 @@ pub fn register_or_find_species(mol: &Molecule) -> String {
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         if let Some(existing) = store.get(&cand) {
             if existing.identity.smiles.as_deref() != Some(&smiles) {
-                cand = format!("{}_{}", formula, smiles.replace(['(', ')', '=', '#', '[', ']', '+', '-'], ""));
+                cand = format!("{}#{}", formula, isomer_tag(&smiles));
             }
         }
     }
