@@ -510,7 +510,7 @@ pub struct Vessel {
 impl Vessel {
     pub fn new(config: VesselConfig) -> Self {
         let temp_k = config.temperature_k.unwrap_or(295.15);
-        let room_k = config.room_k.unwrap_or(295.15);
+        let room_k = config.room_k.unwrap_or(298.15);
         let sealed = config.sealed.unwrap_or(false);
 
         let cat_list = chem_db::get_reagent_catalog();

@@ -1322,7 +1322,7 @@ kbd {
 
 /* The instrument window — signature element */
 .readouts {
-  margin: 0 12px;
+  margin: 0 16px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   border-radius: var(--r-md);
@@ -1373,6 +1373,10 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ro-vac .ro-val {
+  font-size: 17px;
 }
 
 .ro-temp .ro-val {
@@ -1675,6 +1679,11 @@ kbd {
   margin: 2px 0 0;
   font-size: 11.5px;
   color: var(--mute);
+}
+
+/* directly under the readouts (instrument panel): same side gutter as the header and sections */
+.vp > .hint-line {
+  margin: 8px 16px 0;
 }
 
 .toggle-row {

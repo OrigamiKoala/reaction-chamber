@@ -96,6 +96,34 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
     return true;
   };
 
+  // carried by hand: the wire picks up the liquid of the vessel it is dipped in; held in the lit flame it colours it
+  ins.burner.onLoopWet = (id) => {
+    const b = ins.burner;
+    if (id) {
+      b.flameTestInfo = `Loop wet with ${nameOf(id)}: hold it in the flame.`;
+      toast(b.isActive ? `The loop picked up ${nameOf(id)}. Hold it in the flame.` : `The loop picked up ${nameOf(id)}. Open the gas tap to light the burner.`, 'info');
+    }
+  };
+  ins.burner.onLoopFlame = (inFlame) => {
+    const b = ins.burner;
+    const id = b.loopWet;
+    if (!inFlame) return;
+    if (!id) {
+      b.flameTestInfo = 'The loop is dry: dip it in a sample first.';
+      toast('The loop is dry. Dip it in a vessel with the sample first.', 'info');
+      return;
+    }
+    b.flameTestInfo = `Heating ${nameOf(id)} on the loop…`;
+    sim.flameTest(id, BUNSEN_FLAME_K).then(
+      (r) => {
+        if (!b.loopHeldInFlame || b.loopWet !== id) return; // taken out meanwhile
+        b.setFlameTest(r.emitter_rgb, r.metal_share);
+        b.flameTestInfo = r.emitters.length ? `${nameOf(id)}: emission from ${r.emitters.join(', ')}` : `${nameOf(id)}: no emitting metal, the flame keeps its own colour`;
+      },
+      (err) => toast(`Flame test failed: ${errText(err)}`, 'warning')
+    );
+  };
+
   // ------------------------------------------------------------------ potentiostat / galvanostat
   const ec = ins.electrochem;
   let bridgeTo: string | null = null;
@@ -193,8 +221,18 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
   // ------------------------------------------------------------------ UV-vis
   const sp = ins.spectrophotometer;
   sp.onBlank = () => {
-    sp.blank();
-    toast('Spectrophotometer blanked (100.0 % T, 0.000 Abs)', 'info');
+    if (sp.scanning) return;
+    const id = selected();
+    const snap = id ? lab.snapshot(id) : null;
+    if (!id || !snap || snap.total_liquid_ml < 0.05) {
+      toast('Select the reference vessel (the pure solvent, click it), then press BLANK.', 'info');
+      return;
+    }
+    const name = nameOf(id);
+    sp.blank(sim, id, name).then(
+      () => toast(`Spectrophotometer blanked on ${name} (100.0 % T, 0.000 Abs). Scans now read against it.`, 'info'),
+      (err) => toast(`Blank failed: ${errText(err)}`, 'warning')
+    );
   };
   sp.onScan = () => {
     if (sp.scanning) return;

@@ -1,6 +1,7 @@
 // Composition root: wires the 3D bench (BenchScene contract), the WASM simulation and the UI panels.
 import './style.css';
-import { BenchScene } from './bench/scene';
+import { BENCH_WATER_ID, BenchScene } from './bench/scene';
+import { INDICATOR_IDS } from './bench/layout';
 import { SimController } from './sim/sim_controller';
 import { BottleState, SpeciesRecord } from './types';
 import { effectiveThermo, vaporPressurePoints } from './pubchem/parser';
@@ -641,8 +642,14 @@ async function initApp() {
   });
   window.addEventListener('blur', () => bench.clearMoveKeys());
   window.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || anyModalOpen() || bench.isHolding()) return;
+    if (e.defaultPrevented || anyModalOpen()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Q / E: camera down / up (also while carrying something, to see the top of a burette)
+    if ((e.code === 'KeyQ' || e.code === 'KeyE') && !isTypingTarget(e.target) && bench.setMoveKey(e.code, true)) {
+      e.preventDefault();
+      return;
+    }
+    if (bench.isHolding()) return;
     if (/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(e.code)) {
       const el = e.target as HTMLElement;
       const isArrow = e.code.startsWith('Arrow');
@@ -740,6 +747,25 @@ async function initApp() {
 
   // Imported compounds persist in localStorage but the engine is in-memory: re-model them (formula-driven, fast).
   await Promise.all(lib.importedBottles().map((b) => modelImported(b)));
+
+  // The titration setup puts the indicator dropper bottles out on the bench beside the station
+  lab.indicatorHandler = () => {
+    const entries = lib.catalogEntries().filter((e) => INDICATOR_IDS.includes(e.id));
+    for (const id of bench.setOutIndicators(entries)) {
+      const entry = entries.find((e) => e.id === id)!;
+      const known = knownReagentColor(id);
+      if (known) bench.setBottleContentColor(id, known);
+      else probeReagentColor(sim, entry, optics).then((hex) => hex && bench.setBottleContentColor(id, hex));
+    }
+    return entries.map((e) => e.name);
+  };
+
+  // Distilled water stands on the bench in view, not on the shelf
+  const waterEntry = lib.catalogEntries().find((e) => e.id === BENCH_WATER_ID);
+  if (waterEntry) {
+    bench.addReagentBottle(waterEntry);
+    bench.setBottleContentColor(waterEntry.id, knownReagentColor(waterEntry.id) ?? '#dcecf4');
+  }
 
   // Shelf: recently used first; a few catalog entries for first-time visitors.
   const recent = lib.recentItems();

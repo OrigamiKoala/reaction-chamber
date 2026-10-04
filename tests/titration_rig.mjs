@@ -328,5 +328,63 @@ ok('tall target: a carried beaker locks onto the burette opening by screen posit
   hc.onUp({ button: 0 });
 });
 
+ok('tall target: carrying a beaker over the base of the burette does not fill it; the camera has to be raised to the opening', () => {
+  const scene3 = new THREE.Scene();
+  const cam3 = new THREE.PerspectiveCamera(40, 1.6, 4, 900);
+  cam3.position.set(0, 40, 110);
+  cam3.lookAt(0, 8, 0);
+  cam3.updateMatrixWorld();
+  cam3.updateProjectionMatrix();
+  const vs = new Map();
+  const mk3 = (id, type, vol = 0) => {
+    const st = { id, name: id, type, capacityMl: 250, currentVolumeMl: vol, liquidColor: '#e8f4fa', liquidOpacity: 0.6, temperatureK: 298, isSealed: false, stirring: false, contents: [] };
+    const b = createGlassware(st);
+    vs.set(id, b);
+    scene3.add(b.group);
+    return b;
+  };
+  const bur = mk3('bur3', 'burette-50');
+  const src = mk3('src3', 'beaker-100', 60);
+  src.group.position.set(30, 0, 10);
+  const rimY = bur.profile.rimY + bur.profile.baseOffsetY;
+  assert.ok(new THREE.Vector3(0, rimY, 0).project(cam3).y > 1, 'the opening is above the low camera view');
+  let pushed = 0;
+  const host = {
+    scene: scene3, camera: cam3, dom: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 500 }), style: {} }, controls: { enabled: true },
+    animator: new Animator(), shelf: { get: () => undefined, setBusy() {}, touch() {}, getMeta() { return null; } },
+    vessels: () => vs, pickables: () => [...vs.values()].map((b) => b.pickProxy), groundAt: () => 0, bounds: () => ({ x0: -108, x1: 108, z0: -27, z1: 27 }),
+    liftVessel: (id) => ({ place: 'bench', pos: vs.get(id).group.position.clone() }), resolveDrop: (_i, x, z) => ({ place: 'bench', pos: new THREE.Vector3(x, 0, z) }), commitDrop() {},
+    openFlow: () => ({ unit: 'ml', total: 0, push(a) { pushed += a; return a; }, limit() { return null; }, end() {} }),
+    markDirty() {}, onSelectVessel() {}, notify() {}, setHint() {}, setPourState() {},
+  };
+  const hc = new HandlingController(host);
+  const proj = (v) => { const p = v.clone().project(cam3); return { x: (p.x * 0.5 + 0.5) * 800, y: (-p.y * 0.5 + 0.5) * 500 }; };
+  const sp = proj(new THREE.Vector3(30, 4, 10));
+  assert.equal(hc.pointerDown({ button: 0, clientX: sp.x, clientY: sp.y }), true);
+  hc.onMove({ clientX: sp.x + 20, clientY: sp.y - 10 });
+  let tt = 0;
+  const step = (k) => { for (let i = 0; i < k; i++) { tt += 1 / 60; hc.update(1 / 60, tt); } };
+  step(20);
+  // straight over the base of the burette: nothing happens, however long it stays there
+  const over = proj(new THREE.Vector3(0, 10, 0));
+  hc.onMove({ clientX: over.x, clientY: over.y });
+  step(120);
+  assert.ok(!hc.held?.lock, 'no lock over the base');
+  assert.ok(hc.held.pos.y < 30, `the beaker stays at the base: ${hc.held.pos.y}`);
+  assert.equal(pushed, 0);
+  // raise the camera to the top of the burette: the opening is on screen and the beaker locks onto it
+  cam3.position.set(0, rimY + 5, 70);
+  cam3.lookAt(0, rimY - 6, 0);
+  cam3.updateMatrixWorld();
+  cam3.updateProjectionMatrix();
+  const rs = proj(new THREE.Vector3(0, rimY, 0));
+  hc.onMove({ clientX: rs.x + 20, clientY: rs.y + 15 });
+  step(80);
+  assert.ok(hc.held?.lock?.tall, 'locked on the opening once it is in view');
+  for (let k = 0; k < 8; k++) { hc.onMove({ clientX: rs.x + 20, clientY: rs.y + 15 - k * 25 }); step(20); }
+  assert.ok(pushed > 5, `poured into the burette: ${pushed}`);
+  hc.onUp({ button: 0 });
+});
+
 console.log(`titration rig OK (${n} checks)`);
 process.exit(0);

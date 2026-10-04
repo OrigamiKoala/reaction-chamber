@@ -24,12 +24,14 @@ import { Spectrophotometer } from '${web}/src/equipment/spectrophotometer';
 import { NmrMachine } from '${web}/src/equipment/nmr';
 import { MassSpectrometer } from '${web}/src/equipment/mass_spec';
 import { ControlRig } from '${web}/src/bench/controls3d';
-export { THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
+import { Workstation } from '${web}/src/equipment/workstation';
+import { WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM } from '${web}/src/bench/layout';
+export { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const code = out.outputFiles[0].text;
 const mod = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
-const { THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
+const { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
 
 let n = 0;
 const ok = async (name, fn) => {
@@ -50,10 +52,10 @@ const ms = new MassSpectrometer();
 hot.group.position.set(0, 0, 6);
 burner.group.position.set(-80, 0, -12);
 ec.group.position.set(-44, 0, -14);
-sp.group.position.set(-65, 0, 105);
-nmr.group.position.set(74, 0, 105);
-nmr.cryoMagnet.position.set(126, -90, 105);
-ms.group.position.set(17, 0, 105);
+sp.group.position.copy(SPECTRO_POS);
+nmr.group.position.copy(NMR_POS);
+nmr.cryoMagnet.position.copy(NMR_CRYO_POS);
+ms.group.position.copy(MASS_SPEC_POS);
 const scene = new THREE.Scene();
 scene.add(hot.group, burner.group, ec.group, sp.group, nmr.group, nmr.cryoMagnet, ms.group);
 scene.updateMatrixWorld(true);
@@ -124,9 +126,9 @@ await ok('nothing buries a control or a screen: the first surface a front camera
     'hot plate LCD': hot.lcd.mesh,
     'potentiostat V': ec.vLcd.mesh,
     'potentiostat A': ec.aLcd.mesh,
-    'UV-vis screen': sp.screen.mesh,
-    'NMR screen': nmr.screen.mesh,
-    'MS screen': ms.screen.mesh,
+    'UV-vis readout': sp.lcd.mesh,
+    'NMR status display': nmr.status.mesh,
+    'MS status display': ms.msStatus.mesh,
     'GC screen': ms.gcScreen.mesh,
   };
   for (const [name, mesh] of Object.entries(screens)) {
@@ -234,6 +236,54 @@ await ok('burner: gas tap lights it, air collar changes the flame, loop goes int
   assert.equal(burner.loopInFlame, false, 'putting the flame out withdraws the loop');
 });
 
+await ok('burner: the loop can be carried by hand, dipped in a vessel and held in the flame', () => {
+  burner.ignite();
+  const loopCtl = rig.get('burner.loop');
+  const wet = [];
+  const flame = [];
+  burner.dipTarget = (x, z) => (Math.hypot(x - -50, z - 8) < 3 ? { id: 'beaker', surfaceY: 6 } : null);
+  burner.onLoopWet = (id) => wet.push(id);
+  burner.onLoopFlame = (f) => flame.push(f);
+  const down = (x, z) => new THREE.Ray(new THREE.Vector3(x, 80, z), new THREE.Vector3(0, -1, 0));
+  const tipWorld = () => {
+    burner.group.updateWorldMatrix(true, true);
+    return new THREE.Vector3(0, 15, 0).applyMatrix4(burner.loop.matrixWorld);
+  };
+  // carry it into the beaker: the wire's end goes down to the liquid and the loop is wet
+  loopCtl.press();
+  loopCtl.dragRay(down(-50, 8));
+  for (let i = 0; i < 60; i++) burner.animate(0.05);
+  assert.deepEqual(wet, ['beaker']);
+  assert.equal(burner.loopWet, 'beaker');
+  near(tipWorld().y, 5.3, 0.3, 'wire end in the liquid');
+  near(tipWorld().x, -50, 0.3, 'wire end x');
+  // over the flame: the end is drawn into the flame
+  const flameW = burner.group.localToWorld(new THREE.Vector3(0.3, 15.5 + 5.2, 0.2));
+  loopCtl.dragRay(down(flameW.x + 1, flameW.z));
+  for (let i = 0; i < 60; i++) burner.animate(0.05);
+  assert.deepEqual(flame, [true]);
+  assert.equal(burner.loopHeldInFlame, true);
+  near(tipWorld().y, flameW.y, 0.3, 'wire end in the flame');
+  // out of the flame, then let go: back in the holder, dry
+  loopCtl.dragRay(down(flameW.x + 30, flameW.z + 20));
+  assert.deepEqual(flame, [true, false]);
+  loopCtl.release(true, 500, false);
+  for (let i = 0; i < 120; i++) burner.animate(0.05);
+  assert.equal(burner.loopHeld, false);
+  assert.equal(burner.loopWet, null);
+  assert.deepEqual(wet, ['beaker', null]);
+  burner.group.updateWorldMatrix(true, true);
+  const back = new THREE.Vector3(0, 15, 0).applyMatrix4(burner.loop.matrix);
+  near(back.x, 7.5, 0.1, 'back in the holder x');
+  near(back.y, 16.5, 0.1, 'back in the holder y');
+  // a dry loop held in the flame reports it, so the app can say the loop is dry
+  loopCtl.dragRay(down(flameW.x, flameW.z));
+  assert.equal(burner.loopWet, null);
+  assert.deepEqual(flame, [true, false, true]);
+  loopCtl.release(true, 500, false);
+  burner.extinguish();
+});
+
 await ok('potentiostat: knobs, selectors and rocker report; setPanel is silent', () => {
   const got = {};
   ec.onVoltage = (v) => (got.v = v);
@@ -290,7 +340,7 @@ await ok('potentiostat electrodes: the cathode takes the deposit, the anode wear
   assert.ok(!ec.cathodeFilm.visible && !ec.anodeFilm.visible && ec.anodeRod.scale.x === 1, 'cleared');
 });
 
-await ok('spectrophotometer: wavelength knob, blank resets the reading, buttons call back', () => {
+await ok('spectrophotometer: wavelength knob, blank reads the reference, buttons call back', async () => {
   const lam = rig.get('spectro.lambda');
   rig.begin(lam, ev(0, 300));
   rig.onMove(ev(0, 410)); // 110 px down = half the range, downwards
@@ -306,9 +356,21 @@ await ok('spectrophotometer: wavelength knob, blank resets the reading, buttons 
   rig.begin(rig.get('spectro.scan'), ev(0, 0));
   rig.onUp(ev(0, 0));
   assert.deepEqual([blank, scan], [1, 1]);
-  const b = sp.blank();
+  // BLANK reads the reference cuvette through the engine and later scans are read against it
+  const fakeSim = (aSolvent, aSample) => ({
+    uvvisScan: async (id) => ({
+      layer: 0, solvent_class: 'water', path_cm: 1, contributors: [],
+      points: Array.from({ length: 81 }, (_, i) => ({ nm: 350 + 5 * i, a_species: id === 'ref' ? aSolvent : aSample(350 + 5 * i), a_turbidity: 0 })),
+    }),
+  });
+  const sim = fakeSim(0.03, (nm) => 0.03 + (nm === 500 ? 0.4 : 0));
+  const b = await sp.blank(sim, 'ref', 'Water');
   assert.equal(b.points.length, 81);
+  assert.ok(b.blank && sp.sampleName === 'Water');
   assert.deepEqual(sp.readingAt(500), { abs: 0, trans: 100 });
+  const sc = await sp.scan(sim, 'smp', 'Sample');
+  assert.ok(Math.abs(sc.points.find((p) => p.lambda === 500).absorbance - 0.4) < 1e-9, 'sample read against the blank');
+  assert.ok(sc.points.filter((p) => p.lambda !== 500).every((p) => p.absorbance < 1e-9), 'solvent drops out');
   for (let i = 0; i < 30; i++) sp.animate(0.05); // lid + screen draw without throwing
 });
 
@@ -371,7 +433,7 @@ await ok('NMR: selectors set nucleus / solvent / scans; LIFT + ACQUIRE run the s
   nmr.eject();
   assert.equal(nmr.lift, 'ejected');
   for (let i = 0; i < 40; i++) nmr.animate(0.05);
-  assert.ok(nmr.tube.position.y + 13.4 > 156 + 5, `ejected: the spinner is above the rim (tube base y ${nmr.tube.position.y})`);
+  assert.ok(nmr.tube.position.y + 13.4 > NmrMachine.LIFT_TOP_Y + 5, `ejected: the spinner is above the rim (tube base y ${nmr.tube.position.y})`);
 });
 
 await ok('GC/MS: LOAD puts a vial in the tray, INJECT runs the autosampler then the scan', async () => {
@@ -413,13 +475,53 @@ await ok('GC/MS: LOAD puts a vial in the tray, INJECT runs the autosampler then 
     t += 0.05;
   }
   assert.ok(phases.has('injecting') && phases.has('scanning'), [...phases].join());
-  assert.ok(carriageMax > -9.6 && carriageMax < -8.8, `carriage reached the vial (x ${carriageMax})`);
-  near(ms.carriage.position.x, -19.5, 0.01, 'carriage returns to the inlet');
+  const vx = ms.geom.VIAL_X[ms.geom.LOADED_SLOT];
+  assert.ok(Math.abs(carriageMax - vx) < 0.4, `carriage reached the vial (x ${carriageMax}, vial ${vx})`);
+  near(ms.carriage.position.x, ms.geom.INJECTOR_X, 0.01, 'carriage returns to the inlet');
   assert.deepEqual(modes, ['ESI+']);
   const res = ms.getLastSpectrum();
   assert.ok(res && res.ionization === 'ESI_POS' && res.sampleName === 'Vial A');
   assert.ok(res.summed.some((p) => p.mz === 59), 'the engine result is published');
   near(t, 6, 0.6, 'injection 4 s + scan 2 s');
+});
+
+await ok('lab PC shows the software window of the instrument that changed last', () => {
+  const w = new Workstation();
+  w.addSource('uvvis', 'UV-Vis', 'x', sp.software);
+  w.addSource('nmr', 'NMR', 'y', nmr.software);
+  w.addSource('gcms', 'GC/MS', 'z', ms.software);
+  assert.equal(w.shown, 'uvvis');
+  nmr.animate(0.05);
+  nmr.nucleus = nmr.nucleus === '1H' ? '13C' : '1H'; // changes the software window of the NMR
+  nmr.animate(0.05);
+  w.update();
+  assert.equal(w.shown, 'nmr');
+  ms.ionization = ms.ionization === 'ESI_POS' ? 'EI' : 'ESI_POS';
+  ms.animate(0.05);
+  w.update();
+  assert.equal(w.shown, 'gcms');
+  // the taskbar buttons are click targets: a click brings that window to the front
+  assert.equal(w.controls.length, 3);
+  const tabs = new ControlRig({ container: { addEventListener() {}, removeEventListener() {} }, orbit: { enabled: true }, setHint() {} });
+  tabs.register(w.controls);
+  tabs.begin(tabs.get('workstation.uvvis'), ev(0, 0));
+  tabs.onUp(ev(0, 0));
+  assert.equal(w.shown, 'uvvis');
+  tabs.begin(tabs.get('workstation.nmr'), ev(0, 0));
+  tabs.onUp(ev(0, 0));
+  assert.equal(w.shown, 'nmr');
+  w.update();
+  assert.equal(w.shown, 'nmr', 'a chosen window stays in front until another instrument changes');
+  // the buttons sit on the monitor's taskbar
+  w.group.updateMatrixWorld(true);
+  const nmrBtn = tabs.get('workstation.nmr').hit.getWorldPosition(new THREE.Vector3());
+  assert.ok(nmrBtn.y > 5 && nmrBtn.y < 10, `taskbar height ${nmrBtn.y}`);
+  // the instruments themselves carry no big screen: their software canvases are not part of their models
+  for (const [n, o] of [['UV-vis', sp], ['NMR', nmr], ['MS', ms]]) {
+    let found = false;
+    o.group.traverse((c) => { if (c === o.software.mesh) found = true; });
+    assert.ok(!found, n + ' software window is not mounted on the instrument');
+  }
 });
 
 await ok('analytical bench layout: instruments clear each other, the monitor and the bench / room edges', () => {
@@ -437,7 +539,12 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
     spectro: box(sp.group),
     ms: body(ms.group),
     nmrConsole: body(nmr.group),
-    monitor: new THREE.Box3(new THREE.Vector3(-28, 0, 95), new THREE.Vector3(-12, 20, 97)),
+    workstation: (() => {
+      const w = new Workstation();
+      w.group.position.copy(WORKSTATION_POS);
+      w.group.updateMatrixWorld(true);
+      return box(w.group);
+    })(),
   };
   const names = Object.keys(items);
   for (let i = 0; i < names.length; i++) {
@@ -449,24 +556,39 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
       assert.ok(!(overlapX > 0.01 && overlapZ > 0.01), `${names[i]} overlaps ${names[j]} (x ${overlapX.toFixed(1)}, z ${overlapZ.toFixed(1)})`);
     }
   }
-  for (const k of ['spectro', 'nmrConsole']) {
-    const b = items[k];
-    assert.ok(b.min.x >= -95 && b.max.x <= 95 && b.min.z >= 85 && b.max.z <= 125, `${k} on the bench: x ${b.min.x.toFixed(1)}..${b.max.x.toFixed(1)} z ${b.min.z.toFixed(1)}..${b.max.z.toFixed(1)}`);
+  // the UV-vis and the GC/MS stand on the analytical island bench (x -95..108, z 76..141), body only (hoses leave it on purpose)
+  const onBench = (b, name) => assert.ok(b.min.x >= -95 && b.max.x <= 108 && b.min.z >= 76 && b.max.z <= 141, `${name} on the bench: x ${b.min.x.toFixed(1)}..${b.max.x.toFixed(1)} z ${b.min.z.toFixed(1)}..${b.max.z.toFixed(1)}`);
+  onBench(items.spectro, 'UV-vis');
+  onBench(items.ms, 'GC/MS');
+  // the NMR console is a floor cabinet past the bench end (it must not stand inside the bench), inside the room, one metre-ish from the magnet
+  const nc = items.nmrConsole;
+  assert.ok(nc.min.x >= 110 && nc.max.x <= ROOM.xMax, `NMR console x ${nc.min.x.toFixed(1)}..${nc.max.x.toFixed(1)}`);
+  assert.ok(nc.min.y > -91 && nc.max.y < 80, `NMR console height ${nc.min.y.toFixed(1)}..${nc.max.y.toFixed(1)}`);
+  // its operator panel is at working height: the lowest control above the bench plane, the highest below shoulder height
+  for (const c of nmr.controls) {
+    const y = c.group.getWorldPosition(new THREE.Vector3()).y;
+    assert.ok(y > 0 && y < 40, `${c.id} at working height (y ${y.toFixed(1)})`);
   }
-  // GC/MS body (the foreline bellows leaves over the back edge on purpose)
-  const msBody = new THREE.Box3();
-  for (const c of ms.group.children) if (c.geometry?.type !== 'TubeGeometry') msBody.expandByObject(c);
-  assert.ok(msBody.min.x >= -95 && msBody.max.x <= 95 && msBody.min.z >= 85 && msBody.max.z <= 125, `GC/MS on the bench: z ${msBody.min.z.toFixed(1)}..${msBody.max.z.toFixed(1)}`);
-  // the magnet stands past the bench end, inside the side wall at x = 160, and below the lab ceiling
-  const mag = box(nmr.cryoMagnet); // includes the 5-gauss floor decal ring around it
-  assert.ok(mag.min.x >= 92 && mag.max.x <= 160, `magnet x ${mag.min.x.toFixed(1)}..${mag.max.x.toFixed(1)}`);
-  assert.ok(mag.max.y < 120, `magnet height ${mag.max.y.toFixed(1)} above the bench top`);
+  // the magnet stands on the floor beside the console, inside the side wall, clear of the console, below the ceiling
+  const mag = box(nmr.cryoMagnet);
+  assert.ok(mag.min.x > nc.max.x + 20 && mag.max.x < ROOM.xMax - 10, `magnet x ${mag.min.x.toFixed(1)}..${mag.max.x.toFixed(1)}`);
+  assert.ok(mag.min.y >= -90.01 && mag.max.y < ROOM.ceilingY - 40, `magnet height ${mag.max.y.toFixed(1)} above the bench top`);
+  // 400 MHz actively shielded magnet: about 70 cm across, about 1.9 m to the top of the lift housing
+  assert.ok(mag.max.x - mag.min.x > 66 && mag.max.x - mag.min.x < 90, `magnet width ${(mag.max.x - mag.min.x).toFixed(1)}`);
+  // the taped 5-gauss circle (and its stanchions) clears the console, the taped zone and the gas cylinders stay inside the room,
+  // and the gas cylinder stand does not reach the console cabinet or the bench
+  assert.ok(NMR_CRYO_POS.x - NMR_FIVE_GAUSS_R > nc.max.x + 8, `5 gauss line ${NMR_CRYO_POS.x - NMR_FIVE_GAUSS_R} vs console edge ${nc.max.x}`);
+  assert.ok(NMR_CRYO_POS.x + NMR_FIVE_GAUSS_R + 12 < ROOM.xMax, 'stanchions inside the side wall');
+  for (const g of GAS_CYLINDER_POS) assert.ok(g.x - 16 > 108 && g.x + 16 < nc.min.x, `gas cylinder stand x ${g.x - 16}..${g.x + 16}`);
+  const total = NmrMachine.LIFT_TOP_Y;
+  assert.ok(total > 160 && total < 200, `lift housing rim ${total} cm above the floor`);
   for (const h of hits) h.parent.add(h.m);
 });
 
 await ok('autosampler motion never drives the carriage into the tower, vials or inlet; the needle reaches the vial and the inlet', () => {
-  const tower = ms.group.children.find((c) => c.isMesh && Math.abs(c.position.x + 24.8) < 1e-6 && c.position.y === 30);
-  assert.ok(tower, 'tower found');
+  const { GC_H, VIAL_X, LOADED_SLOT, INJECTOR_X } = ms.geom;
+  const vialX = VIAL_X[LOADED_SLOT];
+  const tower = ms.tower;
   tower.updateWorldMatrix(true, false);
   const towerBox = new THREE.Box3().setFromObject(tower);
   const needleTip = (t) => {
@@ -484,15 +606,15 @@ await ok('autosampler motion never drives the carriage into the tower, vials or 
   let minTipYAtInlet = 1e9;
   for (let t = 0; t <= 4.0; t += 0.05) {
     const tip = needleTip(t);
-    const nearVial = Math.abs(tip.x - -9.2) < 0.2;
-    const nearInlet = Math.abs(tip.x - -19.5) < 0.2;
+    const nearVial = Math.abs(tip.x - vialX) < 0.2;
+    const nearInlet = Math.abs(tip.x - INJECTOR_X) < 0.2;
     if (nearVial) minTipYAtVial = Math.min(minTipYAtVial, tip.y);
     if (nearInlet) minTipYAtInlet = Math.min(minTipYAtInlet, tip.y);
-    // while travelling sideways the needle must clear the caps of the vials (top at 30 + 1.2 + 3.6 = 34.8)
-    if (!nearVial && !nearInlet && tip.x > -19 && tip.x < -1) assert.ok(tip.y > 34.8, `needle drags through the vial caps at x ${tip.x.toFixed(1)} y ${tip.y.toFixed(1)}`);
+    // while travelling sideways the needle must clear the caps of the vials (top at GC_H + 1.2 + 3.6)
+    if (!nearVial && !nearInlet && tip.x > INJECTOR_X + 0.5 && tip.x < VIAL_X[VIAL_X.length - 1]) assert.ok(tip.y > GC_H + 4.8, `needle drags through the vial caps at x ${tip.x.toFixed(1)} y ${tip.y.toFixed(1)}`);
   }
-  assert.ok(minTipYAtVial < 33.5 && minTipYAtVial > 31.3, `needle dips into the vial (tip y ${minTipYAtVial.toFixed(2)})`);
-  assert.ok(minTipYAtInlet < 33 && minTipYAtInlet > 30.5, `needle enters the inlet (tip y ${minTipYAtInlet.toFixed(2)})`);
+  assert.ok(minTipYAtVial < GC_H + 3.5 && minTipYAtVial > GC_H + 1.3, `needle dips into the vial (tip y ${minTipYAtVial.toFixed(2)})`);
+  assert.ok(minTipYAtInlet < GC_H + 3.0 && minTipYAtInlet > GC_H + 0.5, `needle enters the inlet (tip y ${minTipYAtInlet.toFixed(2)})`);
   ms.poseAutosampler(0);
 });
 

@@ -3,6 +3,7 @@
 // its stand with a collecting beaker under the stopcock). Reuses pieces that are already on the station.
 import type { Lab } from './lab';
 import { registerSetup } from './setups';
+import { toast } from '../ui/toast';
 
 export async function spawnTitrationSetup(lab: Lab): Promise<void> {
   const st = lab.stationState();
@@ -12,6 +13,8 @@ export async function spawnTitrationSetup(lab: Lab): Promise<void> {
     if (!lab.seatOnTitrationStirrer(flask.id)) throw new Error('The tile is already taken.');
     lab.select(flask.id);
   } else if (lab.stationState().flask) lab.select(lab.stationState().flask);
+  const out = lab.setOutIndicators();
+  if (out.length) toast('Indicator dropper bottles stand beside the titration station. Carry one over the flask and squeeze for drops.', 'info');
   lab.frameTitration(true);
 }
 
@@ -26,7 +29,7 @@ export function registerTitrationKits(): void {
   registerSetup({
     id: 'titration-setup',
     label: 'Titration setup',
-    description: '50 mL burette in a clamp + 250 mL flask + magnetic stirrer + white tile — drag the stopcock lever to titrate',
+    description: '50 mL burette in a clamp + 250 mL flask + magnetic stirrer + white tile + indicator bottles — drag the stopcock lever to titrate',
     keywords: 'titration titrate burette buret stopcock flask stirrer stir plate tile endpoint indicator stand clamp acid base',
     icon: 'burette',
     build: spawnTitrationSetup,

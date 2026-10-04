@@ -19,8 +19,8 @@ export class Thermometer {
   public group = new THREE.Group();
   private liquidColumn: THREE.Mesh;
   private attachedBundle: GlasswareMeshBundle | null = null;
-  private displayedTempK: number = 295.15;
-  private bulb: BulbState = { glassK: 295.15, spiritK: 295.15 };
+  private displayedTempK: number = 298.15;
+  private bulb: BulbState = { glassK: 298.15, spiritK: 298.15 };
 
   constructor() {
     this.group.name = 'instrument_thermometer';

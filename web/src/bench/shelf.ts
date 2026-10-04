@@ -12,6 +12,9 @@ interface ShelfEntry {
   tier: number;
   slot: number;
   lastUsed: number;
+  /** Stands at a fixed spot on the bench instead of a shelf slot; never evicted. */
+  pinned?: boolean;
+  home?: THREE.Vector3;
 }
 
 const TIER_PREF: Record<BottleKind, number[]> = {
@@ -90,9 +93,24 @@ export class ReagentShelf {
     return asm;
   }
 
+  /** A bottle with a fixed home (e.g. the distilled-water bottle on the bench): outside the shelf slots and the LRU. */
+  public pin(input: BottleInput, pos: THREE.Vector3, yaw = 0): BottleAssembly {
+    this.meta.set(input.id, input);
+    const existing = this.entries.get(input.id);
+    if (existing?.pinned) return existing.asm;
+    if (existing) this.evict(input.id); // it stood on the shelf: it moves to its bench spot
+    const asm = createBottleAssembly(input);
+    asm.group.position.copy(pos);
+    asm.group.rotation.y = yaw;
+    this.scene.add(asm.group);
+    this.entries.set(input.id, { input, asm, tier: -1, slot: -1, lastUsed: ++this.clock, pinned: true, home: pos.clone() });
+    this.onChange?.();
+    return asm;
+  }
+
   public evict(id: string) {
     const e = this.entries.get(id);
-    if (!e) return;
+    if (!e || e.pinned) return;
     this.occupied[e.tier][e.slot] = null;
     this.entries.delete(id);
     e.asm.dispose();
@@ -102,7 +120,8 @@ export class ReagentShelf {
   /** Home position of a shelved bottle (world). */
   public homeOf(id: string): THREE.Vector3 | undefined {
     const e = this.entries.get(id);
-    return e ? this.slots[e.tier][e.slot].clone() : undefined;
+    if (!e) return undefined;
+    return e.pinned && e.home ? e.home.clone() : this.slots[e.tier][e.slot].clone();
   }
 
   private freeSlot(kind: BottleKind): { tier: number; slot: number } | null {
@@ -117,7 +136,7 @@ export class ReagentShelf {
   private lru(): ShelfEntry | null {
     let best: ShelfEntry | null = null;
     for (const e of this.entries.values()) {
-      if (this.busy.has(e.input.id)) continue;
+      if (e.pinned || this.busy.has(e.input.id)) continue;
       if (!best || e.lastUsed < best.lastUsed) best = e;
     }
     return best;

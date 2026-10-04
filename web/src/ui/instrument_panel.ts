@@ -41,9 +41,9 @@ const TITLES: Record<InstrumentId, string> = {
 const CONTROL_HINTS: Partial<Record<InstrumentId, string>> = {
   hotplate: 'Controls are on the instrument: turn the HEAT knob, flip STIR. Stand a vessel on the plate first.',
   balance: 'Press the TARE key on the balance (or T).',
-  burner: 'Open the gas tap at the end of the hose to light it; turn the air collar for a blue or yellow flame; click the wire loop for a flame test of the selected vessel.',
+  burner: 'Open the gas tap at the end of the hose to light it; turn the air collar for a blue or yellow flame; drag the wire loop into a vessel and then into the flame for a flame test (a click tests the selected vessel).',
   electrochem: 'Click a vessel, then use the console: DIP the electrodes, set V / I and the electrodes, switch OUTPUT on. BRIDGE links a second vessel.',
-  spectrophotometer: 'Click the vessel to measure, turn the WAVELENGTH knob, press SCAN (BLANK zeroes the reference).',
+  spectrophotometer: 'Click the pure-solvent vessel and press BLANK, then click the sample, turn the WAVELENGTH knob and press SCAN.',
   nmr: 'Click the vessel, set nucleus / solvent / scans on the console, press LIFT to load the tube, ACQUIRE to record.',
   mass_spec: 'Click the vessel, choose the SOURCE (EI / ESI+ / ESI−), press LOAD for a vial, INJECT to run.',
 };

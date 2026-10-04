@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SimController } from '../sim/sim_controller';
 import type { UvVisScan } from '../types/sim';
-import { frontPlate, roundedBox } from './lcd';
+import { LcdDisplay, frontPlate, roundedBox } from './lcd';
 import { Control3D, Knob, PushButton, ScreenPanel, place, textLegend } from '../bench/controls3d';
 
 export interface SpectrumPoint {
@@ -12,6 +12,8 @@ export interface SpectrumPoint {
 
 export interface SpectrumScanResult {
   sampleName: string;
+  /** The reference measurement taken by BLANK (a flat 100 % T line), not a sample. */
+  blank?: boolean;
   points: SpectrumPoint[];
   lambdaMax: number;
   maxAbsorbance: number;
@@ -42,13 +44,18 @@ export class Spectrophotometer {
   public wavelengthNm = 500;
   private lidPivot = new THREE.Group();
   private cuvette = new THREE.Group();
-  private screen: ScreenPanel;
+  /** The instrument's control software window; shown on the lab PC (`Workstation`), not on the instrument. */
+  public readonly software: ScreenPanel;
+  /** The small readout on the front panel. */
+  private lcd: LcdDisplay;
   private statusLedMat: THREE.MeshBasicMaterial;
   private beamLedMat: THREE.MeshBasicMaterial;
   private isScanning = false;
   private currentSampleName: string | null = null;
   private lastScan: SpectrumScanResult | null = null;
-  private blankActive = false;
+  /** Raw absorbance (cell + solvent + turbidity) of the reference cuvette, per scan point; later scans are read against it. */
+  private blankRaw: number[] | null = null;
+  private blankName: string | null = null;
   private scanId = 0;
   private lidT = 0;
   private lidTarget = 0;
@@ -124,13 +131,18 @@ export class Spectrophotometer {
     plate.position.z = 0;
     panel.add(plate);
 
-    // colour LCD with the live spectrum
-    this.screen = new ScreenPanel(12.4, 7.0);
-    this.screen.mesh.position.set(-5.9, 0.0, 0.72);
-    panel.add(this.screen.mesh);
-    const bezel = frontPlate(13.0, 7.6, 0.2, 0.5, new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.6 }));
-    bezel.position.set(-5.9, 0.0, 0.5);
-    panel.add(bezel);
+    // the instrument has a small monochrome readout (wavelength, absorbance); the spectrum is plotted by its software on the lab PC
+    this.software = new ScreenPanel(12.4, 7.0, 100);
+    this.lcd = new LcdDisplay(11.2, 4.0, { bg: '#aebd98', fg: '#18210f', ghost: 'rgba(24,33,15,0.07)', unit: 'A' });
+    this.lcd.mesh.position.set(-6.4, 1.4, 0.72);
+    panel.add(this.lcd.mesh);
+    const lcdFrame = frontPlate(12.2, 4.9, 0.2, 0.4, new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.6 }));
+    lcdFrame.position.set(-6.4, 1.4, 0.5);
+    panel.add(lcdFrame);
+    const model = textLegend('UV-VIS SPECTROPHOTOMETER', 11.5, 0.7, { ink: '#8d979f', weight: 700 });
+    model.rotation.x = 0;
+    model.position.set(-6.4, -2.1, 0.54);
+    panel.add(model);
 
     // wavelength knob
     const knob = new Knob({
@@ -235,8 +247,10 @@ export class Spectrophotometer {
 
   private drawScreen() {
     const nm = this.wavelengthNm;
-    const key = `${this.scanId}|${nm}|${this.isScanning}|${this.currentSampleName}|${this.blankActive}|${this.isScanning ? Math.floor(this.time * 6) % 4 : 0}`;
-    this.screen.draw(key, (ctx, w, h) => {
+    const key = `${this.scanId}|${nm}|${this.isScanning}|${this.currentSampleName}|${this.blankName}|${this.isScanning ? Math.floor(this.time * 6) % 4 : 0}`;
+    const rd = this.readingAt(nm);
+    this.lcd.set(rd.abs.toFixed(3), `${nm} nm   ${rd.trans.toFixed(1)} %T`);
+    this.software.draw(key, (ctx, w, h) => {
       ctx.fillStyle = '#071521';
       ctx.fillRect(0, 0, w, h);
       // header
@@ -249,7 +263,7 @@ export class Spectrophotometer {
       ctx.fillText('UV-VIS  350-750 nm', w * 0.03, h * 0.065);
       ctx.textAlign = 'right';
       ctx.fillStyle = this.isScanning ? '#ffc233' : '#5df08a';
-      ctx.fillText(this.isScanning ? 'SCANNING' + '.'.repeat(Math.floor(this.time * 6) % 4) : this.blankActive && !this.lastScan?.points.some((p) => p.absorbance > 0) ? 'BLANKED' : 'READY', w * 0.97, h * 0.065);
+      ctx.fillText(this.isScanning ? 'SCANNING' + '.'.repeat(Math.floor(this.time * 6) % 4) : this.blankName !== null && this.lastScan?.blank ? 'BLANKED' : 'READY', w * 0.97, h * 0.065);
       // plot area
       const px0 = w * 0.1;
       const px1 = w * 0.96;
@@ -320,7 +334,8 @@ export class Spectrophotometer {
       ctx.fillText(`${r.trans.toFixed(1)} %T`, w * 0.62, h * 0.83);
       ctx.fillStyle = '#6f93a8';
       ctx.font = `${Math.round(h * 0.065)}px Arial, sans-serif`;
-      ctx.fillText(this.currentSampleName ? `Sample: ${this.currentSampleName}` : 'No sample in the compartment', w * 0.03, h * 0.94);
+      const inCell = this.currentSampleName ? `Cuvette: ${this.currentSampleName}` : 'No cuvette in the compartment';
+      ctx.fillText(this.blankName ? `${inCell}  |  Blank: ${this.blankName}` : `${inCell}  |  Not blanked`, w * 0.03, h * 0.94);
     });
   }
 
@@ -346,23 +361,38 @@ export class Spectrophotometer {
     this.scanId++;
   }
 
-  public blank() {
-    this.blankActive = true;
+  /**
+   * BLANK: reads the reference cuvette (the pure solvent, the selected vessel) and stores it as the 100 % T line. Scans after
+   * it are absorbances relative to the reference, so the cell and the solvent drop out. Needs the engine, like a scan.
+   */
+  public async blank(sim: SimController, vesselId: string, vesselName: string): Promise<SpectrumScanResult> {
+    this.setSample(vesselName);
+    this.setScanning(true);
+    let eng: UvVisScan;
+    try {
+      eng = await this.measure(sim, vesselId);
+    } catch (err) {
+      this.setScanning(false);
+      throw err;
+    }
+    this.blankRaw = eng.points.map((p) => CELL_BASELINE_ABSORBANCE + p.a_species + p.a_turbidity);
+    this.blankName = vesselName;
     this.scanId++;
-    this.setSample(null);
-    this.pulseLid(0.7);
     this.lastScan = {
-      sampleName: 'Blank (Deionized H2O)',
-      points: Array.from({ length: 81 }, (_, i) => ({
-        lambda: 350 + i * 5,
-        absorbance: 0.0,
-        transmittance: 100.0,
-      })),
-      lambdaMax: 350,
-      maxAbsorbance: 0.0,
+      sampleName: `Blank (${vesselName})`,
+      blank: true,
+      points: eng.points.map((p) => ({ lambda: p.nm, absorbance: 0, transmittance: 100 })),
+      lambdaMax: SCAN_NM_MIN,
+      maxAbsorbance: 0,
       peaks: [],
+      solvent: eng.solvent_class,
     };
+    setTimeout(() => this.setScanning(false), 400);
     return this.lastScan;
+  }
+
+  private measure(sim: SimController, vesselId: string): Promise<UvVisScan> {
+    return sim.uvvisScan(vesselId, { layer: 0, nmMin: SCAN_NM_MIN, nmMax: SCAN_NM_MAX, stepNm: SCAN_STEP_NM, pathCm: CUVETTE_PATH_CM });
   }
 
   /**
@@ -374,16 +404,18 @@ export class Spectrophotometer {
     this.setScanning(true);
     let eng: UvVisScan;
     try {
-      eng = await sim.uvvisScan(vesselId, { layer: 0, nmMin: SCAN_NM_MIN, nmMax: SCAN_NM_MAX, stepNm: SCAN_STEP_NM, pathCm: CUVETTE_PATH_CM });
+      eng = await this.measure(sim, vesselId);
     } catch (err) {
       this.setScanning(false);
       throw err;
     }
+    const blank = this.blankRaw && this.blankRaw.length === eng.points.length ? this.blankRaw : null;
     const points: SpectrumPoint[] = [];
     let lambdaMax = SCAN_NM_MIN;
     let maxAbs = 0;
-    for (const p of eng.points) {
-      const a = Math.min(DETECTOR_SATURATION_ABSORBANCE, CELL_BASELINE_ABSORBANCE + p.a_species + p.a_turbidity);
+    for (const [i, p] of eng.points.entries()) {
+      const raw = CELL_BASELINE_ABSORBANCE + p.a_species + p.a_turbidity;
+      const a = Math.min(DETECTOR_SATURATION_ABSORBANCE, blank ? Math.max(0, raw - blank[i]) : raw);
       const t = Math.max(0.001, Math.min(100, Math.pow(10, -a) * 100));
       points.push({ lambda: p.nm, absorbance: a, transmittance: t });
       if (a > maxAbs) {

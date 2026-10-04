@@ -18,26 +18,39 @@ export function engineMode(i: MsIonization): string {
   return i === 'EI' ? 'EI' : i === 'ESI_POS' ? 'ESI+' : 'ESI-';
 }
 
-// Autosampler geometry (group frame, cm): everything sits on one line at z = AS_Z along the top of the GC.
-const GC_X = -14;
-const MS_X = 14;
-const GC_H = 30;
-const AS_Z = -1.5;
-const INJECTOR_X = -19.5;
-const VIAL_X = [-14.2, -11.7, -9.2, -6.7, -4.2, -1.7];
+// Geometry of the instrument (group frame, cm; the bench top is y = 0). The GC and the MS are full size and abut each other.
+const GC_X = -21;
+const MS_X = 20;
+const GC_W = 48;
+const GC_H = 46;
+const MS_W = 34;
+const MS_H = 38;
+const BODY_D = 52;
+// Autosampler: a tower on the left of the GC top, a beam above the inlet and the vial tray; everything on one line at z = AS_Z.
+const AS_Z = 8;
+const INJECTOR_X = -36;
+const VIAL_X = [-27.5, -24.9, -22.3, -19.7, -17.1, -14.5];
 const LOADED_SLOT = 2;
-const ARM_Y = 45.4;
+const ARM_Y = GC_H + 15.4;
 const SYRINGE_DROP = 3.4;
+const TOWER_X = -42;
+const TOWER_H = 31;
 
 /**
- * Benchtop GC/MS: a gas chromatograph with its autosampler (tower, arm, syringe carriage, vial tray) on top, joined by a
- * heated transfer line to the quadrupole mass spectrometer with its front panel (screen, source selector, LOAD / INJECT).
- * INJECT runs the autosampler through its real motions (draw from the vial, inject into the inlet) and then scans.
+ * Benchtop GC/MS at full size: a gas chromatograph (keypad strip with the data screen, LOAD and INJECT keys, a smoked-glass
+ * oven door with the capillary column coil behind it, injector on top) with its autosampler (tower, beam, syringe carriage and
+ * vial tray), joined to the quadrupole mass spectrometer (status panel, SOURCE selector, light bar, turbopump grille) whose
+ * foreline hose runs down to a rotary-vane pump on the floor. INJECT runs the autosampler through its real motions (draw from
+ * the vial, inject into the inlet) and then scans.
  */
 export class MassSpectrometer {
   public group = new THREE.Group();
   /** Front-panel controls (source selector, LOAD, INJECT); the scene registers them with its control rig. */
   public readonly controls: Control3D[] = [];
+  /** Autosampler geometry shared with the tests: tray / inlet positions, heights (group frame). */
+  public readonly geom = { GC_X, MS_X, GC_H, ARM_Y, INJECTOR_X, VIAL_X, LOADED_SLOT, AS_Z };
+  /** The autosampler tower (the carriage must never enter it). */
+  public readonly tower: THREE.Mesh;
   /** LOAD was pressed: the app puts the selected vessel's liquid into a vial in the tray. */
   public onLoad?: () => void;
   /** INJECT was pressed: the app supplies the sample and calls `startAcquisition`. */
@@ -47,7 +60,10 @@ export class MassSpectrometer {
   public ionization: MsIonization = 'EI';
 
   private ionSourceGlowMat: THREE.MeshBasicMaterial;
-  private screen: ScreenPanel;
+  /** The data system's window; shown on the lab PC (`Workstation`), not on the instrument. */
+  public readonly software: ScreenPanel;
+  /** Small status display on the MS front. */
+  private msStatus: ScreenPanel;
   private gcScreen: ScreenPanel;
   private carriage = new THREE.Group();
   private syringe = new THREE.Group();
@@ -56,6 +72,9 @@ export class MassSpectrometer {
   private readyLed: THREE.MeshBasicMaterial;
   private runLed: THREE.MeshBasicMaterial;
   private emissionLed: THREE.MeshBasicMaterial;
+  private columnMat: THREE.MeshStandardMaterial;
+  private ovenGlowMat: THREE.MeshBasicMaterial;
+  private fanBlades: THREE.Group = new THREE.Group();
   private loadBtn: PushButton;
   private phase: MsPhase = 'idle';
   private phaseT = 0;
@@ -71,29 +90,13 @@ export class MassSpectrometer {
   constructor() {
     this.group.name = 'instrument_mass_spectrometer';
 
-    const cream = new THREE.MeshStandardMaterial({ color: 0xe4e5e0, roughness: 0.45, metalness: 0.08 });
+    const cream = new THREE.MeshStandardMaterial({ color: 0xe9eae6, roughness: 0.42, metalness: 0.06 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1e22, roughness: 0.5, metalness: 0.2 });
-    const smoke = new THREE.MeshStandardMaterial({ color: 0x232930, roughness: 0.18, metalness: 0.35 });
+    const graphite = new THREE.MeshStandardMaterial({ color: 0x3b4147, roughness: 0.5, metalness: 0.3 });
     const silverMat = new THREE.MeshStandardMaterial({ color: 0xc8ced4, metalness: 0.85, roughness: 0.25 });
     const white = new THREE.MeshStandardMaterial({ color: 0xf1f2ef, roughness: 0.4 });
     const accent = new THREE.MeshStandardMaterial({ color: 0x1e6b9c, roughness: 0.4 });
-
-    // ---------------------------------------------------------------- gas chromatograph (left)
-    const gc = new THREE.Mesh(roundedBox(26, GC_H, 34, 1.5), cream);
-    gc.position.x = GC_X;
-    gc.castShadow = true;
-    gc.receiveShadow = true;
-    this.group.add(gc);
-    const gcBand = new THREE.Mesh(new THREE.BoxGeometry(27.7, 0.8, 35.7), accent);
-    gcBand.position.set(GC_X, 24.6, 0);
-    this.group.add(gcBand);
-    // keypad strip with status screen
-    const strip = frontPlate(23, 5.6, 0.4, 0.6, darkMat);
-    strip.position.set(GC_X, 26.8 - 0.4, 17.75); // body front face = 17 + bevel 0.75
-    this.group.add(strip);
-    this.gcScreen = new ScreenPanel(8.4, 3.6);
-    this.gcScreen.mesh.position.set(GC_X - 5.6, 26.4, 18.18);
-    this.group.add(this.gcScreen.mesh);
+    const slotMat = new THREE.MeshBasicMaterial({ color: 0x15171a });
     const mkLed = (x: number, y: number, z: number, off: number) => {
       const m = new THREE.MeshBasicMaterial({ color: off, toneMapped: false });
       const l = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.25, 16), m);
@@ -102,59 +105,189 @@ export class MassSpectrometer {
       this.group.add(l);
       return m;
     };
-    this.readyLed = mkLed(GC_X + 2.4, 27.4, 18.2, 0x1d3a26);
-    this.runLed = mkLed(GC_X + 5.0, 27.4, 18.2, 0x3a2e14);
-    const lg1 = textLegend('READY', 2.6, 0.5, { ink: '#8d979f', weight: 700 });
-    lg1.rotation.x = 0;
-    lg1.position.set(GC_X + 2.4, 26.2, 18.17);
-    const lg2 = textLegend('RUN', 2.6, 0.5, { ink: '#8d979f', weight: 700 });
-    lg2.rotation.x = 0;
-    lg2.position.set(GC_X + 5.0, 26.2, 18.17);
-    this.group.add(lg1, lg2);
-    // oven door (smoked glass) with a handle
-    const door = frontPlate(21.4, 17.8, 0.6, 1.4, smoke);
-    door.position.set(GC_X, 13.0, 17.75);
-    this.group.add(door);
-    const doorFrame = frontPlate(22.2, 18.6, 0.3, 1.6, new THREE.MeshStandardMaterial({ color: 0xb9bdbf, roughness: 0.4, metalness: 0.4 }));
-    doorFrame.position.set(GC_X, 13.0, 17.75);
-    this.group.add(doorFrame);
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 7, 14), silverMat);
-    handle.position.set(GC_X + 8.4, 13.0, 18.9);
+    const legend = (text: string, w: number, h: number, x: number, y: number, z: number, ink = '#8d979f') => {
+      const lg = textLegend(text, w, h, { ink, weight: 700 });
+      lg.rotation.x = 0;
+      lg.position.set(x, y, z);
+      this.group.add(lg);
+      return lg;
+    };
+
+    // ---------------------------------------------------------------- gas chromatograph (left)
+    const gc = new THREE.Mesh(roundedBox(GC_W, GC_H, BODY_D, 1.8), cream);
+    gc.position.x = GC_X;
+    gc.castShadow = true;
+    gc.receiveShadow = true;
+    this.group.add(gc);
+    const gcFront = BODY_D / 2 + 0.9; // front face of the body (bevel included)
+    const gcBand = new THREE.Mesh(new THREE.BoxGeometry(GC_W + 0.6, 0.7, BODY_D + 0.6), accent);
+    gcBand.position.set(GC_X, 35.4, 0);
+    this.group.add(gcBand);
+    // keypad strip: data screen, status LEDs, LOAD and INJECT keys
+    const strip = frontPlate(GC_W - 4, 8.6, 0.4, 0.6, darkMat);
+    strip.position.set(GC_X, 41, gcFront);
+    this.group.add(strip);
+    const PF1 = gcFront + 0.4;
+    const gcBezel = frontPlate(13.2, 7.2, 0.2, 0.4, new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.6 }));
+    gcBezel.position.set(GC_X - 13, 41, PF1);
+    this.group.add(gcBezel);
+    this.gcScreen = new ScreenPanel(12.4, 6.4);
+    this.gcScreen.mesh.position.set(GC_X - 13, 41, PF1 + 0.22);
+    this.group.add(this.gcScreen.mesh);
+    this.readyLed = mkLed(GC_X - 3.0, 43.4, PF1 + 0.06, 0x1d3a26);
+    this.runLed = mkLed(GC_X + 0.6, 43.4, PF1 + 0.06, 0x3a2e14);
+    legend('READY', 2.9, 0.55, GC_X - 3.0, 42.2, PF1 + 0.04);
+    legend('RUN', 2.9, 0.55, GC_X + 0.6, 42.2, PF1 + 0.04);
+    this.loadBtn = new PushButton({
+      id: 'ms.load',
+      label: 'LOAD',
+      size: [3.8, 1.6],
+      color: 0x3a444c,
+      lamp: 0xffc233,
+      hintText: 'Load a vial: puts the selected vessel\'s liquid in the autosampler tray (click the vessel first)',
+      onPress: () => this.onLoad?.(),
+    });
+    const injectBtn = new PushButton({
+      id: 'ms.inject',
+      label: 'INJECT',
+      size: [7.6, 2.7],
+      color: 0x1f7a3f,
+      lamp: 0x6dff9b,
+      hintText: 'Inject (the GC START key): the autosampler draws the vial and injects; EI runs the GC programme and records a spectrum of every compound that elutes, ESI infuses the liquid (loads the selected vessel if the tray is empty)',
+      onPress: () => this.onInject?.(),
+    });
+    place(this.loadBtn, this.group, [GC_X + 6.0, 40.4, PF1 + 0.02]);
+    place(injectBtn, this.group, [GC_X + 14.2, 40.4, PF1 + 0.02]);
+
+    // oven door: a frame proud of the front, a dark liner, the column coil in its cage, a smoked-glass window
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0xf3f4f1, roughness: 0.38 });
+    const doorD = 2.6;
+    const doorBars: Array<[number, number, number, number]> = [
+      [44, 4, 0, 32.2],
+      [44, 4, 0, 5.8],
+      [4, 23, -20, 19],
+      [4, 23, 20, 19],
+    ];
+    for (const [w, h, dx, dy] of doorBars) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, doorD), frameMat);
+      bar.position.set(GC_X + dx, dy, gcFront + doorD / 2 - 0.1);
+      bar.castShadow = true;
+      this.group.add(bar);
+    }
+    const liner = new THREE.Mesh(new THREE.BoxGeometry(36, 23, 0.2), new THREE.MeshStandardMaterial({ color: 0x23272b, roughness: 0.7, metalness: 0.4 }));
+    liner.position.set(GC_X, 19, gcFront + 0.05);
+    this.group.add(liner);
+    // oven interior: a stainless fan hub, a coil cage and eight turns of polyimide-coated fused silica
+    const cageMat = new THREE.MeshStandardMaterial({ color: 0xb9c0c5, metalness: 0.9, roughness: 0.3 });
+    this.columnMat = new THREE.MeshStandardMaterial({ color: 0xc4811a, roughness: 0.35, metalness: 0.1, emissive: 0x000000 });
+    const colX = GC_X - 2;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 1.2, 28), cageMat);
+    hub.rotation.x = Math.PI / 2;
+    hub.position.set(colX, 19, gcFront + 0.7);
+    this.group.add(hub);
+    this.fanBlades.position.set(colX, 19, gcFront + 1.4);
+    for (let k = 0; k < 6; k++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.6, 0.08), cageMat);
+      blade.geometry.translate(0, 3.0, 0);
+      blade.rotation.z = (k * Math.PI * 2) / 6;
+      this.fanBlades.add(blade);
+    }
+    this.group.add(this.fanBlades);
+    for (let k = 0; k < 8; k++) {
+      const loop = new THREE.Mesh(new THREE.TorusGeometry(8.4 - (k % 2) * 0.12, 0.2, 8, 56), this.columnMat);
+      loop.position.set(colX, 19, gcFront + 1.0 + k * 0.17);
+      this.group.add(loop);
+    }
+    for (const dz of [0.6, 2.0]) {
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(8.9, 0.28, 8, 56), cageMat);
+      rim.position.set(colX, 19, gcFront + dz);
+      this.group.add(rim);
+    }
+    for (let k = 0; k < 6; k++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.22, 5.6, 0.22), cageMat);
+      const a = (k * Math.PI * 2) / 6;
+      spoke.position.set(colX + Math.cos(a) * 5.9, 19 + Math.sin(a) * 5.9, gcFront + 1.3);
+      spoke.rotation.z = a - Math.PI / 2;
+      this.group.add(spoke);
+    }
+    // heater glow behind the coil (visible only while a run is on)
+    this.ovenGlowMat = new THREE.MeshBasicMaterial({ color: 0x1a1210, toneMapped: false });
+    const ovenGlow = new THREE.Mesh(new THREE.PlaneGeometry(33, 20), this.ovenGlowMat);
+    ovenGlow.position.set(GC_X, 19, gcFront + 0.17);
+    this.group.add(ovenGlow);
+    // the column ends: two silver nuts on the oven wall and a line to the transfer line on the right
+    for (const nx of [colX + 8.5, colX + 10.5]) {
+      const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.9, 6), cageMat);
+      nut.rotation.x = Math.PI / 2;
+      nut.position.set(nx, 12.5, gcFront + 0.6);
+      this.group.add(nut);
+    }
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(36, 23, 0.25),
+      new THREE.MeshPhysicalMaterial({ color: 0x2c343b, roughness: 0.06, metalness: 0.2, transparent: true, opacity: 0.52, clearcoat: 1, clearcoatRoughness: 0.05 })
+    );
+    glass.position.set(GC_X, 19, gcFront + doorD - 0.15);
+    this.group.add(glass);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 14, 14), silverMat);
+    handle.position.set(GC_X + 20, 19, gcFront + doorD + 1.2);
     this.group.add(handle);
-    for (const dy of [-3, 3]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.1, 10), silverMat);
+    for (const dy of [-5.5, 5.5]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 10), silverMat);
       post.rotation.x = Math.PI / 2;
-      post.position.set(GC_X + 8.4, 13.0 + dy, 18.6);
+      post.position.set(GC_X + 20, 19 + dy, gcFront + doorD + 0.5);
       this.group.add(post);
     }
-    // vent slots
-    for (let i = 0; i < 6; i++) {
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(14, 0.3, 0.12), new THREE.MeshBasicMaterial({ color: 0x15171a }));
-      slot.position.set(GC_X, 1.9 + i * 0.8, 17.77);
+    legend('GAS CHROMATOGRAPH', 20, 0.85, GC_X - 9, 2.4, gcFront + 0.04, '#7a848b');
+    // vent slots in the lower front
+    for (let i = 0; i < 4; i++) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(16, 0.32, 0.12), slotMat);
+      slot.position.set(GC_X + 8, 2.4 - i * 0.55, gcFront + 0.03);
       this.group.add(slot);
     }
 
-    // ---------------------------------------------------------------- injector and autosampler on top of the GC
+    // ---------------------------------------------------------------- injector, flow module and autosampler on top of the GC
     const inj = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 1.6, 24), silverMat);
     inj.position.set(INJECTOR_X, GC_H + 0.8, AS_Z);
     const injNut = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.8, 18), new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.5 }));
     injNut.position.set(INJECTOR_X, GC_H + 2.0, AS_Z);
-    this.group.add(inj, injNut);
-    const tower = new THREE.Mesh(roundedBox(4.1, 17, 7.6, 0.9), white);
-    tower.position.set(-24.8, GC_H, AS_Z - 1.2);
-    tower.castShadow = true;
-    this.group.add(tower);
-    const towerStripe = new THREE.Mesh(new THREE.BoxGeometry(5.3, 1.0, 8.7), accent);
-    towerStripe.position.set(-24.8, GC_H + 3, AS_Z - 1.2);
+    const injBase = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.8, 28), graphite);
+    injBase.position.set(INJECTOR_X, GC_H + 0.3, AS_Z);
+    this.group.add(injBase, inj, injNut);
+    const detCover = new THREE.Mesh(roundedBox(9, 2.2, 8, 0.6), graphite);
+    detCover.position.set(GC_X + 18, GC_H, 6);
+    this.group.add(detCover);
+    const flowCover = new THREE.Mesh(roundedBox(30, 1.4, 16, 0.6), graphite);
+    flowCover.position.set(GC_X - 4, GC_H, -14);
+    flowCover.receiveShadow = true;
+    this.group.add(flowCover);
+    for (let i = 0; i < 4; i++) {
+      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1.0, 14), silverMat);
+      knob.position.set(GC_X - 14 + i * 4.2, GC_H + 1.7, -14);
+      this.group.add(knob);
+    }
+    this.tower = new THREE.Mesh(roundedBox(7, TOWER_H, 9.2, 0.9), white);
+    this.tower.position.set(TOWER_X, GC_H, AS_Z - 1.2);
+    this.tower.castShadow = true;
+    this.group.add(this.tower);
+    const towerFront = AS_Z - 1.2 + 4.6 + 0.45;
+    const towerStripe = new THREE.Mesh(new THREE.BoxGeometry(7.3, 1.0, 9.6), accent);
+    towerStripe.position.set(TOWER_X, GC_H + 3, AS_Z - 1.2);
     this.group.add(towerStripe);
-    const arm = new THREE.Mesh(roundedBox(24.4, 1.7, 3.2, 0.5), white);
-    arm.position.set(-14.5, ARM_Y - 0.2, AS_Z);
+    legend('AUTOSAMPLER', 6.4, 0.7, TOWER_X, GC_H + 12, towerFront + 0.03, '#6b757c');
+    mkLed(TOWER_X, GC_H + 8.5, towerFront + 0.05, 0x1d3a26).color.setHex(0x35e070);
+    // beam from the tower to the right post
+    const beamL = -9 - TOWER_X + 3;
+    const arm = new THREE.Mesh(roundedBox(beamL, 1.7, 3.2, 0.5), white);
+    arm.position.set((TOWER_X - 9) / 2, ARM_Y - 0.2, AS_Z);
     arm.castShadow = true;
     this.group.add(arm);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(22, 0.3, 0.5), silverMat);
-    rail.position.set(-14.5, ARM_Y - 1.2, AS_Z + 1.7);
+    const rightPost = new THREE.Mesh(roundedBox(2.8, ARM_Y - GC_H, 3.2, 0.5), white);
+    rightPost.position.set(-9, GC_H, AS_Z);
+    this.group.add(rightPost);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(beamL - 4, 0.3, 0.5), silverMat);
+    rail.position.set((TOWER_X - 9) / 2, ARM_Y - 1.2, AS_Z + 1.7);
     this.group.add(rail);
-    // syringe carriage on the arm
+    // syringe carriage on the beam
     const carBody = new THREE.Mesh(roundedBox(3.2, 3.0, 3.6, 0.5), new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.45 }));
     carBody.position.y = -2.4;
     this.carriage.add(carBody);
@@ -168,11 +301,17 @@ export class MassSpectrometer {
     this.carriage.add(this.syringe);
     this.carriage.position.set(INJECTOR_X, ARM_Y - 1.1, AS_Z + 0.3);
     this.group.add(this.carriage);
-    // vial tray
-    const tray = new THREE.Mesh(roundedBox(15.0, 1.2, 5.2, 0.6), new THREE.MeshStandardMaterial({ color: 0xd2d5d6, roughness: 0.5, metalness: 0.2 }));
-    tray.position.set(-8.4, GC_H, AS_Z);
+    // vial tray: a plate with a hole ring per vial
+    const tray = new THREE.Mesh(roundedBox(19, 1.2, 6, 0.6), new THREE.MeshStandardMaterial({ color: 0xcfd3d4, roughness: 0.45, metalness: 0.3 }));
+    tray.position.set(-21, GC_H, AS_Z);
     tray.castShadow = true;
     this.group.add(tray);
+    VIAL_X.forEach((x) => {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.95, 20), new THREE.MeshBasicMaterial({ color: 0x4a5258, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, GC_H + 1.23, AS_Z);
+      this.group.add(ring);
+    });
     const clearGlass = new THREE.MeshPhysicalMaterial({ color: 0xe9f2f7, transparent: true, opacity: 0.4, roughness: 0.05 });
     VIAL_X.forEach((x, i) => {
       if (i === LOADED_SLOT) return;
@@ -196,29 +335,38 @@ export class MassSpectrometer {
     this.group.add(this.vial);
 
     // ---------------------------------------------------------------- mass spectrometer (right)
-    const ms = new THREE.Mesh(roundedBox(26, 30, 34, 1.5), cream);
+    const ms = new THREE.Mesh(roundedBox(MS_W, MS_H, BODY_D, 1.6), cream);
     ms.position.x = MS_X;
     ms.castShadow = true;
     ms.receiveShadow = true;
     this.group.add(ms);
-    const msBand = new THREE.Mesh(new THREE.BoxGeometry(27.7, 0.8, 35.7), accent);
-    msBand.position.set(MS_X, 15.2, 0);
+    const msFront = BODY_D / 2 + 0.8;
+    const msBand = new THREE.Mesh(new THREE.BoxGeometry(MS_W + 0.6, 0.7, BODY_D + 0.6), accent);
+    msBand.position.set(MS_X, 19.4, 0);
     this.group.add(msBand);
-    // heated transfer line GC -> MS
-    const transfer = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 3.4, 16), silverMat);
-    transfer.rotation.z = Math.PI / 2;
-    transfer.position.set(0, 9, 4);
-    this.group.add(transfer);
-    // control panel (upper front)
-    const panel = frontPlate(23.4, 12.4, 0.4, 0.8, darkMat);
-    panel.position.set(MS_X, 22.4, 17.75);
+    // seam between the GC and the MS (the heated transfer line passes behind it)
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.5, MS_H - 4, BODY_D - 4), darkMat);
+    seam.position.set(GC_X + GC_W / 2 + 0.05, MS_H / 2, 0);
+    this.group.add(seam);
+    // control panel (upper front): status display, SOURCE selector and the status light bar
+    const panel = frontPlate(MS_W - 4, 13.4, 0.4, 0.8, darkMat);
+    panel.position.set(MS_X, 29.3, msFront);
     this.group.add(panel);
-    this.screen = new ScreenPanel(11.4, 8.2);
-    this.screen.mesh.position.set(MS_X - 5.9, 22.4, 18.37);
-    this.group.add(this.screen.mesh);
-    const bezel = frontPlate(12.1, 8.9, 0.2, 0.5, new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.6 }));
-    bezel.position.set(MS_X - 5.9, 22.4, 18.15);
+    const PF2 = msFront + 0.4;
+    // the MS front has a small status display; the spectra are shown by the data system on the lab PC
+    this.software = new ScreenPanel(11.4, 8.2, 100);
+    this.msStatus = new ScreenPanel(11.4, 4.6, 60);
+    this.msStatus.mesh.position.set(MS_X - 7.6, 31.2, PF2 + 0.24);
+    this.group.add(this.msStatus.mesh);
+    const bezel = frontPlate(12.1, 5.3, 0.2, 0.5, new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.6 }));
+    bezel.position.set(MS_X - 7.6, 31.2, PF2);
     this.group.add(bezel);
+    legend('MASS SELECTIVE DETECTOR', 11.4, 0.75, MS_X - 7.6, 26.0, PF2 + 0.04);
+    this.ionSourceGlowMat = new THREE.MeshBasicMaterial({ color: 0x221144, toneMapped: false });
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(24, 0.8, 0.16), this.ionSourceGlowMat);
+    bar.position.set(MS_X, 24.2, PF2 + 0.08);
+    this.group.add(bar);
+    legend('STATUS', 4.2, 0.5, MS_X - 9.8, 23.0, PF2 + 0.04);
 
     const srcSel = new Selector({
       id: 'ms.source',
@@ -231,82 +379,74 @@ export class MassSpectrometer {
         this.ionization = i === 0 ? 'EI' : i === 1 ? 'ESI_POS' : 'ESI_NEG';
       },
     });
-    this.loadBtn = new PushButton({
-      id: 'ms.load',
-      label: 'LOAD',
-      size: [3.8, 1.6],
-      color: 0x3a444c,
-      lamp: 0xffc233,
-      hintText: 'Load a vial: puts the selected vessel\'s liquid in the autosampler tray (click the vessel first)',
-      onPress: () => this.onLoad?.(),
-    });
-    const injectBtn = new PushButton({
-      id: 'ms.inject',
-      label: 'INJECT',
-      size: [7.6, 2.7],
-      color: 0x1f7a3f,
-      lamp: 0x6dff9b,
-      hintText: 'Inject: the autosampler draws the vial and injects; EI runs the GC programme and records a spectrum of every compound that elutes, ESI infuses the liquid (loads the selected vessel if the tray is empty)',
-      onPress: () => this.onInject?.(),
-    });
-    place(srcSel, this.group, [MS_X + 5.9, 25.2, 18.17]);
-    place(this.loadBtn, this.group, [MS_X + 9.9, 25.6, 18.17]);
-    place(injectBtn, this.group, [MS_X + 7.6, 19.1, 18.17]);
+    place(srcSel, this.group, [MS_X + 8.6, 30.0, PF2 + 0.02]);
     this.controls.push(srcSel, this.loadBtn, injectBtn);
 
-    // lower front: ion-source viewport, vacuum read-out, vents
-    const lowerPlate = frontPlate(23.4, 11.6, 0.3, 0.8, new THREE.MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.4, metalness: 0.3 }));
-    lowerPlate.position.set(MS_X, 8.3, 17.75);
+    // lower front: removable cover with vents, vacuum read-out and lamps
+    const lowerPlate = frontPlate(MS_W - 4, 17, 0.3, 0.8, new THREE.MeshStandardMaterial({ color: 0xa4acb1, roughness: 0.4, metalness: 0.3 }));
+    lowerPlate.position.set(MS_X, 10.4, msFront);
     this.group.add(lowerPlate);
-    const viewBezel = new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.3, 0.7, 28), silverMat);
-    viewBezel.rotation.x = Math.PI / 2;
-    viewBezel.position.set(MS_X - 6.0, 8.8, 18.4);
-    this.group.add(viewBezel);
-    this.ionSourceGlowMat = new THREE.MeshBasicMaterial({ color: 0x221144, toneMapped: false });
-    const viewGlass = new THREE.Mesh(new THREE.CircleGeometry(2.6, 28), this.ionSourceGlowMat);
-    viewGlass.position.set(MS_X - 6.0, 8.8, 18.77);
-    this.group.add(viewGlass);
-    const viewLegend = textLegend('ION SOURCE', 6, 0.6, { ink: '#2b3236', weight: 800 });
-    viewLegend.rotation.x = 0;
-    viewLegend.position.set(MS_X - 6.0, 4.6, 18.07);
-    this.group.add(viewLegend);
-    this.emissionLed = mkLed(MS_X + 5.4, 11.8, 18.1, 0x2e1d4a);
-    const vacLed = mkLed(MS_X + 8.2, 11.8, 18.1, 0x1d3a26);
-    vacLed.color.setHex(0x35e070);
-    const el = textLegend('EMISSION', 3.2, 0.5, { ink: '#2b3236', weight: 800 });
-    el.rotation.x = 0;
-    el.position.set(MS_X + 5.4, 10.7, 18.07);
-    const vl = textLegend('VACUUM', 3.2, 0.5, { ink: '#2b3236', weight: 800 });
-    vl.rotation.x = 0;
-    vl.position.set(MS_X + 8.2, 10.7, 18.07);
-    this.group.add(el, vl);
-    const gauge = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 2.4), new THREE.MeshBasicMaterial({ color: 0x06140b, toneMapped: false }));
-    gauge.position.set(MS_X + 6.8, 6.4, 18.08);
-    this.group.add(gauge);
-    const gaugeTxt = textLegend('1.2e-5 Torr', 7.0, 1.6, { ink: '#5dff8a', weight: 700 });
-    gaugeTxt.rotation.x = 0;
-    gaugeTxt.position.set(MS_X + 6.8, 6.4, 18.1);
-    this.group.add(gaugeTxt);
-    // turbopump fan grille on the right side
-    const grille = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.2, 0.4, 36), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6 }));
-    grille.rotation.z = Math.PI / 2;
-    grille.position.set(MS_X + 13.95, 13, 0);
-    this.group.add(grille);
-    for (let i = -2; i <= 2; i++) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 9.4), silverMat);
-      bar.position.set(MS_X + 14.2, 13 + i * 1.8, 0);
-      this.group.add(bar);
+    const PF3 = msFront + 0.3;
+    for (let i = 0; i < 8; i++) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(17, 0.3, 0.12), slotMat);
+      slot.position.set(MS_X - 5, 4.0 + i * 0.7, PF3 + 0.02);
+      this.group.add(slot);
     }
-    // foreline bellows to the roughing pump, which stands behind the bench
+    const gauge = new THREE.Mesh(new THREE.PlaneGeometry(8.6, 2.6), new THREE.MeshBasicMaterial({ color: 0x06140b, toneMapped: false }));
+    gauge.position.set(MS_X + 7.6, 14.2, PF3 + 0.03);
+    this.group.add(gauge);
+    const gaugeTxt = textLegend('1.2e-5 Torr', 8.2, 1.7, { ink: '#5dff8a', weight: 700 });
+    gaugeTxt.rotation.x = 0;
+    gaugeTxt.position.set(MS_X + 7.6, 14.2, PF3 + 0.05);
+    this.group.add(gaugeTxt);
+    legend('ANALYSER VACUUM', 8.6, 0.6, MS_X + 7.6, 16.0, PF3 + 0.04, '#2b3236');
+    const vacLed = mkLed(MS_X + 4.2, 10.4, PF3 + 0.06, 0x1d3a26);
+    vacLed.color.setHex(0x35e070);
+    this.emissionLed = mkLed(MS_X + 8.0, 10.4, PF3 + 0.06, 0x2e1d4a);
+    const pwrLed = mkLed(MS_X + 11.8, 10.4, PF3 + 0.06, 0x1d3a26);
+    pwrLed.color.setHex(0x35e070);
+    legend('VACUUM', 3.4, 0.5, MS_X + 4.2, 9.2, PF3 + 0.04, '#2b3236');
+    legend('EMISSION', 3.4, 0.5, MS_X + 8.0, 9.2, PF3 + 0.04, '#2b3236');
+    legend('POWER', 3.4, 0.5, MS_X + 11.8, 9.2, PF3 + 0.04, '#2b3236');
+    // turbopump fan grille on the right side
+    const sideX = MS_X + MS_W / 2 + 0.85;
+    const grille = new THREE.Mesh(new THREE.CylinderGeometry(7.5, 7.5, 0.4, 40), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6 }));
+    grille.rotation.z = Math.PI / 2;
+    grille.position.set(sideX, 15, 0);
+    this.group.add(grille);
+    for (let i = -3; i <= 3; i++) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 2 * Math.sqrt(Math.max(0, 7.2 * 7.2 - (i * 2.1) ** 2))), silverMat);
+      slat.position.set(sideX + 0.3, 15 + i * 2.1, 0);
+      this.group.add(slat);
+    }
+    // MS top: removable cover seam, a carry handle
+    const topSeam = new THREE.Mesh(new THREE.BoxGeometry(MS_W - 6, 0.12, 0.5), slotMat);
+    topSeam.position.set(MS_X, MS_H + 0.02, 8);
+    this.group.add(topSeam);
+    // foreline hose: from the back of the MS over the raceway and the bench edge down to the rotary-vane pump on the floor
     const bellows = new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(MS_X + 6, 3, -17), new THREE.Vector3(MS_X + 6, 3, -21), new THREE.Vector3(MS_X + 6, 0.4, -25), new THREE.Vector3(MS_X + 6, -14, -27)]), 24, 1.1, 10, false),
+      new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3([
+          new THREE.Vector3(MS_X + 8, 6.5, -27.4),
+          new THREE.Vector3(MS_X + 8, 10, -30.5),
+          new THREE.Vector3(MS_X + 7, 9, -34.5),
+          new THREE.Vector3(MS_X + 5, 0, -38.5),
+          new THREE.Vector3(MS_X + 2, -30, -43),
+          new THREE.Vector3(MS_X + 0.5, -60, -46),
+          new THREE.Vector3(MS_X + 0, -65, -46),
+        ]),
+        48,
+        1.2,
+        10,
+        false
+      ),
       new THREE.MeshStandardMaterial({ color: 0x3a4046, roughness: 0.7, metalness: 0.5 })
     );
     this.group.add(bellows);
     // feet
     const footMat = new THREE.MeshStandardMaterial({ color: 0x1d1d1d, roughness: 0.9 });
-    for (const x of [-25, -3, 3, 25]) {
-      for (const z of [-14, 14]) {
+    for (const x of [-44, -2, 4, 36]) {
+      for (const z of [-24, 24]) {
         const f = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, 0.4, 12), footMat);
         f.position.set(x, -0.1, z);
         this.group.add(f);
@@ -412,6 +552,11 @@ export class MassSpectrometer {
     const flick = 0.6 + 0.4 * Math.sin(this.time * 17);
     this.ionSourceGlowMat.color.setRGB(scanning ? 0.6 * flick : 0.13, scanning ? 0.25 * flick : 0.07, scanning ? 1.0 * flick : 0.27);
     this.emissionLed.color.setHex(scanning ? 0xb27dff : 0x2e1d4a);
+    // the oven: the column coil warms to a dull red during the run and the fan turns
+    const running = this.phase !== 'idle';
+    this.ovenGlowMat.color.setRGB(running ? 0.22 : 0.1, running ? 0.09 : 0.07, running ? 0.05 : 0.06);
+    this.columnMat.emissive.setRGB(running ? 0.18 : 0, running ? 0.05 : 0, 0);
+    if (running) this.fanBlades.rotation.z += dt * 14;
     this.readyLed.color.setHex(this.phase === 'idle' ? 0x35e070 : 0x1d3a26);
     this.runLed.color.setHex(this.phase !== 'idle' ? 0xffb02e : 0x3a2e14);
     this.drawScreens();
@@ -436,7 +581,8 @@ export class MassSpectrometer {
     const sp = this.lastSpectrum;
     const scanning = this.phase === 'scanning';
     const key = `${this.ionization}|${this.phase}|${this.currentSampleName}|${this.vial.visible}|${sp ? sp.sampleName + sp.summed.length + sp.components.length + sp.ionization : ''}|${scanning ? Math.floor((this.phaseT / SCAN_SECONDS) * 30) : 0}|${this.phase === 'injecting' ? Math.floor(this.phaseT * 5) : 0}`;
-    this.screen.draw(key, (ctx, w, h) => {
+    this.paintStatus();
+    this.software.draw(key, (ctx, w, h) => {
       ctx.fillStyle = '#0a0713';
       ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = '#1a1030';
@@ -527,6 +673,24 @@ export class MassSpectrometer {
       ctx.fillText(`INLET 250°C  He 1.2mL/m`, w * 0.06, h * 0.62);
       ctx.fillStyle = this.phase === 'idle' ? '#7be0a0' : '#ffc233';
       ctx.fillText(this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'RUN' : 'READY', w * 0.06, h * 0.88);
+    });
+  }
+
+  private paintStatus() {
+    const state = this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'SCANNING' : this.pending ? 'STARTING' : this.vial.visible ? 'VIAL LOADED' : 'READY';
+    const key = `${this.ionization}|${state}`;
+    this.msStatus.draw(key, (ctx, w, h) => {
+      ctx.fillStyle = '#0d0a18';
+      ctx.fillRect(0, 0, w, h);
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.font = `700 ${Math.round(h * 0.22)}px "Courier New", monospace`;
+      ctx.fillStyle = '#c6a8ff';
+      ctx.fillText(this.ionization === 'EI' ? 'SOURCE EI 70 eV' : this.ionization === 'ESI_POS' ? 'SOURCE ESI (+)' : 'SOURCE ESI (-)', w * 0.05, h * 0.2);
+      ctx.fillStyle = '#b9a6e8';
+      ctx.fillText('VACUUM  1.2e-5 Torr', w * 0.05, h * 0.5);
+      ctx.fillStyle = this.phase !== 'idle' ? '#ffc233' : '#7be0a0';
+      ctx.fillText(state, w * 0.05, h * 0.8);
     });
   }
 

@@ -26,9 +26,26 @@ export class Burner {
   private collar: AirCollar;
   private loop!: THREE.Group;
   private loopControl!: LoopControl;
-  private loopS = 0;
   private loopTarget = 0;
+  /** Current / wanted pose of the wire's end (tip, burner frame) and the direction from handle to tip. */
+  private tipCur = REST_TIP.clone();
+  private dirCur = REST_DIR.clone();
+  private tipGoal = REST_TIP.clone();
+  private dirGoal = REST_DIR.clone();
+  private loopFast = false;
   private air = 1;
+  /** The loop is in the user's hand (dragged); `onLoopFlame` tells the app when the wet loop enters the flame. */
+  public loopHeld = false;
+  /** Vessel whose liquid is on the wire (dipped by hand), or null for a dry loop. */
+  public loopWet: string | null = null;
+  /** The wire's end is inside the flame while held. */
+  public loopHeldInFlame = false;
+  /** Scene: the vessel (world x, z) whose liquid the wire can reach there, with its surface height; null = none. */
+  public dipTarget?: (x: number, z: number) => { id: string; surfaceY: number } | null;
+  /** The held loop picked up liquid from a vessel (null = it was put back and is dry again). */
+  public onLoopWet?: (vesselId: string | null) => void;
+  /** The held loop entered / left the flame. */
+  public onLoopFlame?: (inFlame: boolean) => void;
 
   constructor() {
     this.group.name = 'equipment_burner';
@@ -122,7 +139,7 @@ export class Burner {
     this.controls.push(this.gasTap);
   }
 
-  /** Nichrome wire loop on a glass handle, standing in a holder; clicking it dips it in a sample and holds it in the flame. */
+  /** Nichrome wire loop on a glass handle, standing in a holder; carried by hand (drag), or clicked to dip the selected sample and hold it in the flame. */
   private buildLoop() {
     const holder = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.9, 1.5, 24), new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.8 }));
     holder.position.set(REST_BOTTOM.x, 0.75, REST_BOTTOM.z);
@@ -137,21 +154,82 @@ export class Burner {
     ring.position.y = LOOP_LEN + 0.4;
     handle.castShadow = true;
     this.loop.add(handle, rod, ring);
-    this.loopControl = new LoopControl(() => this.loopTarget === 1, (into) => {
-      if (this.onLoop?.(into) === false) return;
-      this.setLoopInFlame(into);
-    });
+    this.loopControl = new LoopControl(
+      () => this.loopTarget === 1 || this.loopHeld,
+      (into) => {
+        if (this.onLoop?.(into) === false) return;
+        this.setLoopInFlame(into);
+      },
+      (ray) => this.holdLoop(ray),
+      () => this.releaseLoop()
+    );
     this.loop.add(this.loopControl.group);
     this.group.add(this.loop);
     this.controls.push(this.loopControl);
-    this.poseLoop(0);
+    this.poseLoop();
   }
 
-  private poseLoop(s: number) {
-    const tip = new THREE.Vector3().lerpVectors(REST_TIP, FLAME_TIP, s);
-    const dir = new THREE.Vector3().lerpVectors(REST_DIR, FLAME_DIR, s).normalize();
-    this.loop.position.copy(tip).addScaledVector(dir, -LOOP_LEN);
-    this.loop.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  private poseLoop() {
+    this.loop.position.copy(this.tipCur).addScaledVector(this.dirCur, -LOOP_LEN);
+    this.loop.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.dirCur);
+  }
+
+  /**
+   * The loop is being carried: the wire's end follows the pointer ray on a plane above the bench. Over a vessel with liquid
+   * it goes down into the liquid (and comes up wet); near the flame, with the burner lit, it goes into the flame.
+   */
+  private holdLoop(ray: THREE.Ray) {
+    this.group.updateWorldMatrix(true, false);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -HOLD_Y);
+    const hit = ray.intersectPlane(plane, new THREE.Vector3());
+    if (!hit) return;
+    hit.x = THREE.MathUtils.clamp(hit.x, -118, 118);
+    hit.z = THREE.MathUtils.clamp(hit.z, -38, 30);
+    if (!this.loopHeld) {
+      this.loopHeld = true;
+      this.loopFast = true;
+      this.loopTarget = 0;
+    }
+    const flameW = this.group.localToWorld(FLAME_TIP.clone());
+    const dip = this.dipTarget?.(hit.x, hit.z) ?? null;
+    let inFlame = false;
+    const goalW = hit.clone();
+    if (dip) {
+      goalW.y = dip.surfaceY - 0.7;
+      if (this.loopWet !== dip.id) {
+        this.loopWet = dip.id;
+        this.onLoopWet?.(dip.id);
+      }
+    } else if (this.isActive && Math.hypot(hit.x - flameW.x, hit.z - flameW.z) < FLAME_GRAB_R) {
+      goalW.set(flameW.x, flameW.y, flameW.z);
+      inFlame = true;
+    }
+    this.tipGoal.copy(this.group.worldToLocal(goalW));
+    this.dirGoal.copy(HELD_DIR);
+    if (inFlame !== this.loopHeldInFlame) {
+      this.loopHeldInFlame = inFlame;
+      this.onLoopFlame?.(inFlame);
+      if (!inFlame) this.setFlameTest(null);
+    }
+  }
+
+  /** Let go: the loop returns to its holder, dry (the wire is wiped / the flame test colour goes). */
+  private releaseLoop() {
+    if (!this.loopHeld) return;
+    this.loopHeld = false;
+    if (this.loopHeldInFlame) {
+      this.loopHeldInFlame = false;
+      this.onLoopFlame?.(false);
+    }
+    this.setFlameTest(null);
+    this.flameTestInfo = '';
+    if (this.loopWet !== null) {
+      this.loopWet = null;
+      this.onLoopWet?.(null);
+    }
+    this.loopFast = false;
+    this.tipGoal.copy(REST_TIP);
+    this.dirGoal.copy(REST_DIR);
   }
 
   public get loopInFlame(): boolean {
@@ -161,6 +239,9 @@ export class Burner {
   /** Move the wire loop into / out of the flame (animated). Leaving the flame also clears the flame-test colour. */
   public setLoopInFlame(into: boolean) {
     this.loopTarget = into ? 1 : 0;
+    this.loopFast = false;
+    this.tipGoal.copy(into ? FLAME_TIP : REST_TIP);
+    this.dirGoal.copy(into ? FLAME_DIR : REST_DIR);
     if (!into) {
       this.setFlameTest(null);
       this.flameTestInfo = '';
@@ -201,6 +282,11 @@ export class Burner {
     this.flame.setTarget(0);
     this.gasTap?.setIndex(0);
     if (this.loopTarget) this.setLoopInFlame(false);
+    if (this.loopHeldInFlame) {
+      this.loopHeldInFlame = false;
+      this.onLoopFlame?.(false);
+      this.setFlameTest(null);
+    }
   }
 
   /** Kept for API compatibility; animation runs per frame via `animate` (driven by the scene). */
@@ -209,9 +295,14 @@ export class Burner {
   /** Per-frame flame animation (called by the scene). */
   public animate(dt: number) {
     this.time += dt;
-    if (this.loopS !== this.loopTarget) {
-      this.loopS += Math.sign(this.loopTarget - this.loopS) * Math.min(Math.abs(this.loopTarget - this.loopS), dt * 2.2);
-      this.poseLoop(this.loopS * this.loopS * (3 - 2 * this.loopS));
+    if (this.tipCur.distanceToSquared(this.tipGoal) > 1e-6 || this.dirCur.distanceToSquared(this.dirGoal) > 1e-8) {
+      // glide to the goal; fast while the loop follows the hand, slower for the click-to-flame move, snap when close
+      const k = 1 - Math.exp(-dt * (this.loopFast ? 14 : 4.5));
+      this.tipCur.lerp(this.tipGoal, k);
+      this.dirCur.lerp(this.dirGoal, k).normalize();
+      if (this.tipCur.distanceTo(this.tipGoal) < 0.02) this.tipCur.copy(this.tipGoal);
+      if (this.dirCur.distanceTo(this.dirGoal) < 0.002) this.dirCur.copy(this.dirGoal);
+      this.poseLoop();
     }
     this.flame.tick(dt, this.time);
   }
@@ -235,8 +326,14 @@ const REST_DIR = new THREE.Vector3(0, 1, 0);
 const REST_TIP = REST_BOTTOM.clone().addScaledVector(REST_DIR, LOOP_LEN);
 const FLAME_DIR = new THREE.Vector3(-0.55, 0.65, -0.5).normalize();
 const FLAME_TIP = new THREE.Vector3(0.3, BURNER_TOP_Y + 5.2, 0.2);
+/** Height (world, cm) the wire's end is carried at, clear of the burner and the vessel rims. */
+const HOLD_Y = 24;
+/** Direction from the handle to the wire's end while carried: tip down, handle leaning back and to the left. */
+const HELD_DIR = new THREE.Vector3(0.3, -0.85, 0.43).normalize();
+/** The wire is drawn into the flame when the carried tip is within this distance of the flame axis (cm). */
+const FLAME_GRAB_R = 4;
 
-/** The wire loop as a clickable control (hit volume along the handle). */
+/** The wire loop: click = dip in the selected vessel and hold in the flame; drag = carry it by hand (dip in a vessel, hold in the flame). */
 class LoopControl implements Control3D {
   public readonly id = 'burner.loop';
   public readonly group = new THREE.Group();
@@ -244,8 +341,10 @@ class LoopControl implements Control3D {
   private glow: THREE.Mesh;
 
   constructor(
-    private inFlame: () => boolean,
-    private toggle: (intoFlame: boolean) => void
+    private active: () => boolean,
+    private toggle: (intoFlame: boolean) => void,
+    private carry: (ray: THREE.Ray) => void,
+    private drop: () => void
   ) {
     this.hit = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, LOOP_LEN + 1, 10), new THREE.MeshBasicMaterial({ visible: false }));
     this.hit.position.y = LOOP_LEN / 2;
@@ -256,15 +355,19 @@ class LoopControl implements Control3D {
   }
 
   public hint(): string {
-    return this.inFlame()
-      ? 'Wire loop is in the flame · click to take it out'
-      : 'Flame test · click to dip the loop in the selected vessel\'s liquid and hold it in the flame (burner must be lit)';
+    return this.active()
+      ? 'Carrying the wire loop · move over a vessel to dip it, over a lit flame to test · release to put it back'
+      : 'Flame test · drag to carry the wire loop (dip it in a vessel, then hold it in the lit flame), or click to dip the selected vessel and hold it in the flame';
   }
 
   public press(): void {}
   public drag(): void {}
+  public dragRay(ray: THREE.Ray): void {
+    this.carry(ray);
+  }
   public release(moved: boolean): void {
-    if (!moved) this.toggle(!this.inFlame());
+    if (moved) this.drop();
+    else this.toggle(!this.active());
   }
   public wheel(): void {}
   public setHover(on: boolean): void {

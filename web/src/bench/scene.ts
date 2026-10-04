@@ -40,6 +40,8 @@ import { GasTubes, GasHost } from './gas_collection';
 import { FilterRigs } from './filtration';
 import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
 import { ControlRig } from './controls3d';
+import { BALANCE_POS, BURNER_POS, ELECTROCHEM_POS, HOTPLATE_POS, INDICATOR_IDS, INDICATOR_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_POS, PH_METER_POS, ROOM, SPECTRO_POS, WORKSTATION_POS } from './layout';
+import { Workstation } from '../equipment/workstation';
 
 /** Bench instruments the user can click (right panel shows their controls). */
 export type InstrumentId =
@@ -92,17 +94,13 @@ const WALK_KEYS: Record<string, [number, number]> = {
   KeyD: [0, 1], ArrowRight: [0, 1],
   ShiftLeft: [0, 0], ShiftRight: [0, 0],
 };
+/** Q / E lower / raise the camera (and its target) so tall apparatus such as a burette can be reached. */
+const VERT_KEYS: Record<string, number> = { KeyE: 1, KeyQ: -1 };
 const WALK_SPEED = 55; // cm/s
-const HOTPLATE_POS = new THREE.Vector3(0, 0, 6);
-const PH_METER_POS = new THREE.Vector3(46, 0, -14);
-const BALANCE_POS = new THREE.Vector3(80, 0, -4);
-const BURNER_POS = new THREE.Vector3(-80, 0, -12);
-const ELECTROCHEM_POS = new THREE.Vector3(-44, 0, -14);
-const SPECTRO_POS = new THREE.Vector3(-65, 0, 105);
-const MASS_SPEC_POS = new THREE.Vector3(17, 0, 105);
-const NMR_POS = new THREE.Vector3(74, 0, 105);
-/** Magnet stands on the floor (y = -90) just past the end of the analytical bench. */
-const NMR_CRYO_POS = new THREE.Vector3(126, -90, 105);
+const CAMERA_MAX_TARGET_Y = 130;
+/** Distilled water stands on the bench, front left of the hot plate: in view and one reach from every vessel slot. */
+export const BENCH_WATER_ID = 'water';
+const BENCH_WATER_POS = new THREE.Vector3(-21, 0, 22);
 
 /** Instrument that owns a control, from the control id prefix ('hotplate.heat' -> 'hotplate'). */
 const CONTROL_OWNER: Record<string, InstrumentId> = {
@@ -190,6 +188,7 @@ export class BenchScene {
 
   private thermoMotion: ProbeMotion;
   private phMotion: ProbeMotion;
+  private workstation: Workstation;
   private thermoPark = { pos: new THREE.Vector3(26, THERMOMETER_RADIUS + 0.05, 7), up: new THREE.Vector3(1, 0, 0) };
   private phPark = { pos: new THREE.Vector3(33, PH_PROBE_RADIUS + 0.05, 2.5), up: new THREE.Vector3(0.97, 0, -0.1).normalize() };
 
@@ -259,16 +258,18 @@ export class BenchScene {
 
     hotPlate.group.position.copy(HOTPLATE_POS);
     phMeter.group.position.copy(PH_METER_POS);
-    phMeter.group.rotation.y = -0.35;
     balance.group.position.copy(BALANCE_POS);
-    balance.group.rotation.y = -0.3;
     burner.group.position.copy(BURNER_POS);
-    burner.group.rotation.y = 0.4;
     electrochem.group.position.copy(ELECTROCHEM_POS);
-    electrochem.group.rotation.y = 0.25;
 
     spectrophotometer.group.position.copy(SPECTRO_POS);
     massSpec.group.position.copy(MASS_SPEC_POS);
+    this.workstation = new Workstation();
+    this.workstation.group.position.copy(WORKSTATION_POS);
+    this.workstation.addSource('uvvis', 'UV-Vis', 'SpecScan - UV-Vis spectrophotometer', spectrophotometer.software);
+    this.workstation.addSource('nmr', 'NMR', 'NMRControl - 400 MHz spectrometer', nmr.software);
+    this.workstation.addSource('gcms', 'GC/MS', 'ChromaView - GC/MS data system', massSpec.software);
+    this.scene.add(this.workstation.group);
     nmr.group.position.copy(NMR_POS);
     nmr.cryoMagnet.position.copy(NMR_CRYO_POS);
 
@@ -297,11 +298,30 @@ export class BenchScene {
       this.addInstrumentProxy('spectrophotometer', spectrophotometer.group, null),
       this.addInstrumentProxy('nmr', nmr.group, null),
       this.addInstrumentProxy('nmr', nmr.cryoMagnet, null),
-      this.addInstrumentProxy('mass_spec', massSpec.group, null, new THREE.Box3(new THREE.Vector3(-28, 0, -18), new THREE.Vector3(28, 48, 19))),
+      this.addInstrumentProxy('mass_spec', massSpec.group, null, new THREE.Box3(new THREE.Vector3(-48, 0, -28), new THREE.Vector3(42, 80, 33))),
     ];
     // physical controls on the instruments (knobs, switches, buttons): picked and dragged by the rig
-    this.controlRig = new ControlRig({ container, orbit: this.controls, setHint: (t) => this.onHint?.(t) });
-    this.controlRig.register([...hotPlate.controls, ...burner.controls, ...electrochem.controls, ...spectrophotometer.controls, ...nmr.controls, ...massSpec.controls]);
+    this.controlRig = new ControlRig({
+      container,
+      orbit: this.controls,
+      setHint: (t) => this.onHint?.(t),
+      rayFor: (e) => {
+        this.setPointer(e);
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+        return this.raycaster.ray.clone();
+      },
+    });
+    // the flame-test loop is carried by hand: tell it which vessel's liquid the wire reaches at a bench position
+    burner.dipTarget = (x, z) => {
+      for (const b of this.glasswareMap.values()) {
+        if (b.isBurst() || b.tipLocal() || b.levelReadingMl() < 0.05) continue; // burettes / pipettes / syringes are not dipped into
+        const p = b.group.position;
+        const reach = Math.max(0.6, b.profile.rimInnerRadius * 0.8);
+        if (Math.hypot(x - p.x, z - p.z) < reach) return { id: b.vesselState.id, surfaceY: p.y + b.surfaceLocalY() };
+      }
+      return null;
+    };
+    this.controlRig.register([...hotPlate.controls, ...burner.controls, ...electrochem.controls, ...spectrophotometer.controls, ...nmr.controls, ...massSpec.controls, ...this.workstation.controls]);
     nmr.routeCables();
     this.instruments = {
       thermometer,
@@ -321,10 +341,12 @@ export class BenchScene {
 
     this.footprints = [
       { x0: -9.5, x1: 9.5, z0: HOTPLATE_POS.z - 12, z1: HOTPLATE_POS.z + 12 },
-      { x0: 36, x1: 57, z0: -26, z1: -2 },
-      { x0: 67, x1: 93, z0: -19, z1: 11 },
+      { x0: PH_METER_POS.x - 11, x1: PH_METER_POS.x + 11, z0: -26, z1: -2 },
+      { x0: BALANCE_POS.x - 13, x1: BALANCE_POS.x + 13, z0: -19, z1: 11 },
       { x0: -97, x1: -73, z0: -18, z1: 22 },
-      { x0: -60, x1: -28, z0: -25, z1: -2 },
+      { x0: INDICATOR_POS[0].x - 4, x1: INDICATOR_POS[3].x + 4, z0: 16, z1: 24 },
+      { x0: BENCH_WATER_POS.x - 3, x1: BENCH_WATER_POS.x + 3, z0: BENCH_WATER_POS.z - 3, z1: BENCH_WATER_POS.z + 3 },
+      { x0: ELECTROCHEM_POS.x - 15, x1: ELECTROCHEM_POS.x + 15, z0: -25, z1: -2 },
       STATION_FOOTPRINT,
     ];
     this.buildSlots();
@@ -481,7 +503,24 @@ export class BenchScene {
   // ---------------------------------------------------------------- bottles
   /** Place a catalog reagent bottle on the (capped, LRU) reagent shelf. id = entry.id */
   public addReagentBottle(entry: ReagentCatalogEntry): void {
+    if (entry.id === BENCH_WATER_ID) {
+      this.shelf.pin({ ...entryToBottleInput(entry), bench: true, bottle_colour: 'clear' }, BENCH_WATER_POS, 0.1);
+      return;
+    }
     this.shelf.add(entryToBottleInput(entry));
+  }
+
+  /** Titration setup: the indicator dropper bottles stand on the bench beside the station (never evicted from there). Returns the ids put out. */
+  public setOutIndicators(entries: ReagentCatalogEntry[]): string[] {
+    const out: string[] = [];
+    for (const entry of entries) {
+      const i = INDICATOR_IDS.indexOf(entry.id);
+      if (i < 0) continue;
+      this.shelf.pin({ ...entryToBottleInput(entry), bench: true }, INDICATOR_POS[i], 0.05 * (i - 1.5));
+      out.push(entry.id);
+    }
+    this.shadowDirty = true;
+    return out;
   }
 
   /** PubChem import: generic labelled bottle on the shelf (positions are auto-allocated); `phase` = its phase at room temperature (jar for solids). */
@@ -1315,7 +1354,7 @@ export class BenchScene {
   // ---------------------------------------------------------------- walking (WASD / arrows)
   /** Track a held movement key (KeyW/A/S/D, Arrow*). Returns true when the key is a movement key. */
   public setMoveKey(code: string, down: boolean): boolean {
-    const dir = WALK_KEYS[code];
+    const dir = WALK_KEYS[code] ?? (code in VERT_KEYS ? [0, 0] : undefined);
     if (!dir) return false;
     if (down) this.moveKeys.add(code);
     else this.moveKeys.delete(code);
@@ -1331,9 +1370,24 @@ export class BenchScene {
     if (this.moveKeys.size === 0) return;
     let fwd = 0;
     let right = 0;
+    let up = 0;
     for (const c of this.moveKeys) {
-      fwd += WALK_KEYS[c][0];
-      right += WALK_KEYS[c][1];
+      const w = WALK_KEYS[c];
+      if (w) {
+        fwd += w[0];
+        right += w[1];
+      }
+      up += VERT_KEYS[c] ?? 0;
+    }
+    if (fwd === 0 && right === 0 && up === 0) return;
+    if (up !== 0) {
+      // camera and target rise / sink together (the view direction is kept)
+      const speed = WALK_SPEED * dt * (this.moveKeys.has('ShiftLeft') || this.moveKeys.has('ShiftRight') ? 2.5 : 1);
+      const ny = THREE.MathUtils.clamp(this.controls.target.y + Math.sign(up) * speed, 0, CAMERA_MAX_TARGET_Y);
+      const dy = ny - this.controls.target.y;
+      this.controls.target.y += dy;
+      this.camera.position.y += dy;
+      this.cameraTween = null;
     }
     if (fwd === 0 && right === 0) return;
     const f = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
@@ -1344,8 +1398,8 @@ export class BenchScene {
     const step = WALK_SPEED * dt * (this.moveKeys.has('ShiftLeft') || this.moveKeys.has('ShiftRight') ? 2.5 : 1);
     const d = f.multiplyScalar(fwd).addScaledVector(r, right);
     const t = this.controls.target;
-    const nx = THREE.MathUtils.clamp(t.x + d.x, -130, 130);
-    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, 140);
+    const nx = THREE.MathUtils.clamp(t.x + d.x, -130, ROOM.xMax - 45);
+    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, 146);
     d.set(nx - t.x, 0, nz - t.z);
     t.add(d);
     this.camera.position.add(d);
@@ -1362,9 +1416,9 @@ export class BenchScene {
     } else if (station === 'spectrophotometer') {
       this.focusPoint(SPECTRO_POS.clone().add(new THREE.Vector3(0, 8, 0)), 42, true);
     } else if (station === 'mass_spec') {
-      this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(0, 23, 0)), 72, true);
+      this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(-4, 30, 0)), 98, true);
     } else if (station === 'nmr') {
-      this.focusPoint(new THREE.Vector3(100, 26, 105), 100, true);
+      this.focusPoint(new THREE.Vector3((NMR_POS.x + NMR_CRYO_POS.x) / 2 + 4, 22, 100), 205, true);
     } else if (station === 'electrochem') {
       this.focusPoint(ELECTROCHEM_POS.clone().add(new THREE.Vector3(0, 6, 0)), 40, true);
     }
@@ -1628,6 +1682,7 @@ export class BenchScene {
       spectrophotometer.animate(dt);
       nmr.animate(dt);
       massSpec.animate(dt);
+      this.workstation.update();
     } catch (e) {
       if (!this.tickWarned.has('analytical')) {
         this.tickWarned.add('analytical');

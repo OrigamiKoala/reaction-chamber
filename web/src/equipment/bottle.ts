@@ -29,6 +29,8 @@ export interface BottleInput {
   solid_form?: string;
   /** Content colour hint ('#rrggbb'); otherwise guessed generically from formula/name. */
   colorHex?: string;
+  /** Bench stock (distilled water): stands on the bench within reach, blue cap, 'BENCH STOCK' label band. */
+  bench?: boolean;
 }
 
 export interface BottleAssembly {
@@ -195,6 +197,7 @@ function bottleAmberGlass() {
     makeGlassMaterial(false, { tint: 0x7a3d12, baseAlpha: 0.2, fresnelAlpha: 0.3, edgeTint: 0x9a5a1a, roughness: 0.05, envMapIntensity: 0.5 }),
   ]);
 }
+const benchCapMat = () => mat('capb', () => new THREE.MeshStandardMaterial({ color: 0x1f6fc4, roughness: 0.4, metalness: 0 }));
 const whiteCapMat = () => mat('capw', () => new THREE.MeshStandardMaterial({ color: 0xe9e6dc, roughness: 0.5, metalness: 0 }));
 const hdpeMat = () =>
   mat('hdpe', () =>
@@ -414,7 +417,7 @@ export function makeLabelTexture(b: BottleInput, kind: BottleKind): THREE.Canvas
   ctx.font = '700 26px "Helvetica Neue", Arial, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(sig ? sig.toUpperCase() : 'LABORATORY REAGENT', 22, 28);
+  ctx.fillText(sig ? sig.toUpperCase() : b.bench ? 'BENCH STOCK' : 'LABORATORY REAGENT', 22, 28);
   ctx.textAlign = 'right';
   ctx.font = '600 20px Arial, sans-serif';
   const formLbl = b.form === 'solid' || b.by_mass ? 'SOLID' : b.form === 'liquid' ? 'LIQUID' : b.form === 'gas' ? 'GAS' : b.form === 'solution' ? 'SOLUTION' : '';
@@ -600,7 +603,7 @@ export function createBottleAssembly(b: BottleInput): BottleAssembly {
     cap = d;
     dropperParts = d;
   } else {
-    const c = new THREE.Mesh(capGeo(kind), colour === 'white' ? whiteCapMat() : capMat());
+    const c = new THREE.Mesh(capGeo(kind), b.bench ? benchCapMat() : colour === 'white' ? whiteCapMat() : capMat());
     c.position.y = s.neckTopY - 0.9;
     c.castShadow = true;
     c.raycast = () => {};

@@ -225,7 +225,7 @@ export class Lab {
       glass_mass_g: spec.glassMassG,
       inner_radius_cm: spec.innerRadiusCm,
       temperature_k: 298.15,
-      room_k: 295.15,
+      room_k: 298.15,
       sealed: false,
       stopper_pop_atm: spec.popAtm,
       burst_atm: spec.burstAtm,
@@ -754,6 +754,14 @@ export class Lab {
   /** Camera over the titration station (B key): tip + flask, the whole stand, the burette reading. */
   public frameTitration(restart = false): boolean {
     return this.bench.focusTitration(restart);
+  }
+
+  /** Set by the app: puts the indicator bottles out on the bench beside the titration station (returns their names). */
+  public indicatorHandler?: () => string[];
+
+  /** Put the indicators (phenolphthalein, methyl orange, bromothymol blue, methyl red) within reach of the titration station. */
+  public setOutIndicators(): string[] {
+    return this.indicatorHandler?.() ?? [];
   }
 
   /** Which vessels stand in the titration station right now (burette in the clamp, flask on the tile). */

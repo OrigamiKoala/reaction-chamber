@@ -19,6 +19,8 @@ export interface Control3D {
   press(): void;
   /** Pointer moved since the press (cumulative pixels). Only called once the move exceeds the click tolerance. */
   drag(dx: number, dy: number, fine: boolean): void;
+  /** Optional: the pointer ray in world space on every move once the press became a drag (for controls that are carried by hand). */
+  dragRay?(ray: THREE.Ray): void;
   /** Pointer released. `moved` = it was dragged (not a click). */
   release(moved: boolean, heldMs: number, shift: boolean): void;
   wheel(dir: 1 | -1, fine: boolean): void;
@@ -664,6 +666,8 @@ export class ScreenPanel {
   private ctx: CanvasRenderingContext2D;
   private tex: THREE.CanvasTexture;
   private lastKey = '';
+  /** Counts redraws, so a viewer (the lab PC) can tell when the content changed. */
+  public version = 0;
 
   constructor(wCm: number, hCm: number, px = 56) {
     this.canvas = document.createElement('canvas');
@@ -683,6 +687,12 @@ export class ScreenPanel {
     this.lastKey = key;
     fn(this.ctx, this.canvas.width, this.canvas.height);
     this.tex.needsUpdate = true;
+    this.version++;
+  }
+
+  /** The canvas the content is drawn on (another screen may show it, e.g. the lab PC). */
+  public get source(): HTMLCanvasElement {
+    return this.canvas;
   }
 }
 
@@ -693,6 +703,8 @@ export interface ControlRigHost {
   /** OrbitControls: disabled while a control is being dragged. */
   orbit: { enabled: boolean };
   setHint: (text: string | null) => void;
+  /** World-space ray under a pointer event; needed only by controls that implement `dragRay`. */
+  rayFor?: (e: PointerEvent) => THREE.Ray;
 }
 
 interface ActivePress {
@@ -788,6 +800,7 @@ export class ControlRig {
     if (!a.moved && Math.hypot(dx, dy) > 4) a.moved = true;
     if (a.moved) {
       a.c.drag(dx, dy, e.shiftKey);
+      if (a.c.dragRay && this.host.rayFor) a.c.dragRay(this.host.rayFor(e));
       this.setHint(a.c.hint());
     }
   };

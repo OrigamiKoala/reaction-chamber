@@ -16,15 +16,12 @@ const TAU_S = 0.8;
 /** After the load has been steady this long the filter tightens (real balances lock on within a few seconds). */
 const SETTLE_AFTER_S = 1.0;
 const TAU_SETTLED_S = 0.25;
-/** |target - shown| below this (g) counts as "stable" (half a resolution step). */
-const STABLE_BAND_G = 0.004;
 const KEY_TRAVEL_CM = 0.32;
 const KEY_PRESS_S = 0.2;
 
 export interface BalanceReadout {
   mass_g: number;
   formatted: string;
-  stable: boolean;
   tared: boolean;
 }
 
@@ -182,7 +179,7 @@ export class Balance {
   public readout(): BalanceReadout {
     this.advance();
     const m = this.netMass();
-    return { mass_g: m.quant, formatted: m.over ? '-OL-' : `${m.quant.toFixed(2)} g`, stable: this.isStable(), tared: this.tared };
+    return { mass_g: m.quant, formatted: m.over ? '-OL-' : `${m.quant.toFixed(2)} g`, tared: this.tared };
   }
 
   // ------------------------------------------------------------------ internals
@@ -193,10 +190,6 @@ export class Balance {
     let q = Math.round(net / BALANCE_RESOLUTION_G) * BALANCE_RESOLUTION_G;
     if (Math.abs(q) < BALANCE_RESOLUTION_G / 2) q = 0;
     return { quant: q, over };
-  }
-
-  private isStable(): boolean {
-    return Math.abs(this.loadG - this.shownRawG) < STABLE_BAND_G;
   }
 
   private startLoop() {
@@ -232,7 +225,6 @@ export class Balance {
     const m = this.netMass();
     this.screen.set({
       text: this.shownRawG > BALANCE_CAPACITY_G + 0.005 ? '-OL-' : m.quant.toFixed(2),
-      stable: this.isStable(),
       net: this.tared,
     });
   }
@@ -259,8 +251,8 @@ class BalanceScreen {
     this.mesh.raycast = () => {};
   }
 
-  public set(s: { text: string; stable: boolean; net: boolean }) {
-    const key = `${s.text}|${s.stable ? 1 : 0}|${s.net ? 1 : 0}`;
+  public set(s: { text: string; net: boolean }) {
+    const key = `${s.text}|${s.net ? 1 : 0}`;
     if (key === this.last) return;
     this.last = key;
     const { ctx, canvas } = this;
@@ -286,18 +278,8 @@ class BalanceScreen {
     ctx.textAlign = 'left';
     ctx.font = `700 ${Math.round(H * 0.36)}px Arial, sans-serif`;
     ctx.fillText('g', right + W * 0.035, H * 0.66);
-    // stability marker: filled dot = stable, tilde while settling
     ctx.font = `700 ${Math.round(H * 0.2)}px Arial, sans-serif`;
-    ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    if (s.stable) {
-      ctx.beginPath();
-      ctx.arc(W * 0.93, H * 0.2, H * 0.07, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillText('stable', W * 0.97 - H * 0.2, H * 0.28);
-    } else {
-      ctx.fillText('~', W * 0.97, H * 0.3);
-    }
     // NET annunciator when a tare is active
     if (s.net) {
       ctx.textAlign = 'left';
