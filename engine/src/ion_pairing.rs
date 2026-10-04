@@ -14,7 +14,7 @@
 //!    data rows. Only pairs with |z+ z-| >= 4 and `MIN_K_A` <= K_A <= `MAX_K_A` are generated.
 //!
 //! Both produce ordinary `GeneralEquilibrium` rows, solved with the rest of the speciation; tier Estimated (data) or
-//! Speculative (Fuoss).
+//! Speculative (Fuoss). A Fuoss row carries its enthalpy of association from the temperature dependence of the permittivity.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -74,6 +74,15 @@ pub fn fuoss_k(z_cation: i32, z_anion: i32, a_angstrom: f64, t_k: f64) -> f64 {
     4.0 * std::f64::consts::PI * N_A * a_cm.powi(3) / 3000.0 * b.exp()
 }
 
+/// Enthalpy of association (kJ/mol) of a Fuoss pair, `R T^2 d ln K_A / dT` at `t_k` by central difference: the temperature
+/// dependence of the permittivity and of kT in the Bjerrum length. Pairing is endothermic (the ions shed ordered water);
+/// the model gives about +5 kJ/mol for MgSO4 (measured +6).
+pub fn fuoss_delta_h_kj(z_cation: i32, z_anion: i32, a_angstrom: f64, t_k: f64) -> f64 {
+    let dt = 1.0;
+    let dlnk = fuoss_k(z_cation, z_anion, a_angstrom, t_k + dt).ln() - fuoss_k(z_cation, z_anion, a_angstrom, t_k - dt).ln();
+    crate::physics::R_GAS * t_k * t_k * dlnk / (2.0 * dt) / 1000.0
+}
+
 /// Species id of the 1:1 pair of a cation and an anion ("CaSO4", "NaSO4-", "MgOH+").
 pub fn pair_species_id(cation: &str, anion: &str) -> String {
     let (cb, zc) = ions::split_charge(cation);
@@ -102,8 +111,12 @@ pub fn fuoss_pair_equilibrium(cation: &str, anion: &str, t_k: f64) -> Option<Gen
         return None;
     }
     let a = crate::crystal::ionic_radius_angstrom(cation)? + crate::crystal::ionic_radius_angstrom(anion)? + CONTACT_OFFSET_A;
-    let k = fuoss_k(zc, za, a, t_k);
-    if !(MIN_K_A..=MAX_K_A).contains(&k) || zc * za.abs() < MIN_CHARGE_PRODUCT {
+    // the row is stated at the standard temperature; its enthalpy carries it to the vessel's (`t_k` only decides whether the
+    // pair matters now)
+    let k_now = fuoss_k(zc, za, a, t_k);
+    let k = fuoss_k(zc, za, a, 298.15);
+    let dh = fuoss_delta_h_kj(zc, za, a, 298.15);
+    if !(MIN_K_A..=MAX_K_A).contains(&k_now) || zc * za.abs() < MIN_CHARGE_PRODUCT {
         return None;
     }
     let pair = pair_species_id(cation, anion);
@@ -126,7 +139,7 @@ pub fn fuoss_pair_equilibrium(cation: &str, anion: &str, t_k: f64) -> Option<Gen
         reactants,
         products,
         log_k_298: k.log10(),
-        delta_h_kj: 0.0,
+        delta_h_kj: dh,
         log_k_analytic: None,
         rate: None,
         tier: ProvenanceTier::Speculative,
@@ -181,6 +194,18 @@ mod tests {
         assert!(fuoss_pair_equilibrium("Na+", "Cl-", 298.15).is_none());
         assert!(fuoss_pair_equilibrium("Na+", "CO3-2", 298.15).is_none(), "2:1 pairs are not generated");
         assert!(fuoss_pair_equilibrium("Fe+3", "Fe(CN)6-4", 298.15).is_none(), "too strong for an outer-sphere pair");
+    }
+
+    /// Ion pairing is endothermic and the row's temperature dependence is that enthalpy (measured: MgSO4 +6, CaSO4 +6 kJ/mol).
+    #[test]
+    fn fuoss_pairs_carry_an_endothermic_association_enthalpy() {
+        let eq = fuoss_pair_equilibrium("Mg+2", "SO4-2", 298.15).unwrap();
+        assert!(eq.delta_h_kj > 2.0 && eq.delta_h_kj < 10.0, "dH {}", eq.delta_h_kj);
+        // van 't Hoff from the row reproduces the direct Fuoss constant at another temperature within a few per cent in log K
+        let a = crate::crystal::ionic_radius_angstrom("Mg+2").unwrap() + crate::crystal::ionic_radius_angstrom("SO4-2").unwrap() + CONTACT_OFFSET_A;
+        let direct = fuoss_k(2, -2, a, 330.0).log10();
+        let via_row = eq.log_k_at(330.0);
+        assert!((direct - via_row).abs() < 0.08, "{} vs {}", direct, via_row);
     }
 
     #[test]
