@@ -42,6 +42,7 @@ fn rxn(id: &str, orders: &[(&str, f64)], k_eq: Option<f64>) -> GeneralKineticRxn
         k_eq_298: k_eq,
         tier: ProvenanceTier::Tabulated,
         source: "test".into(),
+        phase_class: None,
     }
 }
 

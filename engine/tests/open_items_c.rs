@@ -164,3 +164,32 @@ fn organic_couple_with_a_rate_record_is_oxidised() {
     assert!(with > 1.0e-6 * 0.1, "benzoquinone formed with the rate record: {:e}", with);
     assert!(with > 100.0 * without.max(1e-30), "with {:e} vs without {:e}", with, without);
 }
+
+/// O5: every liquid layer gets its own network, with the rate rules of its own solvent class, and its reactions run in that
+/// layer only. Acetone in a hexane layer under water tautomerises there (alkane rule); the primary water phase has its own
+/// reactions tagged "water".
+#[test]
+fn each_liquid_layer_has_its_own_network_and_classes() {
+    let hexane = id_of("CCCCCC");
+    let acetone = id_of("CC(C)=O");
+    let mut v = beaker();
+    v.species_mol.insert("H2O".into(), 50.0 / 18.015);
+    v.species_mol.insert(acetone.clone(), 1.0e-4);
+    v.extra_liquids.push([(hexane.clone(), 0.2), (acetone.clone(), 0.02)].into());
+    assert_eq!(v.phase_solvent_class(0), "water");
+    assert_eq!(v.phase_solvent_class(1), "alkane");
+    v.update_network();
+    let tagged = |class: &str| v.kinetic_reactions.iter().filter(|r| r.phase_class.as_deref() == Some(class)).count();
+    assert!(tagged("alkane") > 0, "the alkane layer has reactions: {:?}", v.kinetic_reactions.iter().map(|r| (&r.id, &r.phase_class)).collect::<Vec<_>>());
+    assert!(v.kinetic_reactions.iter().any(|r| r.id.ends_with("@alkane") && r.reactants.contains_key(&acetone)), "keto-enol in the layer");
+    assert!(tagged("water") > 0, "the primary phase's reactions are tagged water");
+    // rows that name no class (the hand-curated data file) keep running in the primary phase only
+    assert!(v.kinetic_reactions.iter().any(|r| r.phase_class.is_none()));
+    // the layers integrate without producing nonsense
+    for _ in 0..20 {
+        v.step(0.5).unwrap();
+    }
+    for m in std::iter::once(&v.species_mol).chain(v.extra_liquids.iter()) {
+        assert!(m.values().all(|x| x.is_finite() && *x >= 0.0), "{:?}", m);
+    }
+}

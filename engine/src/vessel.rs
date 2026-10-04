@@ -595,34 +595,30 @@ impl Vessel {
         self.catalog.insert(entry.id.clone(), entry);
     }
 
-    /// Automatically expands and registers Stage 9 reaction network based on species present
+    /// Automatically expands and registers the reaction network of the species present, in every liquid phase: each phase
+    /// (the primary one and each immiscible layer) is expanded with its own concentrations and the rate rules of its own
+    /// solvent class, and the reactions are tagged with that class so they run only in phases of it (`step_kinetics`).
     pub fn update_network(&mut self) {
-        let vol_l = self.reaction_volume_ml() / 1000.0;
-        if vol_l <= 0.0 {
-            return;
-        }
-        let mut concs = HashMap::new();
-        for (sp, &mol) in &self.species_mol {
-            concs.insert(sp.clone(), mol / vol_l);
-        }
-        for (sp, &mol) in &self.solid_mol {
-            concs.insert(sp.clone(), mol / vol_l);
-        }
-        let ph = self.current_ph();
-        let generator = crate::network_generator::NetworkGenerator::new(
-            crate::network_generator::NetworkGeneratorConfig::default()
-        );
-        let solvent = self.primary_solvent_class();
-        let gen_net = generator.generate_network_in(&concs, self.temperature_k, ph, solvent);
-        self.network_cap_reached = gen_net.cap_reached;
-        self.network_edge = gen_net.edge;
-        for rxn in gen_net.reactions {
-            if !self.kinetic_reactions.iter().any(|r| r.id == rxn.id) {
+        let mut edge: Vec<crate::network_generator::GeneratedReaction> = Vec::new();
+        let mut cap = false;
+        for p in 0..(1 + self.extra_liquids.len()) {
+            let Some((concs, ph, class)) = self.phase_network_inputs(p) else { continue };
+            let generator = crate::network_generator::NetworkGenerator::new(crate::network_generator::NetworkGeneratorConfig::default());
+            let gen_net = generator.generate_network_in(&concs, self.temperature_k, ph, class);
+            cap |= gen_net.cap_reached;
+            edge.extend(gen_net.edge);
+            for rxn in gen_net.reactions {
+                // the primary phase keeps the plain id; another phase's reaction of the same template and species (a
+                // different solvent class has its own rate) is told apart by the class
+                let id = if p == 0 { rxn.id.clone() } else { format!("{}@{}", rxn.id, class) };
+                if self.kinetic_reactions.iter().any(|r| r.id == id) {
+                    continue;
+                }
                 // the rate law carries its own orders (solvent zero order, dissolved catalysts such as H+ first order) and
                 // K(298) with the reaction enthalpy, so the vessel re-evaluates catalysis, temperature and detailed balance
                 // every tick instead of freezing the conditions of the moment the network was generated
                 self.kinetic_reactions.push(chem_db::GeneralKineticRxn {
-                    id: rxn.id,
+                    id,
                     equation: rxn.equation,
                     reactants: rxn.reactants,
                     products: rxn.products,
@@ -638,24 +634,63 @@ impl Vessel {
                     k_eq_298: if rxn.k_eq_from_data { Some(rxn.k_eq_298) } else { None },
                     tier: rxn.tier,
                     source: rxn.source,
+                    phase_class: Some(class.to_string()),
                 });
             }
         }
+        self.network_cap_reached = cap;
+        self.network_edge = edge;
     }
 
-    /// Class of the vessel's primary solvent for the solvent-dependent rate rules: water when the primary liquid phase is
-    /// aqueous, else the class of its most abundant molecular component.
-    pub fn primary_solvent_class(&self) -> &'static str {
-        if self.phase_is_aqueous(&self.species_mol) {
+    /// The molecular map of liquid phase `p` (0 = primary).
+    pub(crate) fn liquid_phase_map(&self, p: usize) -> &HashMap<String, f64> {
+        if p == 0 { &self.species_mol } else { &self.extra_liquids[p - 1] }
+    }
+
+    pub(crate) fn liquid_phase_map_mut(&mut self, p: usize) -> &mut HashMap<String, f64> {
+        if p == 0 { &mut self.species_mol } else { &mut self.extra_liquids[p - 1] }
+    }
+
+    /// Solvent class of liquid phase `p`: water for an aqueous phase, else the class of its most abundant molecular
+    /// component (by its structure).
+    pub fn phase_solvent_class(&self, p: usize) -> &'static str {
+        let map = self.liquid_phase_map(p);
+        if self.phase_is_aqueous(map) {
             return "water";
         }
-        let lead = self
-            .species_mol
+        let lead = map
             .iter()
             .filter(|(k, &n)| n > 0.0 && crate::network_generator::resolve_molecule(k).is_some())
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(a.0)))
             .map(|(k, _)| k.clone());
         crate::optics::solution::solvent_class(false, self.smiles_of(lead.as_deref()).as_deref())
+    }
+
+    /// Concentrations (mol/L of the phase), pH and solvent class the network generator sees for liquid phase `p`; None when
+    /// the phase is empty or holds no species with a structure. Only the primary phase carries the aqueous pH and the
+    /// dissolved solids.
+    fn phase_network_inputs(&self, p: usize) -> Option<(HashMap<String, f64>, f64, &'static str)> {
+        let map = self.liquid_phase_map(p);
+        let vol_l = self.phase_volume_ml(map, self.temperature_k) / 1000.0;
+        if vol_l <= 0.0 || !map.iter().any(|(sp, &m)| m > 1e-12 && crate::network_generator::resolve_molecule(sp).is_some()) {
+            return None;
+        }
+        let mut concs: HashMap<String, f64> = map.iter().map(|(sp, &mol)| (sp.clone(), mol / vol_l)).collect();
+        let ph = if p == 0 {
+            for (sp, &mol) in &self.solid_mol {
+                concs.insert(sp.clone(), mol / vol_l);
+            }
+            self.current_ph()
+        } else {
+            7.0
+        };
+        Some((concs, ph, self.phase_solvent_class(p)))
+    }
+
+    /// Class of the vessel's primary solvent for the solvent-dependent rate rules: water when the primary liquid phase is
+    /// aqueous, else the class of its most abundant molecular component.
+    pub fn primary_solvent_class(&self) -> &'static str {
+        self.phase_solvent_class(0)
     }
 
     /// Re-evaluates the edge of the reaction network at the current contents: when a candidate has become fast (its rate at
@@ -1062,6 +1097,16 @@ impl Vessel {
                 cur_smiles_species.insert(sp.clone());
             }
         }
+        // a species in another liquid layer is tagged with the layer's solvent class: the same molecule in a different
+        // solvent has different rate rules
+        for p in 1..(1 + self.extra_liquids.len()) {
+            let class = self.phase_solvent_class(p);
+            for (sp, &mol) in &self.extra_liquids[p - 1] {
+                if mol > 1e-12 && crate::network_generator::resolve_molecule(sp).is_some() {
+                    cur_smiles_species.insert(format!("{}@{}", sp, class));
+                }
+            }
+        }
         if !cur_smiles_species.is_empty() {
             let ph = self.current_ph();
             let env = (if ph.is_finite() { ph.floor() as i32 } else { i32::MAX }, (self.temperature_k / 10.0).floor() as i32);
@@ -1134,10 +1179,20 @@ impl Vessel {
         Ok(())
     }
 
+    /// Kinetics of every liquid phase: each phase integrates the reactions of its own solvent class with its own
+    /// concentrations and volume (the primary phase also runs the class-less rows of `core_reactions.json`).
     fn step_kinetics(&mut self, dt_s: f64) -> f64 {
         let mut q_joules = 0.0;
+        for p in 0..(1 + self.extra_liquids.len()) {
+            q_joules += self.step_kinetics_phase(dt_s, p);
+        }
+        q_joules
+    }
+
+    fn step_kinetics_phase(&mut self, dt_s: f64, phase: usize) -> f64 {
+        let mut q_joules = 0.0;
         let t_k = self.temperature_k;
-        let vol_l = self.reaction_volume_ml() / 1000.0;
+        let vol_l = self.phase_volume_ml(self.liquid_phase_map(phase), t_k) / 1000.0;
         let r_ideal = R_GAS;
         let mut gas_out: Vec<(String, f64)> = Vec::new();
 
@@ -1145,8 +1200,28 @@ impl Vessel {
             return q_joules;
         }
 
+        // the reactions that run in this phase: those generated for its solvent class; the class-less rows run in the
+        // primary phase. In another phase a reaction also needs its reactants there (a layer without water does not hydrolyse)
+        let class = self.phase_solvent_class(phase);
+        let applicable: Vec<usize> = {
+            let map = self.liquid_phase_map(phase);
+            self.kinetic_reactions
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| match r.phase_class.as_deref() {
+                    Some(c) => c == class,
+                    None => phase == 0,
+                })
+                .filter(|(_, r)| phase == 0 || r.reactants.keys().all(|k| map.get(k).copied().unwrap_or(0.0) > 0.0 || self.solid_mol.get(k).copied().unwrap_or(0.0) > 0.0))
+                .map(|(i, _)| i)
+                .collect()
+        };
+        if applicable.is_empty() {
+            return q_joules;
+        }
+
         let p_pa = self.pressure_atm * 101325.0;
-        let ionic_str = self.calc_ionic_strength();
+        let ionic_str = if phase == 0 { self.calc_ionic_strength() } else { 0.0 };
 
         // Collect all species involved across all kinetic reactions
         let mut species_set: Vec<String> = Vec::new();
@@ -1164,7 +1239,7 @@ impl Vessel {
         };
 
         let mut extent_reactions = Vec::new();
-        for rxn in &self.kinetic_reactions {
+        for rxn in applicable.iter().map(|&i| &self.kinetic_reactions[i]) {
             let mut reactants = Vec::new();
             for (r, &c) in &rxn.reactants {
                 let idx = get_or_add_species(r, &mut species_set, &mut spec_map);
@@ -1219,14 +1294,14 @@ impl Vessel {
         let num_spec = species_set.len();
         let mut initial_moles = vec![0.0; num_spec];
         for (i, sp) in species_set.iter().enumerate() {
-            initial_moles[i] = self.species_mol.get(sp).copied()
+            initial_moles[i] = self.liquid_phase_map(phase).get(sp).copied()
                 .or_else(|| self.solid_mol.get(sp).copied())
                 .unwrap_or(0.0);
         }
 
         let mut system = crate::kinetics::KineticExtentSystem::new(species_set.clone(), extent_reactions);
         // rate laws in mol/L, K(T) in molality: the solvent mass per litre of solution converts between them
-        let kg_solvent = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528;
+        let kg_solvent = self.liquid_phase_map(phase).get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528;
         if kg_solvent > 1e-9 {
             system.solvent_kg_per_l = (kg_solvent / vol_l).clamp(0.2, 1.5);
         }
@@ -1240,7 +1315,8 @@ impl Vessel {
             &self.catalyst_areas(),
         );
 
-        for (r_idx, rxn) in self.kinetic_reactions.iter().enumerate() {
+        for (r_idx, &rxn_idx) in applicable.iter().enumerate() {
+            let rxn = self.kinetic_reactions[rxn_idx].clone();
             // a reversible reaction runs backward (negative extent) when its quotient is past K
             let extent = extents[r_idx];
             if extent.abs() <= 1e-15 {
@@ -1250,10 +1326,10 @@ impl Vessel {
             // Reactants are consumed (returned when the extent is negative); a solid id lives in `solid_mol`
             for (reactant, &coeff) in &rxn.reactants {
                 let d = extent * coeff;
-                let map = if reactant.ends_with("(s)") || (!self.species_mol.contains_key(reactant) && self.solid_mol.contains_key(reactant)) {
+                let map = if reactant.ends_with("(s)") || (!self.liquid_phase_map(phase).contains_key(reactant) && self.solid_mol.contains_key(reactant)) {
                     &mut self.solid_mol
                 } else {
-                    &mut self.species_mol
+                    self.liquid_phase_map_mut(phase)
                 };
                 let m = map.entry(reactant.clone()).or_default();
                 *m = (*m - d).max(0.0);
@@ -1262,7 +1338,7 @@ impl Vessel {
             // Products are formed (consumed when the extent is negative)
             for (prod, &coeff) in &rxn.products {
                 let d = extent * coeff;
-                let map = if prod.ends_with("(s)") { &mut self.solid_mol } else { &mut self.species_mol };
+                let map = if prod.ends_with("(s)") { &mut self.solid_mol } else { self.liquid_phase_map_mut(phase) };
                 let m = map.entry(prod.clone()).or_default();
                 *m = (*m + d).max(0.0);
             }

@@ -219,6 +219,11 @@ pub struct GeneralKineticRxn {
     pub k_eq_298: Option<f64>,
     pub tier: ProvenanceTier,
     pub source: String,
+    /// Solvent class ("water", "alcohol", "alkane", ...) of the liquid phase this reaction was generated for (its rate
+    /// constant is that of the solvent class); it runs only in phases of that class. `None` (the hand-curated rows of
+    /// `core_reactions.json`) = the primary liquid phase, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_class: Option<String>,
 }
 
 /// Molar mass and charge of a species: what almost every caller needs. The mass is exact whenever the id parses as a

@@ -109,7 +109,7 @@ fn test_g2_detailed_balance_reversible_equilibrium_gate() {
             is_reversible: true,
             k_eq_298: Some(1.0),
             tier: ProvenanceTier::Tabulated,
-            source: "Gate G2".to_string(),
+            source: "Gate G2".to_string(), phase_class: None,
         };
 
         v.register_kinetic_reaction(rxn);
@@ -157,6 +157,7 @@ fn test_g3_elementary_rate_order_gate() {
             k_eq_298: None,
             tier: ProvenanceTier::Tabulated,
             source: "Gate G3".to_string(),
+            phase_class: None,
         }
     };
 
@@ -231,7 +232,7 @@ fn test_g4_first_order_dt_invariance_gate() {
             is_reversible: false,
             k_eq_298: None,
             tier: ProvenanceTier::Tabulated,
-            source: "Gate G4".to_string(),
+            source: "Gate G4".to_string(), phase_class: None,
         };
         v.register_kinetic_reaction(rxn);
 
@@ -373,7 +374,7 @@ fn test_g6_arrhenius_and_catalysis_gate() {
         is_reversible: false,
         k_eq_298: None,
         tier: ProvenanceTier::Tabulated,
-        source: "Gate G6".to_string(),
+        source: "Gate G6".to_string(), phase_class: None,
     };
     v.register_kinetic_reaction(rxn);
 

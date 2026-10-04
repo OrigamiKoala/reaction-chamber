@@ -235,7 +235,7 @@ fn s0_2_registered_unbalanced_reaction_is_flagged_by_the_ledger() {
         is_reversible: false,
         k_eq_298: None,
         tier: ProvenanceTier::Tabulated,
-        source: "test".into(),
+        source: "test".into(), phase_class: None,
     };
     let warning = v.register_kinetic_reaction(bad);
     assert!(warning.as_deref().map_or(false, |w| w.contains("not balanced")), "{:?}", warning);
