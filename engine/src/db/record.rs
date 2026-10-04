@@ -90,6 +90,10 @@ pub struct PhaseData {
     pub rho: Option<Datum>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub polymorph: Option<String>,
+    /// Specific surface area of the solid as handled (BET, m^2/g). A property of the material in its usual powder form;
+    /// without it the surface follows from the particle size of the solid in the vessel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specific_area: Option<Datum>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -142,6 +146,10 @@ pub struct RedoxCouple {
     pub E0: Datum,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n_electrons: Option<i32>,
+    /// Self-exchange rate constant of the couple (M^-1 s^-1): the rate of electron exchange between its two forms, from
+    /// which the Marcus cross relation derives the rate of every reaction the couple takes part in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub k_self: Option<Datum>,
 }
 
 /// One Gaussian absorption band of a species in a solvent (or in the solid lattice): the molar absorptivity at the band

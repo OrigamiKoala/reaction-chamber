@@ -160,77 +160,77 @@ narrowness that limits generality, **D** performance or hygiene.
 
 ### 2.1 Thermodynamic data
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| T1 | B | `get_thermo_state` still hands placeholders to non-deciding callers (energy balance, burn enthalpies, GEM solver), and `chem_db::get_species_thermo` has a separate hand table plus placeholder ΔfH | One lookup, `try_thermo_state`, everywhere; callers that need a number must handle `None` (skip the species' heat and say so). Delete `species_thermo_table` once `SpeciesStore` seeds carry its rows. |
-| T2 | B | Cp is constant from 298 K (`state_from_formation`), so ΔrG(T) is poor above ~400 K (decomposition onsets, flames) | Use the record's Cp polynomial (NASA-7 / Shomate `ranges`) and integrate H and S analytically; fall back to constant Cp with tier Estimated. |
-| T3 | B | No S°/ΔfG estimate when only ΔfH is known (ΔfS = 0 is used, now flagged Estimated) | Organics: Benson group additivity for S° (and ΔfH, better than Joback); ions: Latimer / Powell–Latimer S°(aq) from charge and radius; solids: Latimer's element contributions. |
-| T4 | B | Joback (now used for created products) gives ideal-gas values; the liquid comes from Trouton + Clausius–Clapeyron; there is no aqueous standard state | Add a hydration free energy estimate for neutral solutes (Abraham linear solvation energy relationship from SMILES descriptors, or a group-additive ΔhydG such as Cabani) so μ°(aq) = μ°(g) + ΔhydG. Replace Joback ΔfH by Benson where groups exist. |
-| T5 | C | Joback has no ions, so carboxylates and other created anions get no data and fall back to template K | ΔfG°(A⁻,aq) = ΔfG°(HA,aq) + 2.303 RT pKa with the pKa from `acid_estimate` (cycle closure); same for protonated amines. |
-| T6 | C | `chem_db` default rows include questionable data: `cobalt_tetrachloro` log K −4 "effective" with an invented ΔH of 50 kJ/mol; indicator and starch pseudo-species; `MnO2_sol`/`Mg_metal` pseudo-minerals with log Ksp −50/−100 and no ions, used only to carry appearance | Move every row to a cited data file (`engine/data/*.json`) with provenance; replace pseudo-minerals by solid records (the store already has `MnO2(s)`, `Mg(s)`); derive indicators from imported structures with pKa from data or `acid_estimate`, colour from their UV bands. Stepwise CoClₙ complexes with measured β_n. |
-| T7 | D | Literal ion tables in logic files (`props.rs`, `volume.rs`, `activity.rs` Pitzer pairs, `ions.rs` hue hints) | Move to `engine/data` and records; keep driving the ratchet in `literal_ban.rs` down. |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| T1 | B | **Complete (§6.1)** | `get_thermo_state` still hands placeholders to non-deciding callers (energy balance, burn enthalpies, GEM solver), and `chem_db::get_species_thermo` has a separate hand table plus placeholder ΔfH | One lookup, `try_thermo_state`, everywhere; callers that need a number must handle `None` (skip the species' heat and say so). Delete `species_thermo_table` once `SpeciesStore` seeds carry its rows. |
+| T2 | B | Open | Cp is constant from 298 K (`state_from_formation`), so ΔrG(T) is poor above ~400 K (decomposition onsets, flames) | Use the record's Cp polynomial (NASA-7 / Shomate `ranges`) and integrate H and S analytically; fall back to constant Cp with tier Estimated. |
+| T3 | B | Open | No S°/ΔfG estimate when only ΔfH is known (ΔfS = 0 is used, now flagged Estimated) | Organics: Benson group additivity for S° (and ΔfH, better than Joback); ions: Latimer / Powell–Latimer S°(aq) from charge and radius; solids: Latimer's element contributions. |
+| T4 | B | Open | Joback (now used for created products) gives ideal-gas values; the liquid comes from Trouton + Clausius–Clapeyron; there is no aqueous standard state | Add a hydration free energy estimate for neutral solutes (Abraham linear solvation energy relationship from SMILES descriptors, or a group-additive ΔhydG such as Cabani) so μ°(aq) = μ°(g) + ΔhydG. Replace Joback ΔfH by Benson where groups exist. |
+| T5 | C | Open | Joback has no ions, so carboxylates and other created anions get no data and fall back to template K | ΔfG°(A⁻,aq) = ΔfG°(HA,aq) + 2.303 RT pKa with the pKa from `acid_estimate` (cycle closure); same for protonated amines. |
+| T6 | C | **Partial (§6.2)** | `chem_db` default rows include questionable data: `cobalt_tetrachloro` log K −4 "effective" with an invented ΔH of 50 kJ/mol; indicator and starch pseudo-species; `MnO2_sol`/`Mg_metal` pseudo-minerals with log Ksp −50/−100 and no ions, used only to carry appearance | Move every row to a cited data file (`engine/data/*.json`) with provenance; replace pseudo-minerals by solid records (the store already has `MnO2(s)`, `Mg(s)`); derive indicators from imported structures with pKa from data or `acid_estimate`, colour from their UV bands. Stepwise CoClₙ complexes with measured β_n. |
+| T7 | D | Open | Literal ion tables in logic files (`props.rs`, `volume.rs`, `activity.rs` Pitzer pairs, `ions.rs` hue hints) | Move to `engine/data` and records; keep driving the ratchet in `literal_ban.rs` down. |
 
 ### 2.2 Equilibrium and speciation
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| E1 | A | Concentration basis is mol per litre of *solvent* in the solver but molality in `current_ph` and the activity models | One basis: molality for all aqueous rows (K values are molal at the standard state anyway); convert to molarity only for display. |
-| E2 | B | Salts are fully dissociated at import; there is no ion pairing or complexation unless a table row exists (CuCl⁺, HgCl₂(aq), CdCl⁺, sulfate ion pairs) | Generic association: Bjerrum/Fuoss ion-pair constants from charges, radii (`data/ion_radii.json`) and ε(T) for every cation/anion pair, plus a complexation database (NIST SRD 46 / Smith–Martell rows as records). |
-| E3 | B | Ksp for pairs with neither a table row nor formation data uses the solubility rules (log Ksp −(4 + 2z₊z₋)) | Estimate ΔsolG° = ΔlatticeG − ΣΔhydG: Kapustinskii lattice energy from ion radii and charges, Born/Marcus hydration energies of the ions. Tier Speculative, but it orders solubilities correctly across a family; keep the rules only as a sanity check. Also store the result so a PubChem lookup can overwrite it (this already works). |
-| E4 | C | Acid strength: strong acids from a 9-row list; others from class ladders | pKa from structure (Hammett σ / Taft σ* increments over the SMILES graph, as Perrin–Dempsey–Serjeant); keep tabulated pKa when present. |
-| E5 | C | Equilibria act only in the water-containing phase; acid–base and complexation in organic layers are absent, and ions never partition | Per-phase equilibria (the master plan's D6): solve each liquid phase with its own activity model; ion transfer via Born transfer energy (already in `activity.rs` as `BornTransfer`). |
-| E6 | C | K(T) by van 't Hoff with constant ΔH for rows without analytic forms | Use ΔrCp from the species records (T2) or the record's analytic log K(T). |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| E1 | A | Open | Concentration basis is mol per litre of *solvent* in the solver but molality in `current_ph` and the activity models | One basis: molality for all aqueous rows (K values are molal at the standard state anyway); convert to molarity only for display. |
+| E2 | B | Open | Salts are fully dissociated at import; there is no ion pairing or complexation unless a table row exists (CuCl⁺, HgCl₂(aq), CdCl⁺, sulfate ion pairs) | Generic association: Bjerrum/Fuoss ion-pair constants from charges, radii (`data/ion_radii.json`) and ε(T) for every cation/anion pair, plus a complexation database (NIST SRD 46 / Smith–Martell rows as records). |
+| E3 | B | Open | Ksp for pairs with neither a table row nor formation data uses the solubility rules (log Ksp −(4 + 2z₊z₋)) | Estimate ΔsolG° = ΔlatticeG − ΣΔhydG: Kapustinskii lattice energy from ion radii and charges, Born/Marcus hydration energies of the ions. Tier Speculative, but it orders solubilities correctly across a family; keep the rules only as a sanity check. Also store the result so a PubChem lookup can overwrite it (this already works). |
+| E4 | C | Open | Acid strength: strong acids from a 9-row list; others from class ladders | pKa from structure (Hammett σ / Taft σ* increments over the SMILES graph, as Perrin–Dempsey–Serjeant); keep tabulated pKa when present. |
+| E5 | C | Open | Equilibria act only in the water-containing phase; acid–base and complexation in organic layers are absent, and ions never partition | Per-phase equilibria (the master plan's D6): solve each liquid phase with its own activity model; ion transfer via Born transfer energy (already in `activity.rs` as `BornTransfer`). |
+| E6 | C | Open | K(T) by van 't Hoff with constant ΔH for rows without analytic forms | Use ΔrCp from the species records (T2) or the record's analytic log K(T). Subsumed by T2. |
 
 ### 2.3 Reaction discovery (inorganic)
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| R1 | A | Discovered reactions are applied one after another within a tick, each against the amounts left by the previous one; the result depends on discovery order, and competing reactions are not solved together | Treat all labile reactions (fast redox, decomposition) as one Gibbs minimisation over the candidate set (`gem/solver.rs` exists but is not on the vessel path), then relax the vessel toward that state with one rate per process (the Stage 8 "limited equilibrium" pattern). |
-| R2 | B | Redox discovery only pairs two couples, with H⁺/H₂O or OH⁻/H₂O as the only helpers; species with more than one carbon are excluded; O₂ of the open atmosphere is not a candidate (air oxidation of Fe²⁺, sulfite, ...) | Build the candidate set from the elements present (as Stage 6 intended) with gases of the headspace or atmosphere as reactants at their partial pressures, and let R1's minimisation pick products. Allow organic redox through couples in records (quinone/hydroquinone, alcohol/aldehyde) rather than by excluding carbon. |
-| R3 | B | Homogeneous electron-transfer rate is a placeholder relaxation of 1 s⁻¹ for every couple | Marcus cross relation k₁₂ = (k₁₁k₂₂K₁₂f)^½ with self-exchange constants per couple from records (default by class: outer-sphere aqua ions ~1–10 M⁻¹s⁻¹, inner-sphere oxo anions slow), capped by diffusion. Couples that are kinetically inert (MnO₄⁻ without catalyst, H₂O₂ at neutral pH, N₂) get no fast path. |
-| R4 | B | Thermal decomposition rate is a placeholder 0.1 s⁻¹ at any T past the onset | Heat- and mass-transfer limited: rate = (heat flow into the powder)/ΔrH, capped by an Arrhenius solid-state rate with Ea ≈ ΔrH (Kissinger-type default), and a shrinking-core geometry from the particle population. |
-| R5 | C | Discovery excludes gases as reactants of decomposition reverse paths (recarbonation of CaO, hydration of CuSO₄ by humid air) | Covered by R1/R2: gases present at their partial pressures are candidates; the ΔrG sign then decides the direction. |
-| R6 | C | Heterogeneous catalysis uses a fixed 50 m²/g specific area for any catalyst | A specific-surface-area (BET) property on solid records; fall back to the particle population's geometric area. |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| R1 | A | **Complete (§6.3)** | Discovered reactions are applied one after another within a tick, each against the amounts left by the previous one; the result depends on discovery order, and competing reactions are not solved together | Treat all labile reactions (fast redox, decomposition) as one Gibbs minimisation over the candidate set (`gem/solver.rs` exists but is not on the vessel path), then relax the vessel toward that state with one rate per process (the Stage 8 "limited equilibrium" pattern). |
+| R2 | B | Open | Redox discovery only pairs two couples, with H⁺/H₂O or OH⁻/H₂O as the only helpers; species with more than one carbon are excluded; O₂ of the open atmosphere is not a candidate (air oxidation of Fe²⁺, sulfite, ...) | Build the candidate set from the elements present (as Stage 6 intended) with gases of the headspace or atmosphere as reactants at their partial pressures, and let R1's minimisation pick products. Allow organic redox through couples in records (quinone/hydroquinone, alcohol/aldehyde) rather than by excluding carbon. |
+| R3 | B | **Complete (§6.3)** | Homogeneous electron-transfer rate is a placeholder relaxation of 1 s⁻¹ for every couple | Marcus cross relation k₁₂ = (k₁₁k₂₂K₁₂f)^½ with self-exchange constants per couple from records (default by class: outer-sphere aqua ions ~1–10 M⁻¹s⁻¹, inner-sphere oxo anions slow), capped by diffusion. Couples that are kinetically inert (MnO₄⁻ without catalyst, H₂O₂ at neutral pH, N₂) get no fast path. |
+| R4 | B | **Complete (§6.3)** | Thermal decomposition rate is a placeholder 0.1 s⁻¹ at any T past the onset | Heat- and mass-transfer limited: rate = (heat flow into the powder)/ΔrH, capped by an Arrhenius solid-state rate with Ea ≈ ΔrH (Kissinger-type default), and a shrinking-core geometry from the particle population. |
+| R5 | C | **Complete (§1.5, §6.3)** | Discovery excludes gases as reactants of decomposition reverse paths (recarbonation of CaO, hydration of CuSO₄ by humid air) | Covered by R1/R2: gases present at their partial pressures are candidates; the ΔrG sign then decides the direction. |
+| R6 | C | **Complete (§6.2, §6.3)** | Heterogeneous catalysis uses a fixed 50 m²/g specific area for any catalyst | A specific-surface-area (BET) property on solid records; fall back to the particle population's geometric area. |
 
 ### 2.4 Organic reactions (network generator)
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| O1 | B | Only five template families act (ester hydrolysis, SN2/E2, alkene hydration, halogen addition, keto–enol). The 45 `templates.rs` families are data the generator ignores (except keto–enol) | A SMIRKS-based template engine: each family = reaction SMARTS + rate rule + catalyst orders, loaded from data. First additions: SN1/E1 (carbocation stability from substitution, solvent ionising power Y), esterification (the reverse of hydrolysis now follows from K), amide hydrolysis, nucleophilic addition to carbonyls (hydrate, hemiacetal, cyanohydrin, imine), aldol, alcohol oxidation by Cr(VI)/Mn(VII) (links to R2), electrophilic aromatic substitution, acid–base proton transfer of organic acids and amines (from E4). |
-| O2 | B | Rate rules are one A/Ea per family with class multipliers | RMG-style rate-rule trees (most specific matching node wins) or Evans–Polanyi Ea = E₀ + αΔrH with ΔrH from T3/T4; precomputed barriers from the M7 xtb flywheel override them (the hook exists: `precomputed_barriers`). Mayr N/sN/E belong on nucleophile/electrophile *records*, matched by identity, giving log k = s_N(N + E) for polar additions. |
-| O3 | C | Solvent effects absent (SN2 rates for a protic solvent, no Hughes–Ingold solvent rules, no ionic-strength effect for neutral–ion steps) | Solvent-dependent rate multipliers from the phase's solvent class (protic/aprotic, ε) via Grunwald–Winstein for ionisation paths and a dielectric (Kirkwood) correction for ion–dipole steps. |
-| O4 | C | Generation is flux-filtered at one composition; the network only grows and is never pruned | RMG core/edge: keep a candidate edge list, re-evaluate fluxes during the simulation and promote edge reactions whose flux exceeds ε·(characteristic flux); prune core species whose concentration and flux stay negligible. |
-| O5 | C | Organic reactions happen only in `species_mol` (the primary liquid) | Run them per liquid phase with that phase's activities (needs E5). |
-| O6 | D | Python `pipeline/templates_m6.py` (served at `/api/m6/network`) still applies `sn2_e2_product_ratio("secondary", …)` and `ester_hydrolysis_k_obs("ethyl_acetate", …)` to every substrate; `pipeline/equilibrium_solver.py` (AgCl-specific) is tested but never used by the bench | Delete both, or make the endpoint call the WASM/native generator; move the remaining M3/M6 pytest gates onto the engine (the master plan already lists this). |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| O1 | B | Open | Only five template families act (ester hydrolysis, SN2/E2, alkene hydration, halogen addition, keto–enol). The 45 `templates.rs` families are data the generator ignores (except keto–enol) | A SMIRKS-based template engine: each family = reaction SMARTS + rate rule + catalyst orders, loaded from data. First additions: SN1/E1 (carbocation stability from substitution, solvent ionising power Y), esterification (the reverse of hydrolysis now follows from K), amide hydrolysis, nucleophilic addition to carbonyls (hydrate, hemiacetal, cyanohydrin, imine), aldol, alcohol oxidation by Cr(VI)/Mn(VII) (links to R2), electrophilic aromatic substitution, acid–base proton transfer of organic acids and amines (from E4). |
+| O2 | B | Open | Rate rules are one A/Ea per family with class multipliers | RMG-style rate-rule trees (most specific matching node wins) or Evans–Polanyi Ea = E₀ + αΔrH with ΔrH from T3/T4; precomputed barriers from the M7 xtb flywheel override them (the hook exists: `precomputed_barriers`). Mayr N/sN/E belong on nucleophile/electrophile *records*, matched by identity, giving log k = s_N(N + E) for polar additions. |
+| O3 | C | Open | Solvent effects absent (SN2 rates for a protic solvent, no Hughes–Ingold solvent rules, no ionic-strength effect for neutral–ion steps) | Solvent-dependent rate multipliers from the phase's solvent class (protic/aprotic, ε) via Grunwald–Winstein for ionisation paths and a dielectric (Kirkwood) correction for ion–dipole steps. |
+| O4 | C | Open | Generation is flux-filtered at one composition; the network only grows and is never pruned | RMG core/edge: keep a candidate edge list, re-evaluate fluxes during the simulation and promote edge reactions whose flux exceeds ε·(characteristic flux); prune core species whose concentration and flux stay negligible. |
+| O5 | C | Open | Organic reactions happen only in `species_mol` (the primary liquid) | Run them per liquid phase with that phase's activities (needs E5). |
+| O6 | D | **Complete (§6.2)** | Python `pipeline/templates_m6.py` (served at `/api/m6/network`) still applies `sn2_e2_product_ratio("secondary", …)` and `ester_hydrolysis_k_obs("ethyl_acetate", …)` to every substrate; `pipeline/equilibrium_solver.py` (AgCl-specific) is tested but never used by the bench | Delete both, or make the endpoint call the WASM/native generator; move the remaining M3/M6 pytest gates onto the engine (the master plan already lists this). |
 
 ### 2.5 Kinetics core
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| K1 | C | Kinetic salt effect uses the first two reactants and A_DH = 0.51 at every temperature; the diffusion cap uses 0.25 nm radii and water's viscosity for every species and solvent | A_DH(T, ε) from `transport.rs`; radii from molar volumes (organics) or `data/ion_radii.json`; viscosity of the phase the reaction runs in. |
-| K2 | C | Sub-steps are fixed at ≤ 50 ms; error is not estimated | Use the embedded ROS2/ROS1 pair for an error estimate and adapt h (the comment already claims "adaptive"). |
-| K3 | D | Dense LU is O(R³): 500 generated reactions would cost ~40 ms per tick | Sparse LU on the reaction-coupling graph (reactions sharing species), or integrate in species space with a sparse Jacobian when R ≫ S. |
-| K4 | C | Gas products make a kinetic reaction irreversible (they are assumed to leave); in a sealed vessel they should enter Q at their partial pressure | Pass the headspace partial pressures into the integrator (the redox path already does this). |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| K1 | C | **Complete (§6.2)** | Kinetic salt effect uses the first two reactants and A_DH = 0.51 at every temperature; the diffusion cap uses 0.25 nm radii and water's viscosity for every species and solvent | A_DH(T, ε) from `transport.rs`; radii from molar volumes (organics) or `data/ion_radii.json`; viscosity of the phase the reaction runs in. |
+| K2 | C | Open | Sub-steps are fixed at ≤ 50 ms; error is not estimated | Use the embedded ROS2/ROS1 pair for an error estimate and adapt h (the comment already claims "adaptive"). |
+| K3 | D | Open | Dense LU is O(R³): 500 generated reactions would cost ~40 ms per tick | Sparse LU on the reaction-coupling graph (reactions sharing species), or integrate in species space with a sparse Jacobian when R ≫ S. |
+| K4 | C | **Complete (§1.4, §6.1)** | Gas products make a kinetic reaction irreversible (they are assumed to leave); in a sealed vessel they should enter Q at their partial pressure | Pass the headspace partial pressures into the integrator (the redox path already does this). |
 
 ### 2.6 Transfer, phase and energy
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| P1 | A | Energy balance: ambient loss is a constant 0.5 W/K and bath coupling a constant 25 W/K for every vessel; the unused `energy_balance.rs` has a geometric model | Natural-convection h from Churchill–Chu over the wetted wall area plus radiation (εσT⁴), bath coupling from the immersed area; wire `energy_balance.rs` in. Gate: 100 mL water in a 250 mL beaker cools from 80 °C with τ ≈ 20–30 min. |
-| P2 | B | Process heats are summed per reaction (ΔrH × extent) instead of from an enthalpy state, so heats of mixing, dilution and the temperature dependence of ΔrH are missed | Track total enthalpy H(T, n) of the contents from species H(T) (T2) and solve T from it each tick (`energy_balance::solve_temperature`). Energy is then conserved by construction across all processes. |
-| P3 | C | VLE is a separate layer beside the equilibrium solver; UNIFAC covers few groups; Pitzer parameters fixed at 25 °C; no electrolyte–solvent LLE for ions | As listed in `docs/plans/generalization-progress.md` (Stage 4–5 gaps): modified UNIFAC (Dortmund) table, Pitzer T-derivatives, eNRTL for mixed solvents. |
-| P4 | C | Dissolution scales the particle population self-similarly; no aggregation/breakage balance | Method of classes on the existing 6 log-normal classes (smallest dissolve first), Smoluchowski aggregation kernel for flocs. |
-| P5 | D | `"H2O(g)"` literal in `vessel_ext.rs` to hide steam from the gas-evolution log | Skip gases that are the vapour of a liquid currently boiling (from `boil_vapour_ml_s` / the volatile list). |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| P1 | A | **Complete (§6.3)** | Energy balance: ambient loss is a constant 0.5 W/K and bath coupling a constant 25 W/K for every vessel; the unused `energy_balance.rs` has a geometric model | Natural-convection h from Churchill–Chu over the wetted wall area plus radiation (εσT⁴), bath coupling from the immersed area; wire `energy_balance.rs` in. Gate: 100 mL water in a 250 mL beaker cools from 80 °C with τ ≈ 20–30 min. |
+| P2 | B | Open | Process heats are summed per reaction (ΔrH × extent) instead of from an enthalpy state, so heats of mixing, dilution and the temperature dependence of ΔrH are missed | Track total enthalpy H(T, n) of the contents from species H(T) (T2) and solve T from it each tick (`energy_balance::solve_temperature`). Energy is then conserved by construction across all processes. |
+| P3 | C | Open | VLE is a separate layer beside the equilibrium solver; UNIFAC covers few groups; Pitzer parameters fixed at 25 °C; no electrolyte–solvent LLE for ions | As listed in `docs/plans/generalization-progress.md` (Stage 4–5 gaps): modified UNIFAC (Dortmund) table, Pitzer T-derivatives, eNRTL for mixed solvents. |
+| P4 | C | Open | Dissolution scales the particle population self-similarly; no aggregation/breakage balance | Method of classes on the existing 6 log-normal classes (smallest dissolve first), Smoluchowski aggregation kernel for flocs. |
+| P5 | D | **Complete (§6.1)** | `"H2O(g)"` literal in `vessel_ext.rs` to hide steam from the gas-evolution log | Skip gases that are the vapour of a liquid currently boiling (from `boil_vapour_ml_s` / the volatile list). |
 
 ### 2.7 Instruments
 
-| # | Sev | Problem | Fix / algorithm |
-|---|---|---|---|
-| I1 | C | The pH meter reads the water-containing phase wherever the probe sits; in mixed solvents it reports molal aqueous pH | Read the phase at the probe tip height (layers are ordered by density); for mixed solvents report the operational pH with a junction-potential estimate, or "---" outside the electrode's range. |
-| I2 | C | Reaction-clock neutralisation detection matches the text `H2O <=> H+ + OH-` | Detect by structure: the equilibrium row whose reactant is the solvent and whose products are its autoprotolysis ions (any amphiprotic solvent), with a reaction-enthalpy threshold instead of a rate threshold. |
-| I3 | C | Thermometer reads the bulk temperature; no thermal lag of the glass, no gradient while heating unstirred | Two-node model (contents and wall) from P1, with an unstirred-layer temperature at the probe. |
-| I4 | C | Voltmeter/potentiostat electrodes limited to six materials on the console | Any conducting solid record (already supported in the engine) exposed in the console selector from the store. |
-| I5 | C | NMR/MS/UV-vis increments are recalled literature values never compared to a database (see `CLAUDE.md` "Structure-based NMR and mass spectrometry") | Validate against NMRShiftDB2 (open) and MassBank (open) in a pipeline gate; fit the 8 EI constants on MassBank; report error statistics per class. |
+| # | Sev | Status | Problem | Fix / algorithm |
+|---|---|---|---|---|
+| I1 | C | Open | The pH meter reads the water-containing phase wherever the probe sits; in mixed solvents it reports molal aqueous pH | Read the phase at the probe tip height (layers are ordered by density); for mixed solvents report the operational pH with a junction-potential estimate, or "---" outside the electrode's range. |
+| I2 | C | **Complete (§6.1)** | Reaction-clock neutralisation detection matches the text `H2O <=> H+ + OH-` | Detect by structure: the equilibrium row whose reactant is the solvent and whose products are its autoprotolysis ions (any amphiprotic solvent), with a reaction-enthalpy threshold instead of a rate threshold. |
+| I3 | C | Open | Thermometer reads the bulk temperature; no thermal lag of the glass, no gradient while heating unstirred | Two-node model (contents and wall) from P1, with an unstirred-layer temperature at the probe. |
+| I4 | C | Open | Voltmeter/potentiostat electrodes limited to six materials on the console | Any conducting solid record (already supported in the engine) exposed in the console selector from the store. |
+| I5 | C | Open | NMR/MS/UV-vis increments are recalled literature values never compared to a database (see `CLAUDE.md` "Structure-based NMR and mass spectrometry") | Validate against NMRShiftDB2 (open) and MassBank (open) in a pipeline gate; fit the 8 EI constants on MassBank; report error statistics per class. |
 
 ---
 
@@ -314,3 +314,94 @@ Visual-only constants kept on purpose (all in the renderer, listed so they are n
 instances, merged bubbles capped at 3.5 mm); the micro-bubble haze (0.3 /cm x (agitation - 0.15)); ice chunks (one per 6
 mL, 92 % submerged); settling shown with the engine's velocity x 0.3 (`effects.ts`, the cloud clears within an attention
 span); the clear-liquid tint (V9).
+
+
+---
+
+## 6. Second audit pass (2026-10-03): generality, determinism, conservation
+
+Method: besides reading the code, a randomised invariant harness (`engine/tests/audit_invariants.rs`: random mixtures of the
+catalog reagents with random heating, stirring and sealing; 40-400 seeds) checks finite numbers, non-negative amounts, element
+and charge conservation, **mass balance** (held + headspace + lost = dosed), bounded temperature, draw-off / return, and that two
+identical runs agree. It found most of the bugs below.
+
+### 6.1 Bugs fixed
+
+| Bug | Effect | Fix |
+|---|---|---|
+| `ions::species_elements` cached "unknown" forever, and treated a busy store (`try_read`) as "no such species" | a species unknown at first sight, or looked up while another thread registered a record, never parsed again (flaky `acidifying_regenerates_the_network`, wrong networks) | cache keyed by store generation; a lookup that could not read the store is not cached. Same for the reaction-basis memo |
+| `phase_flash` counted one solid for two liquid keys of one molecule (`I2(aq)` and `I2(l)`) | iodine atoms created (1e-9 mol per step, drifting past the conservation tolerance) | one solid belongs to one component |
+| Electrode half-reactions: flows from the root finders did not balance electrons | net charge created in the solution | oxidation and reduction fluxes are trimmed to the same number of electrons (zero current if one side is empty) |
+| Hash-order dependence: species store, half-reaction discovery, electrode order, mineral registration, snapshot species / solid rows | results and the species table differed between runs | `BTreeMap` store, sorted iteration, sorted snapshot rows |
+| Duplicate equilibrium rows per step | the same equilibrium listed 2-3 times | one row per equilibrium, rates summed |
+| Gas leaving by venting, and gas drawn from the atmosphere, were booked in the element ledger but not in `mass_lost_g` | mass balance off by up to 0.5 % after a stopper pop | `vent_headspace` books the net gas, open absorption books a negative loss |
+| Kinetic integrator accepted species down to -1e-12 mol and the vessel then clamped to 0 | atoms created (1e-9 mol per step) | the final extent is pulled back along its direction until nothing is negative |
+| `is_ice` was `name.contains("ice")` (matched "silicate", "rice") plus a water-id test | wrong solid morphology | `solid_is_frozen_liquid`: the solid phase of the main liquid component, or of a molecule liquid at 298 K |
+| `metal_is_passive` assumed pKw = 14 with a dead expression | passivation wrong off 25 C | `Vessel::pkw()` |
+| `get_species_thermo` returned dfH = -100 kJ/mol, Cp = 50 J/(mol K) for unknown species and sat on the hot path | invented values in heat capacities; slow | it returns mass and charge only; `chem_db::species_cp_j_mol_k` returns `None` without data; `get_thermo_state` (placeholder estimator) panics instead of inventing; every engine caller uses `try_thermo_state` |
+| `CoCl4-2` carried dfG = +10 kJ/mol against its own K (off by 567 kJ), `Fe(SCN)+2`, six indicator / starch species carried invented formation data tagged "NBS Tables" | contradictory thermodynamics | derived from the stability constants (tier Estimated) or removed; test `equilibrium_rows_agree_with_the_formation_data` |
+| `KNOWN_NEUTRAL_INCHIKEYS` held a wrong InChIKey for H2S | PubChem H2S never recognised | imports are matched on the InChIKey of store records (identity records added to the seed) |
+| Web: boiling bubble size used the unsaturated `boil_intensity` (x9 for a 600 W plate) | 3 cm bubbles | `boilVigour` saturates it for the picture |
+| Web: `splitter.ts` recognised ions by substring (any Cu is Cu2+) | wrong fragment labels | formula from the atoms of the fragment |
+| Web: reaction clock matched the text `H2O <=> H+ + OH-` | neutralisation detection by string | engine `ReactionRow.role = "autoprotolysis"` |
+| `test_generated_json_is_up_to_date` failing since the merge | CSV tables and `solubility.json` out of sync | hand rows moved to `pipeline/data/extra_rows.json`, merged by the build script |
+| Titration / effects node tests failing at HEAD | water baseline absorbance and unsaturated boil intensity | thresholds account for the baseline; renderer saturates |
+
+### 6.2 Hard-coded results and constants removed or moved to data
+
+- `chem_db.rs` no longer holds a single reaction: the hand rows (equilibria, minerals, kinetic rate laws) are `engine/data/core_reactions.json`
+  with tier and source per row (`starch` binding, `CoCl4` and the thiosulfate row relabelled Estimated).
+- Python: `pipeline/equilibrium_solver.py` (AgCl / NaCl / "HA" calculator, never used by the bench) and the substring-matching
+  network generator with one constant per substrate class and the ethyl-acetate rates for every ester are deleted; the server's
+  `/api/m6/network` returns 501 (the WASM engine generates networks from molecular graphs).
+- `props.rs`: per-compound heat capacities, permittivities and viscosities of ethanol / acetone / hexane / toluene and a six-ion table
+  are gone (dead code deleted; viscosity parameters are record data `transport.eta_l`; ion heat capacities come from the species
+  records with the generic apparent-molar form `Cp0 + 14.5 |z|^1.5 sqrt(I) + 3.5 |z|^1.2 I`).
+- Kinetics: heterogeneous catalysis used a fixed 50 m2/g and a 0.5 g reference; it now uses the catalyst's area per volume
+  (record datum `specific_area`, else the particle population). Debye-Hueckel slope, encounter radii and the Coulomb term of the diffusion
+  limit follow T, species size and ionic strength (screened).
+- `is_labile_redox_element` (a Rust list) is `engine/data/redox_lability.json`; a species record with a self-exchange rate
+  (`RedoxCouple.k_self`) makes any couple eligible.
+
+### 6.3 New algorithms (closing items of section 2)
+
+| Item | What |
+|---|---|
+| R1 | Discovered reactions advance together (`vessel_discovered.rs`): each relaxes toward its own equilibrium, one common scale keeps every species non-negative, and a damping loop stops any reaction being pushed past its equilibrium by the others. Order-independent |
+| R3 | Rates of homogeneous electron transfer: Marcus cross relation with self-exchange constants (record data, else class estimates: outer-sphere 1, labile element with composition change 1e-3, inert element 1e-14 M^-1 s^-1) and the screened diffusion ceiling (`gem/rates.rs`). Reactions of a solid are limited by that and by film transfer |
+| R4 | Thermal decomposition: first-order, `1e13 exp(-dH/RT)` with the reaction enthalpy as barrier; heat comes from the energy balance, so an endothermic decomposition cools its bed |
+| R6 | see above (catalyst surface) |
+| P1 | `heat_transfer.rs`: Churchill-Chu natural convection + radiation from the wetted, dry and base areas, bath coupling from the film / wall / bath series resistance; `VesselControls.bath_coupling_w_k` overrides it (a thermostatted jacket). The constants 0.5 W/K and 25 W/K are gone |
+| Known kinetics win | a discovered reaction identical to a registered kinetic row (ignoring the solvent, its ions and phase tags) is left to the row |
+| Solution gases | in solution, a gas with an aqueous / liquid twin is not a redox partner (its twin is; Henry exchange does the rest) |
+| Determinism and speed | discovery structures cached per composition (thermo re-evaluated when T moves 0.5 K); busy mixtures 2-5x faster than before this pass |
+
+### 6.4 Open items: status after the third pass (2026-10-03)
+
+Gates for everything marked done are in `engine/tests/open_items.rs` (and the unit tests of the new modules).
+
+| Item | Status | What was done / what is left |
+|---|---|---|
+| K2 error-controlled sub-steps | **done** | `kinetics/core.rs`: embedded first-order solution (Rosenbrock-Euler stage), error `0.5 h |k2 - k1|` per reaction against `KINETICS_ATOL_MOL + KINETICS_RTOL * (largest dissolved species of the reaction)`; steps grow x4 / shrink by `(0.9 err^-1/3)`; `integrate_extent_step_stats` reports accepted / rejected steps. A slow reaction takes one step, a stiff one is refined; chain A->B->C within 2e-5 of the analytic solution |
+| K3 sparse LU | **done** | `kinetics/sparse.rs`: Markowitz pivoting with threshold partial pivoting; used for networks with >= 48 reactions and < 6 % density, dense LU otherwise (a dense coupling fills in; the 50 x 200 benchmark stays 2.4 ms). 500 reactions / 300 species: < 10 ms per 50 ms tick |
+| E1 one concentration basis | **done for the kinetic core** | The equilibrium solver, `current_ph` and the ionic strength were already molal. The kinetic core's rate laws are in mol/L: `KineticExtentSystem::solvent_kg_per_l` converts the molal K(T) of every reversible row (`K_c = K_m rho^(sum nu)` over dissolved species). Left: `vessel_discovered.rs` still forms its quotients in mol/L |
+| T2 Cp(T) | **done** | `thermo/estimate.rs` (`CpModel`): Einstein solid anchored on Cp(298) (Dulong-Petit limit), Einstein-gas (translation + rotation + 3n-5/6 Einstein modes anchored on the datum) or Joback polynomial shifted to the datum for gases, constant for liquids and solutes; Kopp's rule when no datum; the `50 J/(mol K)` placeholder is gone (a solute without datum carries Cp = 0, tier Estimated). Gate: CaCO3 -> CaO + CO2 at 1100 K from point data only is within a factor 1.4 of the Shomate-based pressure (0.59 atm) |
+| T3 entropy estimates | **done (ions, solids)** | Parameters are data (`data/thermo_estimators.json`): standard element entropies for 50 elements, Latimer solid contributions, Powell-Latimer-form ion entropies refitted to the seeded NBS ions per class (monatomic cations rms 16.5, monatomic anions 14.1, polyatomic anions 38 J/(mol K)); the (z/2) S(H2) term of the H+ convention was missing before. Not done: Benson group additivity (no table that could be validated in-repo; organics keep Joback dfH/dfG) |
+| T4 hydration free energy | open | unchanged |
+| T5 anion / ammonium dfG from pKa | **done** | `conjugate_partner` finds the species one proton away by formula (only for records with a SMILES), pKa from the record's sites, else `pka_structure`; cycle-closure pKa of propanoate 4.76, methylammonium 10.65 |
+| T6 indicators as derived structures | open | still named pseudo-species |
+| E2 ion pairing, complexation | **done (generation), data partial** | `ion_pairing.rs`: Fuoss association with `a = r+ + r- + 0.5 A` reproduces measured sulfate / carbonate pair constants within 0.4 log units; generated only for `|z+ z-| >= 4`, `10 <= K_A <= 1e5` (stronger is a complex or a solid), when both ions are >= 20 umol, the pair would hold >= 5 % of the scarcer ion, and no tabulated row already forms that species. `data/complexes.json`: 33 recalled stability constants (Cl-, F-, NH3, CN-, S2O3 and first hydrolysis steps), tier Estimated. Registered by `Vessel::auto_associations` after the dose has settled. NIST SRD 46 itself is not redistributable, so the table is a recalled subset. Behaviour change: free-ion amounts drop where pairs form (60 % of 0.1 M CuSO4 is the pair); tests that read free Cu2+ / Fe2+ count the pair, and zinc cementation of copper sulfate takes about 2.5x longer |
+| E3 Ksp estimates | **done, weaker than planned** | The Kapustinskii + Born cycle was implemented offline and fails: it misorders the silver halides and gives errors of 10-20 log units (ionic model, no covalency). What ships instead: a pair-additive model `log Ksp = nc theta(M) + na theta(X)` fitted by `pipeline/build_ksp_additive.py` to the 108 insoluble table rows (`data/ksp_additive.json`, leave-one-out rms 6.3 log units vs 13.7 for the charge rule), used for *how* insoluble a pair is once the solubility rules say it is, clamped to the rule +- 6, tier Speculative. Whether a pair is insoluble stays with the rules (98 % of the table vs 89 % for the model). It does not order the alkaline-earth sulfates |
+| E4 pKa from structure | **done** | `pka_structure.rs` + `data/pka_structure.json`: Hammett / Taft style relations over the SMILES graph for carboxylic, benzoic, phenol, alcohol, thiol, ammonium / amine, anilinium, pyridine, imidazole sites; polyprotic ladders with a statistical and a distance-dependent electrostatic term. Mean abs error 0.10 on the 56 compounds the class constants were chosen with (calibration, not validation), 0.17 on 12 held-out compounds (pyruvic acid worst, -0.74). Used by `compound_model::acid_species` (imported acids with a SMILES) and by T5 |
+| E5 per-phase equilibria | open | unchanged |
+| R2 element-set candidates with atmospheric O2 | open | unchanged |
+| O1-O5 organic templates beyond five families | open | unchanged |
+| P2 enthalpy-state energy balance | open | unchanged (`energy_balance.rs` still unused by the vessel) |
+| I1-I5 instruments | open | unchanged |
+| literal ratchet; Python `joback_estimator.py` | partly | the element-entropy, Latimer, Kopp, ion-entropy, pKa, complexation and additive-Ksp tables are data files, not code; the Python Joback duplicate and the older ion tables (`props.rs`, `activity.rs`) are untouched |
+
+Other changes of this pass: the reaction log no longer announces generated ion pairs as "complex formed"; the electrode half-reaction search ignores species without formation data; conj. partner search under the store lock uses pure formula parsing (a nested store read deadlocks against a waiting writer).
+
+Verification: `cargo test --release` (all suites, including the 18 gates of `tests/open_items.rs`), WASM rebuilt, node suites re-run (busy-mixture step 8.4 ms, budget 10: the association rows are registered only after the dose settles; registering them at dose time cost 15-27 ms). Tests changed because of ion pairing: `algorithm_fixes::redox_stops_at_its_equilibrium`, `audit_fixes::competing_electron_transfers_share_a_limiting_oxidant` (lower bound 2.0e-4 -> 1.5e-4 mol), `m5_demos` demo 1, `stage8` gate 3b (run time 120 -> 300 s) now count the pair species. Not verified in a browser.
+
+Known limits of the new pieces: a soft cation can still precipitate its hydroxide before a chloro complex takes it up (precipitation is applied before association within a dose; Hg2+ in chloride works only because the additive Ksp is clamped); the Fuoss pair fraction is somewhat high at 0.1 M (MgSO4 63 % paired vs about 40 % measured); ion pairs carry no reaction enthalpy.

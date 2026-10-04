@@ -9,10 +9,16 @@
 //! - Rigorous verification of Hess's law, neutralisation heat (55.8 kJ/mol), and heating ratios
 
 use std::collections::HashMap;
-use crate::thermo::functions::get_thermo_state;
+use crate::thermo::functions::{try_thermo_state, ThermoState};
+
+/// Thermo state of a species, or zero enthalpy and heat capacity when the store has no formation data for it (it then
+/// carries no energy in this balance: nothing is invented).
+fn state_or_zero(sp: &str, phase: &str, t_k: f64) -> ThermoState {
+    try_thermo_state(sp, phase, t_k, 101325.0).unwrap_or(ThermoState { h_j_mol: 0.0, s_j_mol_k: 0.0, cp_j_mol_k: 0.0, mu0_j_mol: 0.0, tier: crate::types::ProvenanceTier::Speculative })
+}
 
 /// Stefan-Boltzmann constant (W / (m^2 * K^4))
-pub const STEFAN_BOLTZMANN: f64 = 5.670374419e-8;
+pub const STEFAN_BOLTZMANN: f64 = crate::heat_transfer::SIGMA;
 /// Specific heat capacity of borosilicate glass (J / (g * K))
 pub const GLASS_CP_J_G_K: f64 = 0.84;
 
@@ -61,13 +67,13 @@ impl EnergyBalance {
         for (sp, &mol) in species_mol {
             if mol > 0.0 {
                 let phase = if sp.ends_with("(g)") { "g" } else { "aq" };
-                let st = get_thermo_state(sp, phase, t_k, 101325.0);
+                let st = state_or_zero(sp, phase, t_k);
                 h += mol * st.h_j_mol;
             }
         }
         for (sp, &mol) in solid_mol {
             if mol > 0.0 {
-                let st = get_thermo_state(sp, "s", t_k, 101325.0);
+                let st = state_or_zero(sp, "s", t_k);
                 h += mol * st.h_j_mol;
             }
         }
@@ -85,13 +91,13 @@ impl EnergyBalance {
         for (sp, &mol) in species_mol {
             if mol > 0.0 {
                 let phase = if sp.ends_with("(g)") { "g" } else { "aq" };
-                let st = get_thermo_state(sp, phase, t_k, 101325.0);
+                let st = state_or_zero(sp, phase, t_k);
                 cp += mol * st.cp_j_mol_k;
             }
         }
         for (sp, &mol) in solid_mol {
             if mol > 0.0 {
-                let st = get_thermo_state(sp, "s", t_k, 101325.0);
+                let st = state_or_zero(sp, "s", t_k);
                 cp += mol * st.cp_j_mol_k;
             }
         }
@@ -131,22 +137,16 @@ impl EnergyBalance {
         t
     }
 
-    /// Evaluates net heat dissipation rate (W) via natural convection and radiation.
+    /// Net heat dissipation rate (W) of the surface at `t_k` to the ambient: natural convection (Churchill-Chu, characteristic
+    /// height sqrt(area)) and grey-body radiation, the same correlations the vessel uses (`heat_transfer`).
     pub fn dissipation_power_w(&self, t_k: f64) -> f64 {
         let delta_t = t_k - self.ambient_temp_k;
-        if delta_t.abs() < 1e-4 {
+        if delta_t.abs() < 1e-4 || self.surface_area_m2 <= 0.0 {
             return 0.0;
         }
-
-        // Natural convection (Churchill-Chu simplified for glassware): h_conv ~ 5.0 * |dT|^0.25 W/(m^2 K)
-        let h_conv = 4.5 * delta_t.abs().powf(0.25).max(1.0);
-        let q_conv = h_conv * self.surface_area_m2 * delta_t;
-
-        // Radiation (Stefan-Boltzmann): epsilon ~ 0.90 for borosilicate glass
-        let eps = 0.90;
-        let q_rad = eps * STEFAN_BOLTZMANN * self.surface_area_m2 * (t_k.powi(4) - self.ambient_temp_k.powi(4));
-
-        q_conv + q_rad
+        let h = crate::heat_transfer::natural_convection_h(t_k, self.ambient_temp_k, self.surface_area_m2.sqrt())
+            + crate::heat_transfer::radiation_h(t_k, self.ambient_temp_k, crate::heat_transfer::EMISSIVITY_GLASS);
+        h * self.surface_area_m2 * delta_t
     }
 
     /// Advances the energy balance by time step `dt_s`.

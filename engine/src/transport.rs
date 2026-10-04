@@ -56,6 +56,15 @@ pub fn debye_factor(z_a: f64, z_b: f64, r_contact_m: f64, t_k: f64, eps_r: f64) 
     }
 }
 
+/// Debye screening length (m) of an electrolyte of ionic strength `i_mol_l` (mol/L) in a medium of permittivity `eps_r`:
+/// `kappa^-1 = sqrt(eps0 eps_r k T / (2 N_A e^2 I))` (0.304 nm / sqrt(I) in water at 25 C). Infinite without ions.
+pub fn debye_length_m(i_mol_l: f64, t_k: f64, eps_r: f64) -> f64 {
+    if i_mol_l <= 1e-12 {
+        return f64::INFINITY;
+    }
+    (EPSILON_0 * eps_r.max(1.0) * K_BOLTZMANN * t_k.max(1.0) / (2.0 * N_AVOGADRO * ELEMENTARY_CHARGE.powi(2) * i_mol_l * 1e3)).sqrt()
+}
+
 /// Diffusion-limited bimolecular rate constant ceiling (M^-1 s^-1 = L / (mol * s)).
 /// k_D = 4 * pi * N_A * (D_A + D_B) * (r_A + r_B) * f_Debye.
 pub fn k_diffusion_limit(
@@ -67,10 +76,27 @@ pub fn k_diffusion_limit(
     eta_pa_s: f64,
     eps_r: f64,
 ) -> f64 {
+    k_diffusion_limit_screened(r_a_m, r_b_m, z_a, z_b, t_k, eta_pa_s, eps_r, 0.0)
+}
+
+/// `k_diffusion_limit` with the Coulomb term screened by the ionic atmosphere (ionic strength in mol/L): the interaction
+/// at contact is multiplied by `exp(-r / lambda_D)` (Debye-Hueckel), so highly charged like ions still meet in 0.1 M salt.
+pub fn k_diffusion_limit_screened(
+    r_a_m: f64,
+    r_b_m: f64,
+    z_a: f64,
+    z_b: f64,
+    t_k: f64,
+    eta_pa_s: f64,
+    eps_r: f64,
+    ionic_strength_mol_l: f64,
+) -> f64 {
     let d_a = diffusivity_m2_s(r_a_m, t_k, eta_pa_s);
     let d_b = diffusivity_m2_s(r_b_m, t_k, eta_pa_s);
     let r_contact = r_a_m + r_b_m;
-    let f_deb = debye_factor(z_a, z_b, r_contact, t_k, eps_r);
+    let screening = (-r_contact / debye_length_m(ionic_strength_mol_l, t_k, eps_r)).exp();
+    // the screened pair potential is z_a z_b e^2 exp(-r/lambda) / (4 pi eps r): the charge product is scaled by the screening
+    let f_deb = debye_factor(z_a * z_b * screening, 1.0, r_contact, t_k, eps_r);
 
     // M^3 / (mol * s) to L / (mol * s)
     4.0 * PI * N_AVOGADRO * (d_a + d_b) * r_contact * f_deb * 1e3

@@ -22,6 +22,7 @@ fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, 
         volume: None,
         rho: None,
         polymorph: None,
+        specific_area: None,
     });
 
     let mut names = vec![id.to_string()];
@@ -57,6 +58,39 @@ fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, 
     }
 }
 
+/// A dissolved species whose identity (formula, charge) is known but whose formation data are not: the record carries no
+/// thermodynamic datum, so nothing that needs one (redox discovery, detailed balance) can use an invented value. Its
+/// equilibria are the stability / acidity constants of the equilibrium rows.
+fn make_aq_identity(id: &str, formula: &str, charge: i32) -> SpeciesRecord {
+    let mut rec = make_aq(id, formula, charge, 0.0, 0.0, 0.0, None, None);
+    rec.phases.insert("aq".to_string(), PhaseData::default());
+    rec
+}
+
+/// A dissolved species whose formation data are derived from a measured stability constant and the formation data of its
+/// parts (`dfG = -RT ln K + sum dfG(parts)`, same for dfH from the reaction enthalpy): tier Estimated.
+fn make_aq_derived(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, source: &str) -> SpeciesRecord {
+    let mut rec = make_aq(id, formula, charge, df_h, df_g, cp, None, None);
+    if let Some(t) = rec.phases.get_mut("aq").and_then(|p| p.thermo.as_mut()) {
+        t.tier = ProvenanceTier::Estimated;
+        t.source = source.to_string();
+        for d in [t.dfH.as_mut(), t.dfG.as_mut(), t.S.as_mut(), t.cp.as_mut()].into_iter().flatten() {
+            d.tier = ProvenanceTier::Estimated;
+            d.source = source.to_string();
+        }
+    }
+    rec
+}
+
+/// A neutral molecule the engine has chemistry for (acid-base equilibria, kinetics) whose formation data are not seeded:
+/// its identity (formula, InChIKey) is what lets an import be recognised as this species. Imports are matched on the
+/// InChIKey, never on the formula alone (isomers share a formula).
+fn make_identity(id: &str, formula: &str, inchikey: &str) -> SpeciesRecord {
+    let mut rec = make_aq(id, formula, 0, 0.0, 0.0, 0.0, Some(inchikey), None);
+    rec.phases.insert("aq".to_string(), PhaseData::default());
+    rec
+}
+
 fn make_liquid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: &str, smiles: &str) -> SpeciesRecord {
     let mut phases = HashMap::new();
     phases.insert("l".to_string(), PhaseData {
@@ -74,6 +108,7 @@ fn make_liquid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: &s
         volume: None,
         rho: None,
         polymorph: None,
+        specific_area: None,
     });
 
     let mut names = vec![id.to_string()];
@@ -146,6 +181,7 @@ fn make_gas(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, inchi: Optio
         volume: None,
         rho: None,
         polymorph: None,
+        specific_area: None,
     });
 
     let mut names = vec![id.to_string()];
@@ -184,6 +220,12 @@ fn make_solid(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, density: f
     make_solid_with_params(id, formula, df_h, df_g, cp, density, None)
 }
 
+fn make_solid_ik(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, density: f64, inchikey: &str) -> SpeciesRecord {
+    let mut rec = make_solid(id, formula, df_h, df_g, cp, density);
+    rec.identity.inchikey = Some(inchikey.to_string());
+    rec
+}
+
 fn make_solid_with_analytic(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64, density: f64, analytic: [f64; 5]) -> SpeciesRecord {
     make_solid_with_params(id, formula, df_h, df_g, cp, density, Some(analytic))
 }
@@ -214,6 +256,7 @@ fn make_solid_with_shomate(
         volume: None,
         rho: Some(Datum::new(density, "g/mL", ProvenanceTier::Tabulated, "CRC / NBS")),
         polymorph: None,
+        specific_area: None,
     });
 
     SpeciesRecord {
@@ -259,6 +302,7 @@ fn make_gas_with_shomate(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64,
         volume: None,
         rho: None,
         polymorph: None,
+        specific_area: None,
     });
 
     let names = vec![id.to_string()];
@@ -305,6 +349,7 @@ fn make_solid_with_params(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64
         volume: None,
         rho: Some(Datum::new(density, "g/mL", ProvenanceTier::Tabulated, "CRC / NBS")),
         polymorph: None,
+        specific_area: None,
     });
 
     SpeciesRecord {
@@ -364,10 +409,10 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("CH3COOH", "C2H4O2", 0, -484.5, -396.46, 124.0, Some("QTBSBXVTEAMEQO-UHFFFAOYSA-N"), Some("CC(=O)O")),
         make_aq("CH3COO-", "C2H3O2-", -1, -486.0, -369.31, 80.0, None, Some("CC(=O)[O-]")),
         make_aq("Fe+3", "Fe+3", 3, -48.5, -4.7, 150.0, None, Some("[Fe+3]")),
-        make_aq("Fe(SCN)+2", "Fe(SCN)+2", 2, 30.0, 45.0, 200.0, None, None),
+        make_aq_derived("Fe(SCN)+2", "Fe(SCN)+2", 2, 1.9, 74.9, 200.0, "derived from K1 = 200 M-1 and dH = -26 kJ/mol of the thiocyanatoiron row"),
         make_aq("SCN-", "SCN-", -1, 76.4, 92.7, 40.0, None, Some("N#C[S-]")),
         make_aq("Co+2", "Co+2", 2, -58.2, -54.4, 110.0, None, Some("[Co+2]")),
-        make_aq("CoCl4-2", "CoCl4-2", -2, -8.0, 10.0, 280.0, None, None),
+        make_aq_derived("CoCl4-2", "CoCl4-2", -2, -677.0, -556.5, 280.0, "derived from log beta4 = -4.0 and dH = +50 kJ/mol of the tetrachlorocobaltate row"),
         make_aq("I-", "I-", -1, -55.2, -51.57, -142.3, None, Some("[I-]")),
         make_aq("I3-", "I3-", -1, -51.5, -51.4, 120.0, None, None),
         make_aq("I2(aq)", "I2", 0, 22.6, 16.4, 116.0, Some("PNDPGZBMCMUPRI-UHFFFAOYSA-N"), Some("II")),
@@ -380,18 +425,28 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("MnO4-", "MnO4-", -1, -541.4, -447.2, 117.0, None, Some("[O-][Mn](=O)(=O)=O")),
         make_aq("Cr2O7-2", "Cr2O7-2", -2, -1490.3, -1301.1, 220.0, None, None),
         make_aq("CrO4-2", "CrO4-2", -2, -881.2, -727.75, 110.0, None, None),
-        make_aq("HIn_phph", "C20H14O4", 0, -500.0, -420.0, 300.0, None, None),
-        make_aq("In_phph-", "C20H13O4-", -1, -450.0, -380.0, 300.0, None, None),
-        make_aq("starch", "C6H10O5", 0, -800.0, -680.0, 200.0, None, None),
-        make_aq("starch_I3", "C6H10O5I3-", -1, -860.0, -740.0, 320.0, None, None),
-        make_aq("HIn_btb", "C27H28Br2O5S", 0, -600.0, -510.0, 400.0, None, None),
-        make_aq("In_btb-", "C27H27Br2O5S-", -1, -560.0, -475.0, 400.0, None, None),
-        make_aq("HIn_mo", "C14H15N3O3S", 0, -200.0, -170.0, 300.0, None, None),
-        make_aq("In_mo-", "C14H14N3O3S-", -1, -170.0, -145.0, 300.0, None, None),
-        make_aq("HIn_mr", "C15H15N3O2", 0, -120.0, -100.0, 300.0, None, None),
-        make_aq("In_mr-", "C15H14N3O2-", -1, -95.0, -80.0, 300.0, None, None),
+        make_aq_identity("HIn_phph", "C20H14O4", 0),
+        make_aq_identity("In_phph-", "C20H13O4-", -1),
+        make_aq_identity("starch", "C6H10O5", 0),
+        make_aq_identity("starch_I3", "C6H10O5I3-", -1),
+        make_aq_identity("HIn_btb", "C27H28Br2O5S", 0),
+        make_aq_identity("In_btb-", "C27H27Br2O5S-", -1),
+        make_aq_identity("HIn_mo", "C14H15N3O3S", 0),
+        make_aq_identity("In_mo-", "C14H14N3O3S-", -1),
+        make_aq_identity("HIn_mr", "C15H15N3O2", 0),
+        make_aq_identity("In_mr-", "C15H14N3O2-", -1),
 
         // Stage 6 Redox & Speciation Aqueous Species
+        make_identity("HCOOH", "CH2O2", "BDAGIHXWWSANSR-UHFFFAOYSA-N"),
+        make_identity("HF", "HF", "KRHYYFGTRYWZRS-UHFFFAOYSA-N"),
+        make_identity("HCN", "CHN", "LELOWRISYMNNSU-UHFFFAOYSA-N"),
+        make_identity("HNO2", "HNO2", "IOVCWXUNBOPUCH-UHFFFAOYSA-N"),
+        make_identity("HClO", "HClO", "QWPPOHNGKGFGJK-UHFFFAOYSA-N"),
+        make_identity("H2SO3", "H2SO3", "LSNNMFCWUKXFEE-UHFFFAOYSA-N"),
+        make_identity("H3PO4", "H3PO4", "NBIIXXVUZAFLBC-UHFFFAOYSA-N"),
+        make_identity("H2C2O4", "C2H2O4", "MUBZPKHOEPUJKR-UHFFFAOYSA-N"),
+        make_identity("H2SO4", "H2SO4", "QAOWNCQODCNURD-UHFFFAOYSA-N"),
+
         make_aq("Al+3", "Al+3", 3, -531.0, -485.0, -115.0, None, Some("[Al+3]")),
         make_aq("Al(OH)+2", "Al(OH)+2", 2, -764.0, -694.0, -40.0, None, None),
         make_aq("Al(OH)2+", "Al(OH)2+", 1, -995.0, -902.0, 50.0, None, None),
@@ -427,7 +482,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("NaHCO3(s)", "NaHCO3", -950.8, -851.0, 87.6, 2.20),
         make_solid("Na2CO3(s)", "Na2CO3", -1130.7, -1044.4, 112.3, 2.54),
         make_solid("MnO2(s)", "MnO2", -520.0, -465.1, 54.1, 5.03),
-        make_solid("Mg(s)", "Mg", 0.0, 0.0, 24.89, 1.74),
+        make_solid_ik("Mg(s)", "Mg", 0.0, 0.0, 24.89, 1.74, "FYYHWMGAXLPEAU-UHFFFAOYSA-N"),
         make_solid("CoCl2(s)", "CoCl2", -312.5, -269.8, 78.5, 3.36),
         make_solid("NaCl(s)", "NaCl", -411.15, -384.14, 50.5, 2.16),
         make_solid("NaOH(s)", "NaOH", -425.61, -379.49, 59.5, 2.13),

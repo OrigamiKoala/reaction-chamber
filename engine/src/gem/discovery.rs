@@ -33,37 +33,122 @@ pub struct DiscoveredReaction {
     pub delta_h0_j: f64,
     pub delta_g0_j: f64,
     pub kind: DiscoveredRxnKind,
+    /// For a redox reaction: the four species of its two couples (indices into `species_names`).
+    pub partners: Option<RedoxPartners>,
+}
+
+/// The electron donor (reductant) and acceptor (oxidant) of a redox reaction and the product each turns into.
+#[derive(Clone, Copy, Debug)]
+pub struct RedoxPartners {
+    pub donor: usize,
+    pub donor_product: usize,
+    pub acceptor: usize,
+    pub acceptor_product: usize,
 }
 
 // The reaction quotient of a discovered reaction is evaluated by the vessel (`Vessel::discovered_extent`), which knows the
 // phase of every species: solutes by activity, gases by partial pressure in the headspace or atmosphere, solids and the
 // solvent at unit activity.
 
-/// Standard reaction enthalpy and Gibbs energy (J/mol), or None when a species has no formation data.
-fn reaction_thermo(species: &[String], nu: &[(usize, f64)], t_k: f64, p_pa: f64) -> Option<(f64, f64)> {
+/// Standard reaction enthalpy and Gibbs energy (J/mol), or None when a species has no formation data. For a thermal
+/// decomposition every species that is not a solid is a gas.
+fn reaction_thermo(species: &[String], nu: &[(usize, f64)], t_k: f64, p_pa: f64, decomposition: bool) -> Option<(f64, f64)> {
     let (mut dh, mut dg) = (0.0, 0.0);
     for &(idx, coeff) in nu {
         let sp = &species[idx];
-        let st = try_thermo_state(sp, phase_of_id(sp), t_k, p_pa)?;
+        let phase = if decomposition { if sp.ends_with("(s)") { "s" } else { "g" } } else { phase_of_id(sp) };
+        let st = try_thermo_state(sp, phase, t_k, p_pa)?;
         dh += coeff * st.h_j_mol;
         dg += coeff * st.mu0_j_mol;
     }
     Some((dh, dg))
 }
 
-/// Discovers all independent redox and equilibrium reactions among candidate species reachable from the vessel contents.
+/// A reaction before its thermodynamics are evaluated: the species, stoichiometry and the couples it joins. These depend
+/// only on *which* species are present, so they are found once per composition and kept (`DISCOVERY_CACHE`).
+#[derive(Clone, Debug)]
+struct Structure {
+    species_names: Vec<String>,
+    nu: Vec<(usize, f64)>,
+    kind: DiscoveredRxnKind,
+    partners: Option<RedoxPartners>,
+}
+
+/// One cached discovery: the structures of a composition and their thermodynamics at `thermo_t_k`.
+struct CacheEntry {
+    structs: Vec<Structure>,
+    thermo_t_k: f64,
+    thermo_p_pa: f64,
+    thermo: Vec<Option<(f64, f64)>>,
+}
+
+thread_local! {
+    /// (store generation, entries keyed by the sorted present species): reaction discovery runs every step on the same few
+    /// compositions, and the search (couples, null spaces) is by far the expensive part.
+    static DISCOVERY_CACHE: std::cell::RefCell<(u64, HashMap<(u8, Vec<String>), CacheEntry>)> = Default::default();
+}
+
+/// Largest temperature drift (K) over which cached reaction enthalpies and Gibbs energies are reused.
+const THERMO_REUSE_K: f64 = 0.5;
+const CACHE_MAX_ENTRIES: usize = 64;
+
+fn cached_discovery(kind: u8, key: Vec<String>, t_k: f64, p_pa: f64, build: impl FnOnce() -> Vec<Structure>) -> Vec<DiscoveredReaction> {
+    let generation = crate::db::SpeciesStore::generation();
+    DISCOVERY_CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0 != generation || c.1.len() > CACHE_MAX_ENTRIES {
+            c.1.clear();
+            c.0 = generation;
+        }
+        let entry = c.1.entry((kind, key)).or_insert_with(|| {
+            let structs = build();
+            CacheEntry { thermo: vec![None; structs.len()], thermo_t_k: f64::NAN, thermo_p_pa: f64::NAN, structs }
+        });
+        if !(entry.thermo_t_k - t_k).abs().le(&THERMO_REUSE_K) || (entry.thermo_p_pa - p_pa).abs() > 0.05 * p_pa {
+            entry.thermo = entry.structs.iter().map(|st| reaction_thermo(&st.species_names, &st.nu, t_k, p_pa, st.kind == DiscoveredRxnKind::ThermalDecomposition)).collect();
+            entry.thermo_t_k = t_k;
+            entry.thermo_p_pa = p_pa;
+        }
+        entry
+            .structs
+            .iter()
+            .zip(&entry.thermo)
+            .filter_map(|(st, th)| {
+                th.map(|(dh, dg)| DiscoveredReaction {
+                    species_names: st.species_names.clone(),
+                    nu: st.nu.clone(),
+                    delta_h0_j: dh,
+                    delta_g0_j: dg,
+                    kind: st.kind.clone(),
+                    partners: st.partners,
+                })
+            })
+            .collect()
+    })
+}
+
+/// Discovers all independent redox reactions among the candidate species reachable from the vessel contents, with their
+/// standard enthalpy and Gibbs energy at `(t_k, p_pa)`. A reaction whose species lack formation data is not proposed.
 pub fn discover_reactions(
     species_mol: &HashMap<String, f64>,
     solid_mol: &HashMap<String, f64>,
     t_k: f64,
     p_pa: f64,
 ) -> Vec<DiscoveredReaction> {
+    let mut key: Vec<String> = species_mol.iter().filter(|(_, &m)| m > 1e-12).map(|(s, _)| s.clone()).collect();
+    key.extend(solid_mol.iter().filter(|(_, &m)| m > 1e-12).map(|(s, _)| s.clone()));
+    key.sort();
+    key.dedup();
+    cached_discovery(0, key, t_k, p_pa, || discover_redox_structures(species_mol, solid_mol))
+}
+
+fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &HashMap<String, f64>) -> Vec<Structure> {
     let elements = get_present_elements(species_mol, solid_mol);
     if elements.is_empty() {
         return Vec::new();
     }
 
-    let mut discovered = Vec::new();
+    let mut discovered: Vec<Structure> = Vec::new();
     let mut seen_signatures = HashSet::new();
 
     // 1. Collect present species with positive amounts
@@ -96,14 +181,8 @@ pub fn discover_reactions(
         let ox_map = determine_oxidation_states(sp);
         let elem_map = crate::ions::species_elements(sp).unwrap_or_default();
         for elem in elem_map.keys() {
-            if super::redox::is_labile_redox_element(elem) {
-                if let Some(&ox) = ox_map.get(elem) {
-                    present_halves.push(RedoxHalf {
-                        sp: sp.clone(),
-                        elem: elem.clone(),
-                        ox,
-                    });
-                }
+            if let Some(&ox) = ox_map.get(elem) {
+                present_halves.push(RedoxHalf { sp: sp.clone(), elem: elem.clone(), ox });
             }
         }
     }
@@ -119,12 +198,18 @@ pub fn discover_reactions(
             if elems.get("C").copied().unwrap_or(0.0) > 1.0 {
                 continue;
             }
+            // In solution a gas is formed dissolved and leaves by Henry exchange: a gas that has an aqueous or liquid twin
+            // (O2(g) / O2(aq), H2O(g) / H2O) is not a partner of a solution reaction, its twin is.
+            if aqueous_env && rec.id.ends_with("(g)") {
+                let has_twin = store.get_by_formula(&rec.identity.formula).iter().any(|t| t.id != rec.id && (t.has_phase("aq") || t.has_phase("l")));
+                if has_twin {
+                    continue;
+                }
+            }
             let ox_map = determine_oxidation_states(&rec.id);
             for elem in elems.keys() {
-                if super::redox::is_labile_redox_element(elem) {
-                    if let Some(&ox) = ox_map.get(elem) {
-                        candidate_products_by_elem.entry(elem.clone()).or_default().push((rec.id.clone(), ox));
-                    }
+                if let Some(&ox) = ox_map.get(elem) {
+                    candidate_products_by_elem.entry(elem.clone()).or_default().push((rec.id.clone(), ox));
                 }
             }
         }
@@ -137,7 +222,7 @@ pub fn discover_reactions(
     for half in &present_halves {
         if let Some(products) = candidate_products_by_elem.get(&half.elem) {
             for (p_sp, p_ox) in products {
-                if p_sp == &half.sp {
+                if p_sp == &half.sp || !super::redox::couple_is_eligible(&half.elem, &half.sp, p_sp) {
                     continue;
                 }
                 if *p_ox > half.ox {
@@ -214,13 +299,6 @@ pub fn discover_reactions(
                         continue;
                     }
 
-                    // Evaluate thermodynamics; a species without formation data cannot be judged, so the reaction is
-                    // not proposed (a placeholder value would invent its driving force)
-                    let (delta_h0, delta_g0) = match reaction_thermo(&sub_species, &nu_oriented, t_k, p_pa) {
-                        Some(x) => x,
-                        None => continue,
-                    };
-
                     let z_electrons = (cur_c_sox.abs() * (ox_p - ox_s) as f64).round().max(1.0);
 
                     let mut sig_parts: Vec<String> = nu_oriented.iter()
@@ -230,12 +308,11 @@ pub fn discover_reactions(
                     let sig = sig_parts.join(";");
 
                     if seen_signatures.insert(sig) {
-                        discovered.push(DiscoveredReaction {
+                        discovered.push(Structure {
                             species_names: sub_species.clone(),
                             nu: nu_oriented,
-                            delta_h0_j: delta_h0,
-                            delta_g0_j: delta_g0,
                             kind: DiscoveredRxnKind::Redox { z_electrons },
+                            partners: Some(RedoxPartners { donor: i_sox, donor_product: i_pox, acceptor: i_sred, acceptor_product: i_pred }),
                         });
                     }
                 }
@@ -246,21 +323,23 @@ pub fn discover_reactions(
     discovered
 }
 
-/// Discovers thermal decomposition reactions for solids present (solid -> solid + gas).
-/// Discovers thermal decomposition reactions for solids present (solid -> solid + gas, or solid -> gases).
+/// Discovers thermal decomposition reactions for the solids present (solid -> solid + gas, or solid -> gases), with their
+/// standard enthalpy and Gibbs energy at `(t_k, p_pa)`.
 pub fn discover_thermal_decompositions(
     solid_mol: &HashMap<String, f64>,
     t_k: f64,
     p_pa: f64,
 ) -> Vec<DiscoveredReaction> {
-    let mut discovered = Vec::new();
+    let mut key: Vec<String> = solid_mol.iter().filter(|(_, &m)| m > 1e-12).map(|(s, _)| s.clone()).collect();
+    key.sort();
+    cached_discovery(1, key.clone(), t_k, p_pa, || discover_decomposition_structures(&key))
+}
+
+fn discover_decomposition_structures(solids: &[String]) -> Vec<Structure> {
+    let mut discovered: Vec<Structure> = Vec::new();
     let mut seen_signatures = HashSet::new();
 
-    for (solid_sp, &mol) in solid_mol {
-        if mol <= 1e-12 {
-            continue;
-        }
-
+    for solid_sp in solids {
         let elem_map = match crate::ions::species_elements(solid_sp) {
             Some(m) => m,
             None => continue,
@@ -312,38 +391,12 @@ pub fn discover_thermal_decompositions(
             let basis = build_reaction_basis(&candidate_ids);
 
             for rxn in basis {
-                // every candidate other than a solid is evaluated (and later released) as a gas
-                let mut delta_h0 = 0.0;
-                let mut delta_g0 = 0.0;
-                let mut known = true;
-                for &(idx, coeff) in &rxn.nu {
-                    let sp = &candidate_ids[idx];
-                    let phase = if sp.ends_with("(s)") { "s" } else { "g" };
-                    match try_thermo_state(sp, phase, t_k, p_pa) {
-                        Some(thermo) => {
-                            delta_h0 += coeff * thermo.h_j_mol;
-                            delta_g0 += coeff * thermo.mu0_j_mol;
-                        }
-                        None => {
-                            known = false;
-                            break;
-                        }
-                    }
-                }
-                if !known {
-                    continue;
-                }
-
                 let mut nu_oriented = rxn.nu;
-                let mut dh0_oriented = delta_h0;
-                let mut dg0_oriented = delta_g0;
 
                 // Invert if target solid is on the product side (c > 0)
                 let target_coeff = nu_oriented.iter().find(|&&(i, _)| &candidate_ids[i] == solid_sp).map(|&(_, c)| c).unwrap_or(0.0);
                 if target_coeff > 0.0 {
                     nu_oriented = nu_oriented.into_iter().map(|(i, c)| (i, -c)).collect();
-                    dh0_oriented = -dh0_oriented;
-                    dg0_oriented = -dg0_oriented;
                 }
 
                 let decomposes_target = nu_oriented.iter().any(|&(i, c)| c < 0.0 && &candidate_ids[i] == solid_sp);
@@ -365,12 +418,11 @@ pub fn discover_thermal_decompositions(
                     sig_parts.sort();
                     let sig = sig_parts.join(";");
                     if seen_signatures.insert(sig) {
-                        discovered.push(DiscoveredReaction {
+                        discovered.push(Structure {
                             species_names: candidate_ids.clone(),
                             nu: nu_oriented,
-                            delta_h0_j: dh0_oriented,
-                            delta_g0_j: dg0_oriented,
                             kind: DiscoveredRxnKind::ThermalDecomposition,
+                            partners: None,
                         });
                     }
                 }

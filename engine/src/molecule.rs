@@ -148,6 +148,8 @@ pub struct Molecule {
     pub v_solid_m3_mol: Option<f64>,
     pub cp_liquid_j_mol_k: Option<f64>,
     pub cp_solid_j_mol_k: Option<f64>,
+    /// Andrade parameters (A, B) of the liquid viscosity ln(eta/cP) = A + B/T from the record's `transport.eta_l`.
+    pub andrade_viscosity: Option<(f64, f64)>,
     pub gamma_points: Vec<GammaPoint>,
     /// Weakest tier of the data that determines the molecule's phase behaviour.
     pub tier: ProvenanceTier,
@@ -420,20 +422,20 @@ pub fn resolve(key: &str, compound: Option<&CompoundThermo>) -> Option<Molecule>
         if let (Some(a), Some(wik)) = (aq, water_ik.clone()) {
             let t = 298.15;
             let aq_has = a.phases.get("aq").and_then(|p| p.thermo.as_ref()).map_or(false, |t| t.dfG.is_some());
-            let mu_aq = crate::thermo::functions::get_thermo_state(&a.id, "aq", t, P_REF_PA).mu0_j_mol;
+            let mu_aq = crate::thermo::functions::try_thermo_state(&a.id, "aq", t, P_REF_PA).map(|st| st.mu0_j_mol);
             // liquid reference: the liquid record's own formation energy, else the solid's plus the Gibbs energy of fusion
             let mu_liq: Option<f64> = liq
                 .filter(|l| l.phases.get("l").and_then(|p| p.thermo.as_ref()).map_or(false, |t| t.dfG.is_some()))
-                .map(|l| crate::thermo::functions::get_thermo_state(&l.id, "l", t, P_REF_PA).mu0_j_mol)
+                .and_then(|l| crate::thermo::functions::try_thermo_state(&l.id, "l", t, P_REF_PA).map(|st| st.mu0_j_mol))
                 .or_else(|| {
                     let s = sol.filter(|s| s.phases.get("s").and_then(|p| p.thermo.as_ref()).map_or(false, |t| t.dfG.is_some()))?;
                     let f = match &solid {
                         Some(SolidModel::Fusion(f)) => f.dg_fus_j_mol(t, P_REF_PA, None),
                         _ => return None,
                     };
-                    Some(crate::thermo::functions::get_thermo_state(&s.id, "s", t, P_REF_PA).mu0_j_mol + f)
+                    Some(crate::thermo::functions::try_thermo_state(&s.id, "s", t, P_REF_PA)?.mu0_j_mol + f)
                 });
-            if let (true, Some(mu_l)) = (aq_has, mu_liq) {
+            if let (true, Some(mu_aq), Some(mu_l)) = (aq_has, mu_aq, mu_liq) {
                 // m = x / (x_w M_w) -> 55.51 x at infinite dilution
                 let ln_g = (1.0 / 0.018_015_28f64).ln() + (mu_aq - mu_l) / (R_GAS * t);
                 gamma_points.push(GammaPoint {
@@ -483,6 +485,7 @@ pub fn resolve(key: &str, compound: Option<&CompoundThermo>) -> Option<Molecule>
         v_solid_m3_mol: v_solid,
         cp_liquid_j_mol_k: cp_l,
         cp_solid_j_mol_k: cp_s,
+        andrade_viscosity: recs.iter().find_map(|r| r.transport.as_ref().and_then(|t| t.eta_l.as_ref())).and_then(|j| Some((j.get("A")?.as_f64()?, j.get("B")?.as_f64()?))),
         gamma_points,
         tier,
         notes,

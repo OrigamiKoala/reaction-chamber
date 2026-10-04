@@ -23,7 +23,7 @@ export const KINETIC_RATE_MIN = 1e-7;
  */
 const REACTION_ROW_KINDS: ReadonlySet<string> = new Set(['kinetic', 'combustion', 'redox', 'thermal_decomposition']);
 /**
- * H2O <=> H+ + OH- relaxing strongly *towards water* (negative rate) means acid + base are neutralising. Self-ionisation
+ * The solvent's autoprotolysis row (engine `role`) relaxing strongly *towards the solvent* (negative rate) means acid + base are neutralising. Self-ionisation
  * of pure water and spectator dissolution only ever show |rate| <~ 1e-4, a titration drop or more shows <= -1e-2.
  */
 export const NEUTRALISATION_RATE_MAX = -2e-3;
@@ -47,7 +47,7 @@ function rowEvidence(snap: VesselSnapshot): { trigger: ReactionTrigger; detail: 
   for (const r of snap.reactions ?? []) {
     if (REACTION_ROW_KINDS.has(r.kind)) {
       if (r.active && Math.abs(r.rate) > KINETIC_RATE_MIN) return { trigger: 'kinetic', detail: r.equation };
-    } else if (r.kind === 'equilibrium' && r.rate < NEUTRALISATION_RATE_MAX && /^H2O\s*<=>\s*H\+\s*\+\s*OH-$/.test(r.equation.trim())) {
+    } else if (r.kind === 'equilibrium' && r.role === 'autoprotolysis' && r.rate < NEUTRALISATION_RATE_MAX) {
       return { trigger: 'neutralisation', detail: 'Acid and base neutralising' };
     }
   }

@@ -194,47 +194,64 @@ fn pseudo_species(body: &str) -> Option<(&'static str, Option<i32>)> {
 
 thread_local! {
     /// Element counts and molar masses by species id: pure functions of the id (a static table and a formula parser) that the
-    /// equilibrium solver asks for thousands of times per step.
-    static ELEMENT_CACHE: std::cell::RefCell<HashMap<String, Option<(HashMap<String, f64>, Option<f64>)>>> = std::cell::RefCell::new(HashMap::new());
+    /// equilibrium solver asks for thousands of times per step. The cache is dropped whenever the species store changes
+    /// (an id that was unknown can become a record) and a lookup that could not read the store is never cached.
+    static ELEMENT_CACHE: std::cell::RefCell<(u64, HashMap<String, Option<(HashMap<String, f64>, Option<f64>)>>)> = std::cell::RefCell::new((0, HashMap::new()));
 }
 
-fn species_elements_uncached(species: &str) -> Option<HashMap<String, f64>> {
+/// Element counts of a species id, and whether the answer may be cached (false when the store was busy).
+fn species_elements_uncached(species: &str) -> (Option<HashMap<String, f64>>, bool) {
     let s = species.trim().trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)").trim_end_matches("(aq)");
     // isomer tag of an inert compound id ("C2H6O#LCGLNKUT"): identity only, the formula is what comes before it
     let s = s.split('#').next().unwrap_or(s);
     let (body, _) = split_charge(s);
     if let Some((formula, _)) = pseudo_species(body) {
-        return parse_formula_strict(formula);
+        return (parse_formula_strict(formula), true);
     }
     if let Some(elems) = parse_formula_strict(body) {
-        return Some(elems);
+        return (Some(elems), true);
     }
     if let Some(global) = crate::db::SpeciesStore::try_global() {
-        if let Ok(store) = global.try_read() {
-            if let Some(rec) = store.get(body).or_else(|| store.get(species)).or_else(|| store.get_by_name(species)) {
-                let (rec_body, _) = split_charge(&rec.identity.formula);
-                return parse_formula_strict(rec_body);
+        match global.try_read() {
+            Ok(store) => {
+                if let Some(rec) = store.get(body).or_else(|| store.get(species)).or_else(|| store.get_by_name(species)) {
+                    let (rec_body, _) = split_charge(&rec.identity.formula);
+                    return (parse_formula_strict(rec_body), true);
+                }
             }
+            // a writer (or this thread's own write lock) holds the store: the answer is unknown, not "no such species"
+            Err(_) => return (None, false),
         }
     }
-    None
+    (None, true)
 }
 
 fn cached_species<R>(species: &str, f: impl FnOnce(&Option<(HashMap<String, f64>, Option<f64>)>) -> R) -> R {
     ELEMENT_CACHE.with(|c| {
-        if let Some(v) = c.borrow().get(species) {
-            return f(v);
+        let generation = crate::db::SpeciesStore::generation();
+        {
+            let mut guard = c.borrow_mut();
+            if guard.0 != generation {
+                guard.1.clear();
+                guard.0 = generation;
+            }
+            if let Some(v) = guard.1.get(species) {
+                return f(v);
+            }
         }
-        let entry = species_elements_uncached(species).map(|e| {
+        let (elems, cacheable) = species_elements_uncached(species);
+        let entry = elems.map(|e| {
             let m = mass_of_elements(&e);
             (e, m)
         });
         let r = f(&entry);
-        let mut map = c.borrow_mut();
-        if map.len() > 20_000 {
-            map.clear();
+        if cacheable {
+            let mut guard = c.borrow_mut();
+            if guard.1.len() > 20_000 {
+                guard.1.clear();
+            }
+            guard.1.insert(species.to_string(), entry);
         }
-        map.insert(species.to_string(), entry);
         r
     })
 }

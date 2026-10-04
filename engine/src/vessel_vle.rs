@@ -788,6 +788,10 @@ impl Vessel {
                 }
                 *self.species_mol.entry(it.h.aq_id.clone()).or_default() += d;
                 self.ledger.book_in(&it.h.aq_id, d);
+                if !self.sealed {
+                    // dissolved from the open atmosphere: gas drawn in is a negative loss
+                    self.mass_lost_g -= d * it.h.mw;
+                }
                 if self.sealed {
                     let g = self.headspace_gas_mol.entry(gas_id.clone()).or_default();
                     *g -= d;
@@ -867,10 +871,13 @@ impl Vessel {
 
     /// Everything in the gas phase leaves (stopper removed or popped, glass burst).
     pub(crate) fn vent_headspace(&mut self) {
+        // the air that was in the vessel when it was closed is not a loss of what was put in: only the gas beyond that baseline is
+        let baseline = std::mem::take(&mut self.gas.seal_baseline_mol);
         for (sp, mol) in std::mem::take(&mut self.headspace_gas_mol) {
+            let net = (mol - baseline.get(&sp).copied().unwrap_or(0.0)).max(0.0);
+            self.mass_lost_g += net * crate::chem_db::get_species_thermo(&sp).mw;
             self.ledger.book_out(&sp, mol);
         }
-        self.gas.seal_baseline_mol.clear();
     }
 
     /// Isochoric vapour-liquid flash of a sealed vessel with the latent heat coupled implicitly to the temperature

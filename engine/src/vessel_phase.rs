@@ -16,7 +16,7 @@
 //!
 //! Dissolution, freezing and phase splitting are instantaneous equilibria; their rates belong to Stage 8.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::chem_db;
@@ -278,6 +278,9 @@ impl Vessel {
                     return c.cp_j_g_k;
                 }
             }
+            if let (Some(cp), Some(mw)) = (chem_db::species_cp_j_mol_k(sp), ions::species_mass(sp)) {
+                return cp / mw;
+            }
             return CP_UNKNOWN_SOLID_J_G_K;
         }
         if let Some(m) = self.molecule(sp) {
@@ -290,15 +293,34 @@ impl Vessel {
                 return c.cp_j_g_k;
             }
         }
+        // dissolved ions and solutes: the standard partial molar heat capacity of the aqueous species record
+        if let (Some(cp), Some(mw)) = (chem_db::species_cp_j_mol_k(sp), ions::species_mass(sp)) {
+            return cp / mw;
+        }
         CP_UNKNOWN_J_G_K
     }
 
-    /// Heat capacity of the contents (J/K): every liquid phase and every solid.
-    pub(crate) fn contents_heat_capacity(&self) -> f64 {
+    /// Heat capacity of the contents (J/K): every liquid phase and every solid. A dissolved ion carries its apparent molar
+    /// heat capacity, the standard partial molar value plus the Debye-Hueckel-type concentration terms
+    /// `Cp,phi = Cp0 + S_c sqrt(I) + b_c I` with `S_c = 14.5 |z|^1.5` and `b_c = 3.5 |z|^1.2` J mol^-1 K^-1 (molal I; an
+    /// Estimated generic form that reproduces the heat capacity of strong brines to a few per cent).
+    pub fn contents_heat_capacity(&self) -> f64 {
         let mut total = 0.0;
-        for m in self.liquid_maps() {
+        let kg_w = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * crate::volume::WATER_MW * 1e-3;
+        let ionic = if kg_w > 1e-9 {
+            0.5 * self.species_mol.iter().map(|(sp, &mol)| mol / kg_w * (ions::species_charge(sp) as f64).powi(2)).sum::<f64>()
+        } else {
+            0.0
+        };
+        for (pi, m) in self.liquid_maps().enumerate() {
             for (sp, &mol) in m {
-                total += self.species_cp_j_g_k(sp) * mol * chem_db::get_species_thermo(sp).mw;
+                let mw = chem_db::get_species_thermo(sp).mw;
+                let mut cp = self.species_cp_j_g_k(sp) * mw;
+                let z = ions::species_charge(sp).abs() as f64;
+                if pi == 0 && z > 0.0 && ionic > 0.0 {
+                    cp += 14.5 * z.powf(1.5) * ionic.sqrt() + 3.5 * z.powf(1.2) * ionic;
+                }
+                total += cp * mol;
             }
         }
         for (sp, &mol) in &self.solid_mol {
@@ -691,7 +713,13 @@ impl Vessel {
         let p_pa = if self.sealed { self.pressure_atm * P_ATM_PA } else { self.atmosphere.pressure_pa() };
         let env = self.ion_env();
         let n_liq0: Vec<f64> = comps.iter().map(|(k, _)| self.liquid_total(k)).collect();
-        let n_sol0: Vec<f64> = comps.iter().map(|(_, m)| self.solid_mol.get(&m.solid_key).copied().unwrap_or(0.0)).collect();
+        // one solid belongs to one component: when two liquid keys name the same molecule (I2(aq) and I2(l)) only the first
+        // carries the solid, the other is a liquid-only twin (counting the solid for both would create atoms)
+        let mut solid_owner: HashSet<&str> = HashSet::new();
+        let n_sol0: Vec<f64> = comps
+            .iter()
+            .map(|(_, m)| if solid_owner.insert(m.solid_key.as_str()) { self.solid_mol.get(&m.solid_key).copied().unwrap_or(0.0) } else { 0.0 })
+            .collect();
         // nothing can change phase: a single liquid component with no solid and no chance to freeze
         let multi = comps.iter().filter(|(k, _)| self.liquid_total(k) > TINY_MOL).count() >= 2;
         let has_solid = n_sol0.iter().any(|&s| s > TINY_MOL);
@@ -896,6 +924,21 @@ impl Vessel {
                 let text = if is_solvent { format!("{} freezing at {:.1} °C", name, t_k - 273.15) } else { format!("{} crystallising out of solution", name) };
                 self.push_event_full(VesselEventKind::PrecipitateFormed, text, 0.5, Some(key), None);
             }
+        }
+    }
+
+    /// Whether a solid is a frozen liquid rather than a crystalline powder: the solid phase of a molecule that is the main
+    /// liquid component of the vessel (the solvent freezing), or, in a vessel with no liquid, one that melts below standard
+    /// temperature (298 K) (a block of ice, frozen benzene) as opposed to one that is solid at room temperature (iodine).
+    pub(crate) fn solid_is_frozen_liquid(&self, sp: &str) -> bool {
+        let Some(key) = self.liquid_key_of_solid(sp) else { return false };
+        let Some(m) = self.molecule(&key) else { return false };
+        let Some(SolidModel::Fusion(f)) = &m.solid else { return false };
+        let total_liquid: f64 = self.liquid_maps().map(|mp| mp.values().sum::<f64>()).sum();
+        if total_liquid > 1e-12 {
+            self.liquid_total(&key) >= 0.3 * total_liquid
+        } else {
+            f.tm_k < 298.15 // liquid at standard temperature
         }
     }
 

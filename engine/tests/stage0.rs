@@ -488,7 +488,8 @@ fn s0_7_every_builtin_neutral_molecule_has_an_inchikey() {
         if reaction_chamber_engine::ions::species_elements(&s).is_none() {
             continue;
         }
-        if !KNOWN_NEUTRAL_INCHIKEYS.iter().any(|(id, _)| *id == s) {
+        let has_key = reaction_chamber_engine::db::SpeciesStore::global().read().unwrap().get(&s).map_or(false, |r| r.identity.inchikey.is_some());
+        if !has_key {
             missing.push(s);
         }
     }
@@ -798,7 +799,7 @@ fn s0_15_sealed_water_pressure_follows_iapws_to_the_critical_region() {
         });
         ml(&mut v, "water", 50.0);
         v.temperature_k = t;
-        v.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+        v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(t)), ..Default::default() });
         run(&mut v, 60.0, 0.5);
         let t_now = v.temperature_k;
         assert!((t_now - t).abs() < 15.0, "bath held {} K, got {}", t, t_now);
@@ -827,7 +828,7 @@ fn s0_15_sealed_ethanol_and_mixtures_use_their_own_curves() {
     let mut e = mk();
     ml(&mut e, "ethanol", 30.0);
     e.temperature_k = t;
-    e.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+    e.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(t)), ..Default::default() });
     run(&mut e, 20.0, 0.5);
     let expect = psat("C2H5OH", e.temperature_k) / 101325.0 + air_pressure_pa(&e) / 101325.0;
     assert!((e.pressure_atm - expect).abs() < 0.07 * expect, "ethanol {} atm vs {}", e.pressure_atm, expect);
@@ -841,7 +842,7 @@ fn s0_15_sealed_ethanol_and_mixtures_use_their_own_curves() {
     let water_ml = n_e * 18.015;
     ml(&mut m, "water", water_ml);
     m.temperature_k = t;
-    m.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+    m.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(t)), ..Default::default() });
     run(&mut m, 20.0, 0.5);
     let tt = m.temperature_k;
     let raoult = 0.5 * psat("H2O", tt) + 0.5 * psat("C2H5OH", tt);

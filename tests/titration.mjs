@@ -183,10 +183,20 @@ ok('pH curve: ~3 just before, ~11 just after 25.0 mL; endpoint within 0.1 mL', (
   near(pinkAt, 25.0, 0.1, 'pink endpoint');
 });
 
+// pure water absorbs a little in the visible (Pope & Fry 1997 baseline of the engine); "colourless" means no more than that
+const waterOnly = (() => {
+  const h = mk();
+  dose(h, { reagent_id: 'water', volume_ml: 50 });
+  const s = snap(h);
+  eng.vessel_free(h);
+  return s;
+})();
+const base = (lo, hi) => absorbance(waterOnly, lo, hi);
+
 ok('phenolphthalein: colourless in acid, pink (green light absorbed) past the endpoint, colour_change event fired', () => {
   const at = (v) => phph.find((p) => Math.abs(p.v - v) < 1e-6).s;
-  assert.ok(absorbance(at(20), 520, 580) < 1e-4, 'colourless before');
-  assert.ok(absorbance(at(24.9), 520, 580) < 1e-3, 'colourless one drop-pair before');
+  assert.ok(absorbance(at(20), 520, 580) - base(520, 580) < 1e-4, 'colourless before');
+  assert.ok(absorbance(at(24.9), 520, 580) - base(520, 580) < 1e-3, 'colourless one drop-pair before');
   assert.ok(absorbance(at(25.2), 520, 580) > 0.03, `pink after: ${absorbance(at(25.2), 520, 580)}`);
   assert.ok(absorbance(at(26), 520, 580) > absorbance(at(25.2), 520, 580), 'deeper pink with excess base');
   // blue/red edges stay clear compared with the green absorption band: the result looks pink, not brown

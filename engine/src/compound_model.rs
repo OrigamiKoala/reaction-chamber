@@ -159,33 +159,6 @@ fn none(req: &CompoundRequest, reason: &str) -> CompoundModel {
     }
 }
 
-/// First (connectivity) block of the InChIKey of every neutral molecule the engine has built-in chemistry for.
-/// Imports are matched on this identity, never on the formula alone (isomers share a formula: dimethyl ether is not
-/// ethanol, methyl formate is not acetic acid). The formula only *proposes* the candidate.
-pub const KNOWN_NEUTRAL_INCHIKEYS: &[(&str, &str)] = &[
-    ("C2H5OH", "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"),
-    ("CH3COOH", "QTBSBXVTEAMEQO-UHFFFAOYSA-N"),
-    ("HCOOH", "BDAGIHXWWSANSR-UHFFFAOYSA-N"),
-    ("NH3", "QGZKDVFQNNGYKY-UHFFFAOYSA-N"),
-    ("CO2(aq)", "CURLTUGMZLYLDI-UHFFFAOYSA-N"),
-    ("H2CO3(aq)", "BVKZGUZCCUSVTD-UHFFFAOYSA-N"),
-    ("H2O2", "MHAJPDPJQMAIIY-UHFFFAOYSA-N"),
-    ("I2(aq)", "PNDPGZBMCMUPRI-UHFFFAOYSA-N"),
-    ("O2(aq)", "MYMOFIZGZYHOMD-UHFFFAOYSA-N"),
-    ("O2", "MYMOFIZGZYHOMD-UHFFFAOYSA-N"),
-    ("HF", "KRHYYFGTRYWZRS-UHFFFAOYSA-N"),
-    ("HCN", "LELOWRISYMNNSU-UHFFFAOYSA-N"),
-    ("H2S", "RWSOTUBLDIXVET-UHFFFAOYSA-N"),
-    ("H2S(aq)", "RWSOTUBLDIXVET-UHFFFAOYSA-N"),
-    ("HNO2", "IOVCWXUNBOPUCH-UHFFFAOYSA-N"),
-    ("HClO", "QWPPOHNGKGFGJK-UHFFFAOYSA-N"),
-    ("H2SO3", "LSNNMFCWUKXFEE-UHFFFAOYSA-N"),
-    ("H3PO4", "NBIIXXVUZAFLBC-UHFFFAOYSA-N"),
-    ("H2C2O4", "MUBZPKHOEPUJKR-UHFFFAOYSA-N"),
-    ("H2SO4", "QAOWNCQODCNURD-UHFFFAOYSA-N"),
-    ("Mg(s)", "FYYHWMGAXLPEAU-UHFFFAOYSA-N"),
-];
-
 /// Connectivity block (first 14 characters) of an InChIKey, upper-cased; None when it is not a plausible key.
 pub fn inchikey_block(key: &str) -> Option<String> {
     let k = key.trim().to_uppercase();
@@ -197,50 +170,25 @@ pub fn inchikey_block(key: &str) -> Option<String> {
     }
 }
 
-/// Neutral species the engine has chemistry for, keyed by element multiset. This only *proposes* candidates; the
-/// InChIKey decides (`known_neutral_confirmed`).
-fn known_neutral_species() -> HashMap<String, Vec<String>> {
-    let mut out: HashMap<String, Vec<String>> = HashMap::new();
-    let mut add = |sp: &str| {
-        if sp == "H2O" || sp.ends_with("(g)") {
-            return;
-        }
-        if let Some(e) = ions::species_elements(sp) {
-            if ions::species_charge(sp) == 0 {
-                let list = out.entry(ions::element_key(&e)).or_default();
-                if !list.iter().any(|x| x == sp) {
-                    list.push(sp.to_string());
-                }
-            }
-        }
-    };
-    for eq in chem_db::get_default_equilibria() {
-        for k in eq.reactants.keys().chain(eq.products.keys()) {
-            add(k);
-        }
-    }
-    for r in chem_db::get_default_kinetic_reactions() {
-        for k in r.reactants.keys().chain(r.products.keys()) {
-            add(k);
-        }
-    }
-    for &(id, _) in KNOWN_NEUTRAL_INCHIKEYS {
-        add(id);
-    }
-    out
-}
-
-/// The built-in species a request is, confirmed by InChIKey among the formula-proposed candidates.
-fn known_neutral_confirmed(candidates: &[String], inchi_key: Option<&str>) -> Option<String> {
+/// The species the engine already has chemistry for that a request is, by identity: a store record with the request's
+/// InChIKey connectivity block (never the formula alone: isomers share a formula) and its element multiset. Among the
+/// records of one molecule (dissolved, liquid, solid) the dissolved form is preferred; gases and water are not imports, and
+/// neither are the phase-data records keyed by InChIKey (`ik:`), which carry melting / vapour data, not chemistry.
+fn known_neutral_confirmed(elems: &HashMap<String, f64>, inchi_key: Option<&str>) -> Option<String> {
     let block = inchikey_block(inchi_key?)?;
-    candidates
+    let want = ions::element_key(elems);
+    let global = crate::db::SpeciesStore::global();
+    let store = global.read().ok()?;
+    let rank = |id: &str| -> u8 {
+        if id.ends_with("(aq)") { 0 } else if !id.ends_with(')') { 1 } else if id.ends_with("(l)") { 2 } else { 3 }
+    };
+    store
         .iter()
-        .find(|sp| {
-            KNOWN_NEUTRAL_INCHIKEYS
-                .iter()
-                .any(|(id, ik)| *id == sp.as_str() && inchikey_block(ik).as_deref() == Some(block.as_str()))
-        })
-        .cloned()
+        .filter(|r| r.identity.charge == 0 && r.id != crate::db::seed::WATER && !r.id.ends_with("(g)") && !r.id.starts_with("ik:"))
+        .filter(|r| r.identity.inchikey.as_deref().and_then(inchikey_block).as_deref() == Some(block.as_str()))
+        .filter(|r| ions::species_elements(&r.id).map(|e| ions::element_key(&e)).as_deref() == Some(want.as_str()))
+        .map(|r| r.id.clone())
+        .min_by(|a, b| rank(a).cmp(&rank(b)).then(a.cmp(b)))
 }
 
 fn species_is_reactant_in_equilibria(sp: &str) -> bool {
@@ -256,7 +204,7 @@ struct AcidModel {
     note: Option<String>,
 }
 
-fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>) -> AcidModel {
+fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>, smiles: Option<&str>) -> AcidModel {
     let plain = |species: Vec<(String, f64)>| AcidModel { species, equilibria: vec![], note: None };
     // Fully deprotonated base: find an anion definition whose formula equals elems minus (H count equal to -charge_of_base)
     let mut best: Option<(&ions::IonDef, f64)> = None;
@@ -298,7 +246,13 @@ fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>) -> AcidModel {
         }
         // Everything else: weak, with an Estimated pKa ladder
         let ki = k as usize;
-        let ladder = acid_estimate::estimate_ladder(elems, ki);
+        // pKa from the structure when the SMILES shows the acidic sites (Hammett / Taft over the graph, tier Estimated),
+        // else the functional-class ladder from the formula
+        let ladder = smiles
+            .and_then(crate::pka_structure::acid_ladder)
+            .filter(|(l, _)| l.len() == ki)
+            .map(|(pka, class)| acid_estimate::Ladder { pka, class: if class == "carboxylic" || class == "benzoic" { "structure-based pKa (inductive / Hammett relation over the SMILES graph, carboxylic acid)" } else { "structure-based pKa (inductive / Hammett relation over the SMILES graph)" } })
+            .unwrap_or_else(|| acid_estimate::estimate_ladder(elems, ki));
         let has_c = elems.contains_key("C");
         let parent = if has_c {
             solubility::hill_from_elems(elems)
@@ -377,8 +331,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     // (A carbon *acid* still goes through `acid_species`, which keeps the neutral parent and estimates its pKa.)
     let has_c = elems.contains_key("C");
     let ionic_smiles = req.smiles.as_ref().map_or(true, |s| s.contains('.') || s.contains('+') || s.contains('-') || !has_c);
-    let known_candidates = known_neutral_species().remove(&ions::element_key(&elems)).unwrap_or_default();
-    let known_confirmed = known_neutral_confirmed(&known_candidates, req.inchi_key.as_deref());
+    let known_confirmed = known_neutral_confirmed(&elems, req.inchi_key.as_deref());
     let split = ions::decompose_elems(&elems)
         .filter(|sp| ionic_smiles || sp.cations.iter().all(|c| c.id == "H+"))
         .filter(|sp| {
@@ -407,7 +360,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     // ---- species released per formula unit
     let (kind, species): (&str, Vec<(String, f64)>) = if let Some(sp) = &split {
         if sp.cations.iter().all(|c| c.id == "H+") {
-            let am = acid_species(sp, &elems);
+            let am = acid_species(sp, &elems, req.smiles.as_deref());
             equilibria = am.equilibria;
             acid_note = am.note;
             ("acid", am.species)

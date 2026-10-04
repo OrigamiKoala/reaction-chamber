@@ -268,6 +268,9 @@ impl Vessel {
                 ans.push(sp.clone());
             }
         }
+        // (sorted: the order in which minerals are registered fixes the order of the solver's unknowns)
+        cats.sort();
+        ans.sort();
         for c in &cats {
             for a in &ans {
                 let key = (c.clone(), a.clone());
@@ -284,6 +287,78 @@ impl Vessel {
                 }
             }
         }
+    }
+
+    /// Registers the association rows (Fuoss ion pairs, complexation data) of the ions that are present in an amount that
+    /// matters. Called after a dose has settled (the precipitating ions are gone by then) and before each equilibrium step.
+    pub fn auto_associations(&mut self) {
+        let mut cats: Vec<String> = Vec::new();
+        let mut ans: Vec<String> = Vec::new();
+        for (sp, &mol) in &self.species_mol {
+            if mol <= 1e-12 {
+                continue;
+            }
+            if is_simple_cation(sp) {
+                cats.push(sp.clone());
+            } else if ions::anion_def(sp).is_some() {
+                ans.push(sp.clone());
+            }
+        }
+        cats.sort();
+        ans.sort();
+        // outer-sphere ion pairs (Fuoss association) of pairs that are both present in an amount that matters (a pair that
+        // is registered adds a species row to the solver, so a trace of either ion does not earn one)
+        for c in &cats {
+            for a in &ans {
+                let key = ("pair".to_string(), format!("{}|{}", c, a));
+                if self.ev.checked_pairs.contains(&key) {
+                    continue;
+                }
+                let n_c = self.species_mol.get(c).copied().unwrap_or(0.0);
+                let n_a = self.species_mol.get(a).copied().unwrap_or(0.0);
+                if n_c.min(n_a) < crate::ion_pairing::MIN_PAIR_AMOUNT_MOL {
+                    continue;
+                }
+                match crate::ion_pairing::fuoss_pair_equilibrium(c, a, self.temperature_k) {
+                    None => {
+                        self.ev.checked_pairs.insert(key);
+                    }
+                    Some(eq) => {
+                        // worth a species row only when it would hold a noticeable share of the scarcer ion at the
+                        // current concentration (activity coefficients ~0.3 for a divalent pair)
+                        let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-6);
+                        let c_other = n_c.max(n_a) / vol_l;
+                        if 10f64.powf(eq.log_k_298) * 0.3 * c_other < crate::ion_pairing::MIN_PAIRED_FRACTION {
+                            continue;
+                        }
+                        self.ev.checked_pairs.insert(key);
+                        if !self.equilibria.iter().any(|e| e.id == eq.id) && !self.species_has_a_row(&eq) {
+                            self.register_equilibrium(eq);
+                        }
+                    }
+                }
+            }
+        }
+        // complexation rows whose metal and ligand are both present
+        let present = |sp: &str| self.species_mol.get(sp).map_or(false, |m| *m > crate::ion_pairing::MIN_PAIR_AMOUNT_MOL);
+        let new_rows: Vec<_> = crate::ion_pairing::complex_equilibria(&present)
+            .into_iter()
+            .filter(|eq| !self.ev.checked_pairs.contains(&("cplx".to_string(), eq.id.clone())))
+            .collect();
+        for eq in new_rows {
+            self.ev.checked_pairs.insert(("cplx".to_string(), eq.id.clone()));
+            if !self.equilibria.iter().any(|e| e.id == eq.id) && !self.species_has_a_row(&eq) {
+                self.register_equilibrium(eq);
+            }
+        }
+    }
+
+    /// True when a registered equilibrium already forms the species this row would create (same elements and charge under
+    /// any name): tabulated data wins over a generated association row.
+    fn species_has_a_row(&self, eq: &chem_db::GeneralEquilibrium) -> bool {
+        let key = |sp: &str| (ions::species_elements(sp).map(|e| ions::element_key(&e)), ions::species_charge(sp));
+        let wanted: Vec<_> = eq.products.keys().map(|p| key(p)).collect();
+        self.equilibria.iter().any(|e| e.id != eq.id && e.products.keys().chain(e.reactants.keys()).any(|sp| wanted.contains(&key(sp))))
     }
 
     // ------------------------------------------------------------------------------------------ settling
@@ -508,6 +583,10 @@ impl Vessel {
             .equilibria
             .iter()
             .filter_map(|eq| {
+                // generated outer-sphere ion pairs are speciation, not an event worth announcing
+                if eq.id.starts_with("pair_") {
+                    return None;
+                }
                 let reac: Vec<&String> = eq.reactants.keys().filter(|k| k.as_str() != "H2O").collect();
                 let prod: Vec<&String> = eq.products.keys().filter(|k| k.as_str() != "H2O").collect();
                 if reac.len() >= 2 && prod.len() == 1 && !reac.iter().any(|r| r.as_str() == "H+" || r.as_str() == "OH-") {

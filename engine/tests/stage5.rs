@@ -122,7 +122,7 @@ fn cool_to_onset(v: &mut Vessel, bath_k: f64, dt: f64, max_s: f64) -> f64 {
 }
 
 fn cool_bath(v: &mut Vessel, bath_k: f64, dt: f64, max_s: f64, stop_at_onset: bool) -> (f64, Vec<f64>, f64) {
-    v.set_controls(VesselControls { bath_k: Some(Some(bath_k)), ..Default::default() });
+    v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(bath_k)), ..Default::default() });
     let mut onset: Option<f64> = None;
     let mut plateau = Vec::new();
     let mut steps = 0.0;
@@ -174,7 +174,7 @@ fn s5_1_water_in_a_240_k_bath_freezes_with_a_plateau_at_273_15_k() {
     assert_eq!(ice.floating, Some(true));
     assert!(snap.events.iter().any(|e| e.detail.as_deref().map_or(false, |d| d.contains("freezing"))), "{:?}", snap.events);
     // and it melts again on a warm bath, holding the plateau
-    v.set_controls(VesselControls { bath_k: Some(Some(300.0)), ..Default::default() });
+    v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(300.0)), ..Default::default() });
     let mut melting_t = Vec::new();
     for _ in 0..30000 {
         v.step(0.1).unwrap();
@@ -444,7 +444,7 @@ fn s5_12_naphthalene_melts_with_a_plateau_at_its_melting_point() {
     import(naphthalene("s5_naph_pred", false));
     let mut v = vessel_at(300.0, 250.0);
     grams(&mut v, "s5_naph_pred", 20.0);
-    v.set_controls(VesselControls { bath_k: Some(Some(380.0)), ..Default::default() });
+    v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(380.0)), ..Default::default() });
     let n_total = sol_of(&v, "C10H8");
     let mut plateau = Vec::new();
     for _ in 0..20000 {
@@ -510,7 +510,7 @@ fn s5_15_solubility_moves_with_temperature_by_the_measured_heat_of_solution() {
         let mut v = vessel_at(t, 250.0);
         ml(&mut v, "water", 50.0);
         grams(&mut v, "s5_glucose_t", 90.0);
-        v.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+        v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(t)), ..Default::default() });
         run(&mut v, 900.0, 1.0);
         assert!((v.temperature_k - t).abs() < 0.3, "{} K", v.temperature_k);
         let n_s = v.species_mol.iter().filter(|(k, _)| k.starts_with("C6H12O6")).map(|(_, x)| *x).sum::<f64>();

@@ -107,8 +107,9 @@ pub fn exchange_time_s(ratio: f64, head_m: f64) -> f64 {
 
 // ------------------------------------------------------------------------------------------------ fuming
 
-fn mu0(id: &str, phase: &str, t_k: f64) -> f64 {
-    crate::thermo::functions::get_thermo_state(id, phase, t_k, 1e5).mu0_j_mol
+/// Standard chemical potential, None for a species without formation data (no placeholder).
+fn mu0(id: &str, phase: &str, t_k: f64) -> Option<f64> {
+    crate::thermo::functions::try_thermo_state(id, phase, t_k, 1e5).map(|st| st.mu0_j_mol)
 }
 
 /// Dissolved form of a gas in a hygroscopic droplet: (species id, count per gas molecule) of its ions or of the neutral
@@ -146,8 +147,11 @@ pub fn solution_droplet_supersaturation(gas_id: &str, p_partial_pa: f64, rh: f64
     let rh = rh.clamp(0.05, 0.999);
     // a_w = exp(-nu m M_w) for an ideal solution of nu particles per solute
     let m_eq = -rh.ln() / (nu * 0.018015);
-    let mu_dissolved: f64 = form.iter().map(|(id, n)| n * mu0(id, "aq", t_k)).sum();
-    let ln_k = -(mu_dissolved - mu0(gas_id, "g", t_k)) / (R_GAS * t_k);
+    let mut mu_dissolved = 0.0;
+    for (id, n) in &form {
+        mu_dissolved += n * mu0(id, "aq", t_k)?;
+    }
+    let ln_k = -(mu_dissolved - mu0(gas_id, "g", t_k)?) / (R_GAS * t_k);
     // K = prod (nu_i m)^nu_i / p  [bar]  =>  p_eq = prod (nu_i m)^nu_i / K
     let ln_num: f64 = form.iter().map(|(_, n)| n * (n * m_eq).ln()).sum();
     let ln_p_eq_bar = ln_num - ln_k;
@@ -171,19 +175,24 @@ pub struct GasPhaseSolid {
 /// Solids of the species store that are exactly `a gas_i + b gas_j` of two plume gases (a, b in 1..=3) and form
 /// spontaneously from them at the plume partial pressures: `sum a_i ln(p_i / p0) > Delta G / RT`.
 pub fn gas_phase_solids(gases: &[(String, f64)], t_k: f64) -> Vec<GasPhaseSolid> {
-    let store = SpeciesStore::global();
-    let Ok(guard) = store.read() else { return Vec::new() };
+    // the candidate solids are copied out of the store first: the thermodynamic lookups below read the store themselves
+    let solids: Vec<(String, std::collections::HashMap<String, f64>, f64)> = {
+        let store = SpeciesStore::global();
+        let Ok(guard) = store.read() else { return Vec::new() };
+        guard
+            .iter()
+            .filter(|r| r.id.ends_with("(s)") && r.has_phase("s") && r.identity.charge == 0)
+            .map(|r| (r.id.clone(), r.elements(), r.mw()))
+            .filter(|(_, es, _)| !es.is_empty())
+            .collect()
+    };
     let mut out = Vec::new();
     for i in 0..gases.len() {
         for j in (i + 1)..gases.len() {
             let (gi, pi) = (&gases[i].0, gases[i].1);
             let (gj, pj) = (&gases[j].0, gases[j].1);
             let (Some(ei), Some(ej)) = (crate::ions::species_elements(gi), crate::ions::species_elements(gj)) else { continue };
-            for rec in guard.iter().filter(|r| r.id.ends_with("(s)") && r.has_phase("s") && r.identity.charge == 0) {
-                let es = rec.elements();
-                if es.is_empty() {
-                    continue;
-                }
+            for (sid, es, mw) in &solids {
                 for a in 1..=3u32 {
                     for b in 1..=3u32 {
                         let mut sum = std::collections::HashMap::new();
@@ -196,11 +205,12 @@ pub fn gas_phase_solids(gases: &[(String, f64)], t_k: f64) -> Vec<GasPhaseSolid>
                         if sum.len() != es.len() || es.iter().any(|(e, n)| (sum.get(e).copied().unwrap_or(-1.0) - n).abs() > 1e-9) {
                             continue;
                         }
-                        let dg = mu0(&rec.id, "s", t_k) - a as f64 * mu0(gi, "g", t_k) - b as f64 * mu0(gj, "g", t_k);
+                        let (Some(ms), Some(mi), Some(mj)) = (mu0(sid, "s", t_k), mu0(gi, "g", t_k), mu0(gj, "g", t_k)) else { continue };
+                        let dg = ms - a as f64 * mi - b as f64 * mj;
                         let rt = R_GAS * t_k;
                         let lhs = a as f64 * (pi / 1e5).max(1e-300).ln() + b as f64 * (pj / 1e5).max(1e-300).ln();
                         if lhs > dg / rt {
-                            out.push(GasPhaseSolid { solid_id: rec.id.clone(), parts: vec![(gi.clone(), a as f64), (gj.clone(), b as f64)], mw: rec.mw(), dg_j_mol: dg });
+                            out.push(GasPhaseSolid { solid_id: sid.clone(), parts: vec![(gi.clone(), a as f64), (gj.clone(), b as f64)], mw: *mw, dg_j_mol: dg });
                         }
                     }
                 }

@@ -221,12 +221,13 @@ pub struct GeneralKineticRxn {
     pub source: String,
 }
 
+/// Molar mass and charge of a species: what almost every caller needs. The mass is exact whenever the id parses as a
+/// formula or has a store record; an id with neither gets 50 g/mol and a property request is queued. The
+/// thermodynamics of a species are `thermo::try_thermo_state` (formation data or None) and `species_cp_j_mol_k`.
 #[derive(Clone, Copy, Debug)]
 pub struct SpeciesThermo {
     pub mw: f64,
     pub charge: i32,
-    pub delta_h_f: f64, // kJ/mol
-    pub cp: f64,        // J/(mol·K)
 }
 
 /// Parses chemical formula to element count map for universal conservation checks
@@ -368,69 +369,50 @@ pub fn audit_equilibrium(eq: &mut GeneralEquilibrium) -> Option<String> {
     })
 }
 
-/// Thermo record of a species: checks SpeciesStore and try_thermo_state, else a general estimate from the formula
-/// (mass and charge are real; ΔfH° and Cp are placeholders, so `species_thermo_tier` reports Speculative, and queues a PropertyRequest).
 pub fn get_species_thermo(species: &str) -> SpeciesThermo {
-    let mw = crate::ions::species_mass(species).filter(|m| *m > 0.5).unwrap_or(50.0);
     let charge = crate::ions::species_charge(species);
-    let phase = crate::thermo::phase_of_id(species);
-
-    if let Some(st) = crate::thermo::try_thermo_state(species, phase, 298.15, 101_325.0) {
-        return SpeciesThermo {
-            mw,
-            charge,
-            delta_h_f: st.h_j_mol / 1000.0,
-            cp: st.cp_j_mol_k,
-        };
-    }
-
-    if let Ok(store) = crate::db::SpeciesStore::global().read() {
-        if let Some(rec) = store.get(species) {
-            let phase_thermo = rec.phases.get("aq")
-                .or_else(|| rec.phases.get("l"))
-                .or_else(|| rec.phases.get("s"))
-                .or_else(|| rec.phases.get("g"))
-                .and_then(|p| p.thermo.as_ref());
-            let (dfh, cp) = if let Some(pt) = phase_thermo {
-                (
-                    pt.dfH.as_ref().map(|d| d.value).unwrap_or(-100.0),
-                    pt.cp.as_ref().map(|d| d.value).unwrap_or(50.0),
-                )
-            } else {
-                (-100.0, 50.0)
-            };
-            return SpeciesThermo { mw, charge, delta_h_f: dfh, cp };
+    match crate::ions::species_mass(species).filter(|m| *m > 0.5) {
+        Some(mw) => SpeciesThermo { mw, charge },
+        None => {
+            // no formula and no record: the mass is unknown, not 50 g/mol; ask for the data
+            crate::queue_property_request(crate::PropertyRequest {
+                species_id: species.to_string(),
+                identity: crate::db::Identity {
+                    inchikey: None,
+                    smiles: None,
+                    formula: species.to_string(),
+                    charge,
+                    cas: None,
+                    cid: None,
+                    names: vec![species.to_string()],
+                    db_names: HashMap::new(),
+                },
+                kinds: vec!["thermo".to_string()],
+                reason: format!("molar mass of {} is unknown", species),
+                current_tier: ProvenanceTier::Speculative,
+            });
+            SpeciesThermo { mw: 50.0, charge }
         }
-    }
-
-    // General estimator from the formula: full periodic table for the mass, charge parsed from the id.
-    crate::queue_property_request(crate::PropertyRequest {
-        species_id: species.to_string(),
-        identity: crate::db::Identity {
-            inchikey: None,
-            smiles: None,
-            formula: species.to_string(),
-            charge,
-            cas: None,
-            cid: None,
-            names: vec![species.to_string()],
-            db_names: HashMap::new(),
-        },
-        kinds: vec!["thermo".to_string()],
-        reason: format!("Fallback thermo estimation for {}", species),
-        current_tier: ProvenanceTier::Speculative,
-    });
-
-    SpeciesThermo {
-        mw,
-        charge,
-        delta_h_f: -100.0,
-        cp: 50.0,
     }
 }
 
-/// Provenance of the thermo record `get_species_thermo` returns: Tabulated for a table entry or store entry, Speculative for the
-/// placeholder estimate (the mass and charge of such a species are still exact; its enthalpy and heat capacity are not).
+/// Molar heat capacity (J/(mol K)) of a species at 298.15 K in the phase its id names, from its record; None when the
+/// store has no heat capacity for it (no placeholder).
+pub fn species_cp_j_mol_k(species: &str) -> Option<f64> {
+    let phase = crate::thermo::phase_of_id(species);
+    if let Some(st) = crate::thermo::try_thermo_state(species, phase, 298.15, 101_325.0) {
+        // (the standard partial molar heat capacity of an aqueous ion is often negative: only zero means "no datum")
+        if st.cp_j_mol_k.abs() > 1e-9 {
+            return Some(st.cp_j_mol_k);
+        }
+    }
+    let global = crate::db::SpeciesStore::global();
+    let store = global.read().ok()?;
+    let rec = store.get(species)?;
+    ["aq", "l", "s", "g"].iter().find_map(|ph| rec.phases.get(*ph).and_then(|p| p.thermo.as_ref()).and_then(|t| t.cp.as_ref()).map(|d| d.value)).filter(|v| v.abs() > 1e-9)
+}
+
+/// Provenance of the thermodynamic data of a species: the tier of its formation record, Speculative when it has none.
 pub fn species_thermo_tier(species: &str) -> ProvenanceTier {
     let phase = crate::thermo::phase_of_id(species);
     if let Some(st) = crate::thermo::try_thermo_state(species, phase, 298.15, 101_325.0) {
@@ -451,256 +433,21 @@ pub fn species_thermo_tier(species: &str) -> ProvenanceTier {
     ProvenanceTier::Speculative
 }
 
+#[derive(Deserialize)]
+struct CoreRows {
+    equilibria: Vec<GeneralEquilibrium>,
+    minerals: Vec<GeneralMineral>,
+    kinetics: Vec<GeneralKineticRxn>,
+}
+
+/// The hand-curated rows of `data/core_reactions.json` (no reaction is written in this file).
+fn core_rows() -> &'static CoreRows {
+    static ROWS: std::sync::OnceLock<CoreRows> = std::sync::OnceLock::new();
+    ROWS.get_or_init(|| serde_json::from_str(include_str!("../data/core_reactions.json")).expect("data/core_reactions.json"))
+}
+
 pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
-    let mut list = vec![
-        // 1. Water autoionization
-        GeneralEquilibrium {
-            id: "water_autoionization".to_string(),
-            name: "Water autoionization".to_string(),
-            equation: "H2O <=> H+ + OH-".to_string(),
-            reactants: [("H2O".to_string(), 1.0)].into(),
-            products: [("H+".to_string(), 1.0), ("OH-".to_string(), 1.0)].into(),
-            log_k_298: -14.00,
-            delta_h_kj: 55.84,
-            log_k_analytic: Some(WATER_KW_ANALYTIC),
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC phreeqc.dat (analytical expression for Kw, 0-300 C)".to_string(),
-        },
-        // 2. Acetic acid dissociation
-        GeneralEquilibrium {
-            id: "acetic_acid_dissoc".to_string(),
-            name: "Acetic acid dissociation".to_string(),
-            equation: "CH3COOH <=> H+ + CH3COO-".to_string(),
-            reactants: [("CH3COOH".to_string(), 1.0)].into(),
-            products: [("H+".to_string(), 1.0), ("CH3COO-".to_string(), 1.0)].into(),
-            log_k_298: -4.756,
-            delta_h_kj: -0.41,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC pKa Dataset".to_string(),
-        },
-        // 3. Carbonic acid: the textbook two-step mechanism. CO2(aq) is dissolved CO2; its hydration to molecular H2CO3 is
-        // the slow step, the dissociation of H2CO3 is a diffusion-controlled proton transfer (fast). The product of the two
-        // constants is the apparent first dissociation constant of "carbonic acid" (pK1 = 6.35).
-        GeneralEquilibrium {
-            id: "co2_hydration".to_string(),
-            name: "CO2 hydration".to_string(),
-            equation: "CO2(aq) + H2O <=> H2CO3(aq)".to_string(),
-            reactants: [("CO2(aq)".to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
-            products: [("H2CO3(aq)".to_string(), 1.0)].into(),
-            log_k_298: -2.77,
-            delta_h_kj: 0.0,
-            log_k_analytic: None,
-            // forward k = 0.037 1/s (25 C, Ea 70 kJ/mol) for CO2 + H2O, plus 8500 1/(M s) (Ea 55 kJ/mol) for CO2 + OH-, whose
-            // product HCO3- is in fast equilibrium with H2CO3 (Pinsent, Pearson & Roughton 1956; Johnson 1982); the reverse
-            // follows from detailed balance
-            rate: Some(EquilibriumRate {
-                terms: vec![
-                    RateTerm { catalyst: None, k_298: 0.037, ea_j_mol: 70_000.0 },
-                    RateTerm { catalyst: Some("OH-".to_string()), k_298: 8500.0, ea_j_mol: 55_000.0 },
-                ],
-                source: "Pinsent, Pearson & Roughton, Trans. Faraday Soc. 52 (1956) 1512; Johnson, Geochim. Cosmochim. Acta 46 (1982) 1245".to_string(),
-            }),
-            tier: ProvenanceTier::Estimated,
-            source: "K_h = 1.7e-3 (Wang et al., Geochim. Cosmochim. Acta 2010); with the dissociation below the apparent pK1 = 6.35 (PHREEQC core)".to_string(),
-        },
-        GeneralEquilibrium {
-            id: "carbonic_acid_dissoc1".to_string(),
-            name: "Carbonic acid 1st dissociation".to_string(),
-            equation: "H2CO3(aq) <=> H+ + HCO3-".to_string(),
-            reactants: [("H2CO3(aq)".to_string(), 1.0)].into(),
-            products: [("H+".to_string(), 1.0), ("HCO3-".to_string(), 1.0)].into(),
-            log_k_298: -3.58,
-            delta_h_kj: 9.16,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Estimated,
-            source: "apparent pK1 = 6.35 (PHREEQC core) less the hydration constant".to_string(),
-        },
-        // 4. Bicarbonate 2nd dissociation
-        GeneralEquilibrium {
-            id: "bicarbonate_dissoc2".to_string(),
-            name: "Bicarbonate 2nd dissociation".to_string(),
-            equation: "HCO3- <=> H+ + CO3-2".to_string(),
-            reactants: [("HCO3-".to_string(), 1.0)].into(),
-            products: [("H+".to_string(), 1.0), ("CO3-2".to_string(), 1.0)].into(),
-            log_k_298: -10.33,
-            delta_h_kj: 14.85,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC core".to_string(),
-        },
-        // 5. Ammonia aqueous hydrolysis
-        GeneralEquilibrium {
-            id: "ammonia_hydrolysis".to_string(),
-            name: "Ammonia aqueous hydrolysis".to_string(),
-            equation: "NH3 + H2O <=> NH4+ + OH-".to_string(),
-            reactants: [("NH3".to_string(), 1.0), ("H2O".to_string(), 1.0)].into(),
-            products: [("NH4+".to_string(), 1.0), ("OH-".to_string(), 1.0)].into(),
-            log_k_298: -4.75,
-            delta_h_kj: 3.64,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC core".to_string(),
-        },
-        // 6. Copper tetraammine complexation
-        GeneralEquilibrium {
-            id: "copper_tetraammine".to_string(),
-            name: "Tetraamminecopper(II) formation".to_string(),
-            equation: "Cu+2 + 4 NH3 <=> Cu(NH3)4+2".to_string(),
-            reactants: [("Cu+2".to_string(), 1.0), ("NH3".to_string(), 4.0)].into(),
-            products: [("Cu(NH3)4+2".to_string(), 1.0)].into(),
-            log_k_298: 13.8,
-            delta_h_kj: -88.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Critical Stability Constants (Smith & Martell)".to_string(),
-        },
-        // 7. Silver diammines complexation
-        GeneralEquilibrium {
-            id: "silver_diammine".to_string(),
-            name: "Diamminesilver(I) formation".to_string(),
-            equation: "Ag+ + 2 NH3 <=> Ag(NH3)2+".to_string(),
-            reactants: [("Ag+".to_string(), 1.0), ("NH3".to_string(), 2.0)].into(),
-            products: [("Ag(NH3)2+".to_string(), 1.0)].into(),
-            log_k_298: 7.40,
-            delta_h_kj: -56.1,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Critical Stability Constants".to_string(),
-        },
-        // 8. Iron(III) thiocyanate complexation
-        GeneralEquilibrium {
-            id: "iron_thiocyanate".to_string(),
-            name: "Iron(III) thiocyanate complexation".to_string(),
-            equation: "Fe+3 + SCN- <=> Fe(SCN)+2".to_string(),
-            reactants: [("Fe+3".to_string(), 1.0), ("SCN-".to_string(), 1.0)].into(),
-            products: [("Fe(SCN)+2".to_string(), 1.0)].into(),
-            log_k_298: 2.301, // K1 = 200.0 M^-1
-            delta_h_kj: -26.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Stability Constants".to_string(),
-        },
-        // 9. Cobalt(II) chloride stepwise complexation (Smith & Martell, Critical Stability Constants)
-        GeneralEquilibrium {
-            id: "co_cl_1".to_string(),
-            name: "Chlorocobalt(II) formation".to_string(),
-            equation: "Co+2 + Cl- <=> CoCl+".to_string(),
-            reactants: [("Co+2".to_string(), 1.0), ("Cl-".to_string(), 1.0)].into(),
-            products: [("CoCl+".to_string(), 1.0)].into(),
-            log_k_298: -0.1,
-            delta_h_kj: 5.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Smith & Martell, Critical Stability Constants".to_string(),
-        },
-        GeneralEquilibrium {
-            id: "cobalt_tetrachloro".to_string(),
-            name: "Tetrachlorocobaltate(II) formation".to_string(),
-            equation: "Co+2 + 4 Cl- <=> CoCl4-2".to_string(),
-            reactants: [("Co+2".to_string(), 1.0), ("Cl-".to_string(), 4.0)].into(),
-            products: [("CoCl4-2".to_string(), 1.0)].into(),
-            log_k_298: -4.0, // overall beta_4 in aqueous chloride
-            delta_h_kj: 50.0, // endothermic => turns blue on heating
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Smith & Martell, Critical Stability Constants".to_string(),
-        },
-        // 10. Triiodide equilibrium
-        GeneralEquilibrium {
-            id: "triiodide_formation".to_string(),
-            name: "Triiodide formation".to_string(),
-            equation: "I2(aq) + I- <=> I3-".to_string(),
-            reactants: [("I2(aq)".to_string(), 1.0), ("I-".to_string(), 1.0)].into(),
-            products: [("I3-".to_string(), 1.0)].into(),
-            log_k_298: 2.85, // K ~ 710 M^-1
-            delta_h_kj: -17.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Stability Constants".to_string(),
-        },
-        // 11. Starch-triiodide complexation
-        GeneralEquilibrium {
-            id: "starch_triiodide_formation".to_string(),
-            name: "Starch-triiodide complexation".to_string(),
-            equation: "I3- + starch <=> starch_I3".to_string(),
-            reactants: [("I3-".to_string(), 1.0), ("starch".to_string(), 1.0)].into(),
-            products: [("starch_I3".to_string(), 1.0)].into(),
-            log_k_298: 4.5,
-            delta_h_kj: -30.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "J. Am. Chem. Soc. Starch-Iodine Complex".to_string(),
-        },
-        // 12. Phenolphthalein indicator equilibrium
-        GeneralEquilibrium {
-            id: "phenolphthalein_indicator".to_string(),
-            name: "Phenolphthalein lactone to coloured anion (one H+; balanced pseudo-species)".to_string(),
-            equation: "HIn_phph <=> In_phph- + H+".to_string(),
-            reactants: [("HIn_phph".to_string(), 1.0)].into(),
-            products: [("In_phph-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
-            log_k_298: -9.30,
-            delta_h_kj: 12.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Indicator pKa".to_string(),
-        },
-        // 13. Bromothymol blue indicator equilibrium
-        GeneralEquilibrium {
-            id: "btb_indicator".to_string(),
-            name: "Bromothymol blue dissociation".to_string(),
-            equation: "HIn_btb <=> In_btb- + H+".to_string(),
-            reactants: [("HIn_btb".to_string(), 1.0)].into(),
-            products: [("In_btb-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
-            log_k_298: -7.00,
-            delta_h_kj: 10.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Indicator pKa".to_string(),
-        },
-        // 14. Methyl orange indicator equilibrium
-        GeneralEquilibrium {
-            id: "mo_indicator".to_string(),
-            name: "Methyl orange dissociation".to_string(),
-            equation: "HIn_mo <=> In_mo- + H+".to_string(),
-            reactants: [("HIn_mo".to_string(), 1.0)].into(),
-            products: [("In_mo-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
-            log_k_298: -3.70,
-            delta_h_kj: 8.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Indicator pKa".to_string(),
-        },
-        // 15. Methyl red indicator equilibrium (red acid form, yellow base form)
-        GeneralEquilibrium {
-            id: "mr_indicator".to_string(),
-            name: "Methyl red dissociation".to_string(),
-            equation: "HIn_mr <=> In_mr- + H+".to_string(),
-            reactants: [("HIn_mr".to_string(), 1.0)].into(),
-            products: [("In_mr-".to_string(), 1.0), ("H+".to_string(), 1.0)].into(),
-            log_k_298: -5.00,
-            delta_h_kj: 8.0,
-            log_k_analytic: None,
-            rate: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "IUPAC Indicator pKa".to_string(),
-        },
-    ];
+    let mut list = core_rows().equilibria.clone();
     // Data-driven acid/base and speciation equilibria (engine/data/solubility.json).
     for eq in crate::solubility::table_equilibria() {
         if !list.iter().any(|e| e.id == eq.id) {
@@ -717,65 +464,7 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
 }
 
 pub fn get_default_minerals() -> Vec<GeneralMineral> {
-    let mut list = vec![
-        // 1. AgCl (Chlorargyrite)
-        GeneralMineral {
-            id: "AgCl_ppt".to_string(),
-            mineral: "Chlorargyrite".to_string(),
-            formula: "AgCl".to_string(),
-            solid_species: "AgCl(s)".to_string(),
-            dissolved_products: [("Ag+".to_string(), 1.0), ("Cl-".to_string(), 1.0)].into(),
-            log_ksp_298: -9.752, // Ksp = 1.77e-10
-            delta_h_kj: 65.7,
-            log_ksp_analytic: Some([2.671219, -0.007312, -3053.408327, 0.0, 0.0]),
-            solid_color: [0.95, 0.95, 0.95],
-            density_g_ml: 5.56,
-            default_particle_um: 2.0,
-            kind: "curds".to_string(),
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC core".to_string(),
-            interfacial_energy_j_m2: None,
-            interfacial_energy_source: None,
-        },
-        // 2. Cu(OH)2
-        GeneralMineral {
-            id: "CuOH2_ppt".to_string(),
-            mineral: "Copper(II) Hydroxide".to_string(),
-            formula: "Cu(OH)2".to_string(),
-            solid_species: "Cu(OH)2(s)".to_string(),
-            dissolved_products: [("Cu+2".to_string(), 1.0), ("OH-".to_string(), 2.0)].into(),
-            log_ksp_298: -18.60, // Active amorphous precipitate (PHREEQC minteq.v4.dat)
-            delta_h_kj: 54.0,
-            log_ksp_analytic: None,
-            solid_color: [0.35, 0.65, 0.88],
-            density_g_ml: 3.37,
-            default_particle_um: 5.0,
-            kind: "gel".to_string(),
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC minteq.v4.dat".to_string(),
-            interfacial_energy_j_m2: None,
-            interfacial_energy_source: None,
-        },
-        // 3. NaHCO3
-        GeneralMineral {
-            id: "NaHCO3_sol".to_string(),
-            mineral: "Nahcolite (Sodium Bicarbonate)".to_string(),
-            formula: "NaHCO3".to_string(),
-            solid_species: "NaHCO3(s)".to_string(),
-            dissolved_products: [("Na+".to_string(), 1.0), ("HCO3-".to_string(), 1.0)].into(),
-            log_ksp_298: 0.15, // Soluble up to ~ 1.1 M
-            delta_h_kj: 16.5,
-            log_ksp_analytic: None,
-            solid_color: [0.95, 0.95, 0.95],
-            density_g_ml: 2.20,
-            default_particle_um: 50.0,
-            kind: "powder".to_string(),
-            tier: ProvenanceTier::Tabulated,
-            source: "PHREEQC core".to_string(),
-            interfacial_energy_j_m2: None,
-            interfacial_energy_source: None,
-        },
-    ];
+    let mut list = core_rows().minerals.clone();
     // Data-driven solubility table: any cation/anion pair with IAP > Ksp precipitates (engine/data/solubility.json).
     for m in crate::solubility::table_minerals() {
         if !list.iter().any(|x| x.solid_species == m.solid_species) {
@@ -792,83 +481,7 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
 }
 
 pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
-    let mut list = vec![
-        // 1. Uncatalysed H2O2 decomposition
-        GeneralKineticRxn {
-            id: "h2o2_decomposition_uncatalyzed".to_string(),
-            equation: "2 H2O2 -> 2 H2O + O2(g)".to_string(),
-            reactants: [("H2O2".to_string(), 2.0)].into(),
-            products: [("H2O".to_string(), 2.0)].into(),
-            gas_products: [("O2(g)".to_string(), 1.0)].into(),
-            orders: Some([("H2O2".to_string(), 1.0)].into()),
-            arrhenius_a: 1.0e7,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 75000.0,
-            delta_h_kj: -98.0,
-            catalyst_species: None,
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "NIST Chemical Kinetics".to_string(),
-        },
-        // 2. Catalysed H2O2 decomposition (MnO2 surface catalysis)
-        GeneralKineticRxn {
-            id: "h2o2_decomposition".to_string(),
-            equation: "2 H2O2 -> 2 H2O + O2(g)".to_string(),
-            reactants: [("H2O2".to_string(), 2.0)].into(),
-            products: [("H2O".to_string(), 2.0)].into(),
-            gas_products: [("O2(g)".to_string(), 1.0)].into(),
-            // heterogeneously catalysed decomposition is first order in H2O2 (surface-limited)
-            orders: Some([("H2O2".to_string(), 1.0)].into()),
-            arrhenius_a: 2000.0,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 25000.0,
-            delta_h_kj: -98.0, // exothermic
-            catalyst_species: Some("MnO2(s)".to_string()),
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "NIST Chemical Kinetics".to_string(),
-        },
-        // 3. Iodine clock: persulfate + iodide (cited Indelli & Prue 1958)
-        GeneralKineticRxn {
-            id: "iodine_clock_slow".to_string(),
-            equation: "S2O8-2 + 2 I- -> 2 SO4-2 + I2(aq)".to_string(),
-            reactants: [("S2O8-2".to_string(), 1.0), ("I-".to_string(), 2.0)].into(),
-            products: [("SO4-2".to_string(), 2.0), ("I2(aq)".to_string(), 1.0)].into(),
-            gas_products: HashMap::new(),
-            // measured rate law: rate = k [S2O8 2-][I-] (first order in iodide although two I- are consumed)
-            orders: Some([("S2O8-2".to_string(), 1.0), ("I-".to_string(), 1.0)].into()),
-            arrhenius_a: 3.73e7,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 52000.0,
-            delta_h_kj: -140.0,
-            catalyst_species: None,
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Indelli & Prue 1958 / J. Chem. Educ.".to_string(),
-        },
-        // 4. Iodine clock fast reduction: I2 + 2 S2O3-2 -> 2 I- + S4O6-2
-        GeneralKineticRxn {
-            id: "iodine_thiosulfate_fast".to_string(),
-            equation: "I2(aq) + 2 S2O3-2 -> 2 I- + S4O6-2".to_string(),
-            reactants: [("I2(aq)".to_string(), 1.0), ("S2O3-2".to_string(), 2.0)].into(),
-            products: [("I-".to_string(), 2.0), ("S4O6-2".to_string(), 1.0)].into(),
-            gas_products: HashMap::new(),
-            // rate = k [I2][S2O3 2-] (first order in each)
-            orders: Some([("I2(aq)".to_string(), 1.0), ("S2O3-2".to_string(), 1.0)].into()),
-            arrhenius_a: 5.0e6,
-            arrhenius_n: 0.0,
-            arrhenius_ea: 0.0,
-            delta_h_kj: -95.0,
-            catalyst_species: None,
-            is_reversible: false,
-            k_eq_298: None,
-            tier: ProvenanceTier::Tabulated,
-            source: "Diffusion-controlled Redox Kinetics".to_string(),
-        },
-    ];
+    let mut list = core_rows().kinetics.clone();
     if let Ok(lock) = CUSTOM_KINETICS.lock() {
         for rxn in lock.iter() {
             list.retain(|r| r.id != rxn.id);

@@ -10,6 +10,7 @@ pub mod basis;
 pub mod solver;
 pub mod redox;
 pub mod discovery;
+pub mod rates;
 
 pub use candidates::*;
 pub use basis::*;

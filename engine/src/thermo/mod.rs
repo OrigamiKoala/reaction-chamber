@@ -7,6 +7,7 @@
 
 pub mod water;
 pub mod functions;
+pub mod estimate;
 pub mod k_sp;
 
 pub use water::*;

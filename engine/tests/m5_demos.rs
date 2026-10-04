@@ -29,7 +29,8 @@ fn test_m5_demo1_copper_ammonia_complex() {
 
     let snap1 = v.snapshot();
     assert_eq!(snap1.solids.len(), 0, "No precipitate initially in CuSO4");
-    let cu_init = *v.species_mol.get("Cu+2").unwrap_or(&0.0);
+    // (copper is partly the CuSO4 ion pair: count both)
+    let cu_init = *v.species_mol.get("Cu+2").unwrap_or(&0.0) + *v.species_mol.get("CuSO4").unwrap_or(&0.0);
     assert!((cu_init - 0.0025).abs() < 1e-4);
 
     // Add 1 drop (0.05 mL) 2 M NH3: raises pH past ~6.5, forms Cu(OH)2 precipitate
@@ -59,7 +60,7 @@ fn test_m5_demo1_copper_ammonia_complex() {
     }
     let snap3 = v.snapshot();
     let cu_oh2_excess = *v.solid_mol.get("Cu(OH)2(s)").unwrap_or(&0.0);
-    assert_eq!(cu_oh2_excess, 0.0, "Precipitate dissolves completely in excess NH3");
+    assert!(cu_oh2_excess < 1e-6 * cu_init, "Precipitate dissolves completely in excess NH3 (left {:e} mol)", cu_oh2_excess);
 
     let cu_nh3_4 = *v.species_mol.get("Cu(NH3)4+2").unwrap_or(&0.0);
     assert!(cu_nh3_4 > 0.002, "Cu(NH3)4+2 complex should dominate (> 2.0e-3 mol)");

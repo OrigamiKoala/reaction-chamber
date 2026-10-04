@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use crate::physics::R_GAS;
-use crate::thermo::functions::get_thermo_state;
+use crate::thermo::functions::try_thermo_state;
 use super::basis::build_reaction_basis;
 
 /// Result of GEM solution
@@ -74,8 +74,18 @@ pub fn solve_gem(
     let mut mu0 = vec![0.0; n_species];
     for (i, name) in names.iter().enumerate() {
         let phase = if is_solid[i] { "s" } else if name.ends_with("(g)") { "g" } else { "aq" };
-        let st = get_thermo_state(name, phase, t_k, p_pa);
-        mu0[i] = st.mu0_j_mol;
+        // a species without formation data has no chemical potential: the system cannot be minimised, so it stays as it is
+        match try_thermo_state(name, phase, t_k, p_pa) {
+            Some(st) => mu0[i] = st.mu0_j_mol,
+            None => {
+                let mut final_sp = HashMap::new();
+                let mut final_so = HashMap::new();
+                for (j, nm) in names.iter().enumerate() {
+                    if is_solid[j] { final_so.insert(nm.clone(), n0[j]); } else { final_sp.insert(nm.clone(), n0[j]); }
+                }
+                return GemSolution { species_mol: final_sp, solid_mol: final_so, converged: false, delta_g_joules: 0.0 };
+            }
+        }
     }
 
     // Reaction extents xi

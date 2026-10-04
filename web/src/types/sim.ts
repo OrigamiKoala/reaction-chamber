@@ -281,7 +281,9 @@ export interface ReactionRow {
   id: string;
   /** Human equation, e.g. "NaHCO3(s) + CH3COOH → CO2(g) + H2O + CH3COONa" */
   equation: string;
-  kind: 'equilibrium' | 'kinetic' | 'phase-transfer' | 'combustion';
+  kind: 'equilibrium' | 'kinetic' | 'phase-transfer' | 'combustion' | 'redox' | 'thermal_decomposition' | 'corrosion' | 'electrolysis';
+  /** `autoprotolysis` marks the solvent's own ionisation row (neutralisation shows as it relaxing toward the solvent). */
+  role?: 'autoprotolysis';
   /** Net rate, mol/(L·s) of reaction extent (positive = forward). For equilibria: the instantaneous relaxation flux. */
   rate: number;
   /** Fraction of how far from equilibrium (log10 Q/K) for equilibria; null for kinetic. */
@@ -503,6 +505,8 @@ export interface VesselControls {
   sealed?: boolean;
   /** Thermal bath (ice bath = 273.15). null removes it. */
   bath_k?: number | null;
+  /** Thermal conductance (W/K) of the vessel-bath contact; absent = from the vessel's geometry and wall (engine `heat_transfer`). */
+  bath_coupling_w_k?: number;
   /** Burner/igniter held at the vessel: ignites flammable vapour when true. */
   igniter?: boolean;
   /** Direct burner flame heating, watts (0 = off). */

@@ -108,6 +108,7 @@ fn thermo_lookup_sees_records_registered_later_and_invents_nothing() {
             volume: None,
             rho: None,
             polymorph: None,
+            specific_area: None,
         },
     );
     SpeciesStore::global().write().unwrap().register(SpeciesRecord {
@@ -208,7 +209,15 @@ fn acidifying_regenerates_the_network() {
     v.species_mol.insert("H+".into(), 0.1);
     v.species_mol.insert("Cl-".into(), 0.1);
     v.step(0.05).unwrap();
-    assert!(v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_hydrolysis")), "acid path after acidifying");
+    assert!(
+        v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_hydrolysis")),
+        "acid path after acidifying (pH {}, T {}, reactions {:?}, species {:?}, cap {})",
+        v.current_ph(),
+        v.temperature_k,
+        v.kinetic_reactions.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+        v.species_mol,
+        v.network_cap_reached
+    );
 }
 
 /// Electron transfer stops at equilibrium: Fe2+ + I2 has Delta_r G0 > 0, so only a trace converts (it used to be
@@ -225,5 +234,7 @@ fn redox_stops_at_its_equilibrium() {
     }
     let fe3 = v.species_mol.get("Fe+3").copied().unwrap_or(0.0);
     assert!(fe3 < 0.0002 + 1e-12, "at most the iodine's worth of Fe3+, got {}", fe3);
-    assert!(v.species_mol.get("Fe+2").copied().unwrap_or(0.0) > 0.0098);
+    // (Fe2+ is partly the FeSO4 ion pair: count both)
+    let fe2 = v.species_mol.get("Fe+2").copied().unwrap_or(0.0) + v.species_mol.get("FeSO4").copied().unwrap_or(0.0);
+    assert!(fe2 > 0.0098, "Fe(II) total {}", fe2);
 }

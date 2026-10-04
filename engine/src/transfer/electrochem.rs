@@ -19,7 +19,7 @@
 
 use crate::db::seed::{HYDROGEN_GAS, HYDROXIDE, OXYGEN_GAS, PROTON, WATER};
 use crate::physics::{FARADAY, R_GAS};
-use crate::thermo::functions::get_thermo_state;
+use crate::thermo::functions::{get_thermo_state, try_thermo_state};
 use std::collections::{HashMap, HashSet};
 
 /// Gas-blanketing / ohmic ceiling on the current density of any single electrode reaction, A/m2 (5 A/cm2: above this a
@@ -105,6 +105,11 @@ impl HalfReaction {
         a.sort();
         b.sort();
         format!("{}->{}|{}", a.join(","), b.join(","), self.alkaline)
+    }
+
+    /// Whether every species of the half-reaction has formation data (its potential and enthalpy are then defined).
+    pub fn has_data(&self, t_k: f64, p_pa: f64) -> bool {
+        self.ox.iter().chain(self.red.iter()).all(|(s, _)| try_thermo_state(s, phase_of(s), t_k, p_pa).is_some())
     }
 
     /// Standard potential (V vs SHE) at `t_k`, from the species' chemical potentials.
@@ -313,14 +318,17 @@ pub fn discover_half_reactions(present: &[String], extra_elements: &[String], t_
     let key_of = |sp: &str| -> String { format!("{}|{}", sp.trim_end_matches("(s)").trim_end_matches("(g)").trim_end_matches("(l)").trim_end_matches("(aq)"), crate::ions::species_charge(sp)) };
     let mut lowest: HashMap<String, f64> = HashMap::new();
     for c in &candidates {
-        let mu = get_thermo_state(c, phase_of(c), t_k, 101_325.0).mu0_j_mol;
+        let Some(st) = try_thermo_state(c, phase_of(c), t_k, 101_325.0) else { continue };
+        let mu = st.mu0_j_mol;
         let e = lowest.entry(key_of(c)).or_insert(f64::INFINITY);
         if mu < *e {
             *e = mu;
         }
     }
-    candidates.retain(|c| {
-        present.contains(c) || get_thermo_state(c, phase_of(c), t_k, 101_325.0).mu0_j_mol <= lowest[&key_of(c)] + 1e-6
+    // (a species without formation data has no potential: it is no electrode partner)
+    candidates.retain(|c| match try_thermo_state(c, phase_of(c), t_k, 101_325.0) {
+        Some(st) => present.contains(c) || st.mu0_j_mol <= lowest[&key_of(c)] + 1e-6,
+        None => false,
     });
 
     // oxidation state of each candidate, per element
@@ -349,7 +357,9 @@ pub fn discover_half_reactions(present: &[String], extra_elements: &[String], t_
 
     let mut out: Vec<HalfReaction> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for el in active {
+    let mut active_sorted: Vec<String> = active.into_iter().collect();
+    active_sorted.sort();
+    for el in active_sorted {
         let list = match by_element.get(&el) {
             Some(l) => l,
             None => continue,
@@ -369,11 +379,11 @@ pub fn discover_half_reactions(present: &[String], extra_elements: &[String], t_
                 if !(a_present || b_present || own) {
                     continue;
                 }
-                if let Some(h) = balance_half_acid(a, b, &el) {
+                if let Some(h) = balance_half_acid(a, b, &el).filter(|h| h.has_data(t_k, 101_325.0)) {
                     if seen.insert(h.signature()) {
                         out.push(h.clone());
                     }
-                    if let Some(alk) = alkaline_pathway(&h) {
+                    if let Some(alk) = alkaline_pathway(&h).filter(|a| a.has_data(t_k, 101_325.0)) {
                         if seen.insert(alk.signature()) {
                             out.push(alk);
                         }

@@ -171,8 +171,38 @@ pub fn mineral_for_pair(cation: &str, anion: &str) -> Option<GeneralMineral> {
     if !insoluble_by_rules(cation, anion) {
         return None;
     }
+    let (n_c, n_a) = ((za / g) as f64, (zc / g) as f64);
+    // how insoluble: the pair-additive model fitted to the tabulated Ksp values when both ions are covered (leave-one-out
+    // error 6 log units, half that of the crude charge rule), else the charge rule
+    if let Some(log_ksp) = additive_log_ksp(cation, anion, n_c, n_a) {
+        let src = format!("Pair-additive Ksp model fitted to {} tabulated pairs (leave-one-out rms {} log units)", additive().n_pairs, additive().loo_rms_log_units);
+        // the additive model is fitted over very different anions, so a soft cation (Hg, Cu+) comes out extremely insoluble
+        // with every anion: keep it within 6 log units of the charge rule
+        let rule = -(4.0 + 2.0 * (zc * za) as f64);
+        return make_mineral(cation, anion, log_ksp.clamp(rule - 6.0, rule + 6.0).min(-1.0), ProvenanceTier::Speculative, &src);
+    }
     let log_ksp = -(4.0 + 2.0 * (zc * za) as f64);
     make_mineral(cation, anion, log_ksp, ProvenanceTier::Speculative, "General solubility rules (order-of-magnitude estimate)")
+}
+
+#[derive(Deserialize)]
+struct AdditiveModel {
+    n_pairs: usize,
+    loo_rms_log_units: f64,
+    cation: HashMap<String, f64>,
+    anion: HashMap<String, f64>,
+}
+
+fn additive() -> &'static AdditiveModel {
+    static M: OnceLock<AdditiveModel> = OnceLock::new();
+    M.get_or_init(|| serde_json::from_str(include_str!("../data/ksp_additive.json")).expect("data/ksp_additive.json"))
+}
+
+/// log10 Ksp of M(n_c) X(n_a) from the pair-additive model `n_c theta(M) + n_a theta(X)` (`pipeline/build_ksp_additive.py`),
+/// or None when either ion is not in the fitted table.
+pub fn additive_log_ksp(cation: &str, anion: &str, n_c: f64, n_a: f64) -> Option<f64> {
+    let m = additive();
+    Some(n_c * m.cation.get(cation)? + n_a * m.anion.get(anion)?)
 }
 
 /// Ksp of a cation/anion pair from Delta_sol G0 = sum nu mu0(ion) - mu0(solid) of the species store (and its van 't Hoff

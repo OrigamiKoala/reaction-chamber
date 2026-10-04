@@ -1,0 +1,37 @@
+{
+  "_comment": "Parameters of the thermodynamic estimators (src/thermo/estimate.rs). Every number is either a recalled reference value (CODATA / NBS standard entropies of the elements, Kopp's atomic heat capacities, Latimer's solid entropy contributions) or fitted to the seeded NBS rows of the species store by the gates in tests/open_items.rs (rms errors recorded below). Tier of everything derived from here: Estimated.",
+  "element_entropy": {
+    "_comment": "Standard entropy of the element in its reference state, J/(mol K), and the number of atoms per formula unit of that state (H2, O2, ... are diatomic). NBS / CODATA.",
+    "H": [130.68, 2], "He": [126.15, 1], "Li": [29.12, 1], "Be": [9.5, 1], "B": [5.9, 1], "C": [5.74, 1], "N": [191.61, 2],
+    "O": [205.15, 2], "F": [202.79, 2], "Ne": [146.33, 1], "Na": [51.30, 1], "Mg": [32.67, 1], "Al": [28.33, 1], "Si": [18.8, 1],
+    "P": [41.09, 1], "S": [32.05, 1], "Cl": [223.08, 2], "Ar": [154.84, 1], "K": [64.68, 1], "Ca": [41.59, 1], "Ti": [30.72, 1],
+    "V": [28.91, 1], "Cr": [23.77, 1], "Mn": [32.01, 1], "Fe": [27.28, 1], "Co": [30.04, 1], "Ni": [29.87, 1], "Cu": [33.15, 1],
+    "Zn": [41.63, 1], "Ga": [40.83, 1], "Ge": [31.09, 1], "As": [35.1, 1], "Se": [42.27, 1], "Br": [152.23, 2], "Kr": [164.08, 1],
+    "Rb": [76.78, 1], "Sr": [55.0, 1], "Ag": [42.55, 1], "Cd": [51.80, 1], "Sn": [51.20, 1], "Sb": [45.69, 1], "I": [116.14, 2],
+    "Xe": [169.68, 1], "Cs": [85.23, 1], "Ba": [62.8, 1], "W": [32.64, 1], "Pt": [41.63, 1], "Au": [47.4, 1], "Hg": [75.9, 1],
+    "Pb": [64.8, 1], "Bi": [56.74, 1], "U": [50.2, 1]
+  },
+  "solid_entropy_latimer": {
+    "_comment": "Latimer's additive element contributions to the standard entropy of a solid compound, J/(mol K); rms 17 J/(mol K) over the 29 seeded solids.",
+    "default": 30.0,
+    "H": 8.0, "Li": 15.0, "Be": 10.0, "B": 8.0, "C": 10.0, "N": 15.0, "O": 16.0, "F": 20.0, "Na": 31.4, "Mg": 25.0, "Al": 28.0,
+    "Si": 25.0, "P": 27.0, "S": 30.0, "Cl": 40.0, "K": 38.0, "Ca": 35.0, "Ti": 35.0, "Cr": 36.0, "Mn": 38.0, "Fe": 38.0, "Co": 38.0,
+    "Ni": 38.0, "Cu": 40.0, "Zn": 42.0, "Br": 50.0, "Ag": 55.0, "I": 55.0, "Ba": 50.0, "Pb": 60.0
+  },
+  "solid_cp_kopp": {
+    "_comment": "Kopp's atomic heat capacities of elements in solid compounds at 298 K, J/(mol K) (Kopp-Neumann rule).",
+    "default": 26.0,
+    "C": 7.5, "H": 9.6, "B": 11.3, "Si": 15.9, "O": 16.8, "F": 20.9, "P": 22.5, "S": 22.6
+  },
+  "liquid_cp_kopp": {
+    "_comment": "Kopp's atomic heat capacities of elements in liquid compounds at 298 K, J/(mol K).",
+    "default": 33.5,
+    "C": 11.7, "H": 18.0, "B": 19.7, "Si": 24.3, "O": 25.1, "F": 29.4, "P": 31.0, "S": 31.0
+  },
+  "ion_entropy": {
+    "_comment": "Conventional entropy S(298) of an aqueous ion, J/(mol K), S = a + b (3/2 R ln M) + c |z| / (r + k)^2 with M the molar mass and r the radius in Angstrom (Powell-Latimer form), fitted per class to the seeded NBS ions. monatomic cations: 15 ions, rms 16.5; monatomic anions: 6 ions, rms 14.1; polyatomic anions: S = a + b M^(1/3) + c |z| (16 ions, rms 38); polyatomic cations use the monatomic-cation form.",
+    "cation": { "a": 137.97, "b": 0.9558, "c": -879.44, "k": 1.7 },
+    "anion_monatomic": { "a": -122.70, "b": 4.9819, "c": -694.54, "k": 1.7 },
+    "anion_polyatomic": { "a": -227.66, "b_cbrt_m": 118.97, "c_z": -129.37 }
+  }
+}

@@ -1,0 +1,271 @@
+{
+ "comment": "Rows of engine/data/solubility.json that the CSV tables do not hold: soluble salts (so that their ions form the solution), complexes and the H2S ladder with the engine's species ids, and the log Ksp of ZnS used by the engine (the CSV value is the alpha-ZnS figure). build_solubility_table.py merges this file after the CSV rows; `remove` drops CSV rows that use other ids for the same species.",
+ "minerals": [
+  {
+   "id": "Na2S_sol",
+   "mineral": "Sodium sulfide",
+   "formula": "Na2S",
+   "solid_species": "Na2S(s)",
+   "dissolved_products": {
+    "Na+": 2.0,
+    "S-2": 1.0
+   },
+   "log_ksp_298": 2.0,
+   "delta_h_kj": -63.0,
+   "solid_color": [
+    0.95,
+    0.95,
+    0.9
+   ],
+   "density_g_ml": 1.86,
+   "default_particle_um": 50.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "NH4Cl_sol",
+   "mineral": "Ammonium chloride",
+   "formula": "NH4Cl",
+   "solid_species": "NH4Cl(s)",
+   "dissolved_products": {
+    "NH4+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_ksp_298": 1.25,
+   "delta_h_kj": 14.8,
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "density_g_ml": 1.53,
+   "default_particle_um": 50.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "AlCl3_sol",
+   "mineral": "Aluminium chloride",
+   "formula": "AlCl3",
+   "solid_species": "AlCl3(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "Cl-": 3.0
+   },
+   "log_ksp_298": 8.5,
+   "delta_h_kj": -325.0,
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "density_g_ml": 2.48,
+   "default_particle_um": 50.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "FeCl3_sol",
+   "mineral": "Iron(III) chloride",
+   "formula": "FeCl3",
+   "solid_species": "FeCl3(s)",
+   "dissolved_products": {
+    "Fe+3": 1.0,
+    "Cl-": 3.0
+   },
+   "log_ksp_298": 4.5,
+   "delta_h_kj": -150.0,
+   "solid_color": [
+    0.35,
+    0.25,
+    0.15
+   ],
+   "density_g_ml": 2.9,
+   "default_particle_um": 50.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "CuSO4_sol",
+   "mineral": "Copper(II) sulfate",
+   "formula": "CuSO4",
+   "solid_species": "CuSO4(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -0.5,
+   "delta_h_kj": -73.0,
+   "solid_color": [
+    0.2,
+    0.5,
+    0.85
+   ],
+   "density_g_ml": 3.6,
+   "default_particle_um": 50.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "FeSO4_sol",
+   "mineral": "Iron(II) sulfate",
+   "formula": "FeSO4",
+   "solid_species": "FeSO4(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -0.3,
+   "delta_h_kj": -18.0,
+   "solid_color": [
+    0.6,
+    0.8,
+    0.7
+   ],
+   "density_g_ml": 3.65,
+   "default_particle_um": 50.0,
+   "kind": "crystal",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "ZnSO4_sol",
+   "mineral": "Zinc sulfate",
+   "formula": "ZnSO4",
+   "solid_species": "ZnSO4(s)",
+   "dissolved_products": {
+    "Zn+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 0.2,
+   "delta_h_kj": -70.0,
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "density_g_ml": 3.54,
+   "default_particle_um": 50.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  },
+  {
+   "id": "CaO_sol",
+   "mineral": "Calcium oxide",
+   "formula": "CaO",
+   "solid_species": "CaO(s)",
+   "dissolved_products": {},
+   "log_ksp_298": -5.2,
+   "delta_h_kj": -65.0,
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "density_g_ml": 3.34,
+   "default_particle_um": 50.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "CRC Handbook"
+  }
+ ],
+ "equilibria": [
+  {
+   "id": "al_tetrahydroxo",
+   "name": "Tetrahydroxoaluminate formation",
+   "equation": "Al+3 + 4 OH- <=> Al(OH)4-",
+   "reactants": {
+    "Al+3": 1.0,
+    "OH-": 4.0
+   },
+   "products": {
+    "Al(OH)4-": 1.0
+   },
+   "log_k_298": 33.58,
+   "delta_h_kj": -191.64,
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat"
+  },
+  {
+   "id": "iron_monohydroxo",
+   "name": "Iron(III) monohydroxide formation",
+   "equation": "Fe+3 + H2O <=> FeOH+2 + H+",
+   "reactants": {
+    "Fe+3": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "FeOH+2": 1.0,
+    "H+": 1.0
+   },
+   "log_k_298": -2.19,
+   "delta_h_kj": 42.0,
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat"
+  },
+  {
+   "id": "iron_dihydroxo",
+   "name": "Iron(III) dihydroxide formation",
+   "equation": "Fe+3 + 2 H2O <=> Fe(OH)2+ + 2 H+",
+   "reactants": {
+    "Fe+3": 1.0,
+    "H2O": 2.0
+   },
+   "products": {
+    "Fe(OH)2+": 1.0,
+    "H+": 2.0
+   },
+   "log_k_298": -5.67,
+   "delta_h_kj": 70.0,
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat"
+  },
+  {
+   "id": "h2s_dissoc1",
+   "name": "Hydrogen sulfide 1st dissociation",
+   "equation": "H2S(aq) <=> H+ + HS-",
+   "reactants": {
+    "H2S(aq)": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HS-": 1.0
+   },
+   "log_k_298": -7.05,
+   "delta_h_kj": 22.2,
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat"
+  },
+  {
+   "id": "h2s_dissoc2",
+   "name": "Hydrogen sulfide 2nd dissociation",
+   "equation": "HS- <=> H+ + S-2",
+   "reactants": {
+    "HS-": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "S-2": 1.0
+   },
+   "log_k_298": -12.92,
+   "delta_h_kj": 50.0,
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat"
+  }
+ ],
+ "override": {
+  "ZnS_tbl": {
+   "log_ksp_298": -24.53
+  }
+ },
+ "remove": [
+  "H2S_dissoc_1",
+  "HS_dissoc_2"
+ ]
+}

@@ -45,6 +45,18 @@ const CONDENSED: &[(&str, &str, f64, f64)] = &[
 /// (solute record id, solvent InChIKey, T / K, mole fraction of the solute in the saturated solution)
 const SOLUBILITY_X: &[(&str, &str, f64, f64)] = &[("I2(s)", "VLKZOEOYAKHREP-UHFFFAOYSA-N", 298.15, 0.0132)];
 
+/// (record id, Andrade A, B): liquid viscosity ln(eta / cP) = A + B / T of the common solvents (recalled values, Estimated).
+const VISCOSITY: &[(&str, f64, f64)] = &[
+    ("C2H5OH", -6.44, 2180.0),
+    ("ik:CSCPPACGZOOCGX-UHFFFAOYSA-N", -4.20, 1050.0),
+    ("ik:VLKZOEOYAKHREP-UHFFFAOYSA-N", -4.00, 950.0),
+];
+
+/// (solid record id, specific surface area / m2 g-1): the BET area of the material in its usual powder form, for solids that
+/// act as surface catalysts. A solid without an entry has the geometric surface of its particles.
+const SPECIFIC_AREA: &[(&str, f64)] = &[("MnO2(s)", 50.0)];
+const SRC_BET: &str = "typical fine MnO2 powder grade (assumed value; replace with the supplier's BET area)";
+
 fn d(v: f64, unit: &str, tier: ProvenanceTier, src: &str) -> Datum {
     Datum::new(v, unit, tier, src)
 }
@@ -104,6 +116,7 @@ fn extra_records() -> Vec<SpeciesRecord> {
             volume: None,
             rho: None,
             polymorph: None,
+            specific_area: None,
         },
     );
     let mut i2l = molecule_record("I2(l)", "I2", ik_i2, "II", "iodine");
@@ -143,6 +156,7 @@ fn extra_records() -> Vec<SpeciesRecord> {
             volume: None,
             rho: None,
             polymorph: None,
+            specific_area: None,
         },
     );
     let mut ice = molecule_record("H2O(s)", "H2O", ik_w, "O", "ice");
@@ -184,6 +198,16 @@ pub fn attach_phase_data(records: &mut Vec<SpeciesRecord>) {
                 source: SRC_CRC.to_string(),
                 uncertainty: None,
             });
+        }
+        if let Some(&(_, a, b)) = VISCOSITY.iter().find(|(id, ..)| *id == rec.id) {
+            rec.transport = Some(crate::db::record::Transport {
+                eta_l: Some(serde_json::json!({ "A": a, "B": b, "tier": "estimated", "source": SRC_CRC })),
+                sigma: None,
+            });
+        }
+        if let Some(&(_, area)) = SPECIFIC_AREA.iter().find(|(id, _)| *id == rec.id) {
+            let entry = rec.phases.entry("s".to_string()).or_default();
+            entry.specific_area = Some(d(area, "m2/g", ProvenanceTier::Estimated, SRC_BET));
         }
         if let Some(&(_, ph, cp, rho)) = CONDENSED.iter().find(|(id, ..)| *id == rec.id) {
             let entry = rec.phases.entry(ph.to_string()).or_default();

@@ -116,6 +116,10 @@ interface Shard {
   rest: boolean;
 }
 
+/** The engine's boil intensity is the vapour flow over 50 mL/s and does not saturate (a 600 W plate gives ~9); the picture of a
+ *  boil saturates: bubbling vigour rises quickly from the first bubbles and levels off. */
+const boilVigour = (intensity: number): number => (intensity > 0 ? 1 - Math.exp(-intensity / 1.5) : 0);
+
 export class VesselEffects {
   public group = new THREE.Group();
   /** Called when the glass shatters (owner hides glass + liquid). */
@@ -389,7 +393,7 @@ export class VesselEffects {
     this.safe('gas/foam', () => {
       this.foamTarget = Math.max(0, Math.min(1, snap.foam || 0));
       this.condLevel = Math.max(0, Math.min(1, snap.condensation || 0));
-      this.liquid.setBoil(snap.boil_intensity || 0);
+      this.liquid.setBoil(boilVigour(snap.boil_intensity || 0));
       let gas = 0;
       for (const g of snap.gas_fluxes || []) gas += g.rate_ml_s;
       this.liquid.setGasAgitation(Math.min(1, gas / 4));
@@ -787,7 +791,7 @@ export class VesselEffects {
     const fill = this.liquid.fillY;
     const s = this.precip.seed[i];
     // swirl around the axis (stirring or gentle convection)
-    const omega = this.stirRpm > 0 ? Math.min(4.5, (this.stirRpm / 60) * 6.283 * 0.12) : 0.12 + (this.snap?.boil_intensity ?? 0) * 2;
+    const omega = this.stirRpm > 0 ? Math.min(4.5, (this.stirRpm / 60) * 6.283 * 0.12) : 0.12 + boilVigour(this.snap?.boil_intensity ?? 0) * 2;
     const x = pos[i3];
     const z = pos[i3 + 2];
     const c = Math.cos(omega * dt);
@@ -851,7 +855,7 @@ export class VesselEffects {
           this.spawnGas(g, dt, fill);
         }
         if (boiling) {
-          this.spawnAcc.boil += snap.boil_intensity * 320 * dt;
+          this.spawnAcc.boil += boilVigour(snap.boil_intensity) * 320 * dt;
           const scale = Math.min(1.2, p.rimInnerRadius / 2.5);
           const R = innerRadiusAt(p, p.innerBottomY + 0.3) * 0.85;
           let guard = 0;
@@ -859,8 +863,8 @@ export class VesselEffects {
             this.spawnAcc.boil -= 1;
             const a = Math.random() * Math.PI * 2;
             const rr = Math.sqrt(Math.random()) * R;
-            const rad = rnd(0.05, 0.16) * scale * (0.6 + snap.boil_intensity * 0.5);
-            this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(14, 26), 1, rnd(2.0, 3.4), 0.55 * scale * (0.6 + snap.boil_intensity * 0.5));
+            const rad = rnd(0.05, 0.16) * scale * (0.6 + boilVigour(snap.boil_intensity) * 0.5);
+            this.bubbles.spawn(Math.cos(a) * rr, p.innerBottomY + rad, Math.sin(a) * rr, rad, rnd(14, 26), 1, rnd(2.0, 3.4), 0.55 * scale * (0.6 + boilVigour(snap.boil_intensity) * 0.5));
           }
           if (this.spawnAcc.boil > 2) this.spawnAcc.boil = 2;
         }

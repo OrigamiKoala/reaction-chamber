@@ -2,7 +2,7 @@
 //!
 //! Enforces:
 //! - General calculation of element oxidation states in compounds and ions.
-//! - Labile redox couple definitions that allow fast electron transfer in GEM.
+//! - Which elements have labile couples (data file) and the oxidation states of elements in species.
 //! - Standard cell potential E0 and Nernst equation from Delta_r G0.
 
 use std::collections::HashMap;
@@ -11,95 +11,116 @@ use crate::physics::FARADAY;
 /// Standard Faraday constant in C/mol
 pub const FARADAY_CONST: f64 = FARADAY;
 
-/// Returns true if an element belongs to a fast / labile redox couple.
+#[derive(serde::Deserialize)]
+struct LabilityFile {
+    labile: Vec<String>,
+}
+
+fn labile_set() -> &'static std::collections::HashSet<String> {
+    static S: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    S.get_or_init(|| serde_json::from_str::<LabilityFile>(include_str!("../../data/redox_lability.json")).expect("data/redox_lability.json").labile.into_iter().collect())
+}
+
+/// Whether the common aqueous couples of an element exchange electrons on bench time scales (`data/redox_lability.json`).
+/// Couples of other elements react only through a registered kinetic row or a record that gives them a self-exchange rate.
 pub fn is_labile_redox_element(elem: &str) -> bool {
-    matches!(
-        elem,
-        "Fe" | "Cu" | "Zn" | "Ag" | "Mn" | "I" | "H" | "Na" | "Mg" | "Ce"
-    )
+    labile_set().contains(elem)
+}
+
+/// Whether a couple of two forms of one element can take part in discovered electron transfer: the element is labile, or
+/// a species record carries a self-exchange rate for the couple (data overrides the class default).
+pub fn couple_is_eligible(elem: &str, a: &str, b: &str) -> bool {
+    is_labile_redox_element(elem) || crate::gem::rates::self_exchange_k(a, b).1
+}
+
+/// Pauling electronegativity of the non-metals whose oxidation state is set by their position in the periodic table
+/// (the anion-forming elements), with the oxidation state they take as the more electronegative partner of a compound.
+const ANION_FORMERS: &[(&str, f64, i32)] = &[
+    ("F", 3.98, -1),
+    ("O", 3.44, -2),
+    ("N", 3.04, -3),
+    ("Cl", 3.16, -1),
+    ("Br", 2.96, -1),
+    ("S", 2.58, -2),
+    ("Se", 2.55, -2),
+    ("C", 2.55, -4),
+    ("I", 2.66, -1),
+    ("P", 2.19, -3),
+    ("As", 2.18, -3),
+    ("B", 2.04, -3),
+    ("Si", 1.90, -4),
+];
+
+/// Oxidation state an element takes by the bonding rules that need no structure: fluorine -1, alkali metals +1, alkaline
+/// earths +2, aluminium +3, hydrogen +1 (with non-metals), zinc +2, silver +1.
+fn fixed_state(elem: &str) -> Option<i32> {
+    match elem {
+        "F" => Some(-1),
+        "Li" | "Na" | "K" | "Rb" | "Cs" | "Ag" | "H" => Some(1),
+        "Be" | "Mg" | "Ca" | "Sr" | "Ba" | "Zn" => Some(2),
+        "Al" => Some(3),
+        _ => None,
+    }
 }
 
 /// Determines the oxidation states of elements in a species id.
 ///
-/// Returns a map of element symbol -> integer oxidation state.
+/// Returns a map of element symbol -> integer oxidation state (the average over the atoms of the element). Fixed states
+/// are assigned first; oxygen is -2 unless every other element is fixed (then charge balance decides, so H2O2 and the
+/// alkali peroxides give -1); the remaining elements are ordered by electronegativity: every one more electronegative
+/// than the least electronegative takes its anionic state (N -3, S -2, Cl -1, ...) and the least electronegative one
+/// closes the charge balance. The result never depends on hash order.
 pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
     let mut states = HashMap::new();
-    let clean = species
-        .trim_end_matches("(s)")
-        .trim_end_matches("(g)")
-        .trim_end_matches("(l)")
-        .trim_end_matches("(aq)");
-
     let charge = crate::ions::species_charge(species);
     let elements = crate::ions::species_elements(species).unwrap_or_default();
-
     if elements.is_empty() {
         return states;
     }
 
-    // Single element species
+    // Single element species: the charge is shared by its atoms
     if elements.len() == 1 {
         let (elem, &count) = elements.iter().next().unwrap();
-        let ox = if count > 0.0 {
-            (charge as f64 / count).round() as i32
-        } else {
-            0
-        };
+        let ox = if count > 0.0 { (charge as f64 / count).round() as i32 } else { 0 };
         states.insert(elem.clone(), ox);
         return states;
     }
 
-    // Known common rules for polyatomic species
-    // Rule 1: Fluorine is -1
-    // Rule 2: Group 1 metals (Li, Na, K, Rb, Cs) are +1
-    // Rule 3: Group 2 metals (Be, Mg, Ca, Sr, Ba) are +2, Al is +3, Zn is +2, Ag is +1
-    // Rule 4: Hydrogen is +1 (unless only with metals)
-    // Rule 5: Oxygen is -2 (unless in peroxides with O-O)
-    let is_peroxide = clean.ends_with('2') && clean.contains('O') && (clean.starts_with('H') || clean.starts_with("Na"));
-
+    let mut names: Vec<&String> = elements.keys().collect();
+    names.sort();
+    let others_fixed = names.iter().all(|e| e.as_str() == "O" || fixed_state(e).is_some());
     let mut fixed_sum = 0.0;
-    let mut variable_elem = None;
-    let mut variable_count = 0.0;
-
-    for (elem, &count) in &elements {
-        let fixed_ox = match elem.as_str() {
-            "F" => Some(-1),
-            "Li" | "Na" | "K" | "Rb" | "Cs" => Some(1),
-            "Be" | "Mg" | "Ca" | "Sr" | "Ba" | "Zn" => Some(2),
-            "Al" => Some(3),
-            "Ag" => Some(1),
-            "H" => Some(1),
-            "O" => {
-                if is_peroxide {
-                    Some(-1)
-                } else {
-                    Some(-2)
-                }
-            }
-            "Cl" | "Br" | "I" if !elements.contains_key("O") && !elements.contains_key("F") => Some(-1),
-            _ => None,
-        };
-
-        if let Some(ox) = fixed_ox {
-            states.insert(elem.clone(), ox);
-            fixed_sum += ox as f64 * count;
-        } else if variable_elem.is_none() {
-            variable_elem = Some(elem.clone());
-            variable_count = count;
+    let mut open: Vec<(&String, f64)> = Vec::new();
+    for e in &names {
+        let count = elements[*e];
+        let fixed = if e.as_str() == "O" {
+            if others_fixed { None } else { Some(-2) }
         } else {
-            // Multiple variable elements (e.g. organic or complex salt): default remaining to 0
-            states.insert(elem.clone(), 0);
+            fixed_state(e)
+        };
+        match fixed {
+            Some(ox) => {
+                states.insert((*e).clone(), ox);
+                fixed_sum += ox as f64 * count;
+            }
+            None => open.push((*e, count)),
         }
     }
-
-    // Solve for variable element by charge balance: sum (ox * count) = charge
-    if let Some(var_el) = variable_elem {
-        if variable_count > 0.0 {
-            let var_ox = ((charge as f64 - fixed_sum) / variable_count).round() as i32;
-            states.insert(var_el, var_ox);
+    // order the open elements: most electronegative first (unknown elements, the metals, last)
+    let en = |e: &str| ANION_FORMERS.iter().find(|(x, _, _)| *x == e).map_or(0.0, |(_, v, _)| *v);
+    open.sort_by(|a, b| en(b.0).partial_cmp(&en(a.0)).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(b.0)));
+    if let Some(((last_el, last_count), rest)) = open.split_last().map(|(l, r)| (*l, r)) {
+        let mut sum = fixed_sum;
+        for (e, count) in rest {
+            // an electronegative element takes its anionic state; one that is not an anion former defaults to 0
+            let ox = ANION_FORMERS.iter().find(|(x, _, _)| *x == e.as_str()).map_or(0, |(_, _, o)| *o);
+            states.insert((*e).clone(), ox);
+            sum += ox as f64 * count;
+        }
+        if last_count > 0.0 {
+            states.insert(last_el.clone(), ((charge as f64 - sum) / last_count).round() as i32);
         }
     }
-
     states
 }
 

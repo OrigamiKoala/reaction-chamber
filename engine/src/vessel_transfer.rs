@@ -61,7 +61,8 @@ impl Vessel {
         };
         let liquid_m3 = self.total_liquid_volume_ml().max(1e-6) * 1e-6;
         let rho_l = if vol_ml > 1e-6 { (self.phase_mass_g(map) / vol_ml * 1000.0).clamp(300.0, 3000.0) } else { 1000.0 };
-        let eta = (crate::props::calculate_viscosity_cp(map, t, vol_ml.max(1e-6)) * 1e-3).clamp(1e-4, 100.0);
+        let andrade = |sp: &str| -> Option<(f64, f64)> { self.molecule(sp).and_then(|m| m.andrade_viscosity) };
+        let eta = (crate::props::calculate_viscosity_cp(map, t, vol_ml.max(1e-6), &andrade) * 1e-3).clamp(1e-4, 100.0);
         let nu = eta / rho_l;
         let st = Stirring::new(self.stir_rpm(), self.config.inner_radius_cm);
         let eps = hydro::dissipation_w_kg(&st, rho_l, nu, liquid_m3);

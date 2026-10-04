@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::chem_db;
 use crate::physics::R_GAS;
-use crate::thermo::functions::get_thermo_state;
+use crate::thermo::functions::try_thermo_state;
 use crate::transfer::combustion::{self as comb, FuelData, ProductCp};
 use crate::optics::flame::{self, FlameColour};
 use crate::vessel::*;
@@ -58,9 +58,9 @@ impl Vessel {
             .compound_for(sp)
             .and_then(|c| c.dhf_kj_mol)
             .map(|v| v * 1e3)
-            .unwrap_or_else(|| get_thermo_state(sp, "l", t0, p).h_j_mol);
-        let dfh_co2 = get_thermo_state(CARBON_DIOXIDE_GAS, "g", t0, p).h_j_mol;
-        let dfh_h2o = get_thermo_state(WATER_VAPOUR, "g", t0, p).h_j_mol;
+            .or_else(|| try_thermo_state(sp, "l", t0, p).map(|st| st.h_j_mol))?; // a fuel without formation data cannot burn
+        let dfh_co2 = try_thermo_state(CARBON_DIOXIDE_GAS, "g", t0, p)?.h_j_mol;
+        let dfh_h2o = try_thermo_state(WATER_VAPOUR, "g", t0, p)?.h_j_mol;
         let dh_c = comb::heat_of_combustion_j_mol(&el, dfh_fuel, dfh_co2, dfh_h2o)?;
         if dh_c <= 0.0 {
             return None;
@@ -150,8 +150,14 @@ impl Vessel {
         // burning rate: each fuel as a pool of the vessel's cross-section, weighted by its share of the vapour
         let pool_d = 2.0 * self.config.inner_radius_cm * 1e-2;
         let area = std::f64::consts::PI * (pool_d / 2.0).powi(2);
-        let cp_co2 = get_thermo_state(CARBON_DIOXIDE_GAS, "g", 298.15, 1e5).cp_j_mol_k;
-        let cp = ProductCp { co2: cp_co2, h2o: get_thermo_state(WATER_VAPOUR, "g", 298.15, 1e5).cp_j_mol_k, n2: get_thermo_state(NITROGEN_GAS, "g", 298.15, 1e5).cp_j_mol_k };
+        let (Some(st_co2), Some(st_h2o), Some(st_n2)) = (
+            try_thermo_state(CARBON_DIOXIDE_GAS, "g", 298.15, 1e5),
+            try_thermo_state(WATER_VAPOUR, "g", 298.15, 1e5),
+            try_thermo_state(NITROGEN_GAS, "g", 298.15, 1e5),
+        ) else {
+            return 0.0;
+        };
+        let cp = ProductCp { co2: st_co2.cp_j_mol_k, h2o: st_h2o.cp_j_mol_k, n2: st_n2.cp_j_mol_k };
         let share_den: f64 = fuels.iter().map(|f| (f.mol / total_liq) * f.psat_pa).sum::<f64>().max(1e-30);
         let mut q_liquid = 0.0;
         let mut power = 0.0;

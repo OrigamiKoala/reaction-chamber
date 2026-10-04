@@ -1,0 +1,480 @@
+{
+ "version": 1,
+ "comment": "Hand-curated rows of the reaction data: aqueous equilibria, precipitation equilibria and measured kinetic rate laws that no database in the store provides. Data, not logic: every row carries its tier and source. Loaded by chem_db::get_default_*; the solubility table (solubility.json) adds the rest.",
+ "equilibria": [
+  {
+   "delta_h_kj": 55.84,
+   "equation": "H2O <=> H+ + OH-",
+   "id": "water_autoionization",
+   "log_k_298": -14.0,
+   "log_k_analytic": [
+    -283.971,
+    -0.05069842,
+    13323.0,
+    102.24447,
+    -1119669.0
+   ],
+   "name": "Water autoionization",
+   "products": {
+    "H+": 1.0,
+    "OH-": 1.0
+   },
+   "reactants": {
+    "H2O": 1.0
+   },
+   "source": "PHREEQC phreeqc.dat (analytical expression for Kw, 0-300 C)",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": -0.41,
+   "equation": "CH3COOH <=> H+ + CH3COO-",
+   "id": "acetic_acid_dissoc",
+   "log_k_298": -4.756,
+   "name": "Acetic acid dissociation",
+   "products": {
+    "CH3COO-": 1.0,
+    "H+": 1.0
+   },
+   "reactants": {
+    "CH3COOH": 1.0
+   },
+   "source": "IUPAC pKa Dataset",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 0.0,
+   "equation": "CO2(aq) + H2O <=> H2CO3(aq)",
+   "id": "co2_hydration",
+   "log_k_298": -2.77,
+   "name": "CO2 hydration",
+   "products": {
+    "H2CO3(aq)": 1.0
+   },
+   "rate": {
+    "source": "Pinsent, Pearson & Roughton, Trans. Faraday Soc. 52 (1956) 1512; Johnson, Geochim. Cosmochim. Acta 46 (1982) 1245",
+    "terms": [
+     {
+      "catalyst": null,
+      "ea_j_mol": 70000.0,
+      "k_298": 0.037
+     },
+     {
+      "catalyst": "OH-",
+      "ea_j_mol": 55000.0,
+      "k_298": 8500.0
+     }
+    ]
+   },
+   "reactants": {
+    "CO2(aq)": 1.0,
+    "H2O": 1.0
+   },
+   "source": "K_h = 1.7e-3 (Wang et al., Geochim. Cosmochim. Acta 2010); with the dissociation below the apparent pK1 = 6.35 (PHREEQC core)",
+   "tier": "estimated"
+  },
+  {
+   "delta_h_kj": 9.16,
+   "equation": "H2CO3(aq) <=> H+ + HCO3-",
+   "id": "carbonic_acid_dissoc1",
+   "log_k_298": -3.58,
+   "name": "Carbonic acid 1st dissociation",
+   "products": {
+    "H+": 1.0,
+    "HCO3-": 1.0
+   },
+   "reactants": {
+    "H2CO3(aq)": 1.0
+   },
+   "source": "apparent pK1 = 6.35 (PHREEQC core) less the hydration constant",
+   "tier": "estimated"
+  },
+  {
+   "delta_h_kj": 14.85,
+   "equation": "HCO3- <=> H+ + CO3-2",
+   "id": "bicarbonate_dissoc2",
+   "log_k_298": -10.33,
+   "name": "Bicarbonate 2nd dissociation",
+   "products": {
+    "CO3-2": 1.0,
+    "H+": 1.0
+   },
+   "reactants": {
+    "HCO3-": 1.0
+   },
+   "source": "PHREEQC core",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 3.64,
+   "equation": "NH3 + H2O <=> NH4+ + OH-",
+   "id": "ammonia_hydrolysis",
+   "log_k_298": -4.75,
+   "name": "Ammonia aqueous hydrolysis",
+   "products": {
+    "NH4+": 1.0,
+    "OH-": 1.0
+   },
+   "reactants": {
+    "H2O": 1.0,
+    "NH3": 1.0
+   },
+   "source": "PHREEQC core",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": -88.0,
+   "equation": "Cu+2 + 4 NH3 <=> Cu(NH3)4+2",
+   "id": "copper_tetraammine",
+   "log_k_298": 13.8,
+   "name": "Tetraamminecopper(II) formation",
+   "products": {
+    "Cu(NH3)4+2": 1.0
+   },
+   "reactants": {
+    "Cu+2": 1.0,
+    "NH3": 4.0
+   },
+   "source": "Critical Stability Constants (Smith & Martell)",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": -56.1,
+   "equation": "Ag+ + 2 NH3 <=> Ag(NH3)2+",
+   "id": "silver_diammine",
+   "log_k_298": 7.4,
+   "name": "Diamminesilver(I) formation",
+   "products": {
+    "Ag(NH3)2+": 1.0
+   },
+   "reactants": {
+    "Ag+": 1.0,
+    "NH3": 2.0
+   },
+   "source": "Critical Stability Constants",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": -26.0,
+   "equation": "Fe+3 + SCN- <=> Fe(SCN)+2",
+   "id": "iron_thiocyanate",
+   "log_k_298": 2.301,
+   "name": "Iron(III) thiocyanate complexation",
+   "products": {
+    "Fe(SCN)+2": 1.0
+   },
+   "reactants": {
+    "Fe+3": 1.0,
+    "SCN-": 1.0
+   },
+   "source": "IUPAC Stability Constants",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 5.0,
+   "equation": "Co+2 + Cl- <=> CoCl+",
+   "id": "co_cl_1",
+   "log_k_298": -0.1,
+   "name": "Chlorocobalt(II) formation",
+   "products": {
+    "CoCl+": 1.0
+   },
+   "reactants": {
+    "Cl-": 1.0,
+    "Co+2": 1.0
+   },
+   "source": "Smith & Martell, Critical Stability Constants",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 50.0,
+   "equation": "Co+2 + 4 Cl- <=> CoCl4-2",
+   "id": "cobalt_tetrachloro",
+   "log_k_298": -4.0,
+   "name": "Tetrachlorocobaltate(II) formation",
+   "products": {
+    "CoCl4-2": 1.0
+   },
+   "reactants": {
+    "Cl-": 4.0,
+    "Co+2": 1.0
+   },
+   "source": "Smith & Martell (log beta4 ~ -4); dH = +50 kJ/mol is the thermochromic enthalpy of the octahedral -> tetrahedral change (estimate)",
+   "tier": "estimated"
+  },
+  {
+   "delta_h_kj": -17.0,
+   "equation": "I2(aq) + I- <=> I3-",
+   "id": "triiodide_formation",
+   "log_k_298": 2.85,
+   "name": "Triiodide formation",
+   "products": {
+    "I3-": 1.0
+   },
+   "reactants": {
+    "I-": 1.0,
+    "I2(aq)": 1.0
+   },
+   "source": "IUPAC Stability Constants",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": -30.0,
+   "equation": "I3- + starch <=> starch_I3",
+   "id": "starch_triiodide_formation",
+   "log_k_298": 4.5,
+   "name": "Starch-triiodide complexation",
+   "products": {
+    "starch_I3": 1.0
+   },
+   "reactants": {
+    "I3-": 1.0,
+    "starch": 1.0
+   },
+   "source": "apparent 1:1 binding of I3- by the amylose helix (effective constant, not a thermodynamic datum of one species)",
+   "tier": "estimated"
+  },
+  {
+   "delta_h_kj": 12.0,
+   "equation": "HIn_phph <=> In_phph- + H+",
+   "id": "phenolphthalein_indicator",
+   "log_k_298": -9.3,
+   "name": "Phenolphthalein lactone to coloured anion (one H+; balanced pseudo-species)",
+   "products": {
+    "H+": 1.0,
+    "In_phph-": 1.0
+   },
+   "reactants": {
+    "HIn_phph": 1.0
+   },
+   "source": "IUPAC Indicator pKa",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 10.0,
+   "equation": "HIn_btb <=> In_btb- + H+",
+   "id": "btb_indicator",
+   "log_k_298": -7.0,
+   "name": "Bromothymol blue dissociation",
+   "products": {
+    "H+": 1.0,
+    "In_btb-": 1.0
+   },
+   "reactants": {
+    "HIn_btb": 1.0
+   },
+   "source": "IUPAC Indicator pKa",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 8.0,
+   "equation": "HIn_mo <=> In_mo- + H+",
+   "id": "mo_indicator",
+   "log_k_298": -3.7,
+   "name": "Methyl orange dissociation",
+   "products": {
+    "H+": 1.0,
+    "In_mo-": 1.0
+   },
+   "reactants": {
+    "HIn_mo": 1.0
+   },
+   "source": "IUPAC Indicator pKa",
+   "tier": "tabulated"
+  },
+  {
+   "delta_h_kj": 8.0,
+   "equation": "HIn_mr <=> In_mr- + H+",
+   "id": "mr_indicator",
+   "log_k_298": -5.0,
+   "name": "Methyl red dissociation",
+   "products": {
+    "H+": 1.0,
+    "In_mr-": 1.0
+   },
+   "reactants": {
+    "HIn_mr": 1.0
+   },
+   "source": "IUPAC Indicator pKa",
+   "tier": "tabulated"
+  }
+ ],
+ "kinetics": [
+  {
+   "arrhenius_a": 10000000.0,
+   "arrhenius_ea": 75000.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": null,
+   "delta_h_kj": -98.0,
+   "equation": "2 H2O2 -> 2 H2O + O2(g)",
+   "gas_products": {
+    "O2(g)": 1.0
+   },
+   "id": "h2o2_decomposition_uncatalyzed",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "H2O2": 1.0
+   },
+   "products": {
+    "H2O": 2.0
+   },
+   "reactants": {
+    "H2O2": 2.0
+   },
+   "source": "NIST Chemical Kinetics",
+   "tier": "tabulated"
+  },
+  {
+   "arrhenius_a": 8.0,
+   "arrhenius_ea": 25000.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": "MnO2(s)",
+   "delta_h_kj": -98.0,
+   "equation": "2 H2O2 -> 2 H2O + O2(g)",
+   "gas_products": {
+    "O2(g)": 1.0
+   },
+   "id": "h2o2_decomposition",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "H2O2": 1.0
+   },
+   "products": {
+    "H2O": 2.0
+   },
+   "reactants": {
+    "H2O2": 2.0
+   },
+   "source": "NIST Chemical Kinetics",
+   "tier": "tabulated"
+  },
+  {
+   "arrhenius_a": 37300000.0,
+   "arrhenius_ea": 52000.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": null,
+   "delta_h_kj": -140.0,
+   "equation": "S2O8-2 + 2 I- -> 2 SO4-2 + I2(aq)",
+   "gas_products": {},
+   "id": "iodine_clock_slow",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "I-": 1.0,
+    "S2O8-2": 1.0
+   },
+   "products": {
+    "I2(aq)": 1.0,
+    "SO4-2": 2.0
+   },
+   "reactants": {
+    "I-": 2.0,
+    "S2O8-2": 1.0
+   },
+   "source": "Indelli & Prue 1958 / J. Chem. Educ.",
+   "tier": "tabulated"
+  },
+  {
+   "arrhenius_a": 5000000.0,
+   "arrhenius_ea": 0.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": null,
+   "delta_h_kj": -95.0,
+   "equation": "I2(aq) + 2 S2O3-2 -> 2 I- + S4O6-2",
+   "gas_products": {},
+   "id": "iodine_thiosulfate_fast",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "I2(aq)": 1.0,
+    "S2O3-2": 1.0
+   },
+   "products": {
+    "I-": 2.0,
+    "S4O6-2": 1.0
+   },
+   "reactants": {
+    "I2(aq)": 1.0,
+    "S2O3-2": 2.0
+   },
+   "source": "near-diffusion-controlled iodine reduction (rate constant order of magnitude)",
+   "tier": "estimated"
+  }
+ ],
+ "minerals": [
+  {
+   "default_particle_um": 2.0,
+   "delta_h_kj": 65.7,
+   "density_g_ml": 5.56,
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "Cl-": 1.0
+   },
+   "formula": "AgCl",
+   "id": "AgCl_ppt",
+   "kind": "curds",
+   "log_ksp_298": -9.752,
+   "log_ksp_analytic": [
+    2.671219,
+    -0.007312,
+    -3053.408327,
+    0.0,
+    0.0
+   ],
+   "mineral": "Chlorargyrite",
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "solid_species": "AgCl(s)",
+   "source": "PHREEQC core",
+   "tier": "tabulated"
+  },
+  {
+   "default_particle_um": 5.0,
+   "delta_h_kj": 54.0,
+   "density_g_ml": 3.37,
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "OH-": 2.0
+   },
+   "formula": "Cu(OH)2",
+   "id": "CuOH2_ppt",
+   "kind": "gel",
+   "log_ksp_298": -18.6,
+   "mineral": "Copper(II) Hydroxide",
+   "solid_color": [
+    0.35,
+    0.65,
+    0.88
+   ],
+   "solid_species": "Cu(OH)2(s)",
+   "source": "PHREEQC minteq.v4.dat",
+   "tier": "tabulated"
+  },
+  {
+   "default_particle_um": 50.0,
+   "delta_h_kj": 16.5,
+   "density_g_ml": 2.2,
+   "dissolved_products": {
+    "HCO3-": 1.0,
+    "Na+": 1.0
+   },
+   "formula": "NaHCO3",
+   "id": "NaHCO3_sol",
+   "kind": "powder",
+   "log_ksp_298": 0.15,
+   "mineral": "Nahcolite (Sodium Bicarbonate)",
+   "solid_color": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "solid_species": "NaHCO3(s)",
+   "source": "PHREEQC core",
+   "tier": "tabulated"
+  }
+ ]
+}

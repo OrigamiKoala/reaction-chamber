@@ -13,23 +13,32 @@ pub struct BasisReaction {
 const BASIS_MEMO_MAX: usize = 4096;
 
 thread_local! {
-    static BASIS_MEMO: std::cell::RefCell<std::collections::HashMap<Vec<String>, Vec<BasisReaction>>> = Default::default();
+    /// (store generation, memo): a basis computed from formulas that a later registration changes must not survive it.
+    static BASIS_MEMO: std::cell::RefCell<(u64, std::collections::HashMap<Vec<String>, Vec<BasisReaction>>)> = Default::default();
 }
 
 /// Builds the null-space stoichiometric basis for the given candidate species. The basis depends only on the ordered
 /// species ids (their formulas and charges), not on amounts, so the vessel loop, which asks for the same candidate sets
 /// every step, is served from a memo.
 pub fn build_reaction_basis(species: &[String]) -> Vec<BasisReaction> {
-    if let Some(hit) = BASIS_MEMO.with(|m| m.borrow().get(species).cloned()) {
+    let generation = crate::db::SpeciesStore::generation();
+    if let Some(hit) = BASIS_MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.0 != generation {
+            m.1.clear();
+            m.0 = generation;
+        }
+        m.1.get(species).cloned()
+    }) {
         return hit;
     }
     let basis = build_reaction_basis_uncached(species);
     BASIS_MEMO.with(|m| {
         let mut m = m.borrow_mut();
-        if m.len() >= BASIS_MEMO_MAX {
-            m.clear();
+        if m.1.len() >= BASIS_MEMO_MAX {
+            m.1.clear();
         }
-        m.insert(species.to_vec(), basis.clone());
+        m.1.insert(species.to_vec(), basis.clone());
     });
     basis
 }

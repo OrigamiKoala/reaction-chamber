@@ -463,6 +463,14 @@ pub fn henry_species(aq_id: &str) -> Option<HenrySpecies> {
         return None;
     }
     let gas = guard.gas_partner(rec)?;
+    // both standard states must have formation data: Henry's constant is derived from their chemical potentials
+    let (aq_ok, gas_ok) = (
+        crate::thermo::functions::try_thermo_state(aq_id, "aq", 298.15, P_BAR_PA).is_some(),
+        crate::thermo::functions::try_thermo_state(&gas.id, "g", 298.15, P_BAR_PA).is_some(),
+    );
+    if !(aq_ok && gas_ok) {
+        return None;
+    }
     Some(HenrySpecies { aq_id: aq_id.to_string(), gas_id: gas.id.clone(), mw: rec.mw() })
 }
 

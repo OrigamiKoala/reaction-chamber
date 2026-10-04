@@ -7,13 +7,22 @@
 //! - Diffusion limit cap via k_diffusion_limit from transport properties.
 //! - Primary kinetic salt effect (Bronsted-Bjerrum).
 //! - Heterogeneous catalysis proportional to surface area and Arrhenius temperature dependence.
-//! - L-stable ROS2 Rosenbrock integrator with positivity preservation via step rejection.
+//! - L-stable ROS2 Rosenbrock integrator with an embedded first-order solution (the Rosenbrock-Euler stage) for local
+//!   error control, positivity preservation via step rejection, and a sparse LU of the Jacobian for large networks.
 
 use std::collections::HashMap;
 use crate::physics::R_GAS;
 use crate::types::ProvenanceTier;
-use crate::transport::k_diffusion_limit;
 use crate::thermo::functions::try_ln_k_equilibrium;
+use super::sparse::SparseLu;
+
+/// Relative and absolute tolerances of the embedded error estimate (per species, in mol).
+pub const KINETICS_RTOL: f64 = 1e-4;
+pub const KINETICS_ATOL_MOL: f64 = 1e-12;
+/// The Rosenbrock matrix is factorised sparsely only for a network at least this large and at most this dense (a dense
+/// coupling fills in completely, and the dense LU on flat arrays is then much faster).
+const SPARSE_LU_MIN_REACTIONS: usize = 48;
+const SPARSE_LU_MAX_DENSITY: f64 = 0.06;
 
 /// Reaction representation in extent coordinates
 #[derive(Clone, Debug)]
@@ -52,6 +61,10 @@ pub struct KineticExtentSystem {
     nu_by_rxn: Vec<Vec<(usize, f64)>>,
     /// Non-zero entries of `nu` per species: (reaction, nu)
     nu_by_species: Vec<Vec<(usize, f64)>>,
+    /// Mass of solvent per litre of solution (kg/L): the rate laws are in mol/L, the equilibrium constants K(T) from the
+    /// standard chemical potentials are on the molal basis (one basis in the whole engine: molality), so
+    /// K_c = K_m rho^(sum nu) over the dissolved species. 1.0 when the solvent is unknown.
+    pub solvent_kg_per_l: f64,
 }
 
 impl KineticExtentSystem {
@@ -86,13 +99,14 @@ impl KineticExtentSystem {
             nu,
             nu_by_rxn,
             nu_by_species,
+            solvent_kg_per_l: 1.0,
         }
     }
 
     /// (k_fwd, K) of every reaction: they depend on T, P, ionic strength and the catalysts present, which are constant
     /// over one integration step, so they are evaluated once per step rather than at every stage.
-    pub fn rate_constants(&self, temp_k: f64, pressure_pa: f64, ionic_strength: f64, solid_moles: &HashMap<String, f64>) -> Vec<(f64, f64)> {
-        (0..self.reactions.len()).map(|r| self.evaluate_rate_constants(r, temp_k, pressure_pa, ionic_strength, solid_moles)).collect()
+    pub fn rate_constants(&self, temp_k: f64, pressure_pa: f64, ionic_strength: f64, vol_l: f64, catalyst_area_m2: &HashMap<String, f64>) -> Vec<(f64, f64)> {
+        (0..self.reactions.len()).map(|r| self.evaluate_rate_constants(r, temp_k, pressure_pa, ionic_strength, vol_l, catalyst_area_m2)).collect()
     }
 
     /// Evaluates the forward rate constant and the equilibrium constant K (0 = irreversible) of reaction `r_idx`
@@ -102,7 +116,8 @@ impl KineticExtentSystem {
         temp_k: f64,
         pressure_pa: f64,
         ionic_strength: f64,
-        solid_moles: &HashMap<String, f64>,
+        vol_l: f64,
+        catalyst_area_m2: &HashMap<String, f64>,
     ) -> (f64, f64) {
         let rxn = &self.reactions[r_idx];
         let t = temp_k.clamp(100.0, 3000.0);
@@ -117,7 +132,7 @@ impl KineticExtentSystem {
             let z1 = crate::ions::species_charge(&self.species_names[rxn.reactants[0].0]) as f64;
             let z2 = crate::ions::species_charge(&self.species_names[rxn.reactants[1].0]) as f64;
             if z1 != 0.0 && z2 != 0.0 {
-                let a_dh = 0.51; // Debye-Huckel constant for water around 298 K
+                let a_dh = crate::activity::debye_huckel_a_gamma(t); // Debye-Hueckel slope of water at T
                 let sqrt_i = ionic_strength.sqrt();
                 let delta_log10_k = 2.0 * a_dh * z1 * z2 * (sqrt_i / (1.0 + sqrt_i));
                 k_act *= 10.0_f64.powf(delta_log10_k);
@@ -131,11 +146,13 @@ impl KineticExtentSystem {
             let sp_b = &self.species_names[rxn.reactants[1].0];
             let z_a = crate::ions::species_charge(sp_a) as f64;
             let z_b = crate::ions::species_charge(sp_b) as f64;
-            let r_a = 0.25e-9; // typical radius 0.25 nm
-            let r_b = 0.25e-9;
+            // encounter radii from the species' sizes (ionic radii table, else from the molar mass), 1-5 Angstrom
+            let radius_m = |sp: &str| crate::crystal::ionic_radius_angstrom(sp).unwrap_or(2.5).clamp(1.0, 5.0) * 1e-10;
+            let r_a = radius_m(sp_a);
+            let r_b = radius_m(sp_b);
             let eta = crate::transport::viscosity_water_pa_s(t);
             let eps = crate::transport::dielectric_water(t);
-            let k_d = k_diffusion_limit(r_a, r_b, z_a, z_b, t, eta, eps);
+            let k_d = crate::transport::k_diffusion_limit_screened(r_a, r_b, z_a, z_b, t, eta, eps, ionic_strength);
             if k_d > 0.0 && k_act > 0.0 {
                 (k_act * k_d) / (k_act + k_d)
             } else {
@@ -145,19 +162,15 @@ impl KineticExtentSystem {
             k_act
         };
 
-        // 4. Heterogeneous catalysis surface term
+        // 4. Heterogeneous catalysis: the rate constant of a surface-catalysed row is per unit of catalyst area per volume
+        // (arrhenius_a in L m^-2 s^-1 for a first-order step), so k = k_s * A_cat / V; the area comes from the solid in the
+        // vessel (its particle population or specific surface, see `Vessel::catalyst_areas`). Without the catalyst the
+        // catalysed path is inactive.
         if let Some(ref cat_id) = rxn.catalyst_species {
-            let cat_mol = solid_moles.get(cat_id).copied().unwrap_or(0.0);
-            if cat_mol > 0.0 {
-                let thermo = crate::chem_db::get_species_thermo(cat_id);
-                let mass_g = cat_mol * thermo.mw;
-                // Specific area: 50 m^2/g for standard powder, reference mass 0.5 g -> 25 m^2
-                let area_m2 = 50.0 * mass_g;
-                let ref_area_m2 = 25.0; // 0.5 g reference
-                let area_factor = area_m2 / ref_area_m2;
-                k_fwd *= area_factor;
+            let area_m2 = catalyst_area_m2.get(cat_id).copied().unwrap_or(0.0);
+            if area_m2 > 0.0 {
+                k_fwd *= area_m2 / vol_l.max(1e-9);
             } else {
-                // Catalyst required but absent: catalyzed path is inactive
                 k_fwd = 0.0;
             }
         }
@@ -191,6 +204,20 @@ impl KineticExtentSystem {
             0.0
         };
 
+        // molal -> molar basis for the reverse rate (dissolved species only: solids, gases and the solvent have no
+        // concentration in the quotient)
+        let k_eq = if k_eq > 0.0 && (self.solvent_kg_per_l - 1.0).abs() > 1e-9 {
+            let dissolved = |i: usize| {
+                let sp = &self.species_names[i];
+                !(sp.ends_with("(s)") || sp.ends_with("(g)") || sp == crate::vessel::AQUEOUS_SOLVENT)
+            };
+            let dnu: f64 = rxn.products.iter().filter(|(i, _)| dissolved(*i)).map(|(_, c)| *c).sum::<f64>()
+                - rxn.reactants.iter().filter(|(i, _)| dissolved(*i)).map(|(_, c)| *c).sum::<f64>();
+            k_eq * self.solvent_kg_per_l.powf(dnu)
+        } else {
+            k_eq
+        };
+
         (k_fwd, k_eq)
     }
 
@@ -201,9 +228,9 @@ impl KineticExtentSystem {
         temp_k: f64,
         pressure_pa: f64,
         ionic_strength: f64,
-        solid_moles: &HashMap<String, f64>,
+        catalyst_area_m2: &HashMap<String, f64>,
     ) -> (Vec<f64>, Vec<Vec<f64>>) {
-        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, 1.0, catalyst_area_m2);
         let (rates, sparse) = self.rates_sparse(concs, &consts);
         let mut dense = vec![vec![0.0; self.species_names.len()]; self.reactions.len()];
         for (r, row) in sparse.into_iter().enumerate() {
@@ -310,7 +337,7 @@ impl KineticExtentSystem {
         (rates, deriv)
     }
 
-    /// Evaluates extent derivatives d xi / dt (mol/s) and Jacobian J_{rk} = d (d xi_r / dt) / d xi_k
+    /// Evaluates extent derivatives d xi / dt (mol/s) and Jacobian J_{rk} = d (d xi_r / dt) / d xi_k (dense)
     pub fn extent_f_and_jacobian(
         &self,
         xi: &[f64],
@@ -319,11 +346,18 @@ impl KineticExtentSystem {
         temp_k: f64,
         pressure_pa: f64,
         ionic_strength: f64,
-        solid_moles: &HashMap<String, f64>,
+        catalyst_area_m2: &HashMap<String, f64>,
     ) -> (Vec<f64>, Vec<Vec<f64>>) {
-        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, vol_l, catalyst_area_m2);
         let (f, jac) = self.f_and_jac(xi, initial_moles, vol_l, &consts, true);
-        (f, jac.unwrap_or_default())
+        let n = self.reactions.len();
+        let mut dense = vec![vec![0.0; n]; n];
+        for (r, row) in jac.unwrap_or_default().into_iter().enumerate() {
+            for (k, v) in row {
+                dense[r][k] += v;
+            }
+        }
+        (f, dense)
     }
 
     fn concs_at(&self, xi: &[f64], initial_moles: &[f64], v: f64) -> Vec<f64> {
@@ -341,8 +375,8 @@ impl KineticExtentSystem {
         concs
     }
 
-    fn f_and_jac(&self, xi: &[f64], initial_moles: &[f64], vol_l: f64, consts: &[(f64, f64)], want_jac: bool) -> (Vec<f64>, Option<Vec<Vec<f64>>>) {
-        let num_rxns = self.reactions.len();
+    /// f_r = rate_r V (mol/s) and the sparse Jacobian rows (column, J_rk), duplicate columns merged.
+    fn f_and_jac(&self, xi: &[f64], initial_moles: &[f64], vol_l: f64, consts: &[(f64, f64)], want_jac: bool) -> (Vec<f64>, Option<Vec<Vec<(usize, f64)>>>) {
         let v = vol_l.max(1e-6);
         let concs = self.concs_at(xi, initial_moles, v);
         let (rates, deriv) = self.rates_sparse(&concs, consts);
@@ -352,19 +386,24 @@ impl KineticExtentSystem {
             return (f, None);
         }
         // J_{rk} = d f_r / d xi_k = sum_i (d rate_r / d c_i) * nu[k][i] (the V cancels against dc_i / dxi_k = nu / V)
-        let mut jac = vec![vec![0.0; num_rxns]; num_rxns];
-        for (r, row) in deriv.iter().enumerate() {
+        let mut jac: Vec<Vec<(usize, f64)>> = Vec::with_capacity(deriv.len());
+        for row in deriv.iter() {
+            let mut acc: HashMap<usize, f64> = HashMap::new();
             for &(i, d) in row {
                 for &(k, nu) in &self.nu_by_species[i] {
-                    jac[r][k] += d * nu;
+                    *acc.entry(k).or_insert(0.0) += d * nu;
                 }
             }
+            let mut r: Vec<(usize, f64)> = acc.into_iter().collect();
+            r.sort_by_key(|e| e.0);
+            jac.push(r);
         }
         (f, Some(jac))
     }
 
-    /// Integrates the extent system over interval `dt_s` with L-stable ROS2 sub-steps of at most 50 ms (halved on a
-    /// positivity failure). Returns (final_extents, rates_mol_per_l_s)
+    /// Integrates the extent system over interval `dt_s` with L-stable ROS2 sub-steps whose size is controlled by the
+    /// embedded first-order solution (error estimate 0.5 h (k2 - k1), converted to species amounts and compared with
+    /// `KINETICS_ATOL_MOL + KINETICS_RTOL |n|`), and halved on a positivity failure. Returns (final_extents, rates_mol_per_l_s)
     pub fn integrate_extent_step(
         &self,
         initial_moles: &[f64],
@@ -373,19 +412,35 @@ impl KineticExtentSystem {
         temp_k: f64,
         pressure_pa: f64,
         ionic_strength: f64,
-        solid_moles: &HashMap<String, f64>,
+        catalyst_area_m2: &HashMap<String, f64>,
     ) -> (Vec<f64>, Vec<f64>) {
+        let (xi, rates, _) = self.integrate_extent_step_stats(initial_moles, dt_s, vol_l, temp_k, pressure_pa, ionic_strength, catalyst_area_m2);
+        (xi, rates)
+    }
+
+    /// `integrate_extent_step` plus the number of accepted and rejected sub-steps.
+    pub fn integrate_extent_step_stats(
+        &self,
+        initial_moles: &[f64],
+        dt_s: f64,
+        vol_l: f64,
+        temp_k: f64,
+        pressure_pa: f64,
+        ionic_strength: f64,
+        catalyst_area_m2: &HashMap<String, f64>,
+    ) -> (Vec<f64>, Vec<f64>, StepStats) {
         let num_rxns = self.reactions.len();
         let num_spec = self.species_names.len();
+        let mut stats = StepStats::default();
         if num_rxns == 0 || dt_s <= 0.0 || dt_s.is_nan() {
-            return (vec![0.0; num_rxns], vec![0.0; num_rxns]);
+            return (vec![0.0; num_rxns], vec![0.0; num_rxns], stats);
         }
-        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, solid_moles);
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, vol_l, catalyst_area_m2);
 
         let gamma = 1.0 - 1.0 / std::f64::consts::SQRT_2; // ~0.2928932188
         let mut xi = vec![0.0; num_rxns];
         let mut t_sub = 0.0;
-        let mut h = dt_s.min(0.05);
+        let mut h = dt_s;
         let moles_at = |xi: &[f64], i: usize| -> f64 {
             let mut m = initial_moles[i];
             for &(r, nu) in &self.nu_by_species[i] {
@@ -394,7 +449,12 @@ impl KineticExtentSystem {
             m
         };
 
+        let mut guard = 0usize;
         while t_sub < dt_s - 1e-12 {
+            guard += 1;
+            if guard > 20_000 {
+                break;
+            }
             let cur_h = h.min(dt_s - t_sub);
             if cur_h <= 1e-12 {
                 break;
@@ -403,42 +463,66 @@ impl KineticExtentSystem {
             let (f0, jac) = self.f_and_jac(&xi, initial_moles, vol_l, &consts, true);
             let jac = jac.unwrap_or_default();
 
-            // W = I - gamma h J, factorised once for both stages
-            let mut w = vec![vec![0.0; num_rxns]; num_rxns];
-            for i in 0..num_rxns {
-                for j in 0..num_rxns {
-                    w[i][j] = -gamma * cur_h * jac[i][j];
-                }
-                w[i][i] += 1.0;
-            }
-            let lu = LuFactors::new(w);
+            // W = I - gamma h J, factorised once for both stages (sparse for a large network)
+            let w_rows: Vec<Vec<(usize, f64)>> = (0..num_rxns)
+                .map(|i| {
+                    let mut row: Vec<(usize, f64)> = jac[i].iter().map(|&(j, v)| (j, -gamma * cur_h * v)).collect();
+                    if let Some(d) = row.iter_mut().find(|e| e.0 == i) {
+                        d.1 += 1.0;
+                    } else {
+                        row.push((i, 1.0));
+                    }
+                    row
+                })
+                .collect();
+            let solver = RosenbrockSolver::new(num_rxns, w_rows);
 
             // Stage 1: W k1 = f0
-            let k1 = lu.solve(&f0);
+            let k1 = solver.solve(&f0);
             let xi_star: Vec<f64> = (0..num_rxns).map(|r| xi[r] + cur_h * k1[r]).collect();
             let (f_star, _) = self.f_and_jac(&xi_star, initial_moles, vol_l, &consts, false);
 
             // Stage 2: W k2 = f* - 2 gamma h J k1
             let mut rhs2 = vec![0.0; num_rxns];
             for i in 0..num_rxns {
-                let mut jk1 = 0.0;
-                for j in 0..num_rxns {
-                    jk1 += jac[i][j] * k1[j];
-                }
+                let jk1: f64 = jac[i].iter().map(|&(j, v)| v * k1[j]).sum();
                 rhs2[i] = f_star[i] - 2.0 * gamma * cur_h * jk1;
             }
-            let k2 = lu.solve(&rhs2);
+            let k2 = solver.solve(&rhs2);
 
-            // Candidate increment: delta_xi = 0.5 * cur_h * (k1 + k2)
+            // Candidate increment: delta_xi = 0.5 * cur_h * (k1 + k2); the embedded first-order solution is h k1
             let delta_xi: Vec<f64> = (0..num_rxns).map(|r| 0.5 * cur_h * (k1[r] + k2[r])).collect();
             let cand: Vec<f64> = (0..num_rxns).map(|r| xi[r] + delta_xi[r]).collect();
 
             // Positivity check: no species may drop below -1e-12 mol
             let non_negative = (0..num_spec).all(|i| moles_at(&cand, i) >= -1e-12);
 
+            // Error estimate: per reaction, the extent error 0.5 h |k2 - k1| against a scale set by the largest amount among
+            // the reaction's dissolved species (solids and the solvent excluded: they are in huge excess and unchanged), so
+            // a product that starts at zero is judged by the size of the reaction, not by its own trace amount
+            let mut err = 0.0_f64;
+            if non_negative {
+                for r in 0..num_rxns {
+                    let e = 0.5 * cur_h * (k2[r] - k1[r]).abs();
+                    if e == 0.0 {
+                        continue;
+                    }
+                    let mut big = 0.0_f64;
+                    for &(i, _) in self.nu_by_rxn[r].iter() {
+                        let sp = &self.species_names[i];
+                        if sp.ends_with("(s)") || sp == crate::vessel::AQUEOUS_SOLVENT {
+                            continue;
+                        }
+                        big = big.max(moles_at(&xi, i).abs()).max(moles_at(&cand, i).abs());
+                    }
+                    err = err.max(e / (KINETICS_ATOL_MOL + KINETICS_RTOL * big));
+                }
+            }
+
             if !non_negative {
                 // Reject step and halve step size
-                h *= 0.5;
+                stats.rejected += 1;
+                h = cur_h * 0.5;
                 if h < 1e-8 {
                     // Limiting reactant boundary reached: largest non-negative fraction alpha of the step, then the rest
                     // of the interval has nothing left to convert along this direction
@@ -456,20 +540,82 @@ impl KineticExtentSystem {
                     }
                     break;
                 }
+            } else if err > 1.0 && cur_h > 1e-6 {
+                // error too large: retry with a smaller step (second-order method: error ~ h^3)
+                stats.rejected += 1;
+                h = cur_h * (0.9 * err.powf(-1.0 / 3.0)).clamp(0.2, 0.9);
             } else {
                 xi = cand;
                 t_sub += cur_h;
-                h = 0.05_f64.min(dt_s - t_sub);
+                stats.accepted += 1;
+                let grow = if err > 1e-10 { (0.9 * err.powf(-1.0 / 3.0)).clamp(0.5, 4.0) } else { 4.0 };
+                h = (cur_h * grow).min(dt_s - t_sub);
                 if h <= 1e-10 {
                     break;
                 }
             }
         }
 
+        // Positivity, exactly: the step test tolerates -1e-12 mol, but a species that ends below zero would be clamped by
+        // the caller (creating atoms), so the whole extent vector is pulled back along its own direction to the point where
+        // the first species reaches zero.
+        let mut alpha = 1.0_f64;
+        for i in 0..num_spec {
+            let end = moles_at(&xi, i);
+            if end < 0.0 {
+                let start = initial_moles[i];
+                if start > end {
+                    alpha = alpha.min((start / (start - end)).clamp(0.0, 1.0));
+                }
+            }
+        }
+        if alpha < 1.0 {
+            for x in xi.iter_mut() {
+                *x *= alpha;
+            }
+        }
+
         // Final rates in mol/(L*s)
         let v = vol_l.max(1e-6);
         let final_rates: Vec<f64> = xi.iter().map(|x| x / (v * dt_s)).collect();
-        (xi, final_rates)
+        (xi, final_rates, stats)
+    }
+}
+
+/// Accepted / rejected sub-steps of one `integrate_extent_step` call.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct StepStats {
+    pub accepted: usize,
+    pub rejected: usize,
+}
+
+/// The factorised Rosenbrock matrix: dense for a small system, sparse above `SPARSE_LU_MIN_REACTIONS`.
+enum RosenbrockSolver {
+    Dense(LuFactors),
+    Sparse(SparseLu),
+}
+
+impl RosenbrockSolver {
+    fn new(n: usize, rows: Vec<Vec<(usize, f64)>>) -> Self {
+        let nnz: usize = rows.iter().map(|r| r.len()).sum();
+        if n >= SPARSE_LU_MIN_REACTIONS && (nnz as f64) < SPARSE_LU_MAX_DENSITY * (n * n) as f64 {
+            RosenbrockSolver::Sparse(SparseLu::new(n, &rows))
+        } else {
+            let mut w = vec![vec![0.0; n]; n];
+            for (i, row) in rows.iter().enumerate() {
+                for &(j, v) in row {
+                    w[i][j] += v;
+                }
+            }
+            RosenbrockSolver::Dense(LuFactors::new(w))
+        }
+    }
+
+    fn solve(&self, b: &[f64]) -> Vec<f64> {
+        match self {
+            RosenbrockSolver::Dense(l) => l.solve(b),
+            RosenbrockSolver::Sparse(l) => l.solve(b),
+        }
     }
 }
 

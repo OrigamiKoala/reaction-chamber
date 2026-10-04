@@ -286,9 +286,13 @@ fn gate3b_zinc_cements_copper_out_of_copper_sulfate() {
     let mut v = beaker(250.0, 3.5, 298.15);
     ml(&mut v, "cuso4_0_1m", 50.0);
     grams(&mut v, "s8_zn", 0.2, 200.0);
-    let cu0 = v.species_mol.get("Cu+2").copied().unwrap_or(0.0);
-    run(&mut v, 120.0, 0.25);
-    let cu1 = v.species_mol.get("Cu+2").copied().unwrap_or(0.0);
+    // dissolved copper = free ions + the CuSO4 ion pair
+    let cu_dissolved = |v: &Vessel| v.species_mol.get("Cu+2").copied().unwrap_or(0.0) + v.species_mol.get("CuSO4").copied().unwrap_or(0.0);
+    let cu0 = cu_dissolved(&v);
+    // (300 s: about 60 % of the copper sits in the CuSO4 ion pair and only the free ion reacts at the electrode, so the
+    // cementation, which accelerates as copper deposits, takes about 2.5 times longer than with fully dissociated sulfate)
+    run(&mut v, 300.0, 0.25);
+    let cu1 = cu_dissolved(&v);
     println!("[gate3b] Cu+2 {:.3e} -> {:.3e} mol, Cu(s) {:.3e}, Zn+2 {:.3e}", cu0, cu1, solid_of(&v, "Cu(s)"), v.species_mol.get("Zn+2").copied().unwrap_or(0.0));
     assert!(cu1 < 0.9 * cu0, "copper must leave the solution");
     assert!(solid_of(&v, "Cu(s)") > 0.0, "copper must deposit as a solid");

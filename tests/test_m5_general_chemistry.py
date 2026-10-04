@@ -5,7 +5,6 @@ import pytest
 import math
 from pipeline.species_curation import PRIMARY_CHEMICALS, build_curated_database
 from pipeline.splitter import split_salts_and_hydrates
-from pipeline.equilibrium_solver import solve_aqueous_equilibrium
 
 def test_m5_pubchem_arbitrary_compound_import():
     """Verify that arbitrary PubChem compounds can be parsed, split, and converted into simulation-ready reagents."""
@@ -25,21 +24,6 @@ def test_m5_pubchem_arbitrary_compound_import():
         for c in frag_info["components"]:
             assert "formula" in c
             assert c["stoichiometry"] > 0
-
-def test_m5_arbitrary_multivalent_mineral_equilibria():
-    """Verify that the equilibrium solver correctly models arbitrary stoichiometry salts without hardcoded rules."""
-    # 1:1 salt AgCl (Ksp = 1.77e-10)
-    res_agcl = solve_aqueous_equilibrium(
-        temp_k=298.15,
-        c_ag_plus=0.01,
-        c_cl_minus=0.01,
-    )
-    assert res_agcl["precipitate_agcl_mol_l"] > 0.009, "AgCl must precipitate from 0.01 M mixture"
-    remaining_ag = res_agcl["ag_eq"]
-    remaining_cl = res_agcl["cl_eq"]
-    g1 = res_agcl["gamma_1"]
-    iap = (remaining_ag * g1) * (remaining_cl * g1)
-    assert abs(iap - 1.77e-10) < 5e-11, f"IAP must reach Ksp within numerical tolerance: {iap}"
 
 def test_m5_extensible_reaction_network_capacity():
     """Verify that a reaction network of 100+ reactions can be built, evaluated, and maintained without performance degradation."""

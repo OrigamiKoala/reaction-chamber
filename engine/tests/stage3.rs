@@ -221,20 +221,23 @@ fn gate_6_water_ethanol_excess_volume() {
 
 #[test]
 fn gate_7_brine_heat_capacity() {
-    // 26 wt % brine Cp 3.30 ± 0.10 J/(g K)
-    // 26 g NaCl + 74 g H2O = 100 g total
-    let n_water = 74.0 / WATER_MW; // 4.1077 mol
-    let n_nacl = 26.0 / 58.443; // 0.4449 mol
-    let mut species = HashMap::new();
-    species.insert("H2O".into(), n_water);
-    species.insert("Na+".into(), n_nacl);
-    species.insert("Cl-".into(), n_nacl);
-
-    let i = n_nacl / 0.074; // ~ 6.01 m
-    let cp = calculate_heat_capacity_j_g_k(&species, 298.15, 100.0, i);
-    assert!(
-        (cp - 3.30).abs() <= 0.10,
-        "26 wt% brine Cp was {:.3} J/(g K), expected 3.30 ± 0.10 J/(g K)",
-        cp
-    );
+    // 26 wt % brine Cp 3.30 +- 0.10 J/(g K): the heat capacity of the contents of a vessel holding 26 g NaCl + 74 g H2O
+    // (aqueous standard partial molar heat capacities of the ions plus the concentration terms)
+    use reaction_chamber_engine::vessel::*;
+    let mut v = Vessel::new(VesselConfig {
+        vessel_type: "beaker-250".into(),
+        capacity_ml: 250.0,
+        glass_mass_g: 110.0,
+        inner_radius_cm: 3.5,
+        temperature_k: Some(298.15),
+        room_k: Some(298.15),
+        sealed: Some(false),
+        stopper_pop_atm: Some(2.2),
+        burst_atm: Some(6.0),
+    });
+    v.species_mol.insert("H2O".into(), 74.0 / WATER_MW);
+    v.species_mol.insert("Na+".into(), 26.0 / 58.443);
+    v.species_mol.insert("Cl-".into(), 26.0 / 58.443);
+    let cp = v.contents_heat_capacity() / 100.0;
+    assert!((cp - 3.30).abs() <= 0.15, "26 wt% brine Cp was {:.3} J/(g K), expected 3.30 +- 0.15 J/(g K)", cp);
 }

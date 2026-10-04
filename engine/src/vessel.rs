@@ -25,6 +25,11 @@ pub(crate) const MIN_AQUEOUS_H2O_MOL: f64 = 1e-9;
 /// Species id of the aqueous solvent (the species the aqueous equilibria, pH and ionic activities are written for).
 pub(crate) const AQUEOUS_SOLVENT: &str = "H2O";
 
+/// The solvent's own ionisation row: one reactant, the solvent, and its two ions as products.
+pub(crate) fn is_autoprotolysis(e: &GeneralEquilibrium) -> bool {
+    e.reactants.len() == 1 && e.reactants.contains_key(AQUEOUS_SOLVENT) && e.products.len() == 2 && e.products.contains_key("H+") && e.products.contains_key("OH-")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PhaseKind {
@@ -227,6 +232,10 @@ pub struct ReactionRow {
     pub tier: ProvenanceTier,
     pub source: String,
     pub active: bool,
+    /// What the row is for the UI when that is more than its kind: `"autoprotolysis"` is the solvent's own ionisation (acid
+    /// and base neutralising shows as this row relaxing toward the solvent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -330,6 +339,10 @@ pub struct VesselControls {
     pub stir_rpm: Option<f64>,
     pub sealed: Option<bool>,
     pub bath_k: Option<Option<f64>>,
+    /// Thermal conductance (W/K) between the vessel and its bath; absent = from the vessel's geometry and the wall
+    /// (`heat_transfer::bath_coupling_w_per_k`). A thermostatted jacket or a vigorously stirred slurry bath couples harder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bath_coupling_w_k: Option<f64>,
     pub igniter: Option<bool>,
     pub burner_w: Option<f64>,
     /// Debug: enable the substring-matched organic network generator (off by default, see `update_network`).
@@ -938,6 +951,9 @@ impl Vessel {
             self.bath_k = b;
             self.controls.bath_k = Some(b);
         }
+        if let Some(g) = controls.bath_coupling_w_k {
+            self.controls.bath_coupling_w_k = Some(g);
+        }
         if let Some(ig) = controls.igniter {
             self.controls.igniter = Some(ig);
         }
@@ -990,7 +1006,6 @@ impl Vessel {
                 self.update_network();
             }
         }
-
         // 1. Generalized chemical kinetics & combustion
         let q_kinetics = self.step_kinetics(dt_s);
         reaction_heat_joules += q_kinetics;
@@ -1009,6 +1024,9 @@ impl Vessel {
         // 1d. Electrode reactions of the conducting solids (corrosion, cementation) and of an electrolysis cell
         let q_electro = self.step_electrochemistry(dt_s);
         reaction_heat_joules += q_electro;
+
+        // 2a. Association rows of the ions that are still there after the dose settled
+        self.auto_associations();
 
         // 2. Generalized aqueous equilibria; solids dissolve, nucleate and grow only as fast as transport and nucleation allow
         for sweep in 0..5 {
@@ -1138,7 +1156,12 @@ impl Vessel {
                 .unwrap_or(0.0);
         }
 
-        let system = crate::kinetics::KineticExtentSystem::new(species_set.clone(), extent_reactions);
+        let mut system = crate::kinetics::KineticExtentSystem::new(species_set.clone(), extent_reactions);
+        // rate laws in mol/L, K(T) in molality: the solvent mass per litre of solution converts between them
+        let kg_solvent = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528;
+        if kg_solvent > 1e-9 {
+            system.solvent_kg_per_l = (kg_solvent / vol_l).clamp(0.2, 1.5);
+        }
         let (extents, rates) = system.integrate_extent_step(
             &initial_moles,
             dt_s,
@@ -1146,7 +1169,7 @@ impl Vessel {
             t_k,
             p_pa,
             ionic_str,
-            &self.solid_mol,
+            &self.catalyst_areas(),
         );
 
         for (r_idx, rxn) in self.kinetic_reactions.iter().enumerate() {
@@ -1213,6 +1236,7 @@ impl Vessel {
                 tier: rxn.tier.clone(),
                 source: rxn.source.clone(),
                 active: true,
+                role: None,
             });
         }
 
@@ -1223,271 +1247,38 @@ impl Vessel {
         q_joules
     }
 
+    /// Total surface area (m^2) of every solid that catalyses a registered reaction: the solid's specific surface (record
+    /// datum, BET) times its mass, else the surface of its particle population, else that of a population of the
+    /// default grain size.
+    pub(crate) fn catalyst_areas(&self) -> HashMap<String, f64> {
+        let mut out = HashMap::new();
+        for cat in self.kinetic_reactions.iter().filter_map(|r| r.catalyst_species.as_ref()) {
+            if out.contains_key(cat) {
+                continue;
+            }
+            let mol = self.solid_mol.get(cat).copied().unwrap_or(0.0);
+            if mol <= 0.0 {
+                continue;
+            }
+            let mass_g = mol * chem_db::get_species_thermo(cat).mw;
+            let bet = crate::db::SpeciesStore::global().read().ok().and_then(|st| st.get(cat).and_then(|r| r.phases.get("s").and_then(|p| p.specific_area.as_ref().map(|d| d.value))));
+            let area = match bet {
+                Some(a) if a > 0.0 => a * mass_g,
+                _ => match self.particle_populations.get(cat).filter(|p| !p.is_empty()) {
+                    Some(pop) => pop.surface_area_m2(),
+                    None => {
+                        let props = self.solid_props(cat);
+                        crate::transfer::ParticlePopulation::from_mass_and_diameter(mass_g, props.density_g_ml, props.particle_um * 1e-6).surface_area_m2()
+                    }
+                },
+            };
+            out.insert(cat.clone(), area);
+        }
+        out
+    }
+
     pub fn set_particle_population(&mut self, species: &str, pop: crate::transfer::ParticlePopulation) {
         self.particle_populations.insert(species.to_string(), pop);
-    }
-
-    /// Thermal decomposition and dehydration of solids (solid -> solid + gas), driven by GEM thermodynamics.
-    /// Thermal decomposition of the solids present (solid -> solid + gas, solid -> gases), found by
-    /// `gem::discovery::discover_thermal_decompositions`. Every non-solid product is released as a gas.
-    pub(crate) fn step_thermal_decomposition(&mut self, dt_s: f64) -> f64 {
-        let t_k = self.temperature_k;
-        let p_pa = self.pressure_atm * crate::vle::P_BAR_PA;
-        let rxns = crate::gem::discovery::discover_thermal_decompositions(&self.solid_mol, t_k, p_pa);
-        if rxns.is_empty() {
-            return 0.0;
-        }
-        let ctx = self.activity_context();
-        let mut total_q_joules = 0.0;
-        for rxn in rxns {
-            // PLACEHOLDER relaxation rate (1/s): the decomposition front of a heated powder is limited by heat and gas
-            // transport through the bed, which is not modelled; the extent is bounded by equilibrium below
-            const DECOMPOSITION_RATE_S: f64 = 0.1;
-            let gas_like = |sp: &str| !sp.ends_with("(s)");
-            let extent = self.discovered_extent(&rxn, &ctx, DECOMPOSITION_RATE_S, dt_s, &gas_like);
-            if extent <= 1e-15 {
-                continue;
-            }
-            for &(idx, coeff) in &rxn.nu {
-                let sp = &rxn.species_names[idx];
-                let change = coeff * extent;
-                if sp.ends_with("(s)") {
-                    let cur = self.solid_mol.entry(sp.clone()).or_insert(0.0);
-                    *cur = (*cur + change).max(0.0);
-                    if coeff > 0.0 {
-                        *self.initial_solids.entry(sp.clone()).or_insert(0.0) += change;
-                    }
-                } else {
-                    self.release_gas(sp, change, dt_s, "solid");
-                }
-            }
-            total_q_joules -= extent * rxn.delta_h0_j;
-            self.push_discovered_row(&rxn, "thermal_decomposition", extent / dt_s.max(0.001), "Thermodynamics / GEM");
-        }
-        total_q_joules
-    }
-
-    /// Generalized redox reactions: electron transfer between couples (non-conducting solids and dissolved species; metals
-    /// react through their electrode reactions in `step_electrochemistry`).
-    pub(crate) fn step_redox(&mut self, dt_s: f64) -> f64 {
-        let t_k = self.temperature_k;
-        let p_pa = self.pressure_atm * crate::vle::P_BAR_PA;
-        let vol_l = (self.reaction_volume_ml() / 1000.0).max(0.001);
-
-        let rxns = crate::gem::discovery::discover_reactions(&self.species_mol, &self.solid_mol, t_k, p_pa);
-        let mut total_q_joules = 0.0;
-        let ctx = self.activity_context();
-
-        for rxn in rxns {
-            if !matches!(rxn.kind, crate::gem::discovery::DiscoveredRxnKind::Redox { .. }) {
-                continue;
-            }
-            // a conducting solid (a metal) reacts through its electrode reactions (`step_electrochemistry`)
-            if rxn.nu.iter().any(|&(idx, c)| c < 0.0 && crate::vessel_electro::is_conducting_solid(&rxn.species_names[idx])) {
-                continue;
-            }
-
-            // Rate: a reaction with a (non-conducting) solid reactant proceeds through the surface of the solid: the film
-            // relaxation rate k A / V of its particle population; a homogeneous electron transfer between labile couples
-            // is limited by the encounter of its reactants: PLACEHOLDER relaxation rate 1 / s (no Marcus estimate yet)
-            let has_solid_reactant = rxn.nu.iter().any(|&(idx, c)| c < 0.0 && rxn.species_names[idx].ends_with("(s)"));
-            let base_rate = if has_solid_reactant {
-                let hyd = self.hydro_state();
-                let mut lam = 0.0;
-                for &(idx, coeff) in &rxn.nu {
-                    let sp = &rxn.species_names[idx];
-                    if coeff < 0.0 && sp.ends_with("(s)") {
-                        if let Some(pop) = self.particle_populations.get(sp) {
-                            let k = crate::transfer::population::effective_transfer_coefficient(self.film_coefficient(sp, pop.sauter_diameter_m(), self.solid_diffusivity(sp), &hyd));
-                            lam += k * pop.surface_area_m2() / hyd.liquid_m3.max(1e-12);
-                        }
-                    }
-                }
-                lam
-            } else {
-                1.0
-            };
-            let gas_like = |sp: &str| sp.ends_with("(g)");
-            let extent = self.discovered_extent(&rxn, &ctx, base_rate, dt_s, &gas_like);
-            if extent <= 1e-15 {
-                continue;
-            }
-
-            for &(idx, coeff) in &rxn.nu {
-                let sp = &rxn.species_names[idx];
-                let change = coeff * extent;
-                if sp.ends_with("(s)") {
-                    let cur = self.solid_mol.entry(sp.clone()).or_insert(0.0);
-                    *cur = (*cur + change).max(0.0);
-                    if coeff > 0.0 {
-                        *self.initial_solids.entry(sp.clone()).or_insert(0.0) += change;
-                    }
-                } else if sp.ends_with("(g)") {
-                    self.release_gas(sp, change, dt_s, "wall");
-                } else {
-                    let cur = self.species_mol.entry(sp.clone()).or_insert(0.0);
-                    *cur = (*cur + change).max(0.0);
-                }
-            }
-
-            total_q_joules -= extent * rxn.delta_h0_j;
-            self.push_discovered_row(&rxn, "redox", extent / (vol_l * dt_s.max(0.001)), "Redox / GEM");
-        }
-
-        total_q_joules
-    }
-
-    /// What a reaction quotient needs from the vessel at the start of a step: activity coefficients and water activity of
-    /// the aqueous solution, its volume, and the partial pressure (Pa) of every gas the reactions can meet (the headspace
-    /// when sealed, the atmosphere when open).
-    pub(crate) fn activity_context(&self) -> ActivityContext {
-        let (gamma, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
-        let mut gas_pa: HashMap<String, f64> = HashMap::new();
-        let mut head_m3 = 0.0;
-        if self.sealed {
-            head_m3 = self.headspace_volume_m3().max(1e-9);
-            for (sp, &n) in &self.headspace_gas_mol {
-                gas_pa.insert(sp.clone(), n.max(0.0) * R_GAS * self.temperature_k / head_m3);
-            }
-        } else {
-            for (sp, p) in self.atmosphere_partials() {
-                gas_pa.insert(sp, p);
-            }
-        }
-        ActivityContext {
-            gamma,
-            ln_aw: a_w.max(1e-10).ln(),
-            vol_l: (self.reaction_volume_ml() / 1000.0).max(1e-6),
-            gas_pa,
-            sealed: self.sealed,
-            head_m3,
-        }
-    }
-
-    /// Extent (mol) a discovered reaction advances over `dt_s`: relaxation at `rate_s` (1/s) toward the extent at which its
-    /// quotient reaches K (Delta_r G = Delta_r G0 + RT ln Q = 0), never past the limiting reactant. Activities: solids 1, the
-    /// solvent a_w, gases p / 1 bar (`gas_like` decides which ids are gases), solutes gamma c. An open vessel's gases leave,
-    /// so their partial pressure stays the atmosphere's.
-    pub(crate) fn discovered_extent(
-        &self,
-        rxn: &crate::gem::discovery::DiscoveredReaction,
-        ctx: &ActivityContext,
-        rate_s: f64,
-        dt_s: f64,
-        gas_like: &dyn Fn(&str) -> bool,
-    ) -> f64 {
-        if rate_s <= 0.0 || dt_s <= 0.0 {
-            return 0.0;
-        }
-        let rt = R_GAS * self.temperature_k.max(1.0);
-        // limiting reactant (a reactant that is absent stops the reaction)
-        let mut max_xi = f64::INFINITY;
-        for &(idx, coeff) in &rxn.nu {
-            if coeff >= 0.0 {
-                continue;
-            }
-            let sp = &rxn.species_names[idx];
-            let amt = if sp.ends_with("(s)") {
-                self.solid_mol.get(sp).copied().unwrap_or(0.0)
-            } else if gas_like(sp) {
-                if ctx.sealed {
-                    self.headspace_gas_mol.get(sp).copied().unwrap_or(0.0)
-                } else {
-                    // the open atmosphere is an infinite reservoir of its own gases
-                    if ctx.gas_pa.get(sp).copied().unwrap_or(0.0) > 0.0 { f64::INFINITY } else { 0.0 }
-                }
-            } else {
-                self.species_mol.get(sp).copied().unwrap_or(0.0)
-            };
-            if amt <= 1e-12 {
-                return 0.0;
-            }
-            max_xi = max_xi.min(amt / (-coeff));
-        }
-        if !max_xi.is_finite() || max_xi <= 1e-15 {
-            return 0.0;
-        }
-        let ln_k = -rxn.delta_g0_j / rt;
-        let ln_q = |xi: f64| -> f64 {
-            let mut lq = 0.0;
-            for &(idx, coeff) in &rxn.nu {
-                let sp = &rxn.species_names[idx];
-                let ln_a = if sp.ends_with("(s)") {
-                    0.0
-                } else if sp == AQUEOUS_SOLVENT {
-                    ctx.ln_aw
-                } else if gas_like(sp) {
-                    let mut p = ctx.gas_pa.get(sp).copied().unwrap_or(0.0);
-                    if ctx.sealed {
-                        p += coeff * xi * rt / ctx.head_m3;
-                    }
-                    (p.max(1e-6) / crate::vle::P_BAR_PA).ln()
-                } else {
-                    let n = self.species_mol.get(sp).copied().unwrap_or(0.0) + coeff * xi;
-                    let c = n.max(1e-30) / ctx.vol_l;
-                    c.ln() + ctx.gamma.get(sp).copied().unwrap_or(0.0)
-                };
-                lq += coeff * ln_a;
-            }
-            lq
-        };
-        // ln Q rises with the extent: the equilibrium extent is the root of ln Q - ln K on [0, max_xi]
-        if ln_q(0.0) >= ln_k {
-            return 0.0;
-        }
-        let xi_eq = if ln_q(max_xi * (1.0 - 1e-12)) <= ln_k {
-            max_xi
-        } else {
-            let (mut lo, mut hi) = (0.0, max_xi);
-            for _ in 0..80 {
-                let mid = 0.5 * (lo + hi);
-                if ln_q(mid) < ln_k {
-                    lo = mid;
-                } else {
-                    hi = mid;
-                }
-            }
-            lo
-        };
-        xi_eq * (1.0 - (-rate_s * dt_s).exp())
-    }
-
-    /// A gas produced (`mol` > 0) or consumed by a discovered reaction: into the headspace when sealed, out of an open vessel.
-    fn release_gas(&mut self, sp: &str, mol: f64, dt_s: f64, nucleation: &str) {
-        if self.sealed {
-            let cur = self.headspace_gas_mol.entry(sp.to_string()).or_insert(0.0);
-            *cur = (*cur + mol).max(0.0);
-        } else {
-            // leaves an open vessel (mol > 0) or is drawn from its atmosphere (mol < 0)
-            let mw = chem_db::get_species_thermo(sp).mw;
-            self.mass_lost_g += mol * mw;
-            self.ledger.book_out(sp, mol);
-        }
-        if mol > 0.0 && dt_s > 0.0 {
-            let ml_s = mol * R_GAS * self.temperature_k / self.p_ext_pa().max(1.0) * 1e6 / dt_s;
-            self.gas_fluxes.push(GasFlux {
-                species: if sp.ends_with("(g)") { sp.to_string() } else { format!("{}(g)", sp) },
-                rate_ml_s: ml_s,
-                bubble_diameter_mm: self.bubble_diameter_mm(nucleation),
-                nucleation: nucleation.to_string(),
-                origin: None,
-            });
-        }
-    }
-
-    fn push_discovered_row(&mut self, rxn: &crate::gem::discovery::DiscoveredReaction, kind: &str, rate: f64, source: &str) {
-        let eq_str = rxn.nu.iter().map(|&(i, c)| format!("{} {}", c, rxn.species_names[i])).collect::<Vec<_>>().join(" + ");
-        let lead = rxn.nu.iter().find(|&&(_, c)| c < 0.0).map(|&(i, _)| rxn.species_names[i].clone()).unwrap_or_default();
-        self.active_reactions.push(ReactionRow {
-            id: format!("{}_{}", if kind == "redox" { "redox" } else { "decomp" }, lead),
-            equation: eq_str,
-            kind: kind.to_string(),
-            rate,
-            log_q_over_k: None,
-            tier: crate::types::ProvenanceTier::Tabulated,
-            source: source.to_string(),
-            active: true,
-        });
     }
 
     fn step_thermal(&mut self, dt_s: f64, reaction_heat_joules: f64) {
@@ -1502,15 +1293,18 @@ impl Vessel {
         let burner_w = self.controls.burner_w.unwrap_or(0.0);
         net_energy_j += (heater_w + burner_w) * dt_s;
 
-        // Thermal bath coupling
+        // Thermal bath coupling: liquid film, glass wall and bath film in series over the wetted wall and base
         if let Some(t_bath) = self.bath_k {
-            let k_bath = 25.0; // W/K
+            let r_m = self.config.inner_radius_cm / 100.0;
+            let k_bath = self.controls.bath_coupling_w_k.unwrap_or_else(|| crate::heat_transfer::bath_coupling_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.stir_rpm() > 0.0));
             net_energy_j += k_bath * (t_bath - self.temperature_k) * dt_s;
         }
 
-        // Ambient loss to room
-        let h_ambient = 0.5; // W/K
-        net_energy_j -= h_ambient * (self.temperature_k - self.room_k) * dt_s;
+        // Loss to the room: natural convection and radiation from the wall, conduction through the base (the coefficient
+        // follows the liquid height and the temperature, so a vessel cools fast while hot and slowly near room temperature)
+        let r_m = self.config.inner_radius_cm / 100.0;
+        let g_ambient = crate::heat_transfer::ambient_loss_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.temperature_k, self.room_k, self.bath_k.is_some());
+        net_energy_j -= g_ambient * (self.temperature_k - self.room_k) * dt_s;
 
         let delta_t = net_energy_j / cp_total;
         self.temperature_k += delta_t;
@@ -1603,7 +1397,9 @@ impl Vessel {
         let mut solids = Vec::new();
         let hyd = self.hydro_state();
         let dust = self.dust_mol();
-        for (sp, &mol) in &self.solid_mol {
+        let mut solid_ids: Vec<(&String, &f64)> = self.solid_mol.iter().collect();
+        solid_ids.sort_by(|a, b| a.0.cmp(b.0));
+        for (sp, &mol) in solid_ids {
             if mol <= dust {
                 continue;
             }
@@ -1615,7 +1411,7 @@ impl Vessel {
 
             let pop = self.particle_populations.get(sp);
             let d_um = pop.map_or(props.particle_um, |p| p.mean_diameter_m() * 1e6);
-            let is_ice = (sp.ends_with("(s)") && sp.trim_end_matches("(s)") == crate::db::seed::WATER) || props.name.to_lowercase().contains("ice");
+            let is_ice = self.solid_is_frozen_liquid(sp);
             let morphology = if props.kind == SolidKind::Metal && d_um >= 200.0 {
                 "pieces".to_string()
             } else if is_ice {
@@ -1740,7 +1536,9 @@ impl Vessel {
         for (pi, view) in views.iter().enumerate() {
             let aqueous_phase = self.phase_is_aqueous(&view.species_mol);
             let phase_l = (view.volume_ml / 1000.0).max(1e-9);
-            for (sp, &mol) in &view.species_mol {
+            let mut view_species: Vec<(&String, &f64)> = view.species_mol.iter().collect();
+            view_species.sort_by(|a, b| a.0.cmp(b.0));
+            for (sp, &mol) in view_species {
                 if mol <= 0.0 {
                     continue;
                 }
@@ -1765,7 +1563,9 @@ impl Vessel {
                 });
             }
         }
-        for (sp, &mol) in &self.solid_mol {
+        let mut solid_rows: Vec<(&String, &f64)> = self.solid_mol.iter().collect();
+        solid_rows.sort_by(|a, b| a.0.cmp(b.0));
+        for (sp, &mol) in solid_rows {
             if mol <= 0.0 {
                 continue;
             }
@@ -2022,6 +1822,16 @@ impl Vessel {
         m
     }
 
+    /// pKw of the solvent at the vessel's temperature: from the autoionisation row of the equilibria (the vessel's own data),
+    /// else the analytic expression of water.
+    pub fn pkw(&self) -> f64 {
+        self.equilibria
+            .iter()
+            .find(|e| is_autoprotolysis(e))
+            .map(|e| -e.log_k_at(self.temperature_k))
+            .unwrap_or_else(|| -chem_db::water_log_kw(self.temperature_k))
+    }
+
     /// pH = -log10(m_H+ * gamma_H+) in the phase that contains water (decision D6 for other solvents).
     pub fn current_ph(&self) -> f64 {
         if !self.has_aqueous_phase() || self.solvent_volume_ml() <= 0.0 {
@@ -2033,18 +1843,7 @@ impl Vessel {
         let m_h = self.species_mol.get("H+").copied().unwrap_or(0.0) / kg_w;
         let m_oh = self.species_mol.get("OH-").copied().unwrap_or(0.0) / kg_w;
 
-        let pkw = self
-            .equilibria
-            .iter()
-            .find(|e| {
-                e.reactants.len() == 1
-                    && e.reactants.contains_key(AQUEOUS_SOLVENT)
-                    && e.products.len() == 2
-                    && e.products.contains_key("H+")
-                    && e.products.contains_key("OH-")
-            })
-            .map(|e| -e.log_k_at(self.temperature_k))
-            .unwrap_or_else(|| -chem_db::water_log_kw(self.temperature_k));
+        let pkw = self.pkw();
 
         let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
 
@@ -2079,7 +1878,7 @@ impl Vessel {
         concs
     }
 
-    fn calc_ionic_strength(&self) -> f64 {
+    pub(crate) fn calc_ionic_strength(&self) -> f64 {
         let h2o_mol = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0);
         if h2o_mol <= MIN_AQUEOUS_H2O_MOL {
             return 0.0;

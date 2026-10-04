@@ -102,91 +102,7 @@ pub fn eval_nasa7(coeffs: &[f64; 7], t_k: f64) -> (f64, f64, f64) {
     (h_j, s_j, cp)
 }
 
-/// Powell-Latimer estimation for standard aqueous ion absolute entropy S0(aq) (J/(mol K)).
-pub fn powell_latimer_ion_entropy(charge: i32, mass: f64, radius_angstrom: f64) -> f64 {
-    let z = (charge.abs() as f64).max(1.0);
-    let r_eff = (radius_angstrom + 1.4).max(1.5);
-    1.5 * R_GAS * mass.max(1.0).ln() + 37.0 - 270.0 * z / (r_eff * r_eff)
-}
-
-/// Latimer element contributions for solid compound absolute entropy S0(s) (J/(mol K)).
-pub fn latimer_solid_entropy(formula: &str) -> f64 {
-    let elems = crate::ions::species_elements(formula).unwrap_or_default();
-    let mut s_tot = 0.0;
-    for (elem, count) in elems {
-        let s_elem = match elem.as_str() {
-            "H" => 8.0,
-            "Li" => 15.0,
-            "Be" => 10.0,
-            "B" => 8.0,
-            "C" => 10.0,
-            "N" => 15.0,
-            "O" => 16.0,
-            "F" => 20.0,
-            "Na" => 31.4,
-            "Mg" => 25.0,
-            "Al" => 28.0,
-            "Si" => 25.0,
-            "P" => 27.0,
-            "S" => 30.0,
-            "Cl" => 40.0,
-            "K" => 38.0,
-            "Ca" => 35.0,
-            "Ti" => 35.0,
-            "Cr" => 36.0,
-            "Mn" => 38.0,
-            "Fe" => 38.0,
-            "Co" => 38.0,
-            "Ni" => 38.0,
-            "Cu" => 40.0,
-            "Zn" => 42.0,
-            "Br" => 50.0,
-            "Ag" => 55.0,
-            "I" => 55.0,
-            "Ba" => 50.0,
-            "Pb" => 60.0,
-            _ => 30.0,
-        };
-        s_tot += count * s_elem;
-    }
-    s_tot
-}
-
-/// Standard reference entropy sum of constituent elements in their standard states at 298.15 K.
-pub fn elements_entropy_sum(formula: &str) -> f64 {
-    let elems = crate::ions::species_elements(formula).unwrap_or_default();
-    let mut s_tot = 0.0;
-    for (elem, count) in elems {
-        let s_ref = match elem.as_str() {
-            "H" => 130.68 / 2.0,
-            "O" => 205.15 / 2.0,
-            "N" => 191.61 / 2.0,
-            "F" => 202.79 / 2.0,
-            "Cl" => 223.08 / 2.0,
-            "Br" => 152.21 / 2.0,
-            "I" => 116.14 / 2.0,
-            "C" => 5.74,
-            "S" => 32.05,
-            "P" => 41.09 / 4.0,
-            "Na" => 51.3,
-            "K" => 64.7,
-            "Mg" => 32.7,
-            "Ca" => 41.6,
-            "Ba" => 62.8,
-            "Fe" => 27.3,
-            "Cu" => 33.15,
-            "Zn" => 41.6,
-            "Ag" => 42.6,
-            "Pb" => 64.8,
-            "Al" => 28.3,
-            "Mn" => 32.0,
-            "Co" => 30.0,
-            _ => 35.0,
-        };
-        s_tot += count * s_ref;
-    }
-    s_tot
-}
+pub use super::estimate::{elements_entropy_sum, ion_formation_entropy, kopp_cp, solid_entropy_latimer, CpModel};
 
 fn try_eval_polynomial(t_data: &crate::db::PhaseThermo, t_k: f64) -> Option<(f64, f64, f64)> {
     if let Some(r_val) = &t_data.ranges {
@@ -227,42 +143,11 @@ fn try_eval_polynomial(t_data: &crate::db::PhaseThermo, t_k: f64) -> Option<(f64
     None
 }
 
-/// General physical estimation for unknown species when absent from SpeciesStore.
-fn estimate_species_thermo_298(species: &str, phase: &str) -> (f64, f64, f64, ProvenanceTier) {
-    let charge = crate::ions::species_charge(species);
-    let tier = ProvenanceTier::Speculative;
-    match phase {
-        "s" => (-100.0, -80.0, 50.0, tier),
-        "g" => (-50.0, -50.0, 30.0, tier),
-        "aq" => {
-            if charge != 0 {
-                let z = charge.abs() as f64;
-                (-150.0 * z, -120.0 * z, -40.0 * z, tier)
-            } else {
-                (-100.0, -80.0, 80.0, tier)
-            }
-        }
-        _ => (-100.0, -80.0, 50.0, tier),
-    }
-}
-
-/// Evaluates standard state thermo for species `species` in phase `phase` at temperature `t_k` and pressure `p_pa`.
-/// A species without formation data gets a placeholder (tier Speculative); callers that decide *whether a reaction
-/// happens* must use `try_thermo_state` instead and leave such species out, because the placeholder would invent a driving
-/// force.
+/// Standard state thermo of a species the store has formation data for. Panics for one it has none for: there is no
+/// placeholder (an invented value would decide reactions, heats and equilibria silently); code that cannot know whether a
+/// species has data calls `try_thermo_state` and leaves the species out.
 pub fn get_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> ThermoState {
-    if let Some(st) = try_thermo_state(species, phase, t_k, p_pa) {
-        return st;
-    }
-    #[cfg(debug_assertions)]
-    assert!(
-        !IN_REACTION_DECISION.load(Ordering::Relaxed),
-        "get_thermo_state placeholder called during reaction decision for {} in phase {}",
-        species, phase
-    );
-    let t = t_k.clamp(100.0, 3000.0);
-    let (dfh_kj, dfg_kj, cp, tier) = estimate_species_thermo_298(species, phase);
-    state_from_formation(dfh_kj, dfg_kj, cp, t, tier)
+    try_thermo_state(species, phase, t_k, p_pa).unwrap_or_else(|| panic!("no formation data for {} in phase {}", species, phase))
 }
 
 /// Standard state thermo from the species store, or None when the store has no enthalpy of formation for the species.
@@ -281,7 +166,7 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
     }
 
     let mut out = None;
-    let (r, ha_lookup, b_lookup) = {
+    let (r, partner) = {
         let global_arc = SpeciesStore::global();
         let store = match global_arc.read() {
             Ok(s) => s,
@@ -295,43 +180,13 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
             .or_else(|| store.get(&format!("{}(l)", base_id)))
             .or_else(|| store.by_smiles(species))
             .cloned();
-
-        let (ha_res, b_res) = if let Some(ref r) = r {
-            let ha = if phase == "aq" && r.identity.charge < 0 {
-                if let Some(smiles) = &r.identity.smiles {
-                    if smiles.contains("[O-]") {
-                        let ha_smiles = smiles.replace("[O-]", "O");
-                        let pka = crate::acid_estimate::estimate_pka(&ha_smiles).unwrap_or(4.75);
-                        let ha_id = store.get(&ha_smiles).or_else(|| store.by_smiles(&ha_smiles)).map(|rec| rec.id.clone());
-                        Some((ha_id, pka))
-                    } else { None }
-                } else { None }
-            } else { None };
-
-            let b = if phase == "aq" && r.identity.charge > 0 {
-                if let Some(smiles) = &r.identity.smiles {
-                    let b_smiles = if smiles.contains("[NH3+]") {
-                        Some(smiles.replace("[NH3+]", "N"))
-                    } else if smiles.contains("[NH2+]") {
-                        Some(smiles.replace("[NH2+]", "N"))
-                    } else if smiles.contains("[NH+]") {
-                        Some(smiles.replace("[NH+]", "N"))
-                    } else {
-                        None
-                    };
-                    b_smiles.and_then(|b_sm| {
-                        let pka = 9.25;
-                        let b_id = store.get(&b_sm).or_else(|| store.by_smiles(&b_sm)).map(|rec| rec.id.clone());
-                        Some((b_id, pka))
-                    })
-                } else { None }
-            } else { None };
-            (ha, b)
-        } else {
-            (None, None)
+        // T5: the conjugate acid / base the cycle closure would use, found by formula (one H and one charge apart)
+        let partner = match &r {
+            // only for a species with a structure: a bare identity record has no pKa to close a cycle with
+            Some(rec) if phase == "aq" && rec.identity.charge != 0 && rec.identity.smiles.is_some() => conjugate_partner(&store, rec),
+            _ => None,
         };
-
-        (r, ha_res, b_res)
+        (r, partner)
     };
 
     if let Some(r) = r {
@@ -351,6 +206,11 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
             if substituted && matches!(tier, ProvenanceTier::Tabulated | ProvenanceTier::Imported) {
                 tier = ProvenanceTier::Estimated;
             }
+            let downgrade = |tier: &mut ProvenanceTier| {
+                if matches!(tier, ProvenanceTier::Tabulated | ProvenanceTier::Imported) {
+                    *tier = ProvenanceTier::Estimated;
+                }
+            };
 
             // 1. Check for Cp polynomial integration (NASA-7 / Shomate ranges)
             if let Some((h_j, s_j, cp_j)) = try_eval_polynomial(t_data, t) {
@@ -371,50 +231,52 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
                     h.value - 298.15 * df_s / 1000.0
                 } else {
                     // T3: S0/dfG estimate when only dfH is known
-                    if matches!(tier, ProvenanceTier::Tabulated | ProvenanceTier::Imported) {
-                        tier = ProvenanceTier::Estimated;
-                    }
+                    downgrade(&mut tier);
                     if phase == "aq" && r.identity.charge != 0 {
-                        let mw = r.mw();
-                        let s_ion = powell_latimer_ion_entropy(r.identity.charge, mw, 1.8);
-                        let df_s = s_ion - elements_entropy_sum(&r.identity.formula);
+                        let radius = crate::crystal::ionic_radius_angstrom(&r.identity.formula).unwrap_or(1.8);
+                        let df_s = ion_formation_entropy(&r.identity.formula, r.identity.charge, r.mw(), radius);
                         h.value - 298.15 * df_s / 1000.0
                     } else if phase == "s" {
-                        let s_sol = latimer_solid_entropy(&r.identity.formula);
+                        let s_sol = solid_entropy_latimer(&r.identity.formula);
                         let df_s = s_sol - elements_entropy_sum(&r.identity.formula);
                         h.value - 298.15 * df_s / 1000.0
                     } else {
                         h.value
                     }
                 };
-                let cp = t_data.cp.as_ref().map_or(50.0, |c| c.value);
-                out = Some(state_from_formation(h.value, dfg_kj, cp, t, tier));
+                // T2: heat capacity as a function of T. Measured Cp(298) is carried to T by a physical model (Einstein
+                // solid, Joback gas polynomial); without a datum Kopp's rule (solids, liquids) or zero (a solute: its
+                // reaction heat capacity is then taken as nil, the van 't Hoff limit) is used and the tier says so.
+                let (model, cp_estimated) = cp_model(&r, phase, t_data.cp.as_ref().map(|c| c.value));
+                if cp_estimated || (t - 298.15).abs() > 150.0 && !matches!(model, CpModel::Constant(_)) {
+                    downgrade(&mut tier);
+                }
+                out = Some(state_from_formation(h.value, dfg_kj, &model, t, tier));
             }
         } else if phase == "aq" && r.identity.charge != 0 {
-            // T5: Cycle closure for carboxylates / created anions and protonated amines
-            if let Some((Some(ha_id), pka)) = ha_lookup {
-                if let Some(ha_st) = try_thermo_state(&ha_id, "aq", t, p).or_else(|| try_thermo_state(&ha_id, "l", t, p)) {
-                    let delta_g_diss = R_GAS * 298.15 * std::f64::consts::LN_10 * pka;
-                    let mu0 = ha_st.mu0_j_mol + delta_g_diss;
-                    out = Some(ThermoState {
-                        h_j_mol: ha_st.h_j_mol,
-                        s_j_mol_k: ha_st.s_j_mol_k - delta_g_diss / 298.15,
-                        cp_j_mol_k: (ha_st.cp_j_mol_k - 40.0).max(20.0),
-                        mu0_j_mol: mu0,
-                        tier: ProvenanceTier::Estimated,
-                    });
-                }
-            } else if let Some((Some(b_id), pka)) = b_lookup {
-                if let Some(b_st) = try_thermo_state(&b_id, "aq", t, p).or_else(|| try_thermo_state(&b_id, "l", t, p)) {
-                    let delta_g_diss = R_GAS * 298.15 * std::f64::consts::LN_10 * pka;
-                    let mu0 = b_st.mu0_j_mol - delta_g_diss;
-                    out = Some(ThermoState {
-                        h_j_mol: b_st.h_j_mol,
-                        s_j_mol_k: b_st.s_j_mol_k + delta_g_diss / 298.15,
-                        cp_j_mol_k: (b_st.cp_j_mol_k + 40.0),
-                        mu0_j_mol: mu0,
-                        tier: ProvenanceTier::Estimated,
-                    });
+            // T5: cycle closure for created anions / protonated amines through the conjugate partner and its pKa
+            if let Some(pt) = partner {
+                if let Some(st) = try_thermo_state(&pt.id, "aq", t, p).or_else(|| try_thermo_state(&pt.id, "l", t, p)) {
+                    let dg = R_GAS * 298.15 * std::f64::consts::LN_10 * pt.pka;
+                    if pt.partner_is_acid {
+                        // A- = HA - H+ : mu0(A-) = mu0(HA) + RT ln10 pKa (dHdiss ~ 0)
+                        out = Some(ThermoState {
+                            h_j_mol: st.h_j_mol,
+                            s_j_mol_k: st.s_j_mol_k - dg / 298.15,
+                            cp_j_mol_k: st.cp_j_mol_k,
+                            mu0_j_mol: st.mu0_j_mol + dg,
+                            tier: ProvenanceTier::Estimated,
+                        });
+                    } else {
+                        // BH+ = B + H+ : mu0(BH+) = mu0(B) - RT ln10 pKa
+                        out = Some(ThermoState {
+                            h_j_mol: st.h_j_mol,
+                            s_j_mol_k: st.s_j_mol_k + dg / 298.15,
+                            cp_j_mol_k: st.cp_j_mol_k,
+                            mu0_j_mol: st.mu0_j_mol - dg,
+                            tier: ProvenanceTier::Estimated,
+                        });
+                    }
                 }
             }
         }
@@ -440,15 +302,141 @@ pub fn phase_of_id(species: &str) -> &'static str {
     }
 }
 
-fn state_from_formation(dfh_kj: f64, dfg_kj: f64, cp: f64, t: f64, tier: ProvenanceTier) -> ThermoState {
+fn state_from_formation(dfh_kj: f64, dfg_kj: f64, cp: &CpModel, t: f64, tier: ProvenanceTier) -> ThermoState {
     // Formation entropy dfS = (dfH - dfG) / 298.15 stands in for the absolute entropy: the element entropies cancel in
-    // every balanced reaction, so reaction quantities are exact; Cp is taken constant from 298.15 K.
+    // every balanced reaction, so reaction quantities are exact; Cp(T) follows the species' heat-capacity model.
     let df_s_j_mol_k = (dfh_kj - dfg_kj) * 1000.0 / 298.15;
-    let t_ref = 298.15;
-    let h_j_mol = dfh_kj * 1000.0 + cp * (t - t_ref);
-    let s_j_mol_k = df_s_j_mol_k + cp * (t / t_ref).ln();
+    let h_j_mol = dfh_kj * 1000.0 + cp.delta_h(t);
+    let s_j_mol_k = df_s_j_mol_k + cp.delta_s(t);
     let mu0_j_mol = h_j_mol - t * s_j_mol_k;
-    ThermoState { h_j_mol, s_j_mol_k, cp_j_mol_k: cp, mu0_j_mol, tier }
+    ThermoState { h_j_mol, s_j_mol_k, cp_j_mol_k: cp.cp(t), mu0_j_mol, tier }
+}
+
+/// Heat-capacity model of a record in a phase: (model, true when the 298 K value itself is an estimate).
+/// Linear or not, from the formula alone (no structure): diatomics, and triatomics whose central atom is carbon or nitrogen
+/// bonded to two other atoms of one or two elements (CO2, CS2, N2O, HCN, C2H2): the classes where it matters for Cp.
+fn gas_is_linear(r: &crate::db::SpeciesRecord) -> bool {
+    let e = r.elements();
+    let n: f64 = e.values().sum();
+    if n <= 2.0 {
+        return true;
+    }
+    let c = e.get("C").copied().unwrap_or(0.0);
+    let h = e.get("H").copied().unwrap_or(0.0);
+    // triatomic with a carbon or nitrogen centre and at most one hydrogen (CO2, CS2, N2O, HCN), and a C2 hydrocarbon
+    // with as many H as C (acetylene-type)
+    if n == 3.0 && (c > 0.0 || e.contains_key("N")) && h <= 1.0 {
+        return true;
+    }
+    if n == 4.0 && c == 2.0 && h == 2.0 {
+        return true;
+    }
+    false
+}
+
+fn cp_model(r: &crate::db::SpeciesRecord, phase: &str, cp298: Option<f64>) -> (CpModel, bool) {
+    let n_atoms = r.elements().values().sum::<f64>().max(1.0);
+    match phase {
+        "s" => match cp298 {
+            Some(c) => (CpModel::einstein(c, n_atoms), false),
+            None => (CpModel::einstein(kopp_cp(&r.identity.formula, false), n_atoms), true),
+        },
+        "g" => {
+            if n_atoms <= 1.0 {
+                // monatomic ideal gas: translation only
+                return (CpModel::Constant(2.5 * R_GAS), cp298.is_none());
+            }
+            let joback = r
+                .identity
+                .smiles
+                .as_deref()
+                .and_then(crate::smiles::parse)
+                .and_then(|m| crate::joback::estimate(&m));
+            match (joback, cp298) {
+                (Some(j), Some(c)) => (CpModel::polynomial(j.cp_coeffs, c), false),
+                (Some(j), None) => (CpModel::polynomial(j.cp_coeffs, j.cp_gas(298.15)), true),
+                // data but no structure: translation, rotation and Einstein vibrations anchored at the datum
+                (None, Some(c)) => (CpModel::einstein_gas(c, c, n_atoms, gas_is_linear(r)), false),
+                // no datum, no structure: translation + rotation, vibrations frozen at 298 K, labelled estimate
+                (None, None) => (CpModel::einstein_gas(if gas_is_linear(r) { 3.5 * R_GAS } else { 4.0 * R_GAS }, 0.0, n_atoms, gas_is_linear(r)), true),
+            }
+        }
+        "l" => match cp298 {
+            Some(c) => (CpModel::Constant(c), false),
+            None => (CpModel::Constant(kopp_cp(&r.identity.formula, true)), true),
+        },
+        _ => match cp298 {
+            Some(c) => (CpModel::Constant(c), false),
+            // a dissolved species without a heat-capacity datum carries none (the solvent dominates the heat capacity)
+            None => (CpModel::Constant(0.0), true),
+        },
+    }
+}
+
+/// A conjugate acid / base pair partner of an ion: (partner record id, pKa, whether the partner is the acid).
+struct Partner {
+    id: String,
+    pka: f64,
+    partner_is_acid: bool,
+}
+
+/// Looks for the species one proton away from `rec` (the conjugate acid of an anion, the conjugate base of a cation) in
+/// the store and the pKa of that pair: tabulated sites of the acid, else the structure-based estimate (`pka_structure`),
+/// else the functional-class estimate from the formula.
+fn conjugate_partner(store: &SpeciesStore, rec: &crate::db::SpeciesRecord) -> Option<Partner> {
+    // only pure formula parsing in here: `SpeciesRecord::elements` can fall back to a store lookup, and this runs under the
+    // store's read guard (a nested read deadlocks against a waiting writer)
+    let pure_elements = |c: &crate::db::SpeciesRecord| {
+        let (body, _) = crate::ions::split_charge(&c.identity.formula);
+        crate::ions::parse_formula_strict(body).unwrap_or_default()
+    };
+    let elems = pure_elements(rec);
+    if elems.is_empty() {
+        return None;
+    }
+    let z = rec.identity.charge;
+    let has_data = |c: &crate::db::SpeciesRecord| {
+        ["aq", "l"].iter().any(|ph| c.phases.get(*ph).and_then(|p| p.thermo.as_ref()).map_or(false, |t| t.dfH.is_some() || t.dfG.is_some()))
+    };
+    let with_h = |delta: f64| {
+        let mut e = elems.clone();
+        *e.entry("H".to_string()).or_insert(0.0) += delta;
+        e.retain(|_, v| *v > 0.0);
+        e
+    };
+    // acid partner: elements + H, charge + 1 (for a species that can take a proton: anions and neutral bases)
+    let acid_elems = with_h(1.0);
+    let base_elems = with_h(-1.0);
+    for cand in store.iter() {
+        if cand.id == rec.id || !has_data(cand) {
+            continue;
+        }
+        if cand.identity.charge == z + 1 && z <= 0 && pure_elements(cand) == acid_elems {
+            let pka = cand
+                .acid_base
+                .iter()
+                .map(|s| s.pKa.value)
+                .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |c| c.min(v))))
+                .or_else(|| cand.identity.smiles.as_deref().and_then(crate::pka_structure::primary_pka))
+                .or_else(|| rec.identity.smiles.as_deref().and_then(crate::pka_structure::primary_pka))
+                .or_else(|| crate::acid_estimate::estimate_pka(&cand.identity.formula));
+            if let Some(pka) = pka {
+                return Some(Partner { id: cand.id.clone(), pka, partner_is_acid: true });
+            }
+        }
+        if z > 0 && cand.identity.charge == z - 1 && pure_elements(cand) == base_elems {
+            let pka = rec
+                .acid_base
+                .iter()
+                .map(|s| s.pKa.value)
+                .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |c| c.max(v))))
+                .or_else(|| rec.identity.smiles.as_deref().and_then(crate::pka_structure::primary_pka));
+            if let Some(pka) = pka {
+                return Some(Partner { id: cand.id.clone(), pka, partner_is_acid: false });
+            }
+        }
+    }
+    None
 }
 
 /// ln K(T, P) of a reaction when every species has formation data, else None.

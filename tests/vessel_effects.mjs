@@ -108,7 +108,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 {
   const h = vessel();
   dose(h, { reagent_id: 'water', volume_ml: 50 });
-  ctl(h, { bath_k: 255 });
+  ctl(h, { bath_k: 255, bath_coupling_w_k: 25 }); // a thermostatted jacket: the default bath couples through the glass at ~1-2 W/K
   run(h, 90);
   const s = snap(h);
   assert.ok(s.solids.some((x) => x.species === 'H2O(s)' && x.floating), 'ice solid reported');

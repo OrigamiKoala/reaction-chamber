@@ -692,17 +692,24 @@ impl Vessel {
         }
 
         if xi.abs() > 10.0 * eps_mol {
-            let eq = &self.equilibria[e];
-            self.active_reactions.push(ReactionRow {
-                id: eq.id.clone(),
-                equation: eq.equation.clone(),
-                kind: "equilibrium".to_string(),
-                rate: xi / (solv_kg * dt_s.max(0.001)),
-                log_q_over_k,
-                tier: eq.tier.clone(),
-                source: eq.source.clone(),
-                active: true,
-            });
+            let rate = xi / (solv_kg * dt_s.max(0.001));
+            // one row per equilibrium however many sweeps moved it in this step
+            if let Some(row) = self.active_reactions.iter_mut().find(|row| row.id == self.equilibria[e].id) {
+                row.rate += rate;
+            } else {
+                let eq = &self.equilibria[e];
+                self.active_reactions.push(ReactionRow {
+                    id: eq.id.clone(),
+                    equation: eq.equation.clone(),
+                    kind: "equilibrium".to_string(),
+                    rate,
+                    log_q_over_k,
+                    tier: eq.tier.clone(),
+                    source: eq.source.clone(),
+                    active: true,
+                    role: crate::vessel::is_autoprotolysis(eq).then(|| "autoprotolysis".to_string()),
+                });
+            }
         }
         q
     }
@@ -1107,6 +1114,7 @@ impl Vessel {
                         tier: eq.tier.clone(),
                         source: eq.source.clone(),
                         active: true,
+                        role: crate::vessel::is_autoprotolysis(eq).then(|| "autoprotolysis".to_string()),
                     });
                 }
             }

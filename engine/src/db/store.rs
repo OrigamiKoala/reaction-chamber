@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use crate::db::record::SpeciesRecord;
@@ -10,7 +10,8 @@ static GENERATION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug)]
 pub struct SpeciesStore {
-    records: HashMap<String, SpeciesRecord>,
+    // ordered by id: every iteration over the store (reaction discovery, candidate sets) is then deterministic
+    records: BTreeMap<String, SpeciesRecord>,
     by_inchikey: HashMap<String, Vec<String>>,
     by_formula: HashMap<String, Vec<String>>,
     by_element: HashMap<String, HashSet<String>>,
@@ -19,7 +20,7 @@ pub struct SpeciesStore {
 impl Default for SpeciesStore {
     fn default() -> Self {
         let mut store = Self {
-            records: HashMap::new(),
+            records: BTreeMap::new(),
             by_inchikey: HashMap::new(),
             by_formula: HashMap::new(),
             by_element: HashMap::new(),

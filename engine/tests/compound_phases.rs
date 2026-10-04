@@ -27,7 +27,7 @@ fn beaker_at(t: f64) -> Vessel {
 /// Holds the vessel at `t` with a bath and lets a dissolving or crystallising solid reach equilibrium there (dissolving a
 /// sugar is endothermic: 60 g in 50 mL of water would otherwise cool the solution by ~10 K and lower its saturation).
 fn equilibrate_at(v: &mut Vessel, t: f64, seconds: f64) {
-    v.set_controls(VesselControls { bath_k: Some(Some(t)), ..Default::default() });
+    v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(t)), ..Default::default() });
     for _ in 0..(seconds / 0.5) as usize { v.step(0.5).unwrap(); }
 }
 fn dose_ml(v: &mut Vessel, id: &str, ml: f64) {
@@ -114,7 +114,7 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
         if l0 < 1e-12 && l1 < 1e-12 && v.temperature_k > tm + 0.05 { t_before_melt_ok = false; }
         if s1 > 1e-9 && l1 > 1e-9 {
             saw_partial = true;
-            plateau_j += (150.0 - 0.5 * (t - 295.15)) * dt;
+            plateau_j += (150.0 - reaction_chamber_engine::heat_transfer::ambient_loss_w_per_k(0.035, 250.0, v.total_liquid_volume_ml(), t, 295.15, false) * (t - 295.15)) * dt;
             assert!((v.temperature_k - tm).abs() < 0.2, "T {} off the melting plateau", v.temperature_k);
         }
         if s1 <= 1e-9 && l1 > 1e-9 && v.temperature_k > tm + 3.0 { break; }
@@ -135,7 +135,7 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
     assert!((total_mol(&v, "C10H8", m.mw) - n_tot).abs() < 1e-9, "inert compound conserves moles");
     // cool it down: the melt freezes on the plateau and a solid reappears (announced in the reaction log)
     heater(&mut v, 0.0);
-    v.set_controls(VesselControls { bath_k: Some(Some(280.0)), ..Default::default() });
+    v.set_controls(VesselControls { bath_coupling_w_k: Some(25.0), bath_k: Some(Some(280.0)), ..Default::default() });
     let mut froze = false;
     for _ in 0..40000 {
         v.step(0.05).unwrap();

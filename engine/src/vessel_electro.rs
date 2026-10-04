@@ -137,8 +137,8 @@ impl Vessel {
         if !ph.is_finite() {
             return false;
         }
-        let ln_oh = |p: f64| ((14.0 - p).exp().ln() * 0.0) + (-(14.0 - p)) * std::f64::consts::LN_10; // ln a(OH-) = -(pKw - pH) ln 10, pKw ~ 14
-        let a_oh_ln = ln_oh(ph);
+        // ln a(OH-) = -(pKw - pH) ln 10, with the pKw of the solvent at the vessel's temperature
+        let a_oh_ln = -(self.pkw() - ph) * std::f64::consts::LN_10;
         for m in &self.minerals {
             if m.dissolved_products.is_empty() || !m.dissolved_products.contains_key(HYDROXIDE) {
                 continue;
@@ -174,12 +174,14 @@ impl Vessel {
             return 0.0;
         }
         let powered = self.electro.spec.as_ref().map_or(false, |s| s.on);
-        let metals: Vec<String> = self
+        let mut metals: Vec<String> = self
             .solid_mol
             .iter()
             .filter(|(sp, m)| **m > 1e-12 && is_conducting_solid(sp))
             .map(|(sp, _)| sp.clone())
             .collect();
+        // (hash order must never decide the electrode or half-reaction order)
+        metals.sort();
         if !powered && metals.is_empty() && self.electro.spec.is_none() {
             self.electro.mixed_potential_v = None;
             self.electro.readout = None;
@@ -191,8 +193,15 @@ impl Vessel {
         let (gamma, _aw) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
         let hyd = self.hydro_state();
         // species present in the vessel
-        let mut present: Vec<String> = self.species_mol.iter().filter(|(_, m)| **m > 1e-15).map(|(k, _)| k.clone()).collect();
+        // (a species without formation data, an ion pair or a generated complex, has no E0 and takes no part)
+        let mut present: Vec<String> = self
+            .species_mol
+            .iter()
+            .filter(|(sp, m)| **m > 1e-15 && crate::thermo::functions::has_thermo_data(sp, crate::thermo::functions::phase_of_id(sp)))
+            .map(|(k, _)| k.clone())
+            .collect();
         present.extend(self.solid_mol.iter().filter(|(_, m)| **m > 1e-15).map(|(k, _)| k.clone()));
+        present.sort();
         let mut extra: Vec<String> = metals.iter().map(|m| m.trim_end_matches("(s)").to_string()).collect();
         if let Some(spec) = &self.electro.spec {
             for e in [&spec.anode, &spec.cathode] {
@@ -529,14 +538,36 @@ impl Vessel {
         is_cell: bool,
     ) -> f64 {
         // reduction extent rate of each half-reaction (mol/s, > 0 = net reduction)
-        let mut xi: HashMap<usize, f64> = HashMap::new();
+        let mut xi: std::collections::BTreeMap<usize, f64> = std::collections::BTreeMap::new();
         for f in flows {
             let h = &halves[f.half];
             *xi.entry(f.half).or_default() += -f.net_oxidation_a / (h.n_e * crate::physics::FARADAY);
         }
+        // electroneutrality: the electrons taken up by the reductions are exactly the electrons released by the oxidations
+        // (the root finders that produced the flows stop within a tolerance; the side with the larger flux is trimmed to
+        // the smaller so that no net charge is created in the solution)
+        let (mut e_red, mut e_ox) = (0.0, 0.0);
+        for (&hi, &rate) in &xi {
+            let ne = halves[hi].n_e * rate;
+            if ne > 0.0 {
+                e_red += ne;
+            } else {
+                e_ox += -ne;
+            }
+        }
+        if (e_red > 0.0) != (e_ox > 0.0) {
+            // electrons have nowhere to come from (or go to): no current flows
+            xi.values_mut().for_each(|r| *r = 0.0);
+        } else if e_red > 0.0 && (e_red - e_ox).abs() > 0.0 {
+            let (s_red, s_ox) = if e_red > e_ox { (e_ox / e_red, 1.0) } else { (1.0, e_red / e_ox) };
+            for (&hi, rate) in xi.iter_mut() {
+                *rate *= if *rate > 0.0 { s_red } else { s_ox };
+                let _ = hi;
+            }
+        }
         // one common scale so that no reactant goes negative (and electrons stay balanced): the total demand on every
         // species, over all the half-reactions that consume it, against what the vessel holds
-        let mut demand: HashMap<String, (f64, usize)> = HashMap::new();
+        let mut demand: std::collections::BTreeMap<String, (f64, usize)> = std::collections::BTreeMap::new();
         for (&hi, &rate) in &xi {
             let h = &halves[hi];
             let ext = rate * dt_s;
@@ -584,6 +615,7 @@ impl Vessel {
                     tier: crate::types::ProvenanceTier::Estimated,
                     source: "Butler-Volmer / species store E0".to_string(),
                     active: true,
+                    role: None,
                 });
             }
         }

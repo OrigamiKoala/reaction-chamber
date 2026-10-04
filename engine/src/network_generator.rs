@@ -861,7 +861,7 @@ pub fn register_or_find_species(mol: &Molecule) -> String {
                 ranges: None,
                 params: None,
             };
-            let phase = |t: Option<crate::db::record::PhaseThermo>| crate::db::record::PhaseData { thermo: t, volume: None, rho: None, polymorph: None };
+            let phase = |t: Option<crate::db::record::PhaseThermo>| crate::db::record::PhaseData { thermo: t, volume: None, rho: None, polymorph: None, specific_area: None };
             if let Some(j) = &joback {
                 let cp = j.cp_gas(298.15);
                 let (dfh_l, dfg_l) = j.liquid_formation_kj();

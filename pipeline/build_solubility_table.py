@@ -161,6 +161,15 @@ def build():
             "tier": "Tabulated",
             "source": r["source"],
         })
+    # rows the CSV tables do not hold (pipeline/data/extra_rows.json): appended after the CSV rows
+    extra = json.loads((DATA / "extra_rows.json").read_text())
+    drop = set(extra.get("remove", []))
+    minerals = [m for m in minerals if m["id"] not in drop]
+    equilibria = [e for e in equilibria if e["id"] not in drop]
+    for m in minerals:
+        m.update(extra.get("override", {}).get(m["id"], {}))
+    minerals += extra.get("minerals", [])
+    equilibria += extra.get("equilibria", [])
     return {"version": 1, "minerals": minerals, "equilibria": equilibria}
 
 
