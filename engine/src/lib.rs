@@ -55,6 +55,7 @@ pub mod vessel_analytical;
 pub mod vessel_electro;
 pub mod vessel_discovered;
 pub mod vessel_energy;
+pub mod vessel_mixing;
 pub mod ph_electrode;
 
 use wasm_bindgen::prelude::*;
@@ -325,6 +326,12 @@ pub fn optics_data_version() -> String {
 #[wasm_bindgen]
 pub fn reagent_catalog_json() -> String {
     serde_json::to_string(&chem_db::get_reagent_catalog()).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Physical forms a solid reagent is dosed in (`data/solid_forms.json`).
+#[wasm_bindgen]
+pub fn solid_forms_json() -> String {
+    solid_forms::table_json()
 }
 
 #[wasm_bindgen]

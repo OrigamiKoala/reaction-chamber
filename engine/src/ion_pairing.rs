@@ -37,8 +37,9 @@ pub const MAX_K_A: f64 = 1.0e5;
 /// Smallest |z+ z-| of a generated pair. The Fuoss equation is validated against the 2:2 and 3:2 sulfates and carbonates;
 /// the 1:1 and 2:1 pairs are weak and not generated (their measured constants are 0.1-20 M^-1).
 pub const MIN_CHARGE_PRODUCT: i32 = 4;
-/// Contact distance offset (Angstrom) added to the sum of crystal radii in the Fuoss equation.
-pub const CONTACT_OFFSET_A: f64 = 0.5;
+/// Contact distance offset (Angstrom) added to the sum of crystal radii in the Fuoss equation
+/// to account for the solvent-separated outer-sphere hydration layer (r_H2O ~ 1.15 A).
+pub const CONTACT_OFFSET_A: f64 = 1.15;
 
 #[derive(Deserialize)]
 struct ComplexRow {
@@ -101,11 +102,22 @@ pub fn fuoss_pair_equilibrium(cation: &str, anion: &str, t_k: f64) -> Option<Gen
     if ions::species_elements(cation).map_or(false, |e| e.keys().all(|k| k == "H" || k == "O")) {
         return None;
     }
+    // a cation and an anion of one element (Cr3+ / Cr2O7 2-, Fe3+ / FeO4 2-) are the two ends of a redox couple, not an
+    // outer-sphere pair: the electron transfer, not the electrostatic contact, is what they do
+    if let (Some(ec), Some(ea)) = (ions::species_elements(cation), ions::species_elements(anion)) {
+        if ec.keys().any(|k| k != "H" && k != "O" && ea.contains_key(k)) {
+            return None;
+        }
+    }
     let a = crate::crystal::ionic_radius_angstrom(cation)? + crate::crystal::ionic_radius_angstrom(anion)? + CONTACT_OFFSET_A;
-    let k = fuoss_k(zc, za, a, t_k);
+    // the row is stated at 25 C, like every equilibrium row; its temperature dependence is the Fuoss equation's own (the
+    // permittivity of water falls with T), as a van 't Hoff enthalpy dH = R T^2 d ln K / dT
+    let k = fuoss_k(zc, za, a, 298.15);
+    let _ = t_k;
     if !(MIN_K_A..=MAX_K_A).contains(&k) || zc * za.abs() < MIN_CHARGE_PRODUCT {
         return None;
     }
+    let dh_kj = crate::physics::R_GAS * 298.15 * 298.15 * ((fuoss_k(zc, za, a, 299.15) / fuoss_k(zc, za, a, 297.15)).ln() / 2.0) / 1000.0;
     let pair = pair_species_id(cation, anion);
     // a species that exists under another name (same elements and charge as a registered complex) is not duplicated
     let key = (ions::species_elements(&pair).map(|e| ions::element_key(&e)), zc + za);
@@ -126,7 +138,7 @@ pub fn fuoss_pair_equilibrium(cation: &str, anion: &str, t_k: f64) -> Option<Gen
         reactants,
         products,
         log_k_298: k.log10(),
-        delta_h_kj: 0.0,
+        delta_h_kj: dh_kj,
         log_k_analytic: None,
         rate: None,
         tier: ProvenanceTier::Speculative,
@@ -181,6 +193,18 @@ mod tests {
         assert!(fuoss_pair_equilibrium("Na+", "Cl-", 298.15).is_none());
         assert!(fuoss_pair_equilibrium("Na+", "CO3-2", 298.15).is_none(), "2:1 pairs are not generated");
         assert!(fuoss_pair_equilibrium("Fe+3", "Fe(CN)6-4", 298.15).is_none(), "too strong for an outer-sphere pair");
+        assert!(fuoss_pair_equilibrium("Cr+3", "Cr2O7-2", 298.15).is_none(), "the two ends of one redox couple do not pair");
+    }
+
+    #[test]
+    fn pairs_are_endothermic_like_the_measured_sulfates() {
+        // measured: MgSO4 +5.5 kJ/mol, CaSO4 +6.5 (association of two hydrated ions releases water: entropy driven; the
+        // Fuoss equation gets the sign and size from the permittivity of water alone)
+        for c in ["Mg+2", "Ca+2"] {
+            let eq = fuoss_pair_equilibrium(c, "SO4-2", 330.0).unwrap();
+            assert!((eq.log_k_298 - fuoss_pair_equilibrium(c, "SO4-2", 298.15).unwrap().log_k_298).abs() < 1e-12, "stated at 25 C whatever T it was asked at");
+            assert!(eq.delta_h_kj > 3.0 && eq.delta_h_kj < 10.0, "{} dH {}", c, eq.delta_h_kj);
+        }
     }
 
     #[test]

@@ -13,9 +13,6 @@ import { VesselProfile, heightForVolume, innerRadiusAt } from './glass_profiles'
  *  frozen mass has no packing voids, so its own volume is the bulk volume divided by that factor. */
 export const BED_PACKING = 1.6;
 
-/** A metal solid whose particles are smaller than this is a powder (cemented copper, silver dust), not a piece. */
-export const METAL_PIECE_MIN_UM = 200;
-
 export interface PieceSolid {
   rgb: [number, number, number];
   /** Volume of the material itself, mL. */

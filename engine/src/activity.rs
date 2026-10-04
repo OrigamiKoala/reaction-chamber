@@ -161,6 +161,12 @@ struct PitzerRow {
     beta1: f64,
     c_phi: f64,
     alpha: f64,
+    #[serde(default)]
+    d_beta0_dt: Option<f64>,
+    #[serde(default)]
+    d_beta1_dt: Option<f64>,
+    #[serde(default)]
+    d_c_phi_dt: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -288,6 +294,24 @@ pub struct PitzerBinaryParams {
     pub beta1: f64,
     pub c_phi: f64,
     pub alpha: f64,
+    pub d_beta0_dt: Option<f64>,
+    pub d_beta1_dt: Option<f64>,
+    pub d_c_phi_dt: Option<f64>,
+}
+
+impl PitzerBinaryParams {
+    pub fn at_temp(&self, t_k: f64) -> Self {
+        let dt = t_k - 298.15;
+        Self {
+            beta0: self.beta0 + self.d_beta0_dt.unwrap_or(0.0) * dt,
+            beta1: self.beta1 + self.d_beta1_dt.unwrap_or(0.0) * dt,
+            c_phi: self.c_phi + self.d_c_phi_dt.unwrap_or(0.0) * dt,
+            alpha: self.alpha,
+            d_beta0_dt: self.d_beta0_dt,
+            d_beta1_dt: self.d_beta1_dt,
+            d_c_phi_dt: self.d_c_phi_dt,
+        }
+    }
 }
 
 impl PitzerActivity {
@@ -297,11 +321,20 @@ impl PitzerActivity {
             .pitzer_binary
             .iter()
             .find(|r| (r.cation == cat && r.anion == an) || (r.cation == an && r.anion == cat))
-            .map(|r| PitzerBinaryParams { beta0: r.beta0, beta1: r.beta1, c_phi: r.c_phi, alpha: r.alpha })
+            .map(|r| PitzerBinaryParams {
+                beta0: r.beta0,
+                beta1: r.beta1,
+                c_phi: r.c_phi,
+                alpha: r.alpha,
+                d_beta0_dt: r.d_beta0_dt,
+                d_beta1_dt: r.d_beta1_dt,
+                d_c_phi_dt: r.d_c_phi_dt,
+            })
     }
 
     /// Single electrolyte mean activity coefficient ln(gamma_pm)
     pub fn single_electrolyte_ln_gamma(m: f64, i_soln: f64, z_m: f64, z_x: f64, nu_m: f64, nu_x: f64, params: &PitzerBinaryParams, t_k: f64) -> f64 {
+        let p = params.at_temp(t_k);
         let nu = nu_m + nu_x;
         let i = i_soln.max(0.5 * (nu_m * z_m * z_m + nu_x * z_x * z_x) * m);
         let sqrt_i = i.max(1e-12).sqrt();
@@ -309,10 +342,10 @@ impl PitzerActivity {
         let b = 1.2;
 
         let f_gamma = -a_phi * (sqrt_i / (1.0 + b * sqrt_i) + (2.0 / b) * (1.0 + b * sqrt_i).ln());
-        let a_sqrt_i = params.alpha * sqrt_i;
-        let a2_i = params.alpha * params.alpha * i;
-        let b_gamma = 2.0 * params.beta0 + (2.0 * params.beta1 / a2_i) * (1.0 - (1.0 + a_sqrt_i - 0.5 * a2_i) * (-a_sqrt_i).exp());
-        let c_gamma = 1.5 * params.c_phi;
+        let a_sqrt_i = p.alpha * sqrt_i;
+        let a2_i = p.alpha * p.alpha * i;
+        let b_gamma = 2.0 * p.beta0 + (2.0 * p.beta1 / a2_i) * (1.0 - (1.0 + a_sqrt_i - 0.5 * a2_i) * (-a_sqrt_i).exp());
+        let c_gamma = 1.5 * p.c_phi;
 
         let term1 = z_m.abs() * z_x.abs() * f_gamma;
         let term2 = m * (2.0 * nu_m * nu_x / nu) * b_gamma;
@@ -325,13 +358,14 @@ impl PitzerActivity {
     /// Osmotic coefficient of a single electrolyte (Pitzer): `phi = 1 + |zM zX| f^phi + m (2 nuM nuX / nu) B^phi
     /// + m^2 (2 (nuM nuX)^1.5 / nu) C^phi`, `f^phi = -A_phi sqrt(I) / (1 + 1.2 sqrt(I))`, `B^phi = beta0 + beta1 exp(-alpha sqrt(I))`.
     pub fn single_electrolyte_osmotic_coefficient(m: f64, i_soln: f64, z_m: f64, z_x: f64, nu_m: f64, nu_x: f64, params: &PitzerBinaryParams, t_k: f64) -> f64 {
+        let p = params.at_temp(t_k);
         let nu = nu_m + nu_x;
         let i = i_soln.max(0.5 * (nu_m * z_m * z_m + nu_x * z_x * z_x) * m);
         let sqrt_i = i.max(1e-12).sqrt();
         let a_phi = debye_huckel_a_phi(t_k);
         let f_phi = -a_phi * sqrt_i / (1.0 + 1.2 * sqrt_i);
-        let b_phi = params.beta0 + params.beta1 * (-params.alpha * sqrt_i).exp();
-        1.0 + z_m.abs() * z_x.abs() * f_phi + m * (2.0 * nu_m * nu_x / nu) * b_phi + m * m * (2.0 * (nu_m * nu_x).powf(1.5) / nu) * params.c_phi
+        let b_phi = p.beta0 + p.beta1 * (-p.alpha * sqrt_i).exp();
+        1.0 + z_m.abs() * z_x.abs() * f_phi + m * (2.0 * nu_m * nu_x / nu) * b_phi + m * m * (2.0 * (nu_m * nu_x).powf(1.5) / nu) * p.c_phi
     }
 }
 
@@ -820,22 +854,27 @@ impl ActivityModel for UnifacActivity {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BornTransferActivity;
 
-impl ActivityModel for BornTransferActivity {
-    fn ln_gamma(&self, species: &str, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
+impl BornTransferActivity {
+    /// Born transfer free energy factor ln(gamma_Born) for species between water (eps=78.4) and a phase of dielectric constant `eps_phase`.
+    pub fn ln_gamma_born(species: &str, eps_phase: f64, t_k: f64) -> f64 {
         let charge = crate::chem_db::get_species_thermo(species).charge as f64;
         if charge == 0.0 {
             return 0.0;
         }
         let eps_water = 78.4;
-        let eps_phase = phase.dielectric_constant.clamp(1.5, 100.0);
-        if (eps_phase - eps_water).abs() < 0.5 {
+        let eps_p = eps_phase.clamp(1.5, 100.0);
+        if (eps_p - eps_water).abs() < 0.5 {
             return 0.0;
         }
-        // Born equation: delta_G_trans = (N_A * e^2 * z^2) / (8 * pi * eps_0 * r_ion) * (1/eps_phase - 1/eps_water)
-        // With e^2 / (8 pi eps_0 k_B) ~ 83.5 Å K:
         let r_ion_angstrom = BDotActivity::ion_size_angstrom(species);
-        let factor = (83.5 * charge * charge / (r_ion_angstrom * t_k)) * (1.0 / eps_phase - 1.0 / eps_water);
-        factor.clamp(-20.0, 30.0)
+        let factor = (83500.0 * charge * charge / (r_ion_angstrom * t_k.max(100.0))) * (1.0 / eps_p - 1.0 / eps_water);
+        factor.clamp(-40.0, 50.0)
+    }
+}
+
+impl ActivityModel for BornTransferActivity {
+    fn ln_gamma(&self, species: &str, phase: &LiquidPhase, t_k: f64, _p_atm: f64) -> f64 {
+        Self::ln_gamma_born(species, phase.dielectric_constant, t_k)
     }
 
     fn solvent_activity(&self, phase: &LiquidPhase, _t_k: f64, _p_atm: f64) -> f64 {

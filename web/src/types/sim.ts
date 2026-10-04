@@ -533,6 +533,10 @@ export interface Portion {
   organic_mol: Record<string, number>;
   /** Solids carried over with the slurry (species → mol); suspended fraction goes first. */
   solid_mol: Record<string, number>;
+  /** Particle populations of those solids (engine-internal, passed back unchanged so grains keep their size). */
+  particles?: Record<string, unknown>;
+  /** Physical form of the loose solids (a ribbon stays a ribbon when it is poured on); passed back unchanged. */
+  forms?: Record<string, string>;
 }
 
 export interface VesselControls {
@@ -582,6 +586,20 @@ export interface ReagentCatalogEntry {
   dropper?: boolean;
   /** InChIKey of the main species (identity; absent for pseudo-reagents such as starch solution). */
   inchi_key?: string;
+  /** Physical form a solid reagent is dosed in ('piece' | 'turnings' | 'granules' | 'powder', see `getSolidForms`); absent = the solid's own grain. */
+  solid_form?: string;
+  /** Grain size of that form when the reagent's own differs from the form's default, um. */
+  particle_um?: number;
+}
+
+/** One electrode material of the console (engine `vessel_electro::electrode_materials`). */
+export interface ElectrodeMaterialInfo {
+  symbol: string;
+  e0_v?: number | null;
+  inert: boolean;
+  /** Linear sRGB of the bulk metal from the solid's optical record. */
+  rgb?: [number, number, number] | null;
+  density_g_ml?: number | null;
 }
 
 /** Messages the simulation worker understands (added to the existing PING/WASM_ROUNDTRIP/... set). */

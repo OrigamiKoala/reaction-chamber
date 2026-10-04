@@ -15,6 +15,7 @@ import {
   NmrSpectrumData,
   MsSpectrumData,
   FlameTestResult,
+  ElectrodeMaterialInfo,
 } from '../types/sim';
 
 export class SimController {
@@ -95,6 +96,16 @@ export class SimController {
   /** The engine's single (Speculative) RGB -> spectrum inversion: absorbance per cm whose transmission over `pathCm` has this colour. */
   public async colourToAbsorbance(rgb: [number, number, number], pathCm: number): Promise<number[]> {
     return this.sendRequest<number[]>('COLOUR_TO_ABSORBANCE', { r: rgb[0], g: rgb[1], b: rgb[2], path_cm: pathCm });
+  }
+
+  /** Forms a solid reagent is dosed in (engine `data/solid_forms.json`): the grain size and whether it stays separate pieces. */
+  public async getSolidForms(): Promise<Record<string, { diameter_um: number; loose_pieces: boolean }>> {
+    return this.sendRequest('SOLID_FORMS');
+  }
+
+  /** The electrode materials the potentiostat offers, with the colour and density of the solid (engine `electrode_materials`). */
+  public async getElectrodeMaterials(): Promise<ElectrodeMaterialInfo[]> {
+    return this.sendRequest<ElectrodeMaterialInfo[]>('ELECTRODE_MATERIALS');
   }
 
   public async getReagentCatalog(): Promise<ReagentCatalogEntry[]> {

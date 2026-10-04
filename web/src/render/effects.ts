@@ -5,7 +5,7 @@ import { LiquidBody } from './liquid_material';
 import { SpriteParticles, BubbleSystem } from './particles';
 import { FlameCluster } from './flame';
 import { softSpriteTexture, smokePuffTexture, dropletsTexture } from './textures';
-import { SolidPieces, getRibbonGeo, BED_PACKING, METAL_PIECE_MIN_UM, PieceSolid } from './solid_pieces';
+import { SolidPieces, getRibbonGeo, BED_PACKING, PieceSolid } from './solid_pieces';
 import { ELECTRODE_X, ELECTRODE_RADIUS, electrodeBottomY } from './electrode_geometry';
 import { blackbodyHue, glowBrightness } from './blackbody';
 
@@ -504,8 +504,7 @@ export class VesselEffects {
       });
       // A metal is a ribbon / granules / a rod only when the engine says it is a piece; a cemented or precipitated metal
       // (copper on magnesium, silver mirror dust) is a powder and settles like any other solid, just with a metallic sheen.
-      const metalPowder =
-        s.kind === 'metal' && (s.morphology === 'bed' || s.morphology === 'film' || (s.morphology === undefined && s.particle_diameter_um < METAL_PIECE_MIN_UM));
+      const metalPowder = s.kind === 'metal' && s.morphology !== 'pieces' && s.morphology !== 'monolith';
       if (s.kind === 'metal' && !metalPowder) {
         metals.push(piece());
         continue;

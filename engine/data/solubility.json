@@ -3249,6 +3249,39 @@
    "source": "PHREEQC llnl.dat (log K); the enthalpy follows from the formation enthalpies of Al+3, OH- and Al(OH)4- (llnl.dat gives it for the H+ form of the reaction)"
   },
   {
+   "id": "chromium_monohydroxo",
+   "name": "Chromium(III) monohydroxide formation",
+   "equation": "Cr+3 + H2O <=> CrOH+2 + H+",
+   "reactants": {
+    "Cr+3": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "CrOH+2": 1.0,
+    "H+": 1.0
+   },
+   "log_k_298": -4.0,
+   "delta_h_kj": 40.0,
+   "tier": "Tabulated",
+   "source": "Baes & Mesmer (1976) / PHREEQC"
+  },
+  {
+   "id": "cr_tetrahydroxo",
+   "name": "Tetrahydroxochromate(III) formation",
+   "equation": "Cr+3 + 4 OH- <=> Cr(OH)4-",
+   "reactants": {
+    "Cr+3": 1.0,
+    "OH-": 4.0
+   },
+   "products": {
+    "Cr(OH)4-": 1.0
+   },
+   "log_k_298": 29.9,
+   "delta_h_kj": -45.0,
+   "tier": "Tabulated",
+   "source": "Baes & Mesmer (1976) / PHREEQC"
+  },
+  {
    "id": "iron_monohydroxo",
    "name": "Iron(III) monohydroxide formation",
    "equation": "Fe+3 + H2O <=> FeOH+2 + H+",

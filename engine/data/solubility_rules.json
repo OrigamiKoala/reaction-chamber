@@ -1,5 +1,5 @@
 {
- "_comment": "General solubility rules (src/solubility.rs, `insoluble_by_rules`): the fallback that says whether a cation-anion pair without a tabulated Ksp and without formation data forms an insoluble solid. Textbook rules (alkali metals, ammonium and H+ give soluble salts; nitrates, acetates, perchlorates soluble; halides soluble except Ag, Pb, Hg(I), Cu(I), Tl; sulfates except Ba, Sr, Pb, Ca, Ag; hydroxides, sulfides, carbonates, phosphates mostly insoluble ...). mode: never | always | only (insoluble with the listed cations, optionally with every group-2 cation or every cation of charge >= 3) | except (insoluble with every cation but the listed ones, optionally also not with group 2). An anion with no rule forms no solid. Tier Speculative.",
+ "_comment": "General solubility rules (src/solubility.rs, `insoluble_by_rules`): the fallback that says whether a cation-anion pair without a tabulated Ksp and without formation data forms an insoluble solid. Textbook rules (alkali metals, ammonium and H+ give soluble salts; nitrates, acetates, perchlorates soluble; halides soluble except Ag, Pb, Hg(I), Cu(I), Tl; sulfates except Ba, Sr, Pb, Ca, Ag; hydroxides, sulfides, carbonates, phosphates mostly insoluble ...). mode: never | always | only (insoluble with the listed cations, optionally with every group-2 cation or every cation of charge >= 3) | except (insoluble with every cation but the listed ones, optionally also not with group 2). An anion with no rule forms no solid. Tier Speculative. Mercury(II) chloride, bromide and cyanide are soluble molecular salts (HgCl2 74 g/L); its iodide and thiocyanate are insoluble.",
  "always_soluble_cations": [
   "Li+",
   "Na+",
@@ -45,9 +45,22 @@
    "anions": [
     "Cl-",
     "Br-",
+    "CN-"
+   ],
+   "mode": "only",
+   "cations": [
+    "Ag+",
+    "Pb+2",
+    "Hg2+2",
+    "Cu+",
+    "Tl+",
+    "Au+"
+   ]
+  },
+  {
+   "anions": [
     "I-",
     "SCN-",
-    "CN-",
     "BrO3-"
    ],
    "mode": "only",

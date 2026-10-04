@@ -1,0 +1,19 @@
+{
+  "model": "Redlich-Kister excess molar enthalpy of binary liquid mixtures: H_E = x_a x_b sum_k A_k (x_a - x_b)^k, J per mole of mixture, at T_K",
+  "tier": "estimated",
+  "source": "Redlich-Kister coefficients fitted to a few recalled calorimetric values per pair (heat of mixing at 25 C of the order of the literature minimum / equimolar value, +-30 %); not read from a database. Used as a residual on top of the UNIFAC excess enthalpy (`vessel_mixing.rs`): H_E(pair) = H_E(UNIFAC) + [this - UNIFAC(pair)]. A pair that is not listed gets the UNIFAC temperature derivative alone.",
+  "pairs": [
+    {"a": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "b": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "A_J_mol": [-2400.0, 2970.0, -1230.0], "T_K": 298.15, "note": "ethanol (a) + water (b): exothermic, minimum about -0.8 kJ/mol near x_ethanol 0.25"},
+    {"a": "OKKJLVBELUTLKV-UHFFFAOYSA-N", "b": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "A_J_mol": [-3350.0, 800.0, 300.0], "T_K": 298.15, "note": "methanol (a) + water (b): exothermic, about -0.8 kJ/mol near equimolar"},
+    {"a": "UHOVQNZJYSORNB-UHFFFAOYSA-N", "b": "XDTMQSROBMDMFD-UHFFFAOYSA-N", "A_J_mol": [3200.0], "T_K": 298.15, "note": "benzene (a) + cyclohexane (b): endothermic, about +0.8 kJ/mol equimolar"},
+    {"a": "UHOVQNZJYSORNB-UHFFFAOYSA-N", "b": "VLKZOEOYAKHREP-UHFFFAOYSA-N", "A_J_mol": [3600.0], "T_K": 298.15, "note": "benzene (a) + hexane (b): endothermic, about +0.9 kJ/mol equimolar"},
+    {"a": "CSCPPACGZOOCAN-UHFFFAOYSA-N", "b": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "A_J_mol": [-1800.0, 3100.0, -1500.0], "T_K": 298.15, "note": "acetone (a) + water (b): S-shaped, exothermic at low x_acetone"},
+    {"a": "CSCPPACGZOOCAN-UHFFFAOYSA-N", "b": "HEDRZPFGACZZDS-UHFFFAOYSA-N", "A_J_mol": [-7600.0, -1200.0, 800.0], "T_K": 298.15, "note": "acetone (a) + chloroform (b): strongly exothermic, H-bonding minimum ~ -1.9 kJ/mol"},
+    {"a": "CSCPPACGZOOCAN-UHFFFAOYSA-N", "b": "OKKJLVBELUTLKV-UHFFFAOYSA-N", "A_J_mol": [2000.0, -350.0], "T_K": 298.15, "note": "acetone (a) + methanol (b): endothermic, maximum ~ +0.5 kJ/mol"},
+    {"a": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", "b": "VLKZOEOYAKHREP-UHFFFAOYSA-N", "A_J_mol": [2300.0, 1100.0], "T_K": 298.15, "note": "ethanol (a) + hexane (b): endothermic, maximum ~ +0.6 kJ/mol"},
+    {"a": "OKKJLVBELUTLKV-UHFFFAOYSA-N", "b": "VLKZOEOYAKHREP-UHFFFAOYSA-N", "A_J_mol": [2800.0, 1400.0], "T_K": 298.15, "note": "methanol (a) + hexane (b): endothermic, maximum ~ +0.7 kJ/mol"},
+    {"a": "RTZKZFJDLAIYFH-UHFFFAOYSA-N", "b": "HEDRZPFGACZZDS-UHFFFAOYSA-N", "A_J_mol": [-10400.0, -1800.0], "T_K": 298.15, "note": "diethyl ether (a) + chloroform (b): strongly exothermic, minimum ~ -2.6 kJ/mol"},
+    {"a": "XEKOWRVHYACXOJ-UHFFFAOYSA-N", "b": "XLYOFNOQVPJJNP-UHFFFAOYSA-N", "A_J_mol": [3100.0], "T_K": 298.15, "note": "ethyl acetate (a) + water (b): endothermic"},
+    {"a": "YXFVVABEGXRONW-UHFFFAOYSA-N", "b": "XDTMQSROBMDMFD-UHFFFAOYSA-N", "A_J_mol": [2400.0], "T_K": 298.15, "note": "toluene (a) + cyclohexane (b): endothermic, maximum ~ +0.6 kJ/mol"}
+  ]
+}

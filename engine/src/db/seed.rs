@@ -425,6 +425,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("MnO4-", "MnO4-", -1, -541.4, -447.2, 117.0, None, Some("[O-][Mn](=O)(=O)=O")),
         make_aq("Cr2O7-2", "Cr2O7-2", -2, -1490.3, -1301.1, 220.0, None, None),
         make_aq("CrO4-2", "CrO4-2", -2, -881.2, -727.75, 110.0, None, None),
+        make_aq("Cr+3", "Cr+3", 3, -256.0, -215.5, 0.0, None, Some("[Cr+3]")),
         make_aq_identity("starch", "C6H10O5", 0),
         make_aq_identity("starch_I3", "C6H10O5I3-", -1),
 
@@ -501,6 +502,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("Al(s)", "Al", 0.0, 0.0, 24.20, 2.70),
         make_solid("Co(s)", "Co", 0.0, 0.0, 24.81, 8.90),
         make_solid("Mn(s)", "Mn", 0.0, 0.0, 26.32, 7.43),
+        make_solid("Cr(s)", "Cr", 0.0, 0.0, 23.35, 7.19),
         make_solid("CuSO4(s)", "CuSO4", -771.4, -662.2, 100.0, 3.60),
         make_solid("Na(s)", "Na", 0.0, 0.0, 28.2, 0.97),
         make_solid("Na2S(s)", "Na2S", -364.8, -349.8, 77.0, 1.86),

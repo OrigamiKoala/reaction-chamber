@@ -297,11 +297,14 @@ impl Vessel {
         // co-solvents (ethanol) do not dilute the aqueous chemistry until Stage 3 makes this per-phase. No scale gate:
         // the only requirement is that an aqueous phase exists at all.
         let solv_kg = (self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528).max(1e-12);
+        let mut q_joules = 0.0;
         if !self.has_aqueous_phase() || solv_kg <= 0.0 {
-            return 0.0;
+            for p in 0..self.extra_liquids.len() {
+                q_joules += self.step_extra_liquid_equilibria(p, dt_s);
+            }
+            return q_joules;
         }
         let t_k = self.temperature_k;
-        let mut q_joules = 0.0;
 
         // Minerals that can matter right now (solid present, or every ion present): found once per sweep, so each
         // equilibrium looks only at these instead of the whole 130-row table.
@@ -327,6 +330,9 @@ impl Vessel {
         }
         q_joules += self.saturate_minerals(&active, solv_kg, t_k, &gamma_cache);
         q_joules += self.solve_coupled_equilibria(solv_kg, t_k, dt_s);
+        for p in 0..self.extra_liquids.len() {
+            q_joules += self.step_extra_liquid_equilibria(p, dt_s);
+        }
 
         // Numerical dust: exact zeros are removed so that species tables only list what is present.
         self.species_mol.retain(|_, m| *m > 0.0);
@@ -1120,5 +1126,140 @@ impl Vessel {
             }
         }
         q
+    }
+
+    /// Relaxes fast chemical equilibria in an extra liquid phase (non-aqueous layer), adjusting K for Born transfer energies.
+    pub(crate) fn step_extra_liquid_equilibria(&mut self, p: usize, _dt_s: f64) -> f64 {
+        if p >= self.extra_liquids.len() {
+            return 0.0;
+        }
+        let t_k = self.temperature_k;
+        let eps_phase = self.phase_dielectric_constant(&self.extra_liquids[p]);
+        let solv_kg = (self.phase_mass_g(&self.extra_liquids[p]) * 1e-3).max(1e-12);
+        if solv_kg <= 1e-12 {
+            return 0.0;
+        }
+
+        let mut q_joules = 0.0;
+        for eq in &self.equilibria {
+            if eq.rate.is_some() && self.slow_exclude {
+                continue;
+            }
+            let have_reac = eq.reactants.keys().all(|k| self.extra_liquids[p].get(k).copied().unwrap_or(0.0) > 1e-20);
+            let have_prod = eq.products.keys().all(|k| self.extra_liquids[p].get(k).copied().unwrap_or(0.0) > 1e-20);
+            if !have_reac && !have_prod {
+                continue;
+            }
+
+            let ln_k_aq = eq.log_k_at(t_k) * std::f64::consts::LN_10;
+            let mut delta_ln_k = 0.0;
+            for (sp, &coeff) in &eq.products {
+                let ln_g = crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_phase, t_k);
+                delta_ln_k -= coeff * ln_g;
+            }
+            for (sp, &coeff) in &eq.reactants {
+                let ln_g = crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_phase, t_k);
+                delta_ln_k += coeff * ln_g;
+            }
+            let ln_k_phase = ln_k_aq + delta_ln_k;
+
+            let mut ln_q_prod = 0.0;
+            let mut ok_prod = true;
+            for (sp, &coeff) in &eq.products {
+                let c = self.extra_liquids[p].get(sp).copied().unwrap_or(0.0) / solv_kg;
+                if c <= 1e-30 {
+                    ok_prod = false;
+                    break;
+                }
+                ln_q_prod += coeff * c.ln();
+            }
+            let mut ln_q_reac = 0.0;
+            let mut ok_reac = true;
+            for (sp, &coeff) in &eq.reactants {
+                let c = self.extra_liquids[p].get(sp).copied().unwrap_or(0.0) / solv_kg;
+                if c <= 1e-30 {
+                    ok_reac = false;
+                    break;
+                }
+                ln_q_reac += coeff * c.ln();
+            }
+            let ln_q = if ok_prod && ok_reac {
+                ln_q_prod - ln_q_reac
+            } else if !ok_prod {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            };
+
+            let diff = ln_q - ln_k_phase;
+            if diff.abs() < 1e-5 {
+                continue;
+            }
+
+            let mut max_fwd = f64::INFINITY;
+            for (sp, &coeff) in &eq.reactants {
+                let n = self.extra_liquids[p].get(sp).copied().unwrap_or(0.0);
+                max_fwd = max_fwd.min(n / coeff);
+            }
+            let mut max_rev = f64::INFINITY;
+            for (sp, &coeff) in &eq.products {
+                let n = self.extra_liquids[p].get(sp).copied().unwrap_or(0.0);
+                max_rev = max_rev.min(n / coeff);
+            }
+            if max_fwd <= 0.0 && max_rev <= 0.0 {
+                continue;
+            }
+
+            let lo = -max_rev.max(0.0);
+            let hi = max_fwd.max(0.0);
+            if lo >= hi {
+                continue;
+            }
+
+            let eval_ln_q = |xi: f64| -> f64 {
+                let mut p_sum = 0.0;
+                for (sp, &coeff) in &eq.products {
+                    let n = (self.extra_liquids[p].get(sp).copied().unwrap_or(0.0) + coeff * xi).max(1e-30);
+                    p_sum += coeff * (n / solv_kg).ln();
+                }
+                let mut r_sum = 0.0;
+                for (sp, &coeff) in &eq.reactants {
+                    let n = (self.extra_liquids[p].get(sp).copied().unwrap_or(0.0) - coeff * xi).max(1e-30);
+                    r_sum += coeff * (n / solv_kg).ln();
+                }
+                p_sum - r_sum
+            };
+
+            let mut best_xi = 0.0;
+            let mut cur_lo = lo;
+            let mut cur_hi = hi;
+            for _ in 0..40 {
+                let mid = 0.5 * (cur_lo + cur_hi);
+                let q_mid = eval_ln_q(mid);
+                if q_mid > ln_k_phase {
+                    cur_hi = mid;
+                } else {
+                    cur_lo = mid;
+                }
+                best_xi = mid;
+                if (cur_hi - cur_lo).abs() < 1e-12 * (max_fwd + max_rev).max(1e-12) {
+                    break;
+                }
+            }
+
+            if best_xi.abs() > 1e-25 {
+                for (sp, &coeff) in &eq.products {
+                    let val = self.extra_liquids[p].entry(sp.clone()).or_default();
+                    *val = (*val + coeff * best_xi).max(0.0);
+                }
+                for (sp, &coeff) in &eq.reactants {
+                    let val = self.extra_liquids[p].entry(sp.clone()).or_default();
+                    *val = (*val - coeff * best_xi).max(0.0);
+                }
+                q_joules += best_xi * (-eq.delta_h_kj * 1000.0);
+            }
+        }
+        self.extra_liquids[p].retain(|_, &mut v| v > 1e-25);
+        q_joules
     }
 }

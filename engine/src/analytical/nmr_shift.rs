@@ -819,7 +819,11 @@ pub fn sp3_c13_shift(g: &Mol, i: usize) -> f64 {
             }
             let (a, b, c) = sub_c13(g, v, grp);
             match du {
-                0 => alphas.push(a),
+                0 => {
+                    if grp != Grp::F {
+                        alphas.push(a);
+                    }
+                }
                 1 => beta += b,
                 2 => gamma += c,
                 _ => {}
@@ -843,8 +847,17 @@ pub fn sp3_c13_shift(g: &Mol, i: usize) -> f64 {
             }
         }
     }
+    let n_f = g.nbrs(i).filter(|&v| classify(g, v, i) == Grp::F).count();
+    let f_alpha = match n_f {
+        0 => 0.0,
+        1 => 68.0,
+        2 => 110.0,
+        3 => 118.0,
+        _ => 121.0,
+    };
+    s += f_alpha;
     alphas.sort_by(|a, b| b.partial_cmp(a).unwrap());
-    let mut f = 1.0;
+    let mut f = if n_f > 0 { 0.8 } else { 1.0 };
     for a in alphas {
         s += a * f;
         f *= 0.8;
@@ -861,6 +874,19 @@ pub fn sp3_c13_shift(g: &Mol, i: usize) -> f64 {
 pub fn alkene_c13_shift(g: &Mol, c: usize) -> f64 {
     let d = g.adj[c].iter().find(|&&(k, o)| (o - 2.0).abs() < 1e-9 && g.atoms[k].el == "C").map(|&(k, _)| k);
     let Some(d) = d else { return 123.3 };
+    let is_ketene = g.adj[d].iter().any(|&(k, o)| (o - 2.0).abs() < 1e-9 && g.atoms[k].el == "O");
+    if is_ketene {
+        let mut s_ketene = 2.5;
+        for y in g.nbrs(c).filter(|&y| y != d) {
+            match classify(g, y, c) {
+                Grp::Alkyl => s_ketene += 15.0,
+                Grp::Aryl => s_ketene += 25.0,
+                Grp::Vinyl => s_ketene += 20.0,
+                _ => s_ketene += 10.0,
+            }
+        }
+        return s_ketene;
+    }
     let mut s = 123.3;
     let side = |from: usize, other: usize, alpha_side: bool, s: &mut f64| {
         for y in g.nbrs(from).filter(|&y| y != other) {
@@ -1073,6 +1099,10 @@ pub fn carbonyl_c13_shift(g: &Mol, c: usize) -> (f64, &'static str) {
         .sum();
     let ring = g.nbrs(c).filter_map(|k| g.ring_size_of_bond(c, k)).min().unwrap_or(0);
     let _ = cls;
+    let dbl_c = rest.iter().any(|&k| g.adj[c].iter().any(|&(j, o)| j == k && (o - 2.0).abs() < 1e-9 && g.atoms[k].el == "C"));
+    if dbl_c {
+        return (194.0 + 5.0 * alpha_branch, "ketene C=O");
+    }
     if n_o >= 2 && n_n == 0 && !acid && !carboxylate {
         return (155.0, "carbonate C=O");
     }

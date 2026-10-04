@@ -20,7 +20,7 @@ import { PH_PROBE_RADIUS } from '../equipment/ph_meter';
 import { layerIndexAtHeight } from '../equipment/probe_math';
 import { HOTPLATE_TOP_Y } from '../equipment/hotplate';
 import { BURNER_TOP_Y } from '../equipment/burner';
-import { BottleAssembly, BottleInput, createBottleAssembly, entryToBottleInput, defaultContentColor, looksLikeMetal } from '../equipment/bottle';
+import { BottleAssembly, BottleInput, createBottleAssembly, entryToBottleInput, defaultContentColor, isLooseSolid } from '../equipment/bottle';
 import { buildLabRoom, LabRoom, BENCH } from './lab_room';
 import { ReagentShelf } from './shelf';
 import { Animator, AnimTask, PourSource, dropsTask, ease, moveTask, once, pourTask, solidTask } from './animations';
@@ -837,9 +837,7 @@ export class BenchScene {
       }
       this.frameForAddition(target);
       const meta = this.shelf.getMeta(sourceBottleId);
-      const metal = meta
-        ? looksLikeMetal(meta.formula, meta.name) && (meta.form === 'solid' || !!meta.by_mass)
-        : /(^|[_\-\s])(mg|zn|fe|al|cu|sn)([_\-\s]|$)/i.test(sourceBottleId);
+      const metal = isLooseSolid(meta);
       const asm = this.shelf.get(sourceBottleId);
       let start: THREE.Vector3;
       if (asm) {

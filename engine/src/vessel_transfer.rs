@@ -69,6 +69,32 @@ impl Vessel {
         Hydro { st, liquid_m3, rho_l, eta, nu, eps }
     }
 
+    /// The liquid layers as a settling column, top (lightest) first: height (m), density (kg/m3) and viscosity (Pa s) of each.
+    pub(crate) fn settling_column(&self) -> Vec<(f64, f64, f64)> {
+        let t = self.temperature_k;
+        let area_m2 = std::f64::consts::PI * (self.config.inner_radius_cm.max(0.5) / 100.0).powi(2);
+        let andrade = |sp: &str| -> Option<(f64, f64)> { self.molecule(sp).and_then(|m| m.andrade_viscosity) };
+        let mut col: Vec<(f64, f64, f64)> = self
+            .liquid_maps()
+            .filter_map(|m| {
+                let vol_ml = self.phase_volume_ml(m, t);
+                if vol_ml <= 1e-6 {
+                    return None;
+                }
+                let rho = (self.phase_mass_g(m) / vol_ml * 1000.0).clamp(300.0, 3000.0);
+                let eta = (crate::props::calculate_viscosity_cp(m, t, vol_ml, &andrade) * 1e-3).clamp(1e-4, 100.0);
+                Some((vol_ml * 1e-6 / area_m2, rho, eta))
+            })
+            .collect();
+        col.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        col
+    }
+
+    /// See [`settling_time_through_column`].
+    pub(crate) fn settling_time_through(&self, column: &[(f64, f64, f64)], d_m: f64, rho_p: f64, phi: f64, t_k: f64) -> f64 {
+        settling_time_through_column(column, d_m, rho_p, phi, t_k)
+    }
+
     /// Film mass-transfer coefficient (m/s) of a particle of diameter `d` of solid `sp` for a solute of diffusivity `diff`.
     pub(crate) fn film_coefficient(&self, sp: &str, d: f64, diff: f64, h: &Hydro) -> f64 {
         let rho_p = self.solid_props(sp).density_g_ml * 1000.0;
@@ -103,7 +129,7 @@ impl Vessel {
             if empty {
                 self.particle_populations.insert(sp.clone(), ParticlePopulation::from_mass_and_diameter(mass_g, props.density_g_ml, props.particle_um * 1e-6));
             } else if let Some(p) = self.particle_populations.get_mut(sp) {
-                p.scale_to_volume(vol_m3);
+                crate::transfer::change_to_volume(p, vol_m3);
             }
         }
         self.particle_populations.retain(|k, _| sps.contains(k));
@@ -336,5 +362,42 @@ impl Vessel {
         }
         let key = self.liquid_key_of_solid(sp).unwrap_or_else(|| sp.trim_end_matches("(s)").to_string());
         species_diffusivity_water_m2_s(&key, t)
+    }
+}
+
+/// Time (s) for particles of diameter `d_m` and density `rho_p` to settle out of a liquid column of layers (top, lightest
+/// first: height m, density kg/m3, viscosity Pa s): through every layer lighter than the particle, one after the other, to
+/// rest on the first layer that is denser (the interface) or on the floor. Infinite when the particle floats on the top
+/// layer or stays Brownian in one of the layers on its way.
+pub(crate) fn settling_time_through_column(column: &[(f64, f64, f64)], d_m: f64, rho_p: f64, phi: f64, t_k: f64) -> f64 {
+    let mut total = 0.0;
+    for (i, &(h, rho_l, eta)) in column.iter().enumerate() {
+        if rho_l >= rho_p {
+            // a denser layer: the particle rests on top of it; if that is the top layer it floats
+            return if i == 0 { f64::INFINITY } else { total };
+        }
+        total += crate::transfer::settling::settling_time_s(h, d_m, rho_p, rho_l, eta, phi, t_k);
+    }
+    total
+}
+
+#[cfg(test)]
+mod column_tests {
+    use super::*;
+
+    #[test]
+    fn a_particle_between_two_layers_rests_on_the_interface() {
+        // 3 cm of water (1000 kg/m3) on 2 cm of a dense solvent (1330)
+        let col = [(0.03, 1000.0, 1.0e-3), (0.02, 1330.0, 4.0e-4)];
+        let t_mid = settling_time_through_column(&col, 50e-6, 1150.0, 0.001, 293.15);
+        let t_water_only = crate::transfer::settling::settling_time_s(0.03, 50e-6, 1150.0, 1000.0, 1.0e-3, 0.001, 293.15);
+        assert!(t_mid.is_finite() && (t_mid - t_water_only).abs() < 1e-9, "it falls through the water only: {} vs {}", t_mid, t_water_only);
+        // a particle denser than both falls through both, so it takes longer
+        let t_heavy = settling_time_through_column(&col, 50e-6, 1800.0, 0.001, 293.15);
+        let t_heavy_water = crate::transfer::settling::settling_time_s(0.03, 50e-6, 1800.0, 1000.0, 1.0e-3, 0.001, 293.15);
+        assert!(t_heavy > 0.0 && t_heavy_water > 0.0 && t_heavy != t_mid);
+        assert!(t_heavy > t_heavy_water, "the second layer adds to the time");
+        // lighter than the top layer: it floats
+        assert!(settling_time_through_column(&col, 50e-6, 900.0, 0.001, 293.15).is_infinite());
     }
 }

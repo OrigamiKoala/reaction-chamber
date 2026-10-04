@@ -178,6 +178,9 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
 
     let mut present_halves = Vec::new();
     for sp in &present_species {
+        if super::redox::is_derived_ion_form(sp) {
+            continue;
+        }
         let ox_map = determine_oxidation_states_exact(sp);
         let elem_map = crate::ions::species_elements(sp).unwrap_or_default();
         for elem in elem_map.keys() {
@@ -204,6 +207,9 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
                 if has_twin {
                     continue;
                 }
+            }
+            if super::redox::is_derived_ion_form(&rec.id) {
+                continue;
             }
             let ox_map = determine_oxidation_states_exact(&rec.id);
             for elem in elems.keys() {
@@ -248,8 +254,13 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
     let oh_minus = crate::db::seed::HYDROXIDE.to_string();
 
     for (s_ox, p_ox, elem_ox, ox_s, ox_p) in &oxidation_couples {
-        for (s_red, p_red, _elem_red, _red_s, _red_p) in &reduction_couples {
+        for (s_red, p_red, elem_red, red_s, red_p) in &reduction_couples {
             if s_ox == s_red && p_ox == p_red {
+                continue;
+            }
+            // two forms of one element exchanging their oxidation levels (Fe2+ + FeSO4+ -> Fe3+ + FeSO4) change nothing but
+            // the speciation, which the association equilibria already hold; only a net change of oxidation levels is redox
+            if elem_ox == elem_red && (ox_s - red_p).abs() < 1e-3 && (red_s - ox_p).abs() < 1e-3 {
                 continue;
             }
 

@@ -23,6 +23,8 @@ import init, {
   vessel_flame_test,
   colour_to_absorbance,
   reagent_catalog_json,
+  solid_forms_json,
+  electrode_materials,
   register_compound,
   register_reaction,
   register_equilibrium,
@@ -270,6 +272,16 @@ self.onmessage = async (e: MessageEvent) => {
           payload: JSON.parse(res),
           requestId,
         });
+        break;
+      }
+
+      case 'SOLID_FORMS': {
+        self.postMessage({ type: 'SOLID_FORMS_RESPONSE', payload: JSON.parse(solid_forms_json()), requestId });
+        break;
+      }
+
+      case 'ELECTRODE_MATERIALS': {
+        self.postMessage({ type: 'ELECTRODE_MATERIALS_RESPONSE', payload: electrode_materials(), requestId });
         break;
       }
 

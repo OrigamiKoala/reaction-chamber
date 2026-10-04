@@ -78,11 +78,90 @@ pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
 /// fractional for an element whose atoms differ (the carbons of hydroquinone average -1/3, of benzoquinone 0: the couple
 /// is two electrons apart although both round to 0).
 pub fn determine_oxidation_states_exact(species: &str) -> HashMap<String, f64> {
+    thread_local! {
+        static MEMO: std::cell::RefCell<(u64, HashMap<String, HashMap<String, f64>>)> = std::cell::RefCell::new((0, HashMap::new()));
+    }
+    // the answer depends on the species store (the ion split below looks records up): memoised per store generation
+    let generation = crate::db::SpeciesStore::generation();
+    if let Some(hit) = MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.0 != generation {
+            m.0 = generation;
+            m.1.clear();
+        }
+        m.1.get(species).cloned()
+    }) {
+        return hit;
+    }
+    let out = oxidation_states_uncached(species);
+    MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.1.len() > 20_000 {
+            m.1.clear();
+        }
+        m.1.insert(species.to_string(), out.clone());
+    });
+    out
+}
+
+/// A species made of one metal cation and a known anion (an ion pair or hydroxo complex: FeSO4, FeOH+2, CrSO4+) has the
+/// metal in the oxidation state of the cation it was formed from, and the anion's elements in the anion's own states: the
+/// electronegativity rule alone would give the sulfur of FeSO4 the state of a sulfide and the iron +10.
+fn oxidation_states_by_ion_split(species: &str, charge: i32, elements: &HashMap<String, f64>) -> Option<HashMap<String, f64>> {
+    let metals: Vec<&String> = elements.iter().filter(|(e, n)| **n == 1.0 && e.as_str() != "H" && e.as_str() != "O" && crate::compound_thermo::is_metal_element(e)).map(|(e, _)| e).collect();
+    if metals.len() != 1 || elements.len() < 2 {
+        return None;
+    }
+    let m = metals[0];
+    let mut rest = elements.clone();
+    rest.remove(m);
+    let store = crate::db::SpeciesStore::try_global()?;
+    let mut found: Option<(i32, String)> = None;
+    {
+        let guard = store.read().ok()?;
+        for z in 1..=6i32 {
+            let cation = if z == 1 { format!("{}+", m) } else { format!("{}+{}", m, z) };
+            if guard.get(&cation).is_none() {
+                continue;
+            }
+            let rem_charge = charge - z;
+            // the remainder must be a species of the store with exactly these atoms and this charge
+            let rem = guard.iter().find(|r| {
+                r.identity.charge == rem_charge && crate::ions::parse_formula_strict(crate::ions::split_charge(&r.identity.formula).0).map_or(false, |e| e == rest)
+            });
+            if let Some(r) = rem {
+                found = Some((z, r.id.clone()));
+                break;
+            }
+        }
+    }
+    let (z, rem_id) = found?;
+    let mut states = determine_oxidation_states_exact(&rem_id);
+    states.insert(m.clone(), z as f64);
+    let _ = species;
+    Some(states)
+}
+
+/// True for an ion pair or hydroxo / chloro complex of one metal cation and a known anion (FeSO4+, FeOH+2, HgCl+, CrSO4+): a
+/// form of the free cation that the association and hydrolysis rows keep in equilibrium with it. Redox discovery works on the
+/// free cation and the speciation follows; pairing every such form with every other made hundreds of redundant reactions that
+/// all relax toward one shared equilibrium.
+pub fn is_derived_ion_form(species: &str) -> bool {
+    let elements = crate::ions::species_elements(species).unwrap_or_default();
+    elements.len() > 1 && oxidation_states_by_ion_split(species, crate::ions::species_charge(species), &elements).is_some()
+}
+
+fn oxidation_states_uncached(species: &str) -> HashMap<String, f64> {
     let mut states: HashMap<String, f64> = HashMap::new();
     let charge = crate::ions::species_charge(species);
     let elements = crate::ions::species_elements(species).unwrap_or_default();
     if elements.is_empty() {
         return states;
+    }
+    if elements.len() > 1 {
+        if let Some(split) = oxidation_states_by_ion_split(species, charge, &elements) {
+            return split;
+        }
     }
 
     // Single element species: the charge is shared by its atoms

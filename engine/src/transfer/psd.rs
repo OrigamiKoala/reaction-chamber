@@ -74,6 +74,89 @@ impl LogNormal {
     }
 }
 
+/// Moments of the population after every particle's diameter has changed by `shift` (m; negative = growth): exact binomial
+/// expansion, valid while no particle has shrunk to nothing (`shift` below the smallest diameter).
+fn shifted_moments(pop: &ParticlePopulation, shift: f64) -> ParticlePopulation {
+    let d = -shift; // d' = d + delta, delta = -shift
+    ParticlePopulation {
+        mu0: pop.mu0,
+        mu1: pop.mu1 + d * pop.mu0,
+        mu2: pop.mu2 + 2.0 * d * pop.mu1 + d * d * pop.mu0,
+        mu3: pop.mu3 + 3.0 * d * pop.mu2 + 3.0 * d * d * pop.mu1 + d * d * d * pop.mu0,
+    }
+}
+
+/// Changes a population to a new solid volume the way crystals do: every particle loses (dissolution) or gains (growth in
+/// the size-independent regime) the same thickness, so the smallest particles vanish first and the relative spread of a
+/// growing population narrows, instead of every particle scaling by the same factor. The moments are shifted exactly while
+/// nothing has vanished; once the thickness removed passes the smallest particles, the population is rebuilt from its
+/// equal-mass classes (the closure of `LogNormal`), the classes that have dissolved dropped.
+pub fn change_to_volume(pop: &mut ParticlePopulation, new_volume_m3: f64) {
+    let v0 = pop.volume_m3();
+    if new_volume_m3 <= 1e-30 {
+        *pop = ParticlePopulation::default();
+        return;
+    }
+    if v0 <= 1e-30 || pop.mu0 <= 0.0 {
+        return;
+    }
+    if (new_volume_m3 / v0 - 1.0).abs() < 1e-12 {
+        return;
+    }
+    let ln = LogNormal::from_population(pop);
+    let classes = ln.class_diameters_m();
+    // monodisperse: the same as scaling every particle
+    if ln.sigma_g <= 1.0 + 1e-9 {
+        pop.scale_to_volume(new_volume_m3);
+        return;
+    }
+    let vol_of_shift = |p: &ParticlePopulation, sh: f64| shifted_moments(p, sh).mu3 * std::f64::consts::PI / 6.0;
+    let growing = new_volume_m3 > v0;
+    // bracket the shift: growth by up to the largest diameter, dissolution up to the smallest class diameter
+    let (mut lo, mut hi) = if growing { (-classes[N_CLASSES - 1] * 20.0, 0.0) } else { (0.0, classes[0] * 0.999) };
+    if !growing && vol_of_shift(pop, hi) > new_volume_m3 {
+        // dissolves past the smallest particles: rebuild from the classes with the vanished ones dropped
+        rebuild_from_classes(pop, &classes, new_volume_m3);
+        return;
+    }
+    for _ in 0..80 {
+        let mid = 0.5 * (lo + hi);
+        let v = vol_of_shift(pop, mid);
+        // V falls as the shift (thickness removed) grows
+        if v > new_volume_m3 { lo = mid } else { hi = mid }
+    }
+    *pop = shifted_moments(pop, 0.5 * (lo + hi));
+}
+
+fn rebuild_from_classes(pop: &mut ParticlePopulation, classes: &[f64; N_CLASSES], new_volume_m3: f64) {
+    let v0 = pop.volume_m3();
+    // number of particles in each equal-mass class
+    let n: Vec<f64> = classes.iter().map(|d| v0 / N_CLASSES as f64 / (std::f64::consts::PI / 6.0 * d.powi(3))).collect();
+    let vol_at = |sh: f64| -> f64 { classes.iter().zip(&n).map(|(d, n)| n * std::f64::consts::PI / 6.0 * (d - sh).max(0.0).powi(3)).sum() };
+    let (mut lo, mut hi) = (0.0, classes[N_CLASSES - 1]);
+    for _ in 0..80 {
+        let mid = 0.5 * (lo + hi);
+        if vol_at(mid) > new_volume_m3 { lo = mid } else { hi = mid }
+    }
+    let sh = 0.5 * (lo + hi);
+    let mut out = ParticlePopulation::default();
+    for (d, n) in classes.iter().zip(&n) {
+        let d2 = d - sh;
+        if d2 > super::population::MIN_PARTICLE_M {
+            out.mu0 += n;
+            out.mu1 += n * d2;
+            out.mu2 += n * d2 * d2;
+            out.mu3 += n * d2 * d2 * d2;
+        }
+    }
+    *pop = out;
+    if pop.is_empty() {
+        return;
+    }
+    // reproduce the volume exactly
+    pop.scale_to_volume(new_volume_m3);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +188,55 @@ mod tests {
         let t = 1.0 / (1.0 + 0.3275911 * x.abs());
         let y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * (-x * x).exp();
         if x >= 0.0 { y } else { -y }
+    }
+
+    #[test]
+    fn dissolution_removes_the_same_thickness_from_every_particle() {
+        let mut pop = sample(20e-6, 1.5, 2000);
+        let (n0, d_before) = (pop.mu0, pop.mu1 / pop.mu0);
+        let v0 = pop.volume_m3();
+        change_to_volume(&mut pop, 0.7 * v0);
+        // no particle vanished: the count is kept, every diameter fell by the same amount
+        assert!((pop.mu0 - n0).abs() < 1e-9 * n0);
+        let shift = d_before - pop.mu1 / pop.mu0;
+        assert!(shift > 0.0);
+        assert!((pop.volume_m3() / v0 - 0.7).abs() < 1e-9);
+        // the absolute spread of a population whose particles all lose the same thickness does not change; the relative
+        // spread grows (the sample variance is the same, the mean is smaller)
+        let var = |p: &ParticlePopulation| p.mu2 / p.mu0 - (p.mu1 / p.mu0).powi(2);
+        let before = sample(20e-6, 1.5, 2000);
+        assert!((var(&pop) / var(&before) - 1.0).abs() < 1e-6, "{} vs {}", var(&pop), var(&before));
+    }
+
+    #[test]
+    fn heavy_dissolution_drops_the_smallest_particles_first() {
+        let mut pop = sample(20e-6, 1.6, 2000);
+        let n0 = pop.mu0;
+        let v0 = pop.volume_m3();
+        change_to_volume(&mut pop, 0.02 * v0);
+        assert!(pop.mu0 < n0 && pop.mu0 > 0.0, "fines vanished: {} of {}", pop.mu0, n0);
+        assert!((pop.volume_m3() / (0.02 * v0) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn growth_narrows_the_relative_spread() {
+        let mut pop = sample(5e-6, 1.7, 2000);
+        let s0 = LogNormal::from_population(&pop).sigma_g;
+        let v0 = pop.volume_m3();
+        change_to_volume(&mut pop, 8.0 * v0);
+        let s1 = LogNormal::from_population(&pop).sigma_g;
+        assert!(s1 < s0, "sigma_g {} -> {}", s0, s1);
+        assert!((pop.volume_m3() / (8.0 * v0) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_monodisperse_population_scales_like_before() {
+        let mut a = ParticlePopulation::from_mass_and_diameter(1.0, 2.0, 100e-6);
+        let mut b = a.clone();
+        let v = a.volume_m3();
+        change_to_volume(&mut a, 0.3 * v);
+        b.scale_to_volume(0.3 * v);
+        assert!((a.mu3 / b.mu3 - 1.0).abs() < 1e-12 && (a.mu1 / b.mu1 - 1.0).abs() < 1e-12);
     }
 
     #[test]

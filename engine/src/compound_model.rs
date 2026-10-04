@@ -287,6 +287,61 @@ fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>, smiles: Option
     plain(split.all().map(|i| (i.id.clone(), i.n)).collect())
 }
 
+/// Ionisation of a molecule the ion dictionary has no conjugate base for (benzoic acid, a phenol, an amine): from the
+/// ionisable sites of its SMILES graph (`pka_structure`, Hammett / Taft style, tier Estimated) the stepwise dissociation rows
+/// `P <=> H+ + P(-)` of its acidic sites (pKa up to the range of water) and the protonation `P + H+ <=> PH(+)` of its most
+/// basic site. The conjugate species are named like the parent (Hill formula of their atoms, the parent's isomer tag, the
+/// charge), so an isomer never shares a name with another. Without a structure there are no sites and no rows.
+fn structure_ionisation(parent: &str, elems: &HashMap<String, f64>, smiles: Option<&str>) -> (Vec<GeneralEquilibrium>, Option<String>) {
+    let Some(smi) = smiles else { return (vec![], None) };
+    if smi.contains('.') {
+        return (vec![], None);
+    }
+    let Some(sites) = crate::pka_structure::sites(smi) else { return (vec![], None) };
+    let tag = parent.find('#').map(|i| parent[i..].to_string()).unwrap_or_default();
+    let species_with_h = |delta: i32, charge: i32| -> String {
+        let mut e = elems.clone();
+        *e.entry("H".to_string()).or_insert(0.0) += delta as f64;
+        e.retain(|_, v| *v > 1e-9);
+        let ch = match charge {
+            0 => String::new(),
+            1 => "+".to_string(),
+            -1 => "-".to_string(),
+            n if n > 0 => format!("+{}", n),
+            n => format!("-{}", -n),
+        };
+        format!("{}{}{}", solubility::hill_from_elems(&e), tag, ch)
+    };
+    let mut rows: Vec<GeneralEquilibrium> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    // acidic sites: the ladder of the macroscopic constants, as far as water can deprotonate
+    if let Some((pka, class)) = crate::pka_structure::acid_ladder(smi) {
+        let steps: Vec<f64> = pka.iter().copied().take_while(|p| *p <= 14.0).collect();
+        for (j, p) in steps.iter().enumerate() {
+            let from = if j == 0 { parent.to_string() } else { species_with_h(-(j as i32), -(j as i32)) };
+            let to = species_with_h(-(j as i32) - 1, -(j as i32) - 1);
+            rows.push(acid_estimate::step_equilibrium(&from, &to, j + 1, *p, "structure-based pKa (Hammett / Taft relation over the SMILES graph)"));
+        }
+        if !steps.is_empty() {
+            notes.push(format!("{} acid, Estimated pKa {}", class, steps.iter().map(|p| format!("{:.1}", p)).collect::<Vec<_>>().join(" / ")));
+        }
+    }
+    // the most basic site: conjugate-acid pKa high enough to protonate in water
+    if let Some(b) = sites.iter().filter(|x| !x.acid && x.pka >= 1.0).max_by(|a, b| a.pka.partial_cmp(&b.pka).unwrap_or(std::cmp::Ordering::Equal)) {
+        let conj = species_with_h(1, 1);
+        let mut eq = acid_estimate::step_equilibrium(&conj, parent, 1, b.pka, "structure-based pKa of the conjugate acid");
+        eq.id = format!("est_base_{}", parent);
+        eq.name = format!("Estimated protonation of {}", parent);
+        eq.equation = format!("{} <=> H+ + {}", conj, parent);
+        eq.reactants = [(conj.clone(), 1.0)].into();
+        eq.products = [(crate::db::seed::PROTON.to_string(), 1.0), (parent.to_string(), 1.0)].into();
+        rows.push(eq);
+        notes.push(format!("{} base, conjugate-acid pKa {:.1} (Estimated)", b.class, b.pka));
+    }
+    let note = if notes.is_empty() { None } else { Some(notes.join("; ")) };
+    (rows, note)
+}
+
 fn mol_str(x: f64) -> String {
     if x >= 1.0 {
         format!("{:.1} M", x)
@@ -373,7 +428,15 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
         // The formula only proposes candidates; the InChIKey confirms (no name / SMILES-substring guessing).
         match known_confirmed.clone() {
             Some(sp) => ("molecule", vec![(sp, 1.0)]),
-            None => ("inert", vec![(inert_id.clone(), 1.0)]),
+            None => {
+                // a molecule with ionisable sites in its structure ionises in water whether or not the dictionary knows its ion
+                let (rows, note) = structure_ionisation(&inert_id, &elems, req.smiles.as_deref());
+                if !rows.is_empty() {
+                    equilibria = rows;
+                    acid_note = note;
+                }
+                ("inert", vec![(inert_id.clone(), 1.0)])
+            }
         }
     };
     let phase_model = match kind {

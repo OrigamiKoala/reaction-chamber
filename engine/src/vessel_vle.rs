@@ -116,6 +116,27 @@ impl Vessel {
         k * area_m2 * (p_surface - p_inf) / (R_GAS * t.max(100.0))
     }
 
+    /// Evaporation of the water of a bath from its free surface (`area_m2`) at `t_bath` into the atmosphere: the same
+    /// mass-transfer correlation as an open vessel, with the saturation pressure and latent heat of the solvent's own
+    /// record. Returns (mol/s, latent-heat flux W, g/s); nothing when the solvent has no vapour-pressure data.
+    pub(crate) fn bath_evaporation(&self, t_bath: f64, area_m2: f64) -> (f64, f64, f64) {
+        if area_m2 <= 1e-8 {
+            return (0.0, 0.0, 0.0);
+        }
+        let Some(vol) = self.volatile_for(crate::vessel::AQUEOUS_SOLVENT) else { return (0.0, 0.0, 0.0) };
+        let p_surface = vol.psat_pa(t_bath);
+        let p_inf = self.atmosphere_partials().iter().find(|(k, _)| *k == vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
+        if p_surface <= p_inf {
+            return (0.0, 0.0, 0.0);
+        }
+        let el = crate::ions::species_elements(&vol.id).unwrap_or_default();
+        let p_tot = self.p_ext_pa();
+        let d_gas = crate::transfer::diffusion::fuller_gas_diffusivity_m2_s(t_bath, p_tot, vol.mw, &el);
+        let k = crate::transfer::evaporation::mass_transfer_coefficient_m_s(t_bath, p_tot, area_m2, 0.0, p_surface, vol.mw, d_gas);
+        let mol_s = k * area_m2 * (p_surface - p_inf) / (R_GAS * t_bath.max(100.0));
+        (mol_s, mol_s * vol.latent_heat_j_mol(t_bath), mol_s * vol.mw)
+    }
+
     // ------------------------------------------------------------------------------------------------ atmosphere
     pub fn p_ext_pa(&self) -> f64 {
         self.atmosphere.pressure_pa()
@@ -477,11 +498,13 @@ impl Vessel {
             }
             t_boil_last = tb;
             let (parts, sum) = self.phase_partials(&phases, tb);
-            // heat per mole of vapour of the equilibrium composition
+            // heat per mole of vapour of the equilibrium composition (latent heat minus partial excess enthalpy in liquid)
             let mut latent = 0.0;
             for (ph, row) in phases.iter().zip(&parts) {
+                let map = if ph.index == 0 { Some(&self.species_mol) } else { self.extra_liquids.get(ph.index - 1) };
                 for (c, p) in ph.comps.iter().zip(row) {
-                    latent += p / sum.max(1e-300) * c.vol.latent_heat_j_mol(tb);
+                    let h_ex = map.map_or(0.0, |m| self.partial_excess_enthalpy(m, &c.key, tb));
+                    latent += p / sum.max(1e-300) * (c.vol.latent_heat_j_mol(tb) - h_ex);
                 }
             }
             if latent <= 1.0 {
@@ -593,6 +616,7 @@ impl Vessel {
             heat += dn * dh_sub;
         }
         for (ph, row) in phases.iter().zip(&parts) {
+            let map = if ph.index == 0 { self.species_mol.clone() } else { self.extra_liquids.get(ph.index - 1).cloned().unwrap_or_default() };
             for (c, p_surface) in ph.comps.iter().zip(row) {
                 let p_inf = atm.iter().find(|(k, _)| *k == c.vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
                 let flux = self.vapour_flux_mol_s(&c.vol.id, c.vol.mw, *p_surface, p_inf, area, t);
@@ -620,7 +644,8 @@ impl Vessel {
                     self.mass_lost_g += dn * c.vol.mw;
                     self.ledger.book_in(&c.vol.id, -dn);
                 }
-                heat += dn * c.vol.latent_heat_j_mol(t);
+                let h_ex = self.partial_excess_enthalpy(&map, &c.key, t);
+                heat += dn * (c.vol.latent_heat_j_mol(t) - h_ex);
             }
         }
         self.evaporation_g_s = evap_mass / dt_s;

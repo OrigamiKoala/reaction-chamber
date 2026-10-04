@@ -78,12 +78,16 @@ impl<T> StoreLock<T> {
         Ok(ReadGuard { lock: self })
     }
 
-    /// Shared access if no writer is active (a writer waiting does not count), else `Err`: lets a caller that may run while
-    /// this thread itself holds the write lock report "unknown" instead of waiting for itself.
+    /// Shared access that reports `Err` only when *this thread* owns the write lock (it would wait for itself): a caller
+    /// that may run inside a registration can then answer "unknown". A writer on another thread is waited for, never
+    /// reported as "unknown" (a lookup that failed under contention gave a species no elements and no charge).
     pub fn try_read(&self) -> Result<ReadGuard<'_, T>, WouldBlock> {
         let mut st = self.state();
-        if st.writer {
+        if st.writer && HELD.with(|h| h.borrow().contains(&self.addr())) {
             return Err(WouldBlock);
+        }
+        while st.writer {
+            st = self.cv.wait(st).unwrap_or_else(|e| e.into_inner());
         }
         st.readers += 1;
         drop(st);
@@ -192,6 +196,24 @@ mod tests {
         let lock = StoreLock::new(0_i32);
         let _r = lock.read().unwrap();
         let _w = lock.write().unwrap();
+    }
+
+    #[test]
+    fn try_read_waits_for_another_threads_writer_and_refuses_its_own() {
+        let lock = Arc::new(StoreLock::new(0_i32));
+        {
+            let _w = lock.write().unwrap();
+            assert!(lock.try_read().is_err(), "own write lock: unknown, not a deadlock");
+        }
+        let l2 = lock.clone();
+        let writer = std::thread::spawn(move || {
+            let mut w = l2.write().unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            *w = 7;
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(*lock.try_read().expect("another thread's writer is waited for"), 7);
+        writer.join().unwrap();
     }
 
     #[test]

@@ -304,15 +304,62 @@ impl Vessel {
                 }
             }
         }
-        // 3. no reaction may be driven past its own equilibrium by the others: halve the step until none is
-        for _ in 0..8 {
-            let net = net_of(&xi, scale);
+        // 3. no reaction may be driven past its own equilibrium by the others: the largest common scale at which none is
+        // (bisection; the overshoot grows with the scale, so a few dozen evaluations find it to 1e-9). A reaction that the
+        // others push past its equilibrium however small the step (it is at its own equilibrium already) would hold every
+        // reaction back, so it sits this step out and the scale is found again for the rest.
+        let overshoot_of = |xi: &[f64], sc: f64| -> Vec<f64> {
+            let net = net_of(xi, sc);
             let delta = |sp: &str| net.get(sp).copied().unwrap_or(0.0);
-            let overshoot = items.iter().zip(&xi).any(|((r, _), x)| *x > 1e-15 && self.discovered_ln_q_minus_ln_k(r, ctx, gas_like, &delta) > 1e-9);
-            if !overshoot {
+            items.iter().zip(xi).map(|((r, _), x)| if *x > 1e-15 { self.discovered_ln_q_minus_ln_k(r, ctx, gas_like, &delta) } else { f64::NEG_INFINITY }).collect()
+        };
+        let overshoots = |xi: &[f64], sc: f64| overshoot_of(xi, sc).iter().any(|f| *f > 1e-9);
+        let mut safe_scale = 0.0;
+        for _ in 0..=items.len() {
+            if !overshoots(&xi, scale) {
                 break;
             }
-            scale *= 0.5;
+            let (mut lo, mut hi) = (0.0, scale);
+            for _ in 0..30 {
+                let mid = 0.5 * (lo + hi);
+                if overshoots(&xi, mid) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            safe_scale = lo;
+            if lo >= 0.05 {
+                scale = lo;
+                break;
+            }
+            // the reaction pushed furthest past its equilibrium by even a thousandth of the step waits
+            let f = overshoot_of(&xi, 1e-3);
+            match f.iter().enumerate().filter(|(_, v)| **v > 1e-9).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)) {
+                Some((worst, _)) => xi[worst] = 0.0,
+                None => {
+                    scale = lo;
+                    break;
+                }
+            }
+            if xi.iter().all(|&x| x <= 1e-15) {
+                return 0.0;
+            }
+            scale = 1.0;
+            // the common scale of the shared species is found again for the reactions that remain
+            let net = net_of(&xi, 1.0);
+            for (sp, d) in &net {
+                if *d < 0.0 {
+                    let have = self.discovered_available(sp, ctx, gas_like);
+                    if have.is_finite() && -*d > have {
+                        scale = scale.min((have / -*d).max(0.0));
+                    }
+                }
+            }
+        }
+        if overshoots(&xi, scale) {
+            // every reaction that overshoots had its turn to wait and some still do: take the largest safe common scale
+            scale = safe_scale;
         }
         for x in xi.iter_mut() {
             *x *= scale;

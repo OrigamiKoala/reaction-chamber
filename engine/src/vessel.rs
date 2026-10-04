@@ -355,6 +355,9 @@ pub struct Portion {
     /// The particle populations of the solids drawn off with the liquid (they keep their size).
     #[serde(default)]
     pub particles: HashMap<String, crate::transfer::ParticlePopulation>,
+    /// The physical form of the loose solids drawn off (`solid_forms.json`: a ribbon stays a ribbon when it is poured on).
+    #[serde(default)]
+    pub forms: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -433,6 +436,8 @@ pub struct Vessel {
     pub(crate) vle_cache: RefCell<crate::vle::VleCache>,
     /// Memoised `Molecule` lookups of the phase models (see `vessel_phase`).
     pub(crate) mol_cache: RefCell<crate::vessel_phase::MolCache>,
+    /// Excess (mixing) enthalpy already accounted for (see `vessel_mixing`).
+    pub(crate) mixing: RefCell<crate::vessel_mixing::MixingState>,
     /// Mass flow (g/s) of liquid leaving as vapour below the boiling point in the last step.
     pub evaporation_g_s: f64,
     /// Gas collection bookkeeping (collected moles / escaped moles), see `gas.rs`.
@@ -535,6 +540,7 @@ impl Vessel {
             atmosphere: Default::default(),
             vle_cache: RefCell::new(Default::default()),
             mol_cache: RefCell::new(Default::default()),
+            mixing: RefCell::new(Default::default()),
             evaporation_g_s: 0.0,
             gas: Default::default(),
             mass_lost_g: 0.0,
@@ -759,6 +765,7 @@ impl Vessel {
             .clone();
 
         let temp_add = dose.temperature_k.unwrap_or(self.room_k);
+        self.ensure_mixing_reference();
         let head_before = self.headspace_volume_m3();
         let mut total_mass_added_g = 0.0;
         // heat capacity of what is already in the vessel (before this dose goes in)
@@ -816,12 +823,15 @@ impl Vessel {
             let recipe = self.reagent_recipe(&entry.composition);
             let unit_volume_ml = self.phase_volume_ml(&recipe, temp_add);
             let scale = if unit_volume_ml > 1e-9 { vol_ml / unit_volume_ml } else { vol_ml };
+            let mut stream: HashMap<String, f64> = HashMap::new();
             for (species, &mol_per_ml) in &recipe {
                 let mol = mol_per_ml * scale;
                 total_mass_added_g += mol * chem_db::get_species_thermo(species).mw;
                 *self.species_mol.entry(species.clone()).or_insert(0.0) += mol;
+                stream.insert(species.clone(), mol);
                 added.push((species.clone(), mol, false));
             }
+            self.note_streams_for_mixing(&[&stream], temp_add);
         }
         for (sp, mol, _) in added {
             self.ledger.book_in(&sp, mol);
@@ -871,10 +881,16 @@ impl Vessel {
     /// (transport-limited dissolution, nucleation and growth), so a fine precipitate appears at once while a coarse
     /// crystal is still a crystal.
     fn settle_after_addition(&mut self) {
+        // the heat of mixing of what was just added (the stream's own share was released when it was made)
+        self.book_mixing_heat();
+        // the complexation rows of the ions the dose brought are in place before anything can precipitate: a soluble complex
+        // competes with the solid for the metal from the first solve on (the weak Fuoss pairs follow in the next step)
+        self.register_associations(false);
         // Whatever solid is in the vessel now was put there by the user: only *new* solids count as precipitates.
         self.sync_known_solids();
         // solids melt (heat-limited) and liquids split into their phases, at conserved enthalpy
         self.phase_flash();
+        self.rebaseline_mixing();
         self.auto_minerals();
         const MIX_SLICES: usize = 6;
         for it in 0..40 {
@@ -893,7 +909,10 @@ impl Vessel {
             }
         }
         self.sync_populations();
+        // reactions of the dose changed the composition: their mixing heat, then the phase flash books its own
+        self.book_mixing_heat();
         self.phase_flash();
+        self.rebaseline_mixing();
         self.update_network();
         self.detect_events(true);
         self.update_phases();
@@ -914,6 +933,8 @@ impl Vessel {
         }
         let cp_current = self.contents_heat_capacity() + self.glass_heat_capacity();
         let head_before = self.headspace_volume_m3();
+        self.ensure_mixing_reference();
+        self.note_streams_for_mixing(&[&portion.aqueous_mol, &portion.organic_mol], portion.temperature_k);
 
         for (sp, mol) in portion.aqueous_mol {
             *self.species_mol.entry(sp).or_insert(0.0) += mol;
@@ -924,6 +945,9 @@ impl Vessel {
         for (sp, mol) in portion.solid_mol {
             *self.solid_mol.entry(sp.clone()).or_insert(0.0) += mol;
             *self.initial_solids.entry(sp.clone()).or_insert(0.0) += mol;
+            if let Some(f) = portion.forms.get(&sp) {
+                self.solid_forms.insert(sp.clone(), f.clone());
+            }
             match portion.particles.get(&sp) {
                 Some(pop) if !pop.is_empty() => {
                     let e = self.particle_populations.entry(sp.clone()).or_default();
@@ -966,6 +990,7 @@ impl Vessel {
                 organic_mol: HashMap::new(),
                 solid_mol: HashMap::new(),
                 particles: HashMap::new(),
+                forms: HashMap::new(),
             });
         }
         let frac = (volume_ml / total_vol).clamp(0.0, 1.0);
@@ -1005,11 +1030,15 @@ impl Vessel {
 
         let mut s_mol = HashMap::new();
         let mut s_pop = HashMap::new();
+        let mut s_forms = HashMap::new();
         if solid_fraction > 0.0 {
             for (sp, mol) in self.solid_mol.iter_mut() {
                 let removed = *mol * solid_fraction;
                 *mol -= removed;
                 s_mol.insert(sp.clone(), removed);
+                if let Some(f) = self.solid_forms.get(sp) {
+                    s_forms.insert(sp.clone(), f.clone());
+                }
                 if let Some(p) = self.particle_populations.get_mut(sp) {
                     s_pop.insert(sp.clone(), p.take_fraction(solid_fraction));
                 }
@@ -1019,7 +1048,7 @@ impl Vessel {
             self.ledger.book_out(sp, *mol);
         }
         self.update_phases();
-        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol, particles: s_pop }
+        Portion { volume_ml, temperature_k: self.temperature_k, aqueous_mol: aq_mol, organic_mol: org_mol, solid_mol: s_mol, particles: s_pop, forms: s_forms }
     }
 
     /// Drain from the bottom (separatory funnel): the densest liquid phase leaves first, then the next one, in the order
@@ -1215,6 +1244,10 @@ impl Vessel {
 
         self.recent_reaction_heat_w = reaction_heat_joules / dt_s;
 
+        // 2c. Heat of mixing of whatever the reactions and equilibria did to the composition of the liquids
+        self.ensure_mixing_reference();
+        self.book_mixing_heat();
+
         // 3. Thermal energy balance
         self.step_thermal(dt_s, reaction_heat_joules);
 
@@ -1223,6 +1256,9 @@ impl Vessel {
 
         // 4b. The plume of gas above an open vessel (what leaves the liquid pools in the free column or rises out of it)
         self.step_plume(dt_s);
+
+        // what the phase flash, boiling and evaporation did to the liquids booked its own heat
+        self.rebaseline_mixing();
 
         self.update_suspension(dt_s);
 
@@ -1504,12 +1540,23 @@ impl Vessel {
             external_j += q_into_vessel_w * dt_s;
             // a finite bath pays for it: what the vessel takes leaves the bath's ice and water, the room warms or cools the
             // bath through its open surface and walls
-            if let Some(b) = &mut self.bath {
+            if self.bath.is_some() {
+                let (bath_t, bath_water_g) = self.bath.as_ref().map(|b| (b.t_k, b.water_g)).unwrap_or((t_bath, 0.0));
                 let r_bath = 1.75 * r_m;
-                let volume_ml = (b.mass_g() / 0.998).max(1.0);
-                let g_room = crate::heat_transfer::ambient_loss_w_per_k(r_bath, volume_ml * 1.25, volume_ml, b.t_k, self.room_k, false).max(0.5);
-                b.step(q_into_vessel_w, g_room, self.room_k, dt_s);
-                self.bath_k = Some(b.t_k);
+                // the open surface of the bath lets its water evaporate into the room's air (a hot bath steams and shrinks)
+                let (evap_mol_s, evap_w, evap_g_s) = if bath_water_g > 0.0 {
+                    self.bath_evaporation(bath_t, std::f64::consts::PI * (r_bath * r_bath - r_m * r_m).max(0.0))
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+                let _ = evap_mol_s;
+                if let Some(b) = &mut self.bath {
+                    let volume_ml = (b.mass_g() / 0.998).max(1.0);
+                    let g_room = crate::heat_transfer::ambient_loss_w_per_k(r_bath, volume_ml * 1.25, volume_ml, b.t_k, self.room_k, false).max(0.5);
+                    b.step(q_into_vessel_w + evap_w, g_room, self.room_k, dt_s);
+                    b.lose_water(evap_g_s * dt_s);
+                    self.bath_k = Some(b.t_k);
+                }
             }
         }
 
@@ -1617,6 +1664,7 @@ impl Vessel {
 
         let mut solids = Vec::new();
         let hyd = self.hydro_state();
+        let settle_column = if self.extra_liquids.is_empty() { Vec::new() } else { self.settling_column() };
         let dust = self.dust_mol();
         let mut solid_ids: Vec<(&String, &f64)> = self.solid_mol.iter().collect();
         solid_ids.sort_by(|a, b| a.0.cmp(b.0));
@@ -1657,10 +1705,12 @@ impl Vessel {
             let view = self.solid_size_view(sp, &props);
             let (settle_mm_s, area_cm2) = {
                 let rho_p = density * 1000.0;
+                // a particle in a layered vessel first falls through the lightest layer
+                let (rho_top, eta_top) = settle_column.first().map_or((hyd.rho_l, hyd.eta), |c| (c.1, c.2));
                 let (mut vsum, mut wsum) = (0.0, 0.0);
                 for (d_m, s_k) in view.class_d_m.iter().zip(view.class_susp.iter()) {
-                    let v = crate::transfer::hydro::terminal_velocity(*d_m, rho_p, hyd.rho_l, hyd.eta);
-                    let pe = crate::transfer::settling::peclet_number(v, *d_m, hyd.eta, self.temperature_k);
+                    let v = crate::transfer::hydro::terminal_velocity(*d_m, rho_p, rho_top, eta_top);
+                    let pe = crate::transfer::settling::peclet_number(v, *d_m, eta_top, self.temperature_k);
                     vsum += s_k * if v > 0.0 && pe >= 1.0 { v * 1e3 } else { 0.0 };
                     wsum += s_k;
                 }
@@ -1698,7 +1748,7 @@ impl Vessel {
                 floating
             };
 
-            let floc_diameter_um = self.floc_diameter_m(&props, &view) * 1e6;
+            let floc_diameter_um = self.floc_diameter_m(sp, &props, &view) * 1e6;
             solids.push(SolidVisual {
                 species: sp.clone(),
                 name: props.name.clone(),

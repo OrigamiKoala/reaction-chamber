@@ -20,12 +20,11 @@ import { getProfile } from '${web}/src/render/glass_profiles';
 import { LiquidBody } from '${web}/src/render/liquid_material';
 import { VesselEffects } from '${web}/src/render/effects';
 import { createGlassware } from '${web}/src/bench/glassware';
-import { applyPieceMetals } from '${web}/src/app/piece_metals';
-export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, applyPieceMetals };
+export { THREE, getProfile, LiquidBody, VesselEffects, createGlassware };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const mod = await import('data:text/javascript;base64,' + Buffer.from(out.outputFiles[0].text).toString('base64'));
-const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware, applyPieceMetals } = mod;
+const { THREE, getProfile, LiquidBody, VesselEffects, createGlassware } = mod;
 
 const dir = path.join(web, 'src', 'wasm', 'engine');
 const eng = await import(path.join(dir, 'reaction_chamber_engine.js'));
@@ -72,14 +71,11 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   dose(h, { reagent_id: 'mg_ribbon', mass_g: 0.3 });
   run(h, 2);
   const s = snap(h);
-  // the Lab tags metals the user added as pieces (the engine reports every solid as a particle population: a bed)
-  const turb0 = Math.max(...s.layers[0].scatter_per_cm);
-  applyPieceMetals(s, new Set(['Mg(s)']));
-  const turb1 = Math.max(...s.layers[0].scatter_per_cm);
+  // the engine knows the form the metal was dosed in (catalog `solid_form`): pieces, not a particle bed
+  const turb = Math.max(...s.layers[0].scatter_per_cm);
   const { fx } = show(s);
   ok('a metal added as a piece neither clouds the liquid nor counts as suspended', () => {
-    assert.ok(turb0 > 0.05, 'the engine reports a turbid layer: ' + turb0);
-    assert.ok(turb1 < turb0 * 0.25, `turbidity ${turb0.toFixed(3)} -> ${turb1.toFixed(3)}`);
+    assert.ok(turb < 0.05, 'the layer is not turbid: ' + turb);
     assert.ok(s.solids.every((x) => x.kind !== 'metal' || (x.morphology === 'pieces' && x.suspended_fraction === 0)));
   });
   ok('a fizzing metal ribbon is shown and bubbles come off', () => {
@@ -99,7 +95,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   const h = vessel();
   dose(h, { reagent_id: 'water', volume_ml: 100 });
   ctl(h, { heater_w: 600 });
-  run(h, 70);
+  run(h, 130); // (the hot plate passes on what its surface temperature allows, `hot_plate_heat_w`: boiling takes about two minutes)
   const s = snap(h);
   assert.ok(s.boil_intensity > 0.3, 'boiling ' + s.boil_intensity);
   const { fx, p } = show(s, 1.5);
@@ -201,7 +197,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   const s = clone(snap(h));
   const solid = (sp, kind, vol, extra = {}) => ({
     species: sp, name: sp, mass_g: vol * 5, settled_volume_ml: vol * 1.6, suspended_fraction: 0, particle_diameter_um: kind === 'powder' ? 40 : 3000,
-    rgb: [0.7, 0.7, 0.72], kind, remaining_fraction: 1, settling_velocity_mm_s: 0, ...extra,
+    rgb: [0.7, 0.7, 0.72], kind, remaining_fraction: 1, settling_velocity_mm_s: 0, morphology: kind === 'metal' ? 'pieces' : 'bed', ...extra,
   });
   s.solids.push(solid('Zn(s)', 'metal', 4), solid('Mg(s)', 'metal', 0.17), solid('S(s)', 'powder', 0.5, { floating: true, rgb: [0.9, 0.85, 0.2] }));
   const { fx, liquid } = show(s, 2);

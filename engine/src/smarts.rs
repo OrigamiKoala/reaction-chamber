@@ -406,8 +406,14 @@ impl<'a> MolView<'a> {
 
 /// Atomic number of the elements organic molecules contain (enough for `#Z` primitives).
 pub fn atomic_number(sym: &str) -> Option<u32> {
-    const T: &[(&str, u32)] = &[("H", 1), ("B", 5), ("C", 6), ("N", 7), ("O", 8), ("F", 9), ("Si", 14), ("P", 15), ("S", 16), ("Cl", 17), ("Br", 35), ("I", 53)];
-    T.iter().find(|(s, _)| *s == sym).map(|(_, z)| *z)
+    const SYMBOLS: [&str; 92] = [
+        "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr",
+        "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
+        "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er",
+        "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+        "Pa", "U",
+    ];
+    SYMBOLS.iter().position(|s| *s == sym).map(|i| i as u32 + 1)
 }
 
 fn bond_ok(q: BondQ, order: f64) -> bool {

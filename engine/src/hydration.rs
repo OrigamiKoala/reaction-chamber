@@ -94,9 +94,15 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
                     };
                     add(key, 1.0);
                     let mut n_hal = 0;
+                    let mut n_o_single = 0;
                     for &(j, _) in &nbrs[i] {
                         match el(j) {
-                            "O" => add("alpha_O", 1.0),
+                            "O" => {
+                                add("alpha_O", 1.0);
+                                if is_close(nbrs[i].iter().find(|&&(k, _)| k == j).map_or(1.0, |&(_, b)| b), 1.0) {
+                                    n_o_single += 1;
+                                }
+                            }
                             "N" => add("alpha_N", 1.0),
                             e if hal(e) => {
                                 add("alpha_Hal", 1.0);
@@ -107,6 +113,9 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
                     }
                     if n_hal >= 2 {
                         add("gem_hal", 1.0);
+                    }
+                    if n_o_single >= 2 {
+                        add("gem_diol", (n_o_single - 1) as f64);
                     }
                 }
             }

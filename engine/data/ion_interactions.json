@@ -80,7 +80,10 @@
    "beta0": 0.0765,
    "beta1": 0.2664,
    "c_phi": 0.00127,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.00075,
+   "d_beta1_dt": 0.0014,
+   "d_c_phi_dt": -0.000085
   },
   {
    "cation": "Ca+2",
@@ -88,7 +91,10 @@
    "beta0": 0.3159,
    "beta1": 1.6144,
    "c_phi": -0.00034,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.0018,
+   "d_beta1_dt": 0.0035,
+   "d_c_phi_dt": -0.00015
   },
   {
    "cation": "H+",
@@ -96,7 +102,10 @@
    "beta0": 0.1775,
    "beta1": 0.2945,
    "c_phi": 0.0008,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.0003,
+   "d_beta1_dt": 0.0006,
+   "d_c_phi_dt": -0.00003
   },
   {
    "cation": "K+",
@@ -104,7 +113,10 @@
    "beta0": -0.0816,
    "beta1": 0.0494,
    "c_phi": 0.0066,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.0004,
+   "d_beta1_dt": 0.0009,
+   "d_c_phi_dt": -0.00005
   },
   {
    "cation": "K+",
@@ -112,7 +124,10 @@
    "beta0": 0.04835,
    "beta1": 0.2122,
    "c_phi": -0.00084,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.00055,
+   "d_beta1_dt": 0.0011,
+   "d_c_phi_dt": -0.00006
   },
   {
    "cation": "Na+",
@@ -120,7 +135,10 @@
    "beta0": 0.0864,
    "beta1": 0.253,
    "c_phi": 0.0044,
-   "alpha": 2.0
+   "alpha": 2.0,
+   "d_beta0_dt": 0.0008,
+   "d_beta1_dt": 0.0015,
+   "d_c_phi_dt": -0.00009
   }
  ],
  "ion_volume_v0_cm3_mol": {

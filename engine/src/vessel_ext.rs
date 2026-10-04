@@ -42,6 +42,8 @@ pub struct EventState {
     /// Suspended fraction of each equal-mass size class of a solid (`transfer::psd`); `susp` is their mean and stays the
     /// interface the rest of the engine uses: a change to `susp` from outside resets the classes to that value.
     pub susp_cls: HashMap<String, [f64; crate::transfer::N_CLASSES]>,
+    /// Dynamic aggregate diameter of each size class of a solid (m), growing into fractal flocs.
+    pub floc_d_cls: HashMap<String, [f64; crate::transfer::N_CLASSES]>,
     /// Announced phase changes of inert compounds (bit flags, see `vessel_phase`).
     pub phase: HashMap<String, u8>,
 }
@@ -356,6 +358,13 @@ impl Vessel {
     /// Registers the association rows (Fuoss ion pairs, complexation data) of the ions that are present in an amount that
     /// matters. Called after a dose has settled (the precipitating ions are gone by then) and before each equilibrium step.
     pub fn auto_associations(&mut self) {
+        self.register_associations(true);
+    }
+
+    /// `with_pairs` false registers only the complexation data rows (strong, inner-sphere: they must be in place before the
+    /// first solve of a dose so that a complex can compete with a precipitate); the weak outer-sphere Fuoss pairs follow
+    /// once the dose has settled.
+    pub(crate) fn register_associations(&mut self, with_pairs: bool) {
         let mut cats: Vec<String> = Vec::new();
         let mut ans: Vec<String> = Vec::new();
         for (sp, &mol) in &self.species_mol {
@@ -372,7 +381,7 @@ impl Vessel {
         ans.sort();
         // outer-sphere ion pairs (Fuoss association) of pairs that are both present in an amount that matters (a pair that
         // is registered adds a species row to the solver, so a trace of either ion does not earn one)
-        for c in &cats {
+        for c in cats.iter().filter(|_| with_pairs) {
             for a in &ans {
                 let key = ("pair".to_string(), format!("{}|{}", c, a));
                 if self.ev.checked_pairs.contains(&key) {
@@ -436,6 +445,7 @@ impl Vessel {
         let live: Vec<String> = self.solid_mol.iter().filter(|(_, m)| **m > dust).map(|(k, _)| k.clone()).collect();
         self.ev.susp.retain(|k, _| live.contains(k));
         self.ev.susp_cls.retain(|k, _| live.contains(k));
+        self.ev.floc_d_cls.retain(|k, _| live.contains(k));
         if live.is_empty() {
             return;
         }
@@ -453,12 +463,17 @@ impl Vessel {
             .map(|(sp, m)| (m / vol_l, ions::species_charge(sp) as f64))
             .collect();
         let gamma_index = crate::transfer::settling::coagulation_index(&ions);
+        // with immiscible layers a particle falls through each layer lighter than itself and rests on the first denser one
+        let column = if self.extra_liquids.is_empty() { Vec::new() } else { self.settling_column() };
+
+        let vol_m3 = (self.total_liquid_volume_ml() * 1e-6).max(1e-9);
+        let eps = crate::transfer::hydro::dissipation_w_kg(&hyd.st, hyd.rho_l, hyd.nu, vol_m3);
+        let shear_rate = (eps / hyd.nu.max(1e-9)).sqrt();
+        let shear_eff = (shear_rate * shear_rate + 0.04).sqrt();
+        let gamma_ref = 50.0;
 
         for sp in live {
             let props = self.solid_props(&sp);
-            // the size distribution (log-normal closure of the population moments) cut into equal-mass classes: each class
-            // has its own Stokes velocity, its own flocculation and its own just-suspended stirring speed, so a fresh
-            // polydisperse precipitate clears in two stages (coarse crystals first, a haze of fines much later)
             let ln = self
                 .particle_populations
                 .get(&sp)
@@ -469,10 +484,10 @@ impl Vessel {
             let rho_p = props.density_g_ml * 1000.0;
             let solid_vol_m3 = self.solid_mol.get(&sp).copied().unwrap_or(0.0) * chem_db::get_species_thermo(&sp).mw * 1e-3 / rho_p.max(100.0);
             let phi_solid = (solid_vol_m3 / (self.total_liquid_volume_ml() * 1e-6).max(1e-9)).clamp(0.0, 0.5);
-            // a coagulating colloid (electrolyte at about its critical coagulation concentration or more) grows into flocs
-            // that outsize the Brownian limit (Pe = 1, d_Pe1 ~ 0.7 um for a dense salt) by an order of magnitude and settle
+
             let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * t_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
             let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
+            let d_max_shear = (20.0 * d_pe1) / (1.0 + shear_eff / gamma_ref).sqrt();
 
             let mean_of = |c: &[f64; N_CLASSES]| c.iter().sum::<f64>() / N_CLASSES as f64;
             let published = self.ev.susp.get(&sp).copied();
@@ -481,14 +496,46 @@ impl Vessel {
                 (Some(c), None) => *c,
                 (_, m) => [m.unwrap_or(1.0); N_CLASSES],
             };
+            let mut floc_cls = self.ev.floc_d_cls.get(&sp).copied().unwrap_or(d_cls);
+
             for k in 0..N_CLASSES {
                 let d_primary = d_cls[k];
-                let d_eff = d_primary + w * ((20.0 * d_pe1).max(d_primary) - d_primary);
-                let tau = crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_p, hyd.rho_l, hyd.eta, phi_solid, t_k);
+                let d_cur = floc_cls[k].max(d_primary);
+                let d_target = d_primary + w * (d_max_shear.max(d_primary) - d_primary);
+
+                // Fractal aggregate (D_f ~ 2.0): R_agg = a0 * sqrt(g), rho_eff = rho_l + (rho_p - rho_l) / sqrt(g)
+                let g = (d_cur / d_primary.max(1e-12)).powi(2).max(1.0);
+                let rho_eff_cur = hyd.rho_l + (rho_p - hyd.rho_l) / g.sqrt();
+                let v_s_agg = crate::transfer::hydro::terminal_velocity(d_cur, rho_eff_cur, hyd.rho_l, hyd.eta).abs();
+
+                // Dynamic aggregation vs shear breakage
+                let d_eff = if d_cur < d_target {
+                    let alpha_sed = 1.5 * phi_solid * v_s_agg / d_primary.max(1e-9);
+                    let alpha_shear = 1.2 * shear_eff * phi_solid * (d_cur / d_primary.max(1e-9));
+                    let alpha_br = (8.0 * crate::transport::K_BOLTZMANN * t_k / (3.0 * hyd.eta)) * (phi_solid / (std::f64::consts::PI / 6.0 * d_primary.powi(3) * g)).max(0.0);
+                    let k_coll = w * (alpha_sed + alpha_shear + alpha_br);
+                    let tau_agg = (1.0 / k_coll.max(0.1)).clamp(0.5, 10.0);
+                    d_target + (d_cur - d_target) * (-dt_s / tau_agg).exp()
+                } else if d_cur > d_target {
+                    let k_break = 0.2 * shear_eff.sqrt().max(0.1);
+                    let tau_break = (1.0 / k_break).clamp(0.2, 5.0);
+                    d_target + (d_cur - d_target) * (-dt_s / tau_break).exp()
+                } else {
+                    d_target
+                };
+                let d_eff = d_eff.clamp(d_primary, 50.0 * d_pe1.max(d_primary));
+                floc_cls[k] = d_eff;
+
+                let rho_eff = hyd.rho_l + (rho_p - hyd.rho_l) * (d_primary / d_eff);
+                let tau = if column.len() > 1 {
+                    self.settling_time_through(&column, d_eff, rho_eff, phi_solid, t_k)
+                } else {
+                    crate::transfer::settling::settling_time_s(liq_h_m, d_eff, rho_eff, hyd.rho_l, hyd.eta, phi_solid, t_k)
+                };
                 let n_js = crate::transfer::hydro::just_suspended_rps(
                     &hyd.st,
                     d_eff,
-                    rho_p,
+                    rho_eff,
                     hyd.rho_l,
                     hyd.nu,
                     100.0 * solid_vol_m3 * rho_p / (self.total_liquid_volume_ml() * 1e-6 * hyd.rho_l).max(1e-12),
@@ -507,7 +554,8 @@ impl Vessel {
                 }
             }
             self.ev.susp.insert(sp.clone(), mean_of(&cls));
-            self.ev.susp_cls.insert(sp, cls);
+            self.ev.susp_cls.insert(sp.clone(), cls);
+            self.ev.floc_d_cls.insert(sp, floc_cls);
         }
     }
 
@@ -534,9 +582,12 @@ impl Vessel {
     }
 
     /// Mass-weighted mean effective (flocculated) diameter, m, of the size classes of solid `sp` in the current liquid: each
-    /// class grows from its primary size toward 20 Brownian-limit diameters as the electrolyte's coagulation index passes
-    /// 0.3 -> 1 (the same law `update_suspension` settles with).
-    pub(crate) fn floc_diameter_m(&self, props: &SolidProps, view: &SizeView) -> f64 {
+    /// class grows from its primary size toward fractal flocs limited by shear breakage.
+    pub(crate) fn floc_diameter_m(&self, sp: &str, props: &SolidProps, view: &SizeView) -> f64 {
+        if let Some(cls) = self.ev.floc_d_cls.get(sp) {
+            let n = cls.len().max(1) as f64;
+            return cls.iter().sum::<f64>() / n;
+        }
         let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-9);
         let ions: Vec<(f64, f64)> = self.species_mol.iter().filter(|(s, m)| **m > 0.0 && ions::species_charge(s) != 0).map(|(s, m)| (m / vol_l, ions::species_charge(s) as f64)).collect();
         let gamma_index = crate::transfer::settling::coagulation_index(&ions);
@@ -544,8 +595,13 @@ impl Vessel {
         let hyd = self.hydro_state();
         let rho_p = props.density_g_ml * 1000.0;
         let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * self.temperature_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
+        let vol_m3 = (self.total_liquid_volume_ml() * 1e-6).max(1e-9);
+        let eps = crate::transfer::hydro::dissipation_w_kg(&hyd.st, hyd.rho_l, hyd.nu, vol_m3);
+        let shear_rate = (eps / hyd.nu.max(1e-9)).sqrt();
+        let shear_eff = (shear_rate * shear_rate + 0.04).sqrt();
+        let d_max_shear = (20.0 * d_pe1) / (1.0 + shear_eff / 50.0).sqrt();
         let n = view.class_d_m.len().max(1) as f64;
-        view.class_d_m.iter().map(|&d| d + w * ((20.0 * d_pe1).max(d) - d)).sum::<f64>() / n
+        view.class_d_m.iter().map(|&d| d + w * (d_max_shear.max(d) - d)).sum::<f64>() / n
     }
 
     // ------------------------------------------------------------------------------------------ events

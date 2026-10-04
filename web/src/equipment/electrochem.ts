@@ -9,20 +9,24 @@ import { ELECTRODE_MATERIALS, ElectrodeMaterial } from './electrode_materials';
 export { ELECTRODE_MATERIALS };
 export type { ElectrodeMaterial };
 
-const MATERIAL_COLORS: Record<string, number> = {
-  Pt: 0xd8dde2,
-  C: 0x222426,
-  Cu: 0xb86542,
-  Zn: 0x9fa9b3,
-  Ag: 0xe8ecef,
-  Fe: 0x5a636a,
-  Al: 0xc4cbd1,
-  Ni: 0xa8b0b5,
-  Co: 0x8d97a5,
-  Mg: 0xcfd3d6,
-  Mn: 0x9a8f9a,
-  Pb: 0x6f767c,
-};
+/**
+ * Rod colours by material: the colour of the bulk metal from the engine's solid records (the same records colour a bed of the
+ * metal's powder; `setElectrodeMaterials` at startup). Until the engine has answered, or for a material it has no colour for,
+ * a neutral metal grey.
+ */
+const MATERIAL_COLORS: Record<string, number> = {};
+const NEUTRAL_METAL = 0xb5bbc0;
+
+function linearHex(rgb: readonly number[]): number {
+  const c = new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.LinearSRGBColorSpace);
+  return c.getHex(THREE.SRGBColorSpace);
+}
+
+export function setElectrodeMaterials(list: readonly { symbol: string; rgb?: readonly number[] | null }[]): void {
+  for (const m of list) if (m.rgb && m.rgb.length >= 3) MATERIAL_COLORS[m.symbol] = linearHex(m.rgb);
+}
+
+const colourOf = (m: string): number => MATERIAL_COLORS[m] ?? NEUTRAL_METAL;
 
 /** Electrode materials on the front-panel selectors: the engine's list from its species store (`electrode_materials.ts`). */
 export const PANEL_MATERIALS = ELECTRODE_MATERIALS;
@@ -241,8 +245,8 @@ export class ElectrochemStation {
     this.group.add(this.redCable, this.blackCable);
 
     // ---------------------------------------------------------------- Dipped Electrodes
-    this.anodeMat = new THREE.MeshStandardMaterial({ color: MATERIAL_COLORS.Pt, metalness: 0.85, roughness: 0.25 });
-    this.cathodeMat = new THREE.MeshStandardMaterial({ color: MATERIAL_COLORS.Pt, metalness: 0.85, roughness: 0.25 });
+    this.anodeMat = new THREE.MeshStandardMaterial({ color: colourOf('Pt'), metalness: 0.85, roughness: 0.25 });
+    this.cathodeMat = new THREE.MeshStandardMaterial({ color: colourOf('Pt'), metalness: 0.85, roughness: 0.25 });
 
     const rodGeo = new THREE.CylinderGeometry(ELECTRODE_RADIUS, ELECTRODE_RADIUS, ELECTRODE_LENGTH, 16);
     this.anodeRod = new THREE.Mesh(rodGeo, this.anodeMat);
@@ -339,8 +343,8 @@ export class ElectrochemStation {
   }
 
   public setMaterials(anode: ElectrodeMaterial, cathode: ElectrodeMaterial) {
-    this.anodeMat.color.setHex(MATERIAL_COLORS[anode] ?? 0xd8dde2);
-    this.cathodeMat.color.setHex(MATERIAL_COLORS[cathode] ?? 0xd8dde2);
+    this.anodeMat.color.setHex(colourOf(anode));
+    this.cathodeMat.color.setHex(colourOf(cathode));
     if (anode === 'C') {
       this.anodeMat.metalness = 0.1;
       this.anodeMat.roughness = 0.8;

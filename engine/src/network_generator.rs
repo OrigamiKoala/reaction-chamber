@@ -476,7 +476,7 @@ fn net_rate_at(r: &GeneratedReaction, concs: &HashMap<String, f64>) -> f64 {
     if !r.k_eq_from_data || r.k_eq <= 0.0 || fwd <= 0.0 {
         return fwd;
     }
-    let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-12);
+    let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-16);
     let mut ln_q = 0.0;
     for (sp, &nu) in &r.products {
         if sp != crate::vessel::AQUEOUS_SOLVENT {
@@ -507,7 +507,7 @@ impl GeneratedReaction {
         // a reaction with an equilibrium constant from data runs at its net rate (the same screening as the expansion)
         if self.k_eq_from_data && self.k_eq_298 > 0.0 && rate > 0.0 {
             let ln_k = self.k_eq_298.ln() - self.delta_h_kj * 1000.0 / R_IDEAL * (1.0 / t - 1.0 / 298.15);
-            let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-12);
+            let conc = |sp: &str| concs.get(sp).copied().unwrap_or(0.0).max(1e-16);
             let mut ln_q = 0.0;
             for (sp, &nu) in &self.products {
                 if sp != crate::vessel::AQUEOUS_SOLVENT {

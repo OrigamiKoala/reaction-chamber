@@ -394,7 +394,7 @@ fn s0_6_citric_acid_is_weak_with_estimated_pka() {
     let ph = v.current_ph();
     assert!((ph - 2.1).abs() <= 0.3, "0.1 M citric acid pH {} (real 2.1)", ph);
     // the equilibria in the vessel carry the Estimated tier into the UI
-    let mine: Vec<_> = v.equilibria.iter().filter(|e| e.id.starts_with("est_acid_") && e.id.contains("C6H")).collect();
+    let mine: Vec<_> = v.equilibria.iter().filter(|e| e.id.starts_with("est_acid_") && ["C6H8O7_", "C6H7O7-_", "C6H6O7-2_"].iter().any(|p| e.id.contains(p))).collect();
     assert_eq!(mine.len(), 3);
     assert!(mine.iter().all(|e| e.tier == ProvenanceTier::Estimated));
 }
@@ -580,6 +580,7 @@ fn s0_9_portion_carries_its_own_heat_capacity() {
     let mut src = beaker();
     src.dose(DoseRequest { reagent_id: "ethanol".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(340.0), solid_form: None }).unwrap();
     src.temperature_k = 340.0;
+    let h_stream = src.excess_enthalpy_j();
     let p = src.remove_liquid(10.0, true).unwrap();
     let c_water = 50.0 * 1.0 * 4.184;
     let m_etoh = 10.0 * 0.789;
@@ -587,7 +588,10 @@ fn s0_9_portion_carries_its_own_heat_capacity() {
     let c_glass = 110.0 * 0.84 * 0.15;
     let expected = (298.15 * (c_water + c_glass) + 340.0 * c_etoh) / (c_water + c_glass + c_etoh);
     a.add_portion(p).unwrap();
-    assert!((a.temperature_k - expected).abs() < 0.3, "{} vs {}", a.temperature_k, expected);
+    // plus the heat of mixing ethanol with water (the stream's own share was released when it was made)
+    let mixing_rise = -(a.excess_enthalpy_j() - h_stream) / (c_water + c_glass + c_etoh);
+    assert!(mixing_rise > 0.5, "ethanol and water mix exothermically: {}", mixing_rise);
+    assert!((a.temperature_k - expected - mixing_rise).abs() < 0.4, "{} vs {} (+ {} from mixing)", a.temperature_k, expected, mixing_rise);
 }
 
 // ---- 0.10 solver hygiene ---------------------------------------------------------------------------------------------

@@ -34,6 +34,7 @@
     {"metal": "Mn+2", "ligand": "OH-", "n": 1, "product": "MnOH+", "log_beta": 3.4},
     {"metal": "Fe+2", "ligand": "OH-", "n": 1, "product": "FeOH+", "log_beta": 4.5},
     {"metal": "Mg+2", "ligand": "OH-", "n": 1, "product": "MgOH+", "log_beta": 2.6},
-    {"metal": "Ca+2", "ligand": "OH-", "n": 1, "product": "CaOH+", "log_beta": 1.2}
+    {"metal": "Ca+2", "ligand": "OH-", "n": 1, "product": "CaOH+", "log_beta": 1.2},
+    {"metal": "Cr+3", "ligand": "OH-", "n": 1, "product": "CrOH+2", "log_beta": 10.0}
   ]
 }

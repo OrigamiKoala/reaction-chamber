@@ -47,7 +47,7 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   const mgMol = 0.0035; // 0.085 g
   dose(src, { reagent_id: 'mg_ribbon', mass_g: mgMol * 24.305 });
   let maxP = 0;
-  const s = run([src, syr], 60, (all) => (maxP = Math.max(maxP, all[src].pressure_atm)));
+  const s = run([src, syr], 150, (all) => (maxP = Math.max(maxP, all[src].pressure_atm)));
   const gs = s[syr].gas;
   assert.equal(gs.collector, 'syringe');
   const molH2 = molOf(gs.species, 'H2(g)');

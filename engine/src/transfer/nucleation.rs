@@ -211,7 +211,7 @@ pub fn precipitate(inp: PrecipInput) -> PrecipResult {
             if moderate || dt_sub <= 1e-12 {
                 let growth_applied = dn_growth.min(dn);
                 if have_particles {
-                    pop.scale_to_volume(pop.volume_m3() + growth_applied * vm);
+                    { let v_new = pop.volume_m3() + growth_applied * vm; super::psd::change_to_volume(&mut pop, v_new); }
                     pop.add(d_nuclei, d_crit);
                 } else if forms_now {
                     pop = ParticlePopulation::from_count_and_diameter(clock + d_nuclei, d_crit);

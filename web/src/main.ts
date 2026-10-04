@@ -31,6 +31,8 @@ import { icon } from './ui/icons';
 import { LevelTags } from './ui/level_tags';
 import { gasTagText, dominantGas } from './bench/gas_math';
 import { SETUPS } from './app/setups';
+import { setSolidForms } from './equipment/bottle';
+import { setElectrodeMaterials } from './equipment/electrochem';
 import { registerGasKits } from './app/gas_kit';
 import { registerFilterKits } from './app/filter_kit';
 import { registerTitrationKits } from './app/titration_kit';
@@ -726,6 +728,14 @@ async function initApp() {
     lib.setCatalog(await withTimeout(sim.getReagentCatalog(), 20000, 'Loading the reagent catalog'));
   } catch (err) {
     toast(`Couldn't load reagents: ${errMsg(err)}`, 'error');
+  }
+
+  // What the engine knows about the physical form of solid reagents and the look of the electrode metals
+  try {
+    setSolidForms(await withTimeout(sim.getSolidForms(), 20000, 'Loading solid forms'));
+    setElectrodeMaterials(await withTimeout(sim.getElectrodeMaterials(), 20000, 'Loading electrode materials'));
+  } catch (err) {
+    console.warn('[Main] solid forms / electrode materials unavailable', err);
   }
 
   // Imported compounds persist in localStorage but the engine is in-memory: re-model them (formula-driven, fast).

@@ -97,6 +97,12 @@ impl BathState {
         }
     }
 
+    /// Water leaves the free surface as vapour: mass `mass_g` is taken from the liquid water (never from the ice, which stays
+    /// at its plateau until it has melted into the water).
+    pub fn lose_water(&mut self, mass_g: f64) {
+        self.water_g = (self.water_g - mass_g.max(0.0)).max(0.0);
+    }
+
     pub fn visual(&self) -> BathVisual {
         BathVisual { temperature_k: self.t_k, ice_fraction: if self.mass_g() > 0.0 { self.ice_g / self.mass_g() } else { 0.0 }, mass_g: self.mass_g() }
     }
@@ -120,6 +126,14 @@ mod tests {
         }
         assert_eq!(b.ice_g, 0.0);
         assert!(b.t_k > 273.15, "after the ice is gone the bath warms: {}", b.t_k);
+    }
+
+    #[test]
+    fn evaporation_takes_water_but_not_ice() {
+        let mut b = BathState::new(&BathSpec { temperature_k: 273.15, mass_g: 100.0, ice_fraction: 0.5, melt_k: None });
+        b.lose_water(60.0);
+        assert_eq!(b.water_g, 0.0, "only the liquid is lost");
+        assert_eq!(b.ice_g, 50.0);
     }
 
     #[test]

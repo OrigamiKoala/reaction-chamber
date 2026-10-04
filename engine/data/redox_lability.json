@@ -1,6 +1,6 @@
 {
  "version": 1,
- "comment": "Elements whose common aqueous redox couples exchange electrons fast enough (outer-sphere or low-barrier inner-sphere transfer, seconds to minutes at 10-100 mM) for the bench to see them. Couples of other elements (S, N, C, Cl, Cr, Co, ...) are kinetically inert on bench time: they react only through a registered kinetic row (measured rate law) or a species record that carries a self-exchange rate (RedoxCouple.k_self). Thermodynamics decides *whether*, never *that* an inert couple reacts.",
+ "comment": "Elements whose common aqueous redox couples exchange electrons fast enough (outer-sphere or low-barrier inner-sphere transfer, seconds to minutes at 10-100 mM) for the bench to see them. Couples of other elements (S, N, C, Cl, Co, ...) are kinetically inert on bench time: they react only through a registered kinetic row (measured rate law) or a species record that carries a self-exchange rate (RedoxCouple.k_self). Thermodynamics decides *whether*, never *that* an inert couple reacts. Chromium is labile as a redox element: Cr(VI) is reduced by Fe(II), I-, sulfite, alcohols in seconds to minutes through Cr(V)/Cr(IV) (the substitution inertness of Cr(III) concerns its ligand exchange, not these electron transfers).",
  "tier": "Estimated",
  "source": "Taube, Chem. Rev. 50 (1952) 69 (labile vs inert complexes); Basolo & Pearson, Mechanisms of Inorganic Reactions; Marcus self-exchange tables (Sutin, Acc. Chem. Res. 1968) -- recalled, verify",
  "labile": [
@@ -13,6 +13,7 @@
   "H",
   "Na",
   "Mg",
-  "Ce"
+  "Ce",
+  "Cr"
  ]
 }

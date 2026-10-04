@@ -1,5 +1,5 @@
 {
-  "_comment": "Reaction templates of the organic network generator (src/reaction_templates.rs, src/network_generator.rs). A template is a graph transformation, not a reaction: each reactant slot is a list of SMARTS alternatives (the first atom of every alternative is the reacting atom, atom i of an alternative means the same thing in all of them), `edits` rewrite the matched atoms (op: break | bond | set_bond between two atoms (slot, pattern atom), charge, h_delta), and the products are the connected pieces of the result. The rate comes from rate rules in the manner of RMG: the matching rule of the highest specificity (the number of constraints in its `when` conditions) gives the pre-exponential factor and activation energy, and every matching modifier scales them (a_factor, ea_add_kj; `per_match` counts the occurrences of its pattern, `unless` excludes). A condition is `{reactant, center, smarts}` (the pattern's first atom is the atom matched by pattern atom `center` of that reactant's slot) or `{solvent: [classes]}`. `degeneracy` multiplies the rate by the number of hydrogens on an atom (statistical factor). Catalysts are species whose concentration enters the rate law with the given order. Nothing here names a compound: a new reaction type is a new entry. K is never stated: it comes from the formation data of reactants and products (a reaction whose species lack data is irreversible). Every number is a recalled literature value or a class estimate, tier Estimated; the source of each is on its rule.",
+  "_comment": "Reaction templates of the organic network generator (src/reaction_templates.rs, src/network_generator.rs). A template is a graph transformation, not a reaction: each reactant slot is a list of SMARTS alternatives (the first atom of every alternative is the reacting atom, atom i of an alternative means the same thing in all of them), `edits` rewrite the matched atoms (op: break | bond | set_bond between two atoms (slot, pattern atom), charge, h_delta), and the products are the connected pieces of the result. The rate comes from rate rules in the manner of RMG: the matching rule of the highest specificity (the number of constraints in its `when` conditions) gives the pre-exponential factor and activation energy, and every matching modifier scales them (a_factor, ea_add_kj; `per_match` counts the occurrences of its pattern, `unless` excludes). A condition is `{reactant, center, smarts}` (the pattern's first atom is the atom matched by pattern atom `center` of that reactant's slot) or `{solvent: [classes]}`. `degeneracy` multiplies the rate by the number of hydrogens on an atom (statistical factor). Catalysts are species whose concentration enters the rate law with the given order. Nothing here names a compound: a new reaction type is a new entry. K is never stated: it comes from the formation data of reactants and products (a reaction whose species lack data is irreversible). Every number is a recalled literature value or a class estimate, tier Estimated; the source of each is on its rule. Added in the sixth pass: Diels-Alder, Friedel-Crafts alkylation and acylation (the Lewis acid is a catalyst species of the rate law), organomagnesium halide addition and protonolysis, Wittig olefination.",
   "templates": [
     {
       "id": "base_ester_hydrolysis",
@@ -2436,6 +2436,791 @@
         "k_self": 3.0000000000000003e-21,
         "source": "rate-scale constant of an organic two-electron couple (hydride / proton-coupled transfer), tier Speculative: not a measured self-exchange (against a strongly oxidising partner the Marcus cross relation is in its saturated regime, where the value only sets the scale), chosen so that the Marcus cross relation reproduces the order of magnitude of acidic permanganate oxidations of alcohols (k of 1e-2..1 M-1 s-1 at 0.1 M acid, Stewart, Oxidation Mechanisms 1964; Waters & Littler) -- the cross relation then carries it to other oxidants by their driving force; aldehydes (through their hydrate) are oxidised about 30x faster than the alcohols (recalled order of magnitude)"
       }
+    },
+    {
+      "id": "diels_alder",
+      "name": "Diels-Alder cycloaddition",
+      "category": "cycloaddition",
+      "reactants": [
+        {
+          "role": "diene",
+          "any_of": [
+            "[CX3;A]=[CX3;A][CX3;A]=[CX3;A]"
+          ]
+        },
+        {
+          "role": "dienophile",
+          "any_of": [
+            "[CX3;A]=[CX3;A]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            1
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            2
+          ],
+          "b": [
+            0,
+            3
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            3
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "diene + unactivated dienophile",
+          "when": [],
+          "a": 2500000.0,
+          "ea_kj": 115,
+          "source": "butadiene + ethylene, Ea about 115 kJ/mol and log A about 6.5-7 (M-1 s-1) (Houk-type thermochemistry; recalled). The rate is per orientation of diene and dienophile, so a symmetric pair counts the 2 x 2 matches (a = A/4)"
+        },
+        {
+          "id": "dienophile conjugated with carbonyl (EWG on the first alkene carbon)",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;A]([CX3]=[OX1])=[CX3;A]"
+            }
+          ],
+          "a": 2500000.0,
+          "ea_kj": 65,
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+        },
+        {
+          "id": "dienophile conjugated with carbonyl (EWG on the second alkene carbon)",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;A]=[CX3;A][CX3]=[OX1]"
+            }
+          ],
+          "a": 2500000.0,
+          "ea_kj": 65,
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+        },
+        {
+          "id": "dienophile conjugated with nitrile (EWG on the first alkene carbon)",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;A](C#N)=[CX3;A]"
+            }
+          ],
+          "a": 2500000.0,
+          "ea_kj": 70,
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+        },
+        {
+          "id": "dienophile conjugated with nitrile (EWG on the second alkene carbon)",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;A]=[CX3;A]C#N"
+            }
+          ],
+          "a": 2500000.0,
+          "ea_kj": 70,
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "s-cis locked diene (cyclic)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;R]=[CX3;R][CX3;R]=[CX3;R]"
+            }
+          ],
+          "a_factor": 1000.0,
+          "source": "cyclopentadiene is held s-cis and reacts about 1e3-1e4 times faster than butadiene (Sauer, recalled)"
+        },
+        {
+          "id": "electron-rich diene (alkyl or alkoxy substituted)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;A]=[CX3;A]([CX4,OX2])[CX3;A]=[CX3;A]"
+            }
+          ],
+          "a_factor": 5.0,
+          "source": "a donor on C2 of the diene (isoprene, 2-alkoxy dienes) accelerates the normal-demand reaction by about an order of magnitude (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "friedel_crafts_alkylation",
+      "name": "Friedel-Crafts alkylation",
+      "category": "aromatic substitution",
+      "reactants": [
+        {
+          "role": "arene",
+          "any_of": [
+            "[cH;R]"
+          ]
+        },
+        {
+          "role": "alkyl halide",
+          "any_of": [
+            "[CX4][Cl,Br,I]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "variants": [
+        {
+          "tag": "Lewis acid",
+          "catalysts": [
+            {
+              "species": "AlCl3",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "tertiary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H0]"
+                }
+              ],
+              "a": 5400.0,
+              "ea_kj": 50,
+              "source": "AlCl3-catalysed alkylation of benzene by a tertiary halide; the ionisation of the complexed halide is fast: a class estimate of k of the order 1e-3 M-2 s-1 per ring position (benzene / 6) (Brown & Jungk 1955, recalled order of magnitude)"
+            },
+            {
+              "id": "secondary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H1]"
+                }
+              ],
+              "a": 54.0,
+              "ea_kj": 50,
+              "source": "secondary halides ionise about 1e2 slower (estimate)"
+            },
+            {
+              "id": "primary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H2,H3]"
+                }
+              ],
+              "a": 0.54,
+              "ea_kj": 50,
+              "source": "primary halides react through the polarised complex, about 1e4 slower than tertiary (estimate)"
+            }
+          ],
+          "modifiers": [
+            {
+              "id": "Hammett, alkylation",
+              "when": [],
+              "hammett": {
+                "rho": -2.4,
+                "reactant": 0,
+                "center": 0,
+                "ortho_steric": true
+              },
+              "source": "rho+ about -2.4 for AlCl3 / alkyl halide alkylation of substituted benzenes (Brown & Jungk 1955); an arene deactivated beyond sigma+ about 0.6 does not alkylate"
+            }
+          ]
+        },
+        {
+          "tag": "FeCl3",
+          "catalysts": [
+            {
+              "species": "FeCl3",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "tertiary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H0]"
+                }
+              ],
+              "a": 2700.0,
+              "ea_kj": 52,
+              "source": "FeCl3-catalysed alkylation (mild Lewis acid, ~2x slower than AlCl3)"
+            },
+            {
+              "id": "secondary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H1]"
+                }
+              ],
+              "a": 27.0,
+              "ea_kj": 52,
+              "source": "secondary halides ionise ~1e2 slower"
+            },
+            {
+              "id": "primary halide",
+              "when": [
+                {
+                  "reactant": 1,
+                  "center": 0,
+                  "smarts": "[CX4;H2,H3]"
+                }
+              ],
+              "a": 0.27,
+              "ea_kj": 52,
+              "source": "primary halides react through polarised complex"
+            }
+          ],
+          "modifiers": [
+            {
+              "id": "Hammett, alkylation",
+              "when": [],
+              "hammett": {
+                "rho": -2.4,
+                "reactant": 0,
+                "center": 0,
+                "ortho_steric": true
+              },
+              "source": "rho+ about -2.4 for Lewis acid / alkyl halide alkylation"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "friedel_crafts_acylation",
+      "name": "Friedel-Crafts acylation",
+      "category": "aromatic substitution",
+      "reactants": [
+        {
+          "role": "arene",
+          "any_of": [
+            "[cH;R]"
+          ]
+        },
+        {
+          "role": "acyl halide",
+          "any_of": [
+            "[CX3;A](=[OX1])[Cl,Br,I]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            2
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "variants": [
+        {
+          "tag": "Lewis acid",
+          "catalysts": [
+            {
+              "species": "AlCl3",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "acyl halide",
+              "when": [],
+              "a": 12000.0,
+              "ea_kj": 50,
+              "source": "AlCl3-catalysed acylation of benzene by an acyl chloride, a class estimate of k of the order 1e-3 M-2 s-1 per ring position (Brown 1957; recalled order of magnitude)"
+            }
+          ],
+          "modifiers": [
+            {
+              "id": "Hammett, acylation",
+              "when": [],
+              "hammett": {
+                "rho": -9.1,
+                "reactant": 0,
+                "center": 0,
+                "ortho_steric": true
+              },
+              "source": "rho+ about -9 for acylation of substituted benzenes (Brown & Marino 1962); the acylium is a more selective electrophile than a carbocation, and the product ketone deactivates the ring, so the reaction stops after one substitution"
+            }
+          ]
+        },
+        {
+          "tag": "FeCl3",
+          "catalysts": [
+            {
+              "species": "FeCl3",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "acyl halide",
+              "when": [],
+              "a": 6000.0,
+              "ea_kj": 52,
+              "source": "FeCl3-catalysed acylation of benzene by an acyl chloride"
+            }
+          ],
+          "modifiers": [
+            {
+              "id": "Hammett, acylation",
+              "when": [],
+              "hammett": {
+                "rho": -9.1,
+                "reactant": 0,
+                "center": 0,
+                "ortho_steric": true
+              },
+              "source": "rho+ about -9 for acylation of substituted benzenes"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organomagnesium_carbonyl_addition",
+      "name": "Addition of an organomagnesium halide to an aldehyde or ketone",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "organomagnesium halide",
+          "any_of": [
+            "[#6][#12][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            1,
+            1
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "aldehyde",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H1,H2]"
+            }
+          ],
+          "a": 2700000000000.0,
+          "ea_kj": 20,
+          "source": "Grignard addition to an aldehyde is close to the encounter limit in ether (k of the order 1e3-1e5 M-1 s-1 at 298 K; Ashby 1980, recalled order of magnitude); applies to a solution in an ether, the rate has no meaning in water, where protonolysis wins"
+        },
+        {
+          "id": "ketone",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H0]"
+            }
+          ],
+          "a": 270000000000.0,
+          "ea_kj": 20,
+          "source": "ketones add about an order of magnitude slower than aldehydes (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "organomagnesium_protonolysis",
+      "name": "Protonolysis of an organomagnesium halide by a protic compound",
+      "category": "acid-base",
+      "reactants": [
+        {
+          "role": "organomagnesium halide",
+          "any_of": [
+            "[#6][#12][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "proton donor",
+          "any_of": [
+            "[OX2;H1,H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            0,
+            0
+          ],
+          "delta": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "water or alcohol",
+          "when": [],
+          "a": 10000000000000.0,
+          "ea_kj": 10,
+          "source": "carbanion-like organomagnesium compounds are protonated by water and alcohols at the diffusion limit (k >> 1e6 M-1 s-1); a class estimate, the reason a Grignard reagent cannot be made in a wet solvent"
+        }
+      ]
+    },
+    {
+      "id": "wittig_olefination",
+      "name": "Wittig olefination (phosphorus ylide + aldehyde or ketone)",
+      "category": "carbonyl addition",
+      "reactants": [
+        {
+          "role": "phosphorus ylide",
+          "any_of": [
+            "[CX3;A]=[PX4]",
+            "[CX3-;A]-[PX4+]"
+          ]
+        },
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 2
+        },
+        {
+          "op": "break",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            1
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 2
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": 0
+        }
+      ],
+      "rules": [
+        {
+          "id": "semi-stabilised or non-stabilised ylide, aldehyde",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H1,H2]"
+            }
+          ],
+          "a": 27000000000.0,
+          "ea_kj": 25,
+          "source": "unstabilised ylides add to aldehydes in THF with k of the order 1e2-1e3 M-1 s-1 (oxaphosphetane formation is rate determining, Vedejs 1988; recalled order of magnitude)"
+        },
+        {
+          "id": "ketone",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H0]"
+            }
+          ],
+          "a": 270000000.0,
+          "ea_kj": 25,
+          "source": "ketones are about two orders slower than aldehydes (estimate)"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "stabilised ylide (conjugated with a carbonyl)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;A](=[PX4])[CX3]=[OX1]"
+            }
+          ],
+          "a_factor": 0.0001,
+          "source": "stabilised ylides (ester- or ketone-substituted) are about 1e4 less reactive than alkylidene ylides (recalled order of magnitude)"
+        }
+      ]
     }
   ]
 }

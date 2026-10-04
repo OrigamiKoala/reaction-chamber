@@ -25,6 +25,8 @@ export interface BottleInput {
   form?: 'solid' | 'liquid' | 'solution' | 'gas';
   dropper?: boolean;
   by_mass?: boolean;
+  /** Physical form a solid reagent is dosed in (engine `data/solid_forms.json`); a loose form is poured as pieces. */
+  solid_form?: string;
   /** Content colour hint ('#rrggbb'); otherwise guessed generically from formula/name. */
   colorHex?: string;
 }
@@ -236,9 +238,16 @@ export function defaultContentColor(solid: boolean): string {
   return solid ? '#f4f3ef' : '#f2f6f8';
 }
 
-/** True if a formula looks like a bare metal (ribbon / granules visuals). */
-export function looksLikeMetal(formula: string, name = ''): boolean {
-  return /^(Mg|Zn|Al|Fe|Cu|Sn|Pb|Ni|Ca|Na|K|Li)$/.test(formula.trim()) || /ribbon|turnings|granules|wire|foil/i.test(name);
+/** Solid forms that stay separate pieces (ribbon, turnings, granules): the engine's `solid_forms.json`, loaded at startup. */
+let looseSolidForms = new Set<string>();
+
+export function setSolidForms(forms: Record<string, { loose_pieces: boolean }>): void {
+  looseSolidForms = new Set(Object.entries(forms).filter(([, f]) => f.loose_pieces).map(([k]) => k));
+}
+
+/** True if a solid reagent is dosed as separate pieces (its catalog entry names a loose form), so it is poured piece by piece. */
+export function isLooseSolid(b: { solid_form?: string; form?: string; by_mass?: boolean } | undefined): boolean {
+  return !!b && !!b.solid_form && looseSolidForms.has(b.solid_form) && (b.form === 'solid' || !!b.by_mass);
 }
 
 // ------------------------------------------------------------------ label
@@ -665,6 +674,7 @@ export function entryToBottleInput(entry: ReagentCatalogEntry): BottleInput {
     form: entry.form,
     dropper: entry.dropper,
     by_mass: entry.by_mass,
+    solid_form: entry.solid_form,
   };
 }
 

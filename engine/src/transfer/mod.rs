@@ -27,4 +27,4 @@ pub mod psd;
 pub mod settling;
 
 pub use population::ParticlePopulation;
-pub use psd::{LogNormal, N_CLASSES};
+pub use psd::{change_to_volume, LogNormal, N_CLASSES};

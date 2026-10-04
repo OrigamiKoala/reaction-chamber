@@ -688,7 +688,7 @@ impl Vessel {
     /// Excess enthalpy (J) of a set of liquid phases (amounts per component, the ion phase carrying the ions):
     /// `H^E = -R T^2 d(sum n_i ln gamma_i)/dT`, by central difference of the activity model in temperature. Totals, not
     /// partial molar values, so large transfers (a solvent freezing almost completely) are balanced exactly.
-    fn excess_enthalpy(&self, comps: &[(String, Arc<Molecule>)], t_k: f64, phases: &[Vec<f64>], env: Option<&IonEnv>, ion_phase: Option<usize>) -> f64 {
+    pub(crate) fn excess_enthalpy(&self, comps: &[(String, Arc<Molecule>)], t_k: f64, phases: &[Vec<f64>], env: Option<&IonEnv>, ion_phase: Option<usize>) -> f64 {
         let dt = 0.5;
         let arcs: Vec<Arc<Molecule>> = comps.iter().map(|(_, m)| m.clone()).collect();
         let (m1, m2) = (Mixture::new(arcs.clone(), t_k - dt), Mixture::new(arcs, t_k + dt));
@@ -749,7 +749,11 @@ impl Vessel {
         let heat_at = |this: &Vessel, s: &Solved, t: f64| -> f64 {
             // fusion enthalpies of the solid formed, plus the excess (mixing) enthalpy released: liquid before minus after
             let mut q = 0.0;
-            let mut moved = false;
+            // a liquid that moved between the phases (or split into a new one) releases the mixing enthalpy as well, whether
+            // or not a solid moved
+            let scale_n: f64 = init_phases.iter().map(|p| p.iter().sum::<f64>()).sum::<f64>().max(1e-30);
+            let mut moved = s.lle.phases.len() != init_phases.len()
+                || s.lle.phases.iter().zip(init_phases.iter()).any(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| (x - y).abs() > 1e-9 * scale_n));
             for i in 0..nc {
                 let d = s.n_sol[i] - n_sol0[i];
                 if d.abs() > 1e-18 {
@@ -902,6 +906,7 @@ impl Vessel {
         others.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         self.species_mol = primary_map;
         self.extra_liquids = others.into_iter().map(|(_, m)| m).collect();
+        self.partition_ions_to_phases(t_k);
         // solids
         for i in 0..nc {
             let key = comps[i].1.solid_key.clone();
@@ -1071,5 +1076,233 @@ impl Vessel {
         }
         let vol = self.volatile_for(&lk)?;
         Some((vol.clone(), ls.exp().min(1.0) * vol.psat_pa(t_k)))
+    }
+
+    /// Static dielectric constant (relative permittivity) of a liquid phase.
+    pub fn phase_dielectric_constant(&self, phase_map: &HashMap<String, f64>) -> f64 {
+        let mut total_vol = 0.0;
+        let mut sum_eps_v = 0.0;
+        for (k, &n) in phase_map {
+            if n <= 1e-30 {
+                continue;
+            }
+            let v = if k == AQUEOUS_SOLVENT {
+                n * crate::volume::water_molar_volume_cm3_mol(self.temperature_k)
+            } else if let Some(m) = self.molecule(k).filter(|m| m.liquid_data) {
+                n * m.v_liquid_m3_mol(self.temperature_k) * 1e6
+            } else {
+                n * crate::volume::ion_apparent_molar_volume(k, 0.0)
+            };
+            if v > 0.0 {
+                let eps = self.component_dielectric(k);
+                sum_eps_v += eps * v;
+                total_vol += v;
+            }
+        }
+        if total_vol <= 1e-12 {
+            78.4
+        } else {
+            (sum_eps_v / total_vol).clamp(1.5, 100.0)
+        }
+    }
+
+    fn component_dielectric(&self, key: &str) -> f64 {
+        if key == AQUEOUS_SOLVENT || key == "H2O" || key == "H2O(l)" || key.starts_with("H2O") {
+            return 78.4;
+        }
+        let inchi = self.molecule(key).and_then(|m| m.inchikey.clone())
+            .or_else(|| self.compound_for(key).and_then(|c| c.inchi_key.clone()));
+        if let Some(ik) = &inchi {
+            match ik.as_str() {
+                "XLYOFNOQVPJJNP-UHFFFAOYSA-N" => return 78.4,
+                "YMWUJEATGCHHMB-UHFFFAOYSA-N" => return 8.93,
+                "HEDRZPFGACZZDS-UHFFFAOYSA-N" => return 4.81,
+                "VZGDMQKNWNREIO-UHFFFAOYSA-N" => return 2.24,
+                "VLKUTIPJWUSYMG-UHFFFAOYSA-N" => return 1.88,
+                "IMNFDUFMRHMDMM-UHFFFAOYSA-N" => return 1.92,
+                "OFBQJSOFQDEBGM-UHFFFAOYSA-N" => return 1.84,
+                "XDTMQSROBMDMFD-UHFFFAOYSA-N" => return 2.02,
+                "UHOVQNZJYSORNB-UHFFFAOYSA-N" => return 2.28,
+                "YXFVVABEGXRONW-UHFFFAOYSA-N" => return 2.38,
+                "RTZKUSPAPEZZQV-UHFFFAOYSA-N" => return 4.33,
+                "XEKOWRVHYACXOJ-UHFFFAOYSA-N" => return 6.02,
+                "WYURNTSHIVDZCO-UHFFFAOYSA-N" => return 7.58,
+                "CSCPPACGZOOCGX-UHFFFAOYSA-N" => return 20.7,
+                "OKKJLVBELUTLKV-UHFFFAOYSA-N" => return 32.7,
+                "LFQSCWFLJHTTHZ-UHFFFAOYSA-N" => return 24.3,
+                "BDERNNFJNOPAEC-UHFFFAOYSA-N" => return 19.4,
+                "LRHPLDYGYMQRHN-UHFFFAOYSA-N" => return 17.5,
+                "KBPLFHHGFOOTCA-UHFFFAOYSA-N" => return 10.3,
+                "WEVYAHXRMPXWKA-UHFFFAOYSA-N" => return 37.5,
+                "ZMXDDKWLCZADIW-UHFFFAOYSA-N" => return 36.7,
+                "IAZDPXIOMUYVGZ-UHFFFAOYSA-N" => return 46.7,
+                "LYGJENRVBDWLQH-UHFFFAOYSA-N" => return 35.8,
+                "JUJWROOIHBZHMG-UHFFFAOYSA-N" => return 12.4,
+                _ => {}
+            }
+        }
+        let lower = key.to_lowercase();
+        if lower.contains("water") {
+            78.4
+        } else if lower.contains("dichloromethane") || lower.contains("dcm") || lower.contains("ch2cl2") {
+            8.93
+        } else if lower.contains("chloroform") {
+            4.81
+        } else if lower.contains("hexane") || lower.contains("heptane") || lower.contains("pentane") || lower.contains("octane") {
+            1.9
+        } else if lower.contains("benzene") || lower.contains("toluene") || lower.contains("xylene") {
+            2.3
+        } else if lower.contains("ether") {
+            4.3
+        } else if lower.contains("acetate") {
+            6.0
+        } else if lower.contains("ethanol") {
+            24.3
+        } else if lower.contains("methanol") {
+            32.7
+        } else if lower.contains("propanol") || lower.contains("butanol") {
+            18.0
+        } else if lower.contains("dmso") {
+            46.7
+        } else if lower.contains("acetonitrile") {
+            37.5
+        } else {
+            let el = ions::species_elements(key).unwrap_or_default();
+            let has_n = el.contains_key("N");
+            let has_o = el.contains_key("O");
+            let has_hal = el.contains_key("Cl") || el.contains_key("Br") || el.contains_key("F");
+            if has_n && has_o {
+                35.0
+            } else if has_o {
+                12.0
+            } else if has_hal {
+                6.0
+            } else {
+                2.2
+            }
+        }
+    }
+
+    /// Partitions ions between the aqueous phase and non-aqueous phases according to Born transfer free energy
+    /// subject to electroneutrality in every phase.
+    pub(crate) fn partition_ions_to_phases(&mut self, t_k: f64) {
+        if self.extra_liquids.is_empty() {
+            return;
+        }
+        let v_aq = self.phase_volume_ml(&self.species_mol, t_k);
+        if v_aq <= 1e-6 {
+            return;
+        }
+        let eps_aq = self.phase_dielectric_constant(&self.species_mol);
+
+        let mut ion_species: Vec<String> = Vec::new();
+        for (k, _) in self.species_mol.iter().filter(|(sp, &m)| m > 0.0 && ions::species_charge(sp) != 0) {
+            if !ion_species.contains(k) {
+                ion_species.push(k.clone());
+            }
+        }
+        for extra in &self.extra_liquids {
+            for (k, _) in extra.iter().filter(|(sp, &m)| m > 0.0 && ions::species_charge(sp) != 0) {
+                if !ion_species.contains(k) {
+                    ion_species.push(k.clone());
+                }
+            }
+        }
+        if ion_species.is_empty() {
+            return;
+        }
+
+        for p in 0..self.extra_liquids.len() {
+            let v_org = self.phase_volume_ml(&self.extra_liquids[p], t_k);
+            if v_org <= 1e-6 {
+                continue;
+            }
+            let eps_org = self.phase_dielectric_constant(&self.extra_liquids[p]);
+            if (eps_org - eps_aq).abs() < 1.0 {
+                continue;
+            }
+            let v_ratio = v_org / v_aq;
+
+            struct IonPart {
+                sp: String,
+                charge: f64,
+                n_tot: f64,
+                ln_gamma_born: f64,
+            }
+            let mut ion_data: Vec<IonPart> = Vec::new();
+            for sp in &ion_species {
+                let n_tot = self.species_mol.get(sp).copied().unwrap_or(0.0)
+                    + self.extra_liquids[p].get(sp).copied().unwrap_or(0.0);
+                if n_tot <= 1e-25 {
+                    continue;
+                }
+                let z = ions::species_charge(sp) as f64;
+                let ln_g = crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_org, t_k);
+                ion_data.push(IonPart {
+                    sp: sp.clone(),
+                    charge: z,
+                    n_tot,
+                    ln_gamma_born: ln_g,
+                });
+            }
+            if ion_data.is_empty() {
+                continue;
+            }
+
+            let charge_at_psi = |psi: f64| -> f64 {
+                let mut sum_q = 0.0;
+                for ion in &ion_data {
+                    let k_dist = (-(ion.ln_gamma_born + ion.charge * psi)).exp();
+                    let r = k_dist * v_ratio;
+                    let n_org = ion.n_tot * (r / (1.0 + r));
+                    sum_q += ion.charge * n_org;
+                }
+                sum_q
+            };
+
+            let mut lo = -40.0;
+            let mut hi = 40.0;
+            let f_lo = charge_at_psi(lo);
+            let f_hi = charge_at_psi(hi);
+            let psi_opt = if f_lo * f_hi < 0.0 {
+                let mut root = 0.0;
+                for _ in 0..40 {
+                    let mid = 0.5 * (lo + hi);
+                    let fm = charge_at_psi(mid);
+                    if fm > 0.0 {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                    root = mid;
+                    if (hi - lo).abs() < 1e-7 {
+                        break;
+                    }
+                }
+                root
+            } else if f_lo.abs() < f_hi.abs() {
+                lo
+            } else {
+                hi
+            };
+
+            for ion in &ion_data {
+                let k_dist = (-(ion.ln_gamma_born + ion.charge * psi_opt)).exp();
+                let r = k_dist * v_ratio;
+                let n_org = ion.n_tot * (r / (1.0 + r));
+                let n_aq = (ion.n_tot - n_org).max(0.0);
+
+                if n_org > 1e-25 {
+                    self.extra_liquids[p].insert(ion.sp.clone(), n_org);
+                } else {
+                    self.extra_liquids[p].remove(&ion.sp);
+                }
+                if n_aq > 1e-25 {
+                    self.species_mol.insert(ion.sp.clone(), n_aq);
+                } else {
+                    self.species_mol.remove(&ion.sp);
+                }
+            }
+        }
     }
 }
