@@ -134,7 +134,7 @@ fn test_gate1_ethyl_acetate_saponification() {
     }).unwrap();
 
     // Verify saponification reaction was registered in vessel
-    assert!(vessel.kinetic_reactions.iter().any(|r| r.id.contains("saponification")),
+    assert!(vessel.kinetic_reactions.iter().any(|r| r.id.starts_with("base_ester_hydrolysis")),
         "Vessel kinetic_reactions must contain saponification: {:?}",
         vessel.kinetic_reactions.iter().map(|r| &r.id).collect::<Vec<_>>());
 
@@ -272,7 +272,7 @@ fn test_gate3_arrhenius_temperature_tracking() {
 
     vessel.update_network();
 
-    let _rxn_idx = vessel.kinetic_reactions.iter().position(|r| r.id.contains("saponification"))
+    let _rxn_idx = vessel.kinetic_reactions.iter().position(|r| r.id.starts_with("base_ester_hydrolysis"))
         .expect("Saponification must be present in kinetic reactions");
 
     // Extent step at T = 298.15 K
