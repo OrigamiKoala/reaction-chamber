@@ -1,0 +1,1122 @@
+{
+  "_comment": "Reaction templates of the organic network generator (src/reaction_templates.rs, src/network_generator.rs). A template is a graph transformation, not a reaction: each reactant slot is a list of SMARTS alternatives (the first atom of every alternative is the reacting atom, atom i of an alternative means the same thing in all of them), `edits` rewrite the matched atoms (op: break | bond | set_bond between two atoms (slot, pattern atom), charge, h_delta), and the products are the connected pieces of the result. The rate comes from rate rules in the manner of RMG: the matching rule of the highest specificity (the number of constraints in its `when` conditions) gives the pre-exponential factor and activation energy, and every matching modifier scales them (a_factor, ea_add_kj; `per_match` counts the occurrences of its pattern, `unless` excludes). A condition is `{reactant, center, smarts}` (the pattern's first atom is the atom matched by pattern atom `center` of that reactant's slot) or `{solvent: [classes]}`. `degeneracy` multiplies the rate by the number of hydrogens on an atom (statistical factor). Catalysts are species whose concentration enters the rate law with the given order. Nothing here names a compound: a new reaction type is a new entry. K is never stated: it comes from the formation data of reactants and products (a reaction whose species lack data is irreversible). Every number is a recalled literature value or a class estimate, tier Estimated; the source of each is on its rule.",
+  "templates": [
+    {
+      "id": "base_ester_hydrolysis",
+      "name": "Ester saponification (BAc2)",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "ester",
+          "any_of": [
+            "[CX3;A](=[OX1])[OX2;H0][#6]"
+          ]
+        },
+        {
+          "role": "hydroxide",
+          "any_of": [
+            "[OX1H1-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "ester + hydroxide",
+          "when": [],
+          "a": 23000000.0,
+          "ea_kj": 47.5,
+          "source": "second-order saponification of ethyl acetate, k(298) about 0.11 M-1 s-1 (Ea 47.5 kJ/mol), taken as the rate of every aliphatic ester"
+        }
+      ]
+    },
+    {
+      "id": "acid_ester_hydrolysis",
+      "name": "Acid-catalysed ester hydrolysis (AAc2)",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "ester",
+          "any_of": [
+            "[CX3;A](=[OX1])[OX2;H0][#6]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "id": "ester + water, H+",
+          "when": [],
+          "a": 11000000.0,
+          "ea_kj": 62.0,
+          "source": "acid-catalysed hydrolysis of ethyl acetate, k_H about 1.5e-4 M-1 s-1 at 298 K, taken as the rate of every aliphatic ester"
+        }
+      ]
+    },
+    {
+      "id": "sn2_substitution",
+      "name": "SN2 nucleophilic substitution",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "substrate",
+          "any_of": [
+            "[CX4][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "net_charge_max": -1,
+          "any_of": [
+            "[OX1H1-]",
+            "[OX1H0-][#6]",
+            "[SX1H1-]",
+            "[SX1H0-][#6]",
+            "[CX1H0-]#[NX1]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "primary substrate + hydroxide",
+          "when": [],
+          "a": 4000000000.0,
+          "ea_kj": 89.5,
+          "source": "reference: a primary alkyl bromide with hydroxide, k(298) about 4e9 exp(-89500/RT); scaled below by the substrate class and the nucleophile"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "methyl carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H3]"
+            }
+          ],
+          "a_factor": 30.0,
+          "source": "relative SN2 rates methyl : primary : secondary : tertiary = 30 : 1 : 0.025 : 1e-5 (Streitwieser 1956)"
+        },
+        {
+          "id": "secondary carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H1]"
+            }
+          ],
+          "a_factor": 0.025,
+          "source": "Streitwieser 1956"
+        },
+        {
+          "id": "tertiary carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H0]"
+            }
+          ],
+          "a_factor": 1e-05,
+          "source": "Streitwieser 1956"
+        },
+        {
+          "id": "branch on a beta carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4][CX4;D3]"
+            }
+          ],
+          "a_factor": 0.04,
+          "per_match": true,
+          "source": "isobutyl-type hindrance, 0.04 per extra branch (Ingold)"
+        },
+        {
+          "id": "two branches on a beta carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4][CX4;D4]"
+            }
+          ],
+          "a_factor": 0.0016,
+          "per_match": true,
+          "source": "neopentyl-type hindrance, 0.04 squared"
+        },
+        {
+          "id": "phenoxide / aryloxide",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-]c"
+            }
+          ],
+          "a_factor": 0.19953,
+          "source": "Swain-Scott n 3.5 against hydroxide 4.2 (an estimate between hydroxide and carboxylate), s = 1"
+        },
+        {
+          "id": "carboxylate",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-][CX3]=O"
+            }
+          ],
+          "a_factor": 0.031623,
+          "source": "Swain-Scott n 2.7 (acetate) against hydroxide 4.2 (Swain & Scott 1953)"
+        },
+        {
+          "id": "thiolate or hydrosulfide",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[SX1-]"
+            }
+          ],
+          "a_factor": 7.9433,
+          "source": "Swain-Scott n 5.1 (HS-) against hydroxide 4.2"
+        },
+        {
+          "id": "cyanide",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX1-]#N"
+            }
+          ],
+          "a_factor": 7.9433,
+          "source": "Swain-Scott n 5.1 (CN-) against hydroxide 4.2"
+        },
+        {
+          "id": "tertiary alkoxide",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-][CX4]([#6])([#6])[#6]"
+            }
+          ],
+          "a_factor": 0.005,
+          "source": "backside attack hindered by a bulky nucleophile (estimate)"
+        },
+        {
+          "id": "dipolar aprotic or non-polar solvent",
+          "when": [
+            {
+              "solvent": [
+                "alkane",
+                "aromatic",
+                "other"
+              ]
+            }
+          ],
+          "a_factor": 1000.0,
+          "source": "anionic nucleophiles are not solvated by hydrogen bonds: 1e3 to 1e6 faster than in water or alcohols (Parker 1969); the low end"
+        }
+      ]
+    },
+    {
+      "id": "e2_elimination",
+      "name": "E2 bimolecular elimination",
+      "category": "elimination",
+      "reactants": [
+        {
+          "role": "substrate",
+          "any_of": [
+            "[CX4]([Cl,Br,I])[CX4;!H0]"
+          ]
+        },
+        {
+          "role": "base",
+          "net_charge_max": -1,
+          "any_of": [
+            "[OX1H1-]",
+            "[OX1H0-][CX4]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": 1
+        }
+      ],
+      "degeneracy": {
+        "h_of": [
+          0,
+          2
+        ]
+      },
+      "rules": [
+        {
+          "id": "primary substrate + strong base, per beta hydrogen",
+          "when": [],
+          "a": 6666700000.0,
+          "ea_kj": 105.0,
+          "source": "reference: a primary bromide with ethoxide eliminates about 1 % (Hughes-Ingold) with Ea(E2) > Ea(SN2), so elimination rises with temperature; 2e10 M-1 s-1 per three beta hydrogens"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "secondary carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H1]"
+            }
+          ],
+          "a_factor": 5.0,
+          "source": "relative E2 rates primary : secondary : tertiary = 1 : 5 : 50 (with the SN2 factors these give the Hughes-Ingold elimination fractions: primary about 1 %, secondary about 80 %)"
+        },
+        {
+          "id": "tertiary carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H0]"
+            }
+          ],
+          "a_factor": 50.0,
+          "source": "see secondary carbon"
+        },
+        {
+          "id": "Zaitsev, one further carbon on the beta carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 2,
+              "smarts": "[CX4;D2]"
+            }
+          ],
+          "unless": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-][CX4]([#6])([#6])[#6]"
+            }
+          ],
+          "a_factor": 2.0,
+          "source": "Zaitsev orientation with a small base: the more substituted alkene is favoured (1 + substituents)"
+        },
+        {
+          "id": "Zaitsev, two further carbons on the beta carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 2,
+              "smarts": "[CX4;D3]"
+            }
+          ],
+          "unless": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-][CX4]([#6])([#6])[#6]"
+            }
+          ],
+          "a_factor": 3.0,
+          "source": "see above"
+        },
+        {
+          "id": "bulky base (Hofmann)",
+          "when": [
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[OX1H0-][CX4]([#6])([#6])[#6]"
+            }
+          ],
+          "a_factor": 3.0,
+          "source": "a bulky base abstracts the least hindered hydrogen and eliminates faster than it substitutes (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "sn1_solvolysis",
+      "name": "SN1 solvolysis (carbocation)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "substrate",
+          "any_of": [
+            "[CX4;!H3][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "tertiary halide in water",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H0]"
+            }
+          ],
+          "a": 6000000000000.0,
+          "ea_kj": 81.6,
+          "source": "solvolysis of tert-butyl chloride in water, k(298) about 3e-2 s-1 (t1/2 about 20 s)"
+        },
+        {
+          "id": "secondary halide in water",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H1]"
+            }
+          ],
+          "a": 6000000.0,
+          "ea_kj": 81.6,
+          "source": "about 1e-6 of the tertiary rate: the secondary cation is not stabilised enough (isopropyl vs tert-butyl, Grunwald-Winstein)"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "bromide leaving group",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 1,
+              "smarts": "[Br]"
+            }
+          ],
+          "a_factor": 39.0,
+          "source": "relative solvolysis rates Cl : Br : I = 1 : 39 : 99 (tert-butyl halides)"
+        },
+        {
+          "id": "iodide leaving group",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 1,
+              "smarts": "[I]"
+            }
+          ],
+          "a_factor": 99.0,
+          "source": "see bromide"
+        },
+        {
+          "id": "alcohol solvent",
+          "when": [
+            {
+              "solvent": [
+                "alcohol"
+              ]
+            }
+          ],
+          "a_factor": 3e-06,
+          "source": "ionising power Y(ethanol) = -2.03 against Y(water) = 3.49, m = 1 (Grunwald & Winstein 1948)"
+        },
+        {
+          "id": "other polar aprotic solvent",
+          "when": [
+            {
+              "solvent": [
+                "other"
+              ]
+            }
+          ],
+          "a_factor": 1e-07,
+          "source": "low ionising power (estimate)"
+        },
+        {
+          "id": "non-polar solvent",
+          "when": [
+            {
+              "solvent": [
+                "alkane",
+                "aromatic"
+              ]
+            }
+          ],
+          "a_factor": 1e-12,
+          "source": "no stabilisation of the ion pair (estimate)"
+        }
+      ]
+    },
+    {
+      "id": "e1_elimination",
+      "name": "E1 elimination (carbocation)",
+      "category": "elimination",
+      "reactants": [
+        {
+          "role": "substrate",
+          "any_of": [
+            "[CX4;!H3]([Cl,Br,I])[CX4;!H0]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "degeneracy": {
+        "h_of": [
+          0,
+          2
+        ]
+      },
+      "rules": [
+        {
+          "id": "tertiary halide in water, per beta hydrogen",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H0]"
+            }
+          ],
+          "a": 180000000000.0,
+          "ea_kj": 81.6,
+          "source": "E1 accompanies SN1 of tert-butyl chloride in water at about 8 % (three beta hydrogens)"
+        },
+        {
+          "id": "secondary halide in water, per beta hydrogen",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H1]"
+            }
+          ],
+          "a": 180000.0,
+          "ea_kj": 81.6,
+          "source": "same ratio to the SN1 rate as for the tertiary halide"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "bromide leaving group",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 1,
+              "smarts": "[Br]"
+            }
+          ],
+          "a_factor": 39.0,
+          "source": "see sn1_solvolysis"
+        },
+        {
+          "id": "iodide leaving group",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 1,
+              "smarts": "[I]"
+            }
+          ],
+          "a_factor": 99.0,
+          "source": "see sn1_solvolysis"
+        },
+        {
+          "id": "alcohol solvent",
+          "when": [
+            {
+              "solvent": [
+                "alcohol"
+              ]
+            }
+          ],
+          "a_factor": 3e-06,
+          "source": "see sn1_solvolysis"
+        },
+        {
+          "id": "other polar aprotic solvent",
+          "when": [
+            {
+              "solvent": [
+                "other"
+              ]
+            }
+          ],
+          "a_factor": 1e-07,
+          "source": "see sn1_solvolysis"
+        },
+        {
+          "id": "non-polar solvent",
+          "when": [
+            {
+              "solvent": [
+                "alkane",
+                "aromatic"
+              ]
+            }
+          ],
+          "a_factor": 1e-12,
+          "source": "see sn1_solvolysis"
+        }
+      ]
+    },
+    {
+      "id": "alkene_hydration",
+      "name": "Acid-catalysed alkene hydration (Markovnikov)",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "alkene",
+          "any_of": [
+            "[CX3;A]=[CX3;A]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "id": "tertiary carbocation (OH on the carbon with two further carbons)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;D3]"
+            }
+          ],
+          "a": 1000000000.0,
+          "ea_kj": 71.0,
+          "source": "acid-catalysed hydration of isobutene, k_H about 3.6e-4 M-1 s-1 at 298 K (Kresge et al. 1971)"
+        },
+        {
+          "id": "secondary carbocation",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;D2]"
+            }
+          ],
+          "a": 1000000000.0,
+          "ea_kj": 99.0,
+          "source": "propene, k_H about 4e-9 M-1 s-1: each carbon on the cation carbon speeds the hydration by about 1e5 (Kresge)"
+        },
+        {
+          "id": "primary carbocation",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;D1]"
+            }
+          ],
+          "a": 1000000000.0,
+          "ea_kj": 114.0,
+          "source": "ethene, k_H about 4e-12 M-1 s-1 (Kresge)"
+        }
+      ]
+    },
+    {
+      "id": "alkene_halogenation",
+      "name": "Halogen addition to an alkene",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "alkene",
+          "any_of": [
+            "[CX3;A]=[CX3;A]"
+          ]
+        },
+        {
+          "role": "halogen",
+          "any_of": [
+            "[Cl,Br,I][Cl,Br,I]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "break",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            1
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "order": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "alkene + halogen",
+          "when": [],
+          "a": 500000000.0,
+          "ea_kj": 28.0,
+          "source": "bromine addition to simple alkenes in water or polar solvents, k about 1e3-1e4 M-1 s-1 (estimate of the order of magnitude)"
+        }
+      ]
+    },
+    {
+      "id": "keto_enol_tautomerism",
+      "name": "Keto-enol tautomerism",
+      "category": "tautomerism",
+      "reactants": [
+        {
+          "role": "carbonyl",
+          "any_of": [
+            "[CX3;A](=[OX1])[CX4;!H0]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[O,N,S,F,Cl,Br]"
+            }
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "ketone or aldehyde, acid-catalysed enolisation",
+              "when": [],
+              "a": 53000000.0,
+              "ea_kj": 70.0,
+              "source": "acid-catalysed enolisation of acetone, k_H about 2.8e-5 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde"
+            }
+          ]
+        },
+        {
+          "tag": "base",
+          "catalysts": [
+            {
+              "species": "OH-",
+              "order": 1
+            }
+          ],
+          "rules": [
+            {
+              "id": "ketone or aldehyde, base-catalysed enolisation",
+              "when": [],
+              "a": 960000000.0,
+              "ea_kj": 55.0,
+              "source": "hydroxide-catalysed enolisation of acetone, k_OH about 0.22 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "amide_hydrolysis",
+      "name": "Acid-catalysed amide hydrolysis",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "amide",
+          "any_of": [
+            "[CX3;A](=[OX1])[NX3]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "id": "amide + water, H+",
+          "when": [],
+          "a": 110000000.0,
+          "ea_kj": 75.0,
+          "source": "acid-catalysed hydrolysis of acetamide, k_H about 8e-6 M-1 s-1 at 298 K"
+        }
+      ]
+    }
+  ]
+}

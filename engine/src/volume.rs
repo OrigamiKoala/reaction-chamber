@@ -150,44 +150,18 @@ pub fn excess_molar_volume_cm3_mol(x_by_inchikey: &[(String, f64)]) -> f64 {
 
 /// Standard partial molar volume V° at infinite dilution (cm^3/mol) from HKF database.
 pub fn ion_hkf_v0(ion: &str) -> f64 {
-    match ion {
-        "H+" => 0.00,
-        "Na+" => -1.21,
-        "K+" => 9.02,
-        "Li+" => -0.88,
-        "NH4+" => 17.90,
-        "Ag+" => -5.90,
-        "Ca+2" | "Ca2+" => -17.85,
-        "Mg+2" | "Mg2+" => -21.17,
-        "Ba+2" | "Ba2+" => -12.50,
-        "Fe+2" | "Fe2+" => -24.70,
-        "Fe+3" | "Fe3+" => -43.70,
-        "Cu+2" | "Cu2+" => -23.50,
-        "Zn+2" | "Zn2+" => -21.60,
-        "Pb+2" | "Pb2+" => -7.30,
-        "Cl-" => 17.83,
-        "Br-" => 24.71,
-        "I-" => 36.22,
-        "F-" => -2.40,
-        "OH-" => -4.04,
-        "NO3-" => 29.00,
-        "HCO3-" => 24.20,
-        "CO3-2" | "CO32-" => -3.70,
-        "HSO4-" => 35.70,
-        "SO4-2" | "SO42-" => 13.98,
-        "CH3COO-" | "acetate" => 40.50,
-        _ => {
-            let charge = crate::chem_db::get_species_thermo(ion).charge;
-            if charge > 0 {
-                if charge == 1 { 5.0 } else { -15.0 * (charge as f64 - 1.0) }
-            } else if charge < 0 {
-                if charge == -1 { 20.0 } else { 15.0 }
-            } else {
-                // Neutral solute (e.g. dissolved O2, CO2, urea, glucose)
-                let mw = crate::chem_db::get_species_thermo(ion).mw;
-                (mw * 0.75).max(15.0)
-            }
-        }
+    if let Some(v) = crate::activity::ion_data().ion_volume_v0_cm3_mol.get(ion) {
+        return *v;
+    }
+    // no row: a class value from the charge (ions) or the molar mass (neutral solutes: dissolved gases, urea, glucose)
+    let charge = crate::chem_db::get_species_thermo(ion).charge;
+    if charge > 0 {
+        if charge == 1 { 5.0 } else { -15.0 * (charge as f64 - 1.0) }
+    } else if charge < 0 {
+        if charge == -1 { 20.0 } else { 15.0 }
+    } else {
+        let mw = crate::chem_db::get_species_thermo(ion).mw;
+        (mw * 0.75).max(15.0)
     }
 }
 

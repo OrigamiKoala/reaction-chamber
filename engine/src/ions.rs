@@ -155,9 +155,6 @@ pub fn split_charge(species: &str) -> (&str, i32) {
 /// Charge of a species id, e.g. "PO4-3" -> -3.
 pub fn species_charge(species: &str) -> i32 {
     let (body, q) = split_charge(species.trim().trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)").trim_end_matches("(aq)"));
-    if let Some((_, Some(c))) = pseudo_species(body) {
-        return c;
-    }
     if q != 0 {
         return q;
     }
@@ -169,27 +166,6 @@ pub fn species_charge(species: &str) -> i32 {
         }
     }
     q
-}
-
-/// Pseudo-species of the engine (indicator dyes, starch) and the molecular formula of each: id body (no charge) ->
-/// (formula, charge override for ids that carry no charge suffix). Structural formulas of the real compounds, so
-/// element and charge ledgers cover them: phenolphthalein C20H14O4, bromothymol blue C27H28Br2O5S, methyl orange
-/// C14H15N3O3S (acid form), methyl red C15H15N3O2, starch as one anhydroglucose unit C6H10O5 and its triiodide complex.
-const PSEUDO_SPECIES: &[(&str, &str, Option<i32>)] = &[
-    ("HIn_phph", "C20H14O4", None),
-    ("In_phph", "C20H13O4", None),
-    ("HIn_btb", "C27H28Br2O5S", None),
-    ("In_btb", "C27H27Br2O5S", None),
-    ("HIn_mo", "C14H15N3O3S", None),
-    ("In_mo", "C14H14N3O3S", None),
-    ("HIn_mr", "C15H15N3O2", None),
-    ("In_mr", "C15H14N3O2", None),
-    ("starch", "C6H10O5", None),
-    ("starch_I3", "C6H10O5I3", Some(-1)),
-];
-
-fn pseudo_species(body: &str) -> Option<(&'static str, Option<i32>)> {
-    PSEUDO_SPECIES.iter().find(|(id, _, _)| *id == body).map(|(_, f, c)| (*f, *c))
 }
 
 thread_local! {
@@ -205,9 +181,6 @@ fn species_elements_uncached(species: &str) -> (Option<HashMap<String, f64>>, bo
     // isomer tag of an inert compound id ("C2H6O#LCGLNKUT"): identity only, the formula is what comes before it
     let s = s.split('#').next().unwrap_or(s);
     let (body, _) = split_charge(s);
-    if let Some((formula, _)) = pseudo_species(body) {
-        return (parse_formula_strict(formula), true);
-    }
     if let Some(elems) = parse_formula_strict(body) {
         return (Some(elems), true);
     }
@@ -286,7 +259,7 @@ pub fn strip_hydrate(formula: &str) -> (String, f64) {
             let tail = &f[pos + sep.len_utf8()..];
             let digits: String = tail.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
             let rest = &tail[digits.len()..];
-            if rest == "H2O" {
+            if rest == crate::db::seed::WATER {
                 let n: f64 = if digits.is_empty() { 1.0 } else { digits.parse().unwrap_or(1.0) };
                 return (f[..pos].to_string(), n);
             }
@@ -308,76 +281,64 @@ pub struct IonDef {
     pub acid: Option<&'static str>,
 }
 
-const fn an(id: &'static str, formula: &'static str, charge: i32, acid: Option<&'static str>) -> IonDef {
-    IonDef { id, formula, charge, acid }
+#[derive(serde::Deserialize)]
+struct AnionRow {
+    id: String,
+    formula: String,
+    charge: i32,
+    acid: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct PolyCationRow {
+    id: String,
+    formula: String,
+    charge: i32,
+    /// False for a cation the splitter must not propose (H3O+: acid hydrogens are H+).
+    split: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct IonDictionary {
+    anions: Vec<AnionRow>,
+    cation_charges: Vec<(String, Vec<i32>)>,
+    poly_cations: Vec<PolyCationRow>,
+    cation_solid_hue: HashMap<String, [f64; 3]>,
+    cation_solid_hue_default: [f64; 3],
+    anion_solid_tint: HashMap<String, [f64; 3]>,
+}
+
+struct Dictionary {
+    anions: Vec<IonDef>,
+    cation_charges: Vec<(&'static str, &'static [i32])>,
+    poly_cations: Vec<(&'static str, &'static str, i32)>,
+    raw: IonDictionary,
+}
+
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+/// The ion dictionary (`data/ion_dictionary.json`), parsed once.
+fn dictionary() -> &'static Dictionary {
+    static D: std::sync::OnceLock<Dictionary> = std::sync::OnceLock::new();
+    D.get_or_init(|| {
+        let raw: IonDictionary = serde_json::from_str(include_str!("../data/ion_dictionary.json")).expect("data/ion_dictionary.json");
+        let anions = raw.anions.iter().map(|a| IonDef { id: leak(a.id.clone()), formula: leak(a.formula.clone()), charge: a.charge, acid: a.acid.clone().map(leak) }).collect();
+        let cation_charges = raw.cation_charges.iter().map(|(s, c)| (leak(s.clone()), &*Box::leak(c.clone().into_boxed_slice()))).collect();
+        let poly_cations = raw.poly_cations.iter().filter(|p| p.split).map(|p| (leak(p.id.clone()), leak(p.formula.clone()), p.charge)).collect();
+        Dictionary { anions, cation_charges, poly_cations, raw }
+    })
 }
 
 /// Anions, most complex first (they are matched in this order so "HSO4-" wins over "SO4-2" + H).
-pub static ANIONS: &[IonDef] = &[
-    an("Fe(CN)6-4", "FeC6N6", -4, None),
-    an("Fe(CN)6-3", "FeC6N6", -3, None),
-    an("C6H5O7-3", "C6H5O7", -3, None),
-    an("B4O7-2", "B4O7", -2, None),
-    an("S2O8-2", "S2O8", -2, None),
-    an("Cr2O7-2", "Cr2O7", -2, None),
-    an("S2O3-2", "S2O3", -2, None),
-    an("CH3COO-", "C2H3O2", -1, Some("CH3COOH")),
-    an("HCOO-", "CHO2", -1, Some("HCOOH")),
-    an("C2O4-2", "C2O4", -2, Some("H2C2O4")),
-    an("HC2O4-", "HC2O4", -1, None),
-    an("H2PO4-", "H2PO4", -1, None),
-    an("HPO4-2", "HPO4", -2, None),
-    an("PO4-3", "PO4", -3, Some("H3PO4")),
-    an("HCO3-", "HCO3", -1, None),
-    an("CO3-2", "CO3", -2, Some("CO2(aq)")),
-    an("HSO4-", "HSO4", -1, None),
-    an("HSO3-", "HSO3", -1, None),
-    an("SO4-2", "SO4", -2, Some("H2SO4")),
-    an("SO3-2", "SO3", -2, Some("H2SO3")),
-    an("CrO4-2", "CrO4", -2, Some("H2CrO4")),
-    an("HCrO4-", "HCrO4", -1, None),
-    an("MnO4-", "MnO4", -1, None),
-    an("MoO4-2", "MoO4", -2, None),
-    an("WO4-2", "WO4", -2, None),
-    an("SeO4-2", "SeO4", -2, None),
-    an("AsO4-3", "AsO4", -3, None),
-    an("SiO3-2", "SiO3", -2, None),
-    an("NO3-", "NO3", -1, Some("HNO3")),
-    an("NO2-", "NO2", -1, Some("HNO2")),
-    an("ClO4-", "ClO4", -1, Some("HClO4")),
-    an("ClO3-", "ClO3", -1, None),
-    an("ClO2-", "ClO2", -1, None),
-    an("ClO-", "ClO", -1, Some("HClO")),
-    an("BrO3-", "BrO3", -1, None),
-    an("IO4-", "IO4", -1, None),
-    an("IO3-", "IO3", -1, None),
-    an("SCN-", "SCN", -1, Some("HSCN")),
-    an("OCN-", "OCN", -1, None),
-    an("CN-", "CN", -1, Some("HCN")),
-    an("N3-", "N3", -1, None),
-    an("HS-", "HS", -1, None),
-    an("OH-", "OH", -1, None),
-    an("F-", "F", -1, Some("HF")),
-    an("Cl-", "Cl", -1, Some("HCl")),
-    an("Br-", "Br", -1, Some("HBr")),
-    an("I-", "I", -1, Some("HI")),
-    an("S-2", "S", -2, Some("H2S(aq)")),
-];
+pub fn anions() -> &'static [IonDef] {
+    &dictionary().anions
+}
 
-/// Monatomic cations and their allowed charges, most common first.
-static CATION_CHARGES: &[(&str, &[i32])] = &[
-    ("H", &[1]), ("Li", &[1]), ("Na", &[1]), ("K", &[1]), ("Rb", &[1]), ("Cs", &[1]), ("Ag", &[1]),
-    ("Be", &[2]), ("Mg", &[2]), ("Ca", &[2]), ("Sr", &[2]), ("Ba", &[2]), ("Ra", &[2]),
-    ("Zn", &[2]), ("Cd", &[2]), ("Cu", &[2, 1]), ("Ni", &[2]), ("Co", &[2, 3]), ("Mn", &[2, 3]),
-    ("Fe", &[3, 2]), ("Cr", &[3, 2]), ("Al", &[3]), ("Ga", &[3]), ("In", &[3]), ("Tl", &[1, 3]),
-    ("Pb", &[2, 4]), ("Sn", &[2, 4]), ("Hg", &[2]), ("Bi", &[3]), ("Sb", &[3]), ("Ti", &[4, 3]),
-    ("V", &[3, 2, 4]), ("Zr", &[4]), ("Au", &[3, 1]), ("Pt", &[2, 4]), ("Pd", &[2]), ("Ce", &[3, 4]),
-    ("La", &[3]), ("Y", &[3]), ("Sc", &[3]), ("Nd", &[3]), ("Gd", &[3]), ("U", &[6, 4]), ("Th", &[4]),
-    ("Mo", &[3]),
-];
-
+/// Allowed charges of a monatomic cation, most common first.
 pub fn cation_charges(symbol: &str) -> Option<&'static [i32]> {
-    CATION_CHARGES.iter().find(|(s, _)| *s == symbol).map(|(_, c)| *c)
+    dictionary().cation_charges.iter().find(|(s, _)| *s == symbol).map(|(_, c)| *c)
 }
 
 /// Engine species id of a monatomic cation: "Na+", "Ca+2", "Fe+3".
@@ -389,11 +350,9 @@ pub fn cation_id(symbol: &str, charge: i32) -> String {
 }
 
 pub fn anion_def(id: &str) -> Option<&'static IonDef> {
-    ANIONS.iter().find(|a| a.id == id)
+    anions().iter().find(|a| a.id == id)
 }
 
-/// Polyatomic cations: (id, formula, charge).
-static POLY_CATIONS: &[(&str, &str, i32)] = &[("NH4+", "NH4", 1), ("H3O+", "H3O", 1), ("Hg2+2", "Hg2", 2), ("VO+2", "VO", 2), ("UO2+2", "UO2", 2)];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IonCount {
@@ -447,12 +406,12 @@ fn cation_solutions(rest: &Elems, target: i32) -> Option<Vec<IonCount>> {
 }
 
 fn poly_cations(idx: usize, rest: &Elems, target: i32, chosen: Vec<IonCount>) -> Option<Vec<IonCount>> {
-    // H3O+ is deliberately absent: acid hydrogens are handled as H+ by the monatomic table.
-    const POLY_USED: [usize; 4] = [0, 2, 3, 4];
-    if idx >= POLY_USED.len() {
+    // (H3O+ is not in the list the splitter uses: acid hydrogens are handled as H+ by the monatomic table.)
+    let poly = &dictionary().poly_cations;
+    if idx >= poly.len() {
         return mono_cations(rest, target, chosen);
     }
-    let (id, formula, z) = POLY_CATIONS[POLY_USED[idx]];
+    let (id, formula, z) = poly[idx];
     let unit = parse_formula_strict(formula)?;
     let max_n = unit
         .iter()
@@ -544,7 +503,7 @@ pub fn decompose_elems(elems: &Elems) -> Option<IonicSplit> {
 /// An acid (only H+ as cation) must be exactly one anion unit with its protons (HCl, H2SO4, CH3COOH), otherwise
 /// arbitrary molecules such as glucose (= 3 x acetic acid) would be mistaken for acids.
 fn acceptable(split: &IonicSplit) -> bool {
-    if split.cations.iter().all(|c| c.id == "H+") {
+    if split.cations.iter().all(|c| c.id == crate::db::seed::PROTON) {
         return split.anions.len() == 1 && (split.anions[0].n - 1.0).abs() < 1e-9;
     }
     true
@@ -561,8 +520,8 @@ fn search_anions(
     if depth > 2 || out.len() > 64 {
         return;
     }
-    for idx in start..ANIONS.len() {
-        let a = &ANIONS[idx];
+    for idx in start..anions().len() {
+        let a = &anions()[idx];
         let unit = match parse_formula_strict(a.formula) {
             Some(u) => u,
             None => continue,
@@ -592,37 +551,21 @@ fn search_anions(
 
 /// Atoms of hydrogen delivered to solution as H+ in a split (acids).
 pub fn proton_count(split: &IonicSplit) -> f64 {
-    split.cations.iter().filter(|c| c.id == "H+").map(|c| c.n).sum()
+    split.cations.iter().filter(|c| c.id == crate::db::seed::PROTON).map(|c| c.n).sum()
 }
 
 // ---------------------------------------------------------------------------------------------- appearance hints
 
-/// Fallback colour (linear-sRGB-ish) of a solid containing this cation, from general transition-metal chemistry.
+/// Fallback colour (linear-sRGB-ish) of a solid containing this cation, from general transition-metal chemistry
+/// (`data/ion_dictionary.json`).
 pub fn cation_solid_hue(cation_id: &str) -> [f64; 3] {
-    match cation_id {
-        "Cu+2" => [0.10, 0.35, 0.80],
-        "Ni+2" => [0.25, 0.70, 0.35],
-        "Co+2" => [0.75, 0.30, 0.55],
-        "Fe+3" => [0.60, 0.22, 0.06],
-        "Fe+2" => [0.45, 0.60, 0.40],
-        "Cr+3" => [0.25, 0.55, 0.30],
-        "Mn+2" => [0.80, 0.65, 0.60],
-        "Zn+2" | "Cd+2" | "Pb+2" | "Ca+2" | "Mg+2" | "Ba+2" | "Sr+2" | "Al+3" | "Ag+" => [0.93, 0.93, 0.93],
-        _ => [0.92, 0.92, 0.92],
-    }
+    let d = &dictionary().raw;
+    d.cation_solid_hue.get(cation_id).copied().unwrap_or(d.cation_solid_hue_default)
 }
 
 /// Strongly coloured anion contributing to a solid's colour (chromate, permanganate, sulfide of heavy metals...).
 pub fn anion_solid_tint(anion_id: &str) -> Option<[f64; 3]> {
-    match anion_id {
-        "CrO4-2" => Some([0.90, 0.70, 0.05]),
-        "Cr2O7-2" => Some([0.85, 0.30, 0.05]),
-        "MnO4-" => Some([0.30, 0.02, 0.35]),
-        "I-" => Some([0.90, 0.80, 0.30]),
-        "S-2" => Some([0.20, 0.20, 0.20]),
-        "Fe(CN)6-3" => Some([0.80, 0.35, 0.05]),
-        _ => None,
-    }
+    dictionary().raw.anion_solid_tint.get(anion_id).copied()
 }
 
 #[cfg(test)]
@@ -683,7 +626,7 @@ mod tests {
 
     #[test]
     fn molecules_and_elements_are_not_salts() {
-        for f in ["C2H6O", "C6H12O6", "H2O", "Mg", "O2", "CH4"] {
+        for f in ["C2H6O", "C6H12O6", crate::db::seed::WATER, "Mg", "O2", "CH4"] {
             assert!(decompose_ionic(f).is_none(), "{} must not be treated as a salt", f);
         }
     }

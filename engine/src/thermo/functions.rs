@@ -194,8 +194,13 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
         // (aq -> l, an estimate: it ignores the solute's standard-state transfer energy). A solid or a gas never
         // borrows another phase's formation data.
         let own = r.phases.get(phase).and_then(|p_data| p_data.thermo.as_ref()).filter(|t| t.dfH.is_some() || t.ranges.is_some());
+        // T4: a neutral solute with a structure and gas / liquid formation data gets an aqueous standard state from its
+        // hydration free energy; only without a structure (or with an atom the groups do not cover) does the pure liquid
+        // stand in for it
+        let synth = if own.is_none() && phase == "aq" && r.identity.charge == 0 { aqueous_from_hydration(&r) } else { None };
         let (t_data, substituted) = match own {
             Some(t) => (Some(t), false),
+            None if synth.is_some() => (synth.as_ref(), false),
             None if phase == "aq" && r.identity.charge == 0 => {
                 (r.phases.get("l").and_then(|p_data| p_data.thermo.as_ref()).filter(|t| t.dfH.is_some() || t.ranges.is_some()), true)
             }
@@ -284,6 +289,41 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
 
     put_cached(cache_key, out.clone());
     out
+}
+
+/// T4: the aqueous standard state of a neutral solute built from its ideal-gas formation Gibbs energy (or the liquid's, with
+/// the saturation pressure) and the group-additive hydration free energy of its structure. The formation enthalpy is the
+/// liquid's (zero enthalpy of mixing at infinite dilution), the heat capacity the liquid's or the gas's.
+fn aqueous_from_hydration(r: &crate::db::SpeciesRecord) -> Option<crate::db::record::PhaseThermo> {
+    use crate::db::record::{Datum, PhaseThermo};
+    let mol = crate::smiles::parse(r.identity.smiles.as_deref()?)?;
+    let hyd = crate::hydration::hydration_gibbs_kj(&mol)?;
+    let thermo_of = |ph: &str| r.phases.get(ph).and_then(|p| p.thermo.as_ref());
+    let (gas, liq) = (thermo_of("g"), thermo_of("l"));
+    let dfg_gas = match (gas.and_then(|g| g.dfG.as_ref()), liq.and_then(|l| l.dfG.as_ref())) {
+        (Some(g), _) => g.value,
+        (None, Some(l)) => {
+            let (model, _, _) = crate::vle::psat_model_from_records(r, None)?;
+            let p_sat = model.psat_pa(298.15);
+            l.value - R_GAS * 298.15 * (p_sat / crate::vle::P_BAR_PA).ln() / 1000.0
+        }
+        _ => return None,
+    };
+    let dfh = liq.and_then(|l| l.dfH.as_ref()).map(|d| d.value)?;
+    let cp = liq.and_then(|l| l.cp.as_ref()).or_else(|| gas.and_then(|g| g.cp.as_ref())).map(|d| d.value);
+    let source = "hydration free energy (group additivity) on the gas-phase formation energy";
+    let datum = |v: f64, unit: &str| Datum::new(v, unit, ProvenanceTier::Estimated, source);
+    Some(PhaseThermo {
+        model: "point+cp".to_string(),
+        tier: ProvenanceTier::Estimated,
+        source: source.to_string(),
+        dfH: Some(datum(dfh, "kJ/mol")),
+        dfG: Some(datum(crate::hydration::aqueous_dgf_from_gas_kj(dfg_gas, hyd), "kJ/mol")),
+        S: None,
+        cp: cp.map(|c| datum(c, "J/(mol K)")),
+        ranges: None,
+        params: None,
+    })
 }
 
 /// True when the store has formation data for the species (the phase falls back like `try_thermo_state`).

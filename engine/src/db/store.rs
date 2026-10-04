@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
+use crate::db::lock::StoreLock;
 use crate::db::record::SpeciesRecord;
 use crate::db::seed::seed_species;
 
-static GLOBAL_STORE: OnceLock<Arc<RwLock<SpeciesStore>>> = OnceLock::new();
+static GLOBAL_STORE: OnceLock<Arc<StoreLock<SpeciesStore>>> = OnceLock::new();
 /// Bumped on every registration: caches derived from store contents (UNIFAC groups, gas partners, volatile data) key on it.
 static GENERATION: AtomicU64 = AtomicU64::new(1);
 
@@ -37,11 +38,11 @@ impl SpeciesStore {
         Self::default()
     }
 
-    pub fn global() -> Arc<RwLock<SpeciesStore>> {
-        GLOBAL_STORE.get_or_init(|| Arc::new(RwLock::new(SpeciesStore::default()))).clone()
+    pub fn global() -> Arc<StoreLock<SpeciesStore>> {
+        GLOBAL_STORE.get_or_init(|| Arc::new(StoreLock::new(SpeciesStore::default()))).clone()
     }
 
-    pub fn try_global() -> Option<Arc<RwLock<SpeciesStore>>> {
+    pub fn try_global() -> Option<Arc<StoreLock<SpeciesStore>>> {
         GLOBAL_STORE.get().cloned()
     }
 

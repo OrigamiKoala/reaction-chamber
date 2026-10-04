@@ -30,7 +30,7 @@ import init, {
   take_mineral_lookups,
   resolve_mineral,
   import_compound,
-  m6_get_reaction_families,
+  m6_get_reaction_templates,
   m6_calculate_mayr_rate,
   m6_generate_reaction_network,
   m6_stress_test_mixture,
@@ -343,10 +343,10 @@ self.onmessage = async (e: MessageEvent) => {
         break;
       }
 
-      case 'M6_GET_FAMILIES': {
-        const res = m6_get_reaction_families();
+      case 'M6_GET_TEMPLATES': {
+        const res = m6_get_reaction_templates();
         self.postMessage({
-          type: 'M6_GET_FAMILIES_RESPONSE',
+          type: 'M6_GET_TEMPLATES_RESPONSE',
           payload: JSON.parse(res),
           requestId,
         });

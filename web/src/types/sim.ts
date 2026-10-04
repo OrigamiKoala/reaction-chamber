@@ -40,6 +40,14 @@ export interface LiquidLayer {
   /** Species id / display name of the main component of a non-aqueous layer. */
   species?: string;
   name?: string;
+  /** What a glass pH electrode with a 3 M KCl bridge reads in this layer (molal pH shifted by the liquid junction); absent without water or where water is under half the solvent. */
+  ph?: number;
+  /** Thermodynamic molal pH of the layer, -log10(m_H gamma_H). */
+  ph_activity?: number;
+  /** Junction potential (mV, sample minus bridge) behind the difference between the two. */
+  ph_junction_mv?: number;
+  /** Mole fraction of water among the layer's molecules (ions left out). */
+  water_mole_fraction?: number;
 }
 
 export type SolidKind = 'powder' | 'crystal' | 'metal' | 'gel' | 'curds';

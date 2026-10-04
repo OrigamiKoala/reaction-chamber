@@ -42,6 +42,7 @@ fn rxn(id: &str, orders: &[(&str, f64)], k_eq: Option<f64>) -> GeneralKineticRxn
         k_eq_298: k_eq,
         tier: ProvenanceTier::Tabulated,
         source: "test".into(),
+        phase_class: None,
     }
 }
 
@@ -205,12 +206,12 @@ fn acidifying_regenerates_the_network() {
     v.species_mol.insert("H2O".into(), 100.0 / 18.015);
     v.species_mol.insert("ethyl_acetate".into(), 0.01);
     v.step(0.05).unwrap();
-    assert!(!v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_hydrolysis")), "no acid path at pH 7");
+    assert!(!v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_ester_hydrolysis")), "no acid path at pH 7");
     v.species_mol.insert("H+".into(), 0.1);
     v.species_mol.insert("Cl-".into(), 0.1);
     v.step(0.05).unwrap();
     assert!(
-        v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_hydrolysis")),
+        v.kinetic_reactions.iter().any(|r| r.id.starts_with("acid_ester_hydrolysis")),
         "acid path after acidifying (pH {}, T {}, reactions {:?}, species {:?}, cap {})",
         v.current_ph(),
         v.temperature_k,

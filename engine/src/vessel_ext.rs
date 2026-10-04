@@ -563,7 +563,7 @@ impl Vessel {
         let t = self.t_sim_s;
         let fluxes: Vec<(String, f64)> = self.gas_fluxes.iter().map(|g| (g.species.clone(), g.rate_ml_s)).collect();
         for (sp, rate) in fluxes {
-            if sp == "H2O(g)" || rate < 0.02 {
+            if sp == crate::db::seed::WATER_VAPOUR || rate < 0.02 {
                 continue;
             }
             if self.ev.gas_seen.insert(sp.clone(), t).is_none() {
@@ -587,9 +587,9 @@ impl Vessel {
                 if eq.id.starts_with("pair_") {
                     return None;
                 }
-                let reac: Vec<&String> = eq.reactants.keys().filter(|k| k.as_str() != "H2O").collect();
-                let prod: Vec<&String> = eq.products.keys().filter(|k| k.as_str() != "H2O").collect();
-                if reac.len() >= 2 && prod.len() == 1 && !reac.iter().any(|r| r.as_str() == "H+" || r.as_str() == "OH-") {
+                let reac: Vec<&String> = eq.reactants.keys().filter(|k| k.as_str() != crate::db::seed::WATER).collect();
+                let prod: Vec<&String> = eq.products.keys().filter(|k| k.as_str() != crate::db::seed::WATER).collect();
+                if reac.len() >= 2 && prod.len() == 1 && !reac.iter().any(|r| r.as_str() == crate::db::seed::PROTON || r.as_str() == crate::db::seed::HYDROXIDE) {
                     Some(prod[0].clone())
                 } else {
                     None

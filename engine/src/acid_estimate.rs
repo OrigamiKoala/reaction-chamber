@@ -31,26 +31,32 @@ pub const ELECTROSTATIC_STEP: f64 = 0.5;
 /// Generic weak-acid pKa for acids with no better class.
 pub const GENERIC_PKA: f64 = 7.0;
 
-/// Acids with tabulated pKa < 0 (fully dissociated at bench concentrations): (formula, pKa, source).
-pub const STRONG_ACIDS: &[(&str, f64, &str)] = &[
-    ("HCl", -6.3, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HBr", -9.0, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HI", -10.0, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HNO3", -1.4, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HClO4", -10.0, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HClO3", -1.0, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HBrO3", -2.0, "Bordwell / CRC (aqueous pKa)"),
-    ("HMnO4", -2.25, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-    ("HSCN", -1.3, "CRC Handbook of Chemistry and Physics (aqueous pKa)"),
-];
+#[derive(serde::Deserialize)]
+struct StrongAcid {
+    formula: String,
+    #[serde(rename = "pKa")]
+    pka: f64,
+    source: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StrongAcidFile {
+    strong_acids: Vec<StrongAcid>,
+}
+
+/// Acids with tabulated pKa < 0 (fully dissociated at bench concentrations): `data/strong_acids.json`.
+fn strong_acids() -> &'static [StrongAcid] {
+    static T: std::sync::OnceLock<Vec<StrongAcid>> = std::sync::OnceLock::new();
+    T.get_or_init(|| serde_json::from_str::<StrongAcidFile>(include_str!("../data/strong_acids.json")).expect("data/strong_acids.json").strong_acids)
+}
 
 /// Tabulated pKa (< 0) of a strong acid given its element counts, if it is one.
 pub fn strong_acid(acid_elems: &HashMap<String, f64>) -> Option<(f64, &'static str)> {
     let key = ions::element_key(acid_elems);
-    STRONG_ACIDS
+    strong_acids()
         .iter()
-        .find(|(f, _, _)| ions::formula_key(f).as_deref() == Some(key.as_str()))
-        .map(|(_, p, s)| (*p, *s))
+        .find(|a| ions::formula_key(&a.formula).as_deref() == Some(key.as_str()))
+        .map(|a| (a.pka, a.source.as_str()))
 }
 
 /// An estimated stepwise pKa ladder and the class that produced it.
@@ -121,7 +127,7 @@ pub fn step_equilibrium(parent: &str, base: &str, step: usize, pka: f64, class: 
         name: format!("Estimated acid dissociation {} (step {})", parent, step),
         equation: format!("{} <=> H+ + {}", parent, base),
         reactants: [(parent.to_string(), 1.0)].into(),
-        products: [("H+".to_string(), 1.0), (base.to_string(), 1.0)].into(),
+        products: [(crate::db::seed::PROTON.to_string(), 1.0), (base.to_string(), 1.0)].into(),
         log_k_298: -pka,
         delta_h_kj: 0.0,
         log_k_analytic: None,

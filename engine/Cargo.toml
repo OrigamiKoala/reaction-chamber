@@ -15,3 +15,11 @@ console_error_panic_hook = "0.1"
 [profile.release]
 opt-level = 3
 lto = true
+
+# For running the test suites: the same optimisation level as `release` (the timing gates and the long simulations need
+# it) but without fat LTO, which re-links the whole engine for each of the ~30 test binaries (cold build 4 min 45 s ->
+# 1 min, identical test results and run times). `cargo test --release` still works and is the slow, shipped configuration.
+[profile.release-test]
+inherits = "release"
+lto = false
+codegen-units = 16

@@ -13,7 +13,7 @@ use crate::db::SpeciesStore;
 use crate::thermo::functions::{phase_of_id, try_thermo_state};
 use super::basis::build_reaction_basis;
 use super::candidates::get_present_elements;
-use super::redox::determine_oxidation_states;
+use super::redox::determine_oxidation_states_exact;
 
 /// Classification of a discovered reaction.
 #[derive(Clone, Debug, PartialEq)]
@@ -162,8 +162,8 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
         }
     }
     let aqueous_env = species_mol.contains_key(crate::vessel::AQUEOUS_SOLVENT)
-        || species_mol.contains_key("H+")
-        || species_mol.contains_key("OH-");
+        || species_mol.contains_key(crate::db::seed::PROTON)
+        || species_mol.contains_key(crate::db::seed::HYDROXIDE);
 
     if aqueous_env && !present_species.iter().any(|s| s == crate::vessel::AQUEOUS_SOLVENT) {
         present_species.push(crate::vessel::AQUEOUS_SOLVENT.to_string());
@@ -173,12 +173,12 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
     struct RedoxHalf {
         sp: String,
         elem: String,
-        ox: i32,
+        ox: f64,
     }
 
     let mut present_halves = Vec::new();
     for sp in &present_species {
-        let ox_map = determine_oxidation_states(sp);
+        let ox_map = determine_oxidation_states_exact(sp);
         let elem_map = crate::ions::species_elements(sp).unwrap_or_default();
         for elem in elem_map.keys() {
             if let Some(&ox) = ox_map.get(elem) {
@@ -188,16 +188,15 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
     }
 
     // 3. For each labile element, query candidate products in different oxidation states
-    let mut candidate_products_by_elem: HashMap<String, Vec<(String, i32)>> = HashMap::new();
+    let mut candidate_products_by_elem: HashMap<String, Vec<(String, f64)>> = HashMap::new();
     if let Ok(store) = SpeciesStore::global().read() {
         for rec in store.iter() {
             let elems = rec.elements();
             if elems.is_empty() || !elems.keys().all(|e| elements.contains(e)) {
                 continue;
             }
-            if elems.get("C").copied().unwrap_or(0.0) > 1.0 {
-                continue;
-            }
+            // organic species are candidates too: whether a carbon couple reacts on bench time is decided by
+            // `couple_is_eligible` (a record's self-exchange rate), never by excluding carbon here
             // In solution a gas is formed dissolved and leaves by Henry exchange: a gas that has an aqueous or liquid twin
             // (O2(g) / O2(aq), H2O(g) / H2O) is not a partner of a solution reaction, its twin is.
             if aqueous_env && rec.id.ends_with("(g)") {
@@ -206,7 +205,7 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
                     continue;
                 }
             }
-            let ox_map = determine_oxidation_states(&rec.id);
+            let ox_map = determine_oxidation_states_exact(&rec.id);
             for elem in elems.keys() {
                 if let Some(&ox) = ox_map.get(elem) {
                     candidate_products_by_elem.entry(elem.clone()).or_default().push((rec.id.clone(), ox));
@@ -216,8 +215,8 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
     }
 
     // 4. Form oxidation couples and reduction couples
-    let mut oxidation_couples: Vec<(String, String, String, i32, i32)> = Vec::new();
-    let mut reduction_couples: Vec<(String, String, String, i32, i32)> = Vec::new();
+    let mut oxidation_couples: Vec<(String, String, String, f64, f64)> = Vec::new();
+    let mut reduction_couples: Vec<(String, String, String, f64, f64)> = Vec::new();
 
     for half in &present_halves {
         if let Some(products) = candidate_products_by_elem.get(&half.elem) {
@@ -225,26 +224,30 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
                 if p_sp == &half.sp || !super::redox::couple_is_eligible(&half.elem, &half.sp, p_sp) {
                     continue;
                 }
-                if *p_ox > half.ox {
+                // a couple whose forms differ by less than 1/1000 of an electron per atom is the same oxidation level
+                if *p_ox > half.ox + 1e-3 {
                     oxidation_couples.push((half.sp.clone(), p_sp.clone(), half.elem.clone(), half.ox, *p_ox));
-                } else if *p_ox < half.ox {
+                } else if *p_ox < half.ox - 1e-3 {
                     reduction_couples.push((half.sp.clone(), p_sp.clone(), half.elem.clone(), half.ox, *p_ox));
                 }
             }
         }
     }
 
-    oxidation_couples.sort();
+    let order = |a: &(String, String, String, f64, f64), b: &(String, String, String, f64, f64)| {
+        (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)).then(a.3.total_cmp(&b.3)).then(a.4.total_cmp(&b.4))
+    };
+    oxidation_couples.sort_by(order);
     oxidation_couples.dedup();
-    reduction_couples.sort();
+    reduction_couples.sort_by(order);
     reduction_couples.dedup();
 
     // 5. Try balancing each (ox_couple, red_couple) pair
     let water_id = crate::vessel::AQUEOUS_SOLVENT.to_string();
-    let h_plus = "H+".to_string();
-    let oh_minus = "OH-".to_string();
+    let h_plus = crate::db::seed::PROTON.to_string();
+    let oh_minus = crate::db::seed::HYDROXIDE.to_string();
 
-    for (s_ox, p_ox, _elem_ox, ox_s, ox_p) in &oxidation_couples {
+    for (s_ox, p_ox, elem_ox, ox_s, ox_p) in &oxidation_couples {
         for (s_red, p_red, _elem_red, _red_s, _red_p) in &reduction_couples {
             if s_ox == s_red && p_ox == p_red {
                 continue;
@@ -299,7 +302,10 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
                         continue;
                     }
 
-                    let z_electrons = (cur_c_sox.abs() * (ox_p - ox_s) as f64).round().max(1.0);
+                    // electrons the donor species gives: its atoms of the element each change by the difference of the
+                    // average oxidation states (one atom for Fe2+, six for hydroquinone)
+                    let atoms = crate::ions::species_elements(s_ox).and_then(|m| m.get(elem_ox).copied()).unwrap_or(1.0);
+                    let z_electrons = (cur_c_sox.abs() * atoms * (ox_p - ox_s)).round().max(1.0);
 
                     let mut sig_parts: Vec<String> = nu_oriented.iter()
                         .map(|&(i, c)| format!("{}:{}", sub_species[i], c.round()))

@@ -1,3 +1,4 @@
+pub mod lock;
 pub mod record;
 pub mod seed;
 pub mod seed_vle;

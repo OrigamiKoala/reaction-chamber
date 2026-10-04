@@ -139,9 +139,11 @@ impl KineticExtentSystem {
             }
         }
 
-        // 3. Diffusion ceiling for bimolecular steps in solution
+        // 3. Diffusion ceiling for bimolecular steps in solution: a rate law that is second order overall is an encounter of
+        // two species; an empirical law of higher order (an [OH-]^2 term, a termolecular row) has a constant in other units
+        // and the encounter limit does not bound it
         let total_order: f64 = rxn.orders_reactants.iter().map(|(_, o)| *o).sum();
-        let mut k_fwd = if total_order >= 1.8 && rxn.reactants.len() >= 2 {
+        let mut k_fwd = if (1.8..=2.2).contains(&total_order) && rxn.reactants.len() >= 2 {
             let sp_a = &self.species_names[rxn.reactants[0].0];
             let sp_b = &self.species_names[rxn.reactants[1].0];
             let z_a = crate::ions::species_charge(sp_a) as f64;

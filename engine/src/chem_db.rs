@@ -219,6 +219,11 @@ pub struct GeneralKineticRxn {
     pub k_eq_298: Option<f64>,
     pub tier: ProvenanceTier,
     pub source: String,
+    /// Solvent class ("water", "alcohol", "alkane", ...) of the liquid phase this reaction was generated for (its rate
+    /// constant is that of the solvent class); it runs only in phases of that class. `None` (the hand-curated rows of
+    /// `core_reactions.json`) = the primary liquid phase, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_class: Option<String>,
 }
 
 /// Molar mass and charge of a species: what almost every caller needs. The mass is exact whenever the id parses as a
@@ -446,8 +451,45 @@ fn core_rows() -> &'static CoreRows {
     ROWS.get_or_init(|| serde_json::from_str(include_str!("../data/core_reactions.json")).expect("data/core_reactions.json"))
 }
 
+/// Equilibrium rows `HA <=> A- + H+` generated from the acid-base sites of the seeded species records (a site's `site`
+/// field names the conjugate base species): log K = -pKa at the site's reference temperature, the enthalpy and the tier
+/// and source of the pKa datum carried over. Nothing about a particular acid is written here.
+pub fn record_acid_equilibria() -> Vec<GeneralEquilibrium> {
+    let mut rows = Vec::new();
+    for rec in crate::db::seed::seed_species() {
+        for site in &rec.acid_base {
+            let Some(base) = &site.site else { continue };
+            let mut reactants = HashMap::new();
+            reactants.insert(rec.id.clone(), 1.0);
+            let mut products = HashMap::new();
+            products.insert(base.clone(), 1.0);
+            products.insert(crate::db::seed::PROTON.to_string(), 1.0);
+            rows.push(GeneralEquilibrium {
+                id: format!("{}_dissociation", rec.id),
+                name: format!("{} dissociation", rec.identity.names.last().cloned().unwrap_or_else(|| rec.id.clone())),
+                equation: format!("{} <=> {} + H+", rec.id, base),
+                reactants,
+                products,
+                log_k_298: -site.pKa.value,
+                delta_h_kj: site.dH.as_ref().map_or(0.0, |d| d.value),
+                log_k_analytic: None,
+                rate: None,
+                tier: site.pKa.tier.clone(),
+                source: site.pKa.source.clone(),
+            });
+        }
+    }
+    rows
+}
+
 pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
     let mut list = core_rows().equilibria.clone();
+    // Acid-base sites of the seeded species records (the indicator dyes): the row is generated from the record's pKa.
+    for eq in record_acid_equilibria() {
+        if !list.iter().any(|e| e.id == eq.id) {
+            list.push(eq);
+        }
+    }
     // Data-driven acid/base and speciation equilibria (engine/data/solubility.json).
     for eq in crate::solubility::table_equilibria() {
         if !list.iter().any(|e| e.id == eq.id) {
@@ -463,6 +505,44 @@ pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
     list
 }
 
+/// Dissolution enthalpy (kJ/mol of solid) from the formation enthalpies of the solid and its dissolved products, or None
+/// when one has no data, the row is not balanced in elements and charge (a dissolution that consumes water), or the
+/// solid has no ionic split.
+fn dissolution_enthalpy_from_formation(m: &GeneralMineral) -> Option<f64> {
+    let h = |sp: &str| {
+        let ph = if sp.ends_with("(s)") { "s" } else if sp.ends_with("(g)") { "g" } else { "aq" };
+        crate::thermo::functions::try_thermo_state(sp, ph, 298.15, 101_325.0).map(|s| s.h_j_mol / 1000.0)
+    };
+    let mut elems_solid = crate::ions::species_elements(&m.solid_species)?;
+    let mut charge = 0.0;
+    let mut dh = -h(&m.solid_species)?;
+    let mut elems_out: HashMap<String, f64> = HashMap::new();
+    for (sp, c) in &m.dissolved_products {
+        dh += c * h(sp)?;
+        charge += c * crate::ions::species_charge(sp) as f64;
+        for (e, n) in crate::ions::species_elements(sp)? {
+            *elems_out.entry(e).or_insert(0.0) += c * n;
+        }
+    }
+    elems_solid.retain(|_, v| *v > 0.0);
+    let balanced = charge.abs() < 1e-9
+        && elems_solid.len() == elems_out.len()
+        && elems_solid.iter().all(|(e, n)| (elems_out.get(e).copied().unwrap_or(-1.0) - n).abs() < 1e-9);
+    if balanced { Some(dh) } else { None }
+}
+
+/// A row without an enthalpy (0 means "not given") or with one that disagrees with the formation enthalpies of its own
+/// species by more than 10 kJ/mol takes the enthalpy of the species data: the temperature dependence of K and the heat
+/// of dissolving or precipitating then follow the same data as everything else.
+fn reconcile_mineral_enthalpy(m: &mut GeneralMineral) {
+    if let Some(dh) = dissolution_enthalpy_from_formation(m) {
+        if m.delta_h_kj == 0.0 || (m.delta_h_kj - dh).abs() > 10.0 {
+            m.delta_h_kj = dh;
+            m.source = format!("{} (dH from formation enthalpies)", m.source);
+        }
+    }
+}
+
 pub fn get_default_minerals() -> Vec<GeneralMineral> {
     let mut list = core_rows().minerals.clone();
     // Data-driven solubility table: any cation/anion pair with IAP > Ksp precipitates (engine/data/solubility.json).
@@ -470,6 +550,9 @@ pub fn get_default_minerals() -> Vec<GeneralMineral> {
         if !list.iter().any(|x| x.solid_species == m.solid_species) {
             list.push(m.clone());
         }
+    }
+    for m in list.iter_mut() {
+        reconcile_mineral_enthalpy(m);
     }
     if let Ok(lock) = CUSTOM_MINERALS.lock() {
         for min in lock.iter() {
@@ -491,651 +574,22 @@ pub fn get_default_kinetic_reactions() -> Vec<GeneralKineticRxn> {
     list
 }
 
-/// InChIKey of the main species of each catalog reagent (verified against the PubChem-derived bundle).
-const CATALOG_INCHIKEYS: &[(&str, &str)] = &[
-    ("water", "XLYOFNOQVPJJNP-UHFFFAOYSA-N"),
-    ("ethanol", "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"),
-    ("hcl_0_1m", "VEXZGXHMUGYJMC-UHFFFAOYSA-N"),
-    ("hcl_1m", "VEXZGXHMUGYJMC-UHFFFAOYSA-N"),
-    ("naoh_0_1m", "HEMHJVSKTPXQMS-UHFFFAOYSA-M"),
-    ("naoh_1m", "HEMHJVSKTPXQMS-UHFFFAOYSA-M"),
-    ("cuso4_0_1m", "ARUVKPQLZAKDPS-UHFFFAOYSA-L"),
-    ("nh3_2m", "QGZKDVFQNNGYKY-UHFFFAOYSA-N"),
-    ("nahco3_s", "UIIMBOGNXHQVGW-UHFFFAOYSA-M"),
-    ("ch3cooh_5pct", "QTBSBXVTEAMEQO-UHFFFAOYSA-N"),
-    ("h2o2_3pct", "MHAJPDPJQMAIIY-UHFFFAOYSA-N"),
-    ("mno2_s", "NUJOXMJBOLGQSY-UHFFFAOYSA-N"),
-    ("ki_0_5m", "NLKNQRATVPKPDG-UHFFFAOYSA-M"),
-    ("ki_0_05m", "NLKNQRATVPKPDG-UHFFFAOYSA-M"),
-    ("agno3_0_1m", "SQGYOTSLMSWVJD-UHFFFAOYSA-N"),
-    ("nacl_0_1m", "FAPWRFPIFSIZLT-UHFFFAOYSA-M"),
-    ("cocl2_0_1m", "GVPFVAHMJGGAJG-UHFFFAOYSA-L"),
-    ("kscn_0_1m", "ZNNZYHKDIALBAK-UHFFFAOYSA-M"),
-    ("na2s2o3_0_002m", "AKHNMLFCWUSKQB-UHFFFAOYSA-L"),
-    ("phenolphthalein_drop", "KJFMBFZCATUALV-UHFFFAOYSA-N"),
-    ("mg_ribbon", "FYYHWMGAXLPEAU-UHFFFAOYSA-N"),
-];
-
-pub fn get_reagent_catalog() -> Vec<ReagentCatalogEntry> {
-    let mut catalog = build_reagent_catalog();
-    for e in catalog.iter_mut() {
-        if e.inchi_key.is_none() {
-            e.inchi_key = CATALOG_INCHIKEYS.iter().find(|(id, _)| *id == e.id).map(|(_, k)| k.to_string());
-        }
-    }
-    catalog
+#[derive(Deserialize)]
+struct CatalogFile {
+    reagents: Vec<ReagentCatalogEntry>,
 }
 
-fn build_reagent_catalog() -> Vec<ReagentCatalogEntry> {
-    let mut catalog = Vec::new();
-
-    // 1. Water
-    let mut comp = HashMap::new();
-    comp.insert("H2O".to_string(), 1.0 / 18.015);
-    catalog.push(ReagentCatalogEntry {
-        id: "water".to_string(),
-        name: "Distilled Water".to_string(),
-        formula: "H2O".to_string(),
-        form: "liquid".to_string(),
-        concentration_m: Some(55.5),
-        density_g_ml: 1.000,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "H2O".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 2. Ethanol
-    let mut comp = HashMap::new();
-    comp.insert("C2H5OH".to_string(), 0.789 / 46.069);
-    catalog.push(ReagentCatalogEntry {
-        id: "ethanol".to_string(),
-        name: "Ethanol 95%".to_string(),
-        formula: "C2H5OH".to_string(),
-        form: "liquid".to_string(),
-        concentration_m: Some(16.3),
-        density_g_ml: 0.789,
-        ghs: vec!["GHS02".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "C2H5OH".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 3. Hydrochloric Acid 0.1 M
-    let mut comp = HashMap::new();
-    comp.insert("H+".to_string(), 0.0001);
-    comp.insert("Cl-".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0554);
-    catalog.push(ReagentCatalogEntry {
-        id: "hcl_0_1m".to_string(),
-        name: "Hydrochloric Acid 0.10 M".to_string(),
-        formula: "HCl".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.002,
-        ghs: vec!["GHS05".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "HCl (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 4. Hydrochloric Acid 1.0 M
-    let mut comp = HashMap::new();
-    comp.insert("H+".to_string(), 0.001);
-    comp.insert("Cl-".to_string(), 0.001);
-    comp.insert("H2O".to_string(), 0.0545);
-    catalog.push(ReagentCatalogEntry {
-        id: "hcl_1m".to_string(),
-        name: "Hydrochloric Acid 1.0 M".to_string(),
-        formula: "HCl".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(1.0),
-        density_g_ml: 1.016,
-        ghs: vec!["GHS05".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "HCl (1.0 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 5. Sodium Hydroxide 0.1 M
-    let mut comp = HashMap::new();
-    comp.insert("Na+".to_string(), 0.0001);
-    comp.insert("OH-".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0554);
-    catalog.push(ReagentCatalogEntry {
-        id: "naoh_0_1m".to_string(),
-        name: "Sodium Hydroxide 0.10 M".to_string(),
-        formula: "NaOH".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.004,
-        ghs: vec!["GHS05".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "white".to_string(),
-        composition: comp,
-        label: "NaOH (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 6. Sodium Hydroxide 1.0 M
-    let mut comp = HashMap::new();
-    comp.insert("Na+".to_string(), 0.001);
-    comp.insert("OH-".to_string(), 0.001);
-    comp.insert("H2O".to_string(), 0.0545);
-    catalog.push(ReagentCatalogEntry {
-        id: "naoh_1m".to_string(),
-        name: "Sodium Hydroxide 1.0 M".to_string(),
-        formula: "NaOH".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(1.0),
-        density_g_ml: 1.040,
-        ghs: vec!["GHS05".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "white".to_string(),
-        composition: comp,
-        label: "NaOH (1.0 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 7. Copper(II) Sulfate 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("Cu+2".to_string(), 0.0001);
-    comp.insert("SO4-2".to_string(), 0.00010005); // + 5e-8 mol/mL from the trace of H2SO4 below (charge balance)
-    comp.insert("H+".to_string(), 0.0000001); // trace H2SO4: pH ~ 4.2 suppresses spurious precipitation (no Cu hydroxo complexes yet)
-    comp.insert("H2O".to_string(), 0.0553);
-    catalog.push(ReagentCatalogEntry {
-        id: "cuso4_0_1m".to_string(),
-        name: "Copper(II) Sulfate 0.10 M".to_string(),
-        formula: "CuSO4".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.015,
-        ghs: vec!["GHS07".to_string(), "GHS09".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "CuSO4 (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 8. Ammonia Solution 2.0 M
-    let mut comp = HashMap::new();
-    comp.insert("NH3".to_string(), 0.002);
-    comp.insert("H2O".to_string(), 0.0535);
-    catalog.push(ReagentCatalogEntry {
-        id: "nh3_2m".to_string(),
-        name: "Aqueous Ammonia 2.0 M".to_string(),
-        formula: "NH3".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(2.0),
-        density_g_ml: 0.985,
-        ghs: vec!["GHS05".to_string(), "GHS07".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "NH3 (2.0 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 9. Sodium Bicarbonate Solid
-    let mut comp = HashMap::new();
-    comp.insert("NaHCO3(s)".to_string(), 1.0 / 84.007);
-    catalog.push(ReagentCatalogEntry {
-        id: "nahco3_s".to_string(),
-        name: "Sodium Bicarbonate (Powder)".to_string(),
-        formula: "NaHCO3".to_string(),
-        form: "solid".to_string(),
-        concentration_m: None,
-        density_g_ml: 2.20,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "white".to_string(),
-        composition: comp,
-        label: "NaHCO3".to_string(),
-        by_mass: true,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 10. Acetic Acid 5% (0.83 M) Vinegar
-    let mut comp = HashMap::new();
-    comp.insert("CH3COOH".to_string(), 0.00083);
-    comp.insert("H2O".to_string(), 0.0548);
-    catalog.push(ReagentCatalogEntry {
-        id: "ch3cooh_5pct".to_string(),
-        name: "Acetic Acid 5% (0.83 M)".to_string(),
-        formula: "CH3COOH".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.83),
-        density_g_ml: 1.006,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "CH3COOH 5%".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 11. Hydrogen Peroxide 3% (0.88 M)
-    let mut comp = HashMap::new();
-    comp.insert("H2O2".to_string(), 0.00088);
-    comp.insert("H2O".to_string(), 0.0545);
-    catalog.push(ReagentCatalogEntry {
-        id: "h2o2_3pct".to_string(),
-        name: "Hydrogen Peroxide 3% (0.88 M)".to_string(),
-        formula: "H2O2".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.88),
-        density_g_ml: 1.010,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "H2O2 3%".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 12. Manganese Dioxide Solid
-    let mut comp = HashMap::new();
-    comp.insert("MnO2(s)".to_string(), 1.0 / 86.937);
-    catalog.push(ReagentCatalogEntry {
-        id: "mno2_s".to_string(),
-        name: "Manganese(IV) Dioxide (Powder)".to_string(),
-        formula: "MnO2".to_string(),
-        form: "solid".to_string(),
-        concentration_m: None,
-        density_g_ml: 5.03,
-        ghs: vec!["GHS07".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "MnO2".to_string(),
-        by_mass: true,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 13. Potassium Iodide 0.5 M
-    let mut comp = HashMap::new();
-    comp.insert("K+".to_string(), 0.0005);
-    comp.insert("I-".to_string(), 0.0005);
-    comp.insert("H2O".to_string(), 0.0545);
-    catalog.push(ReagentCatalogEntry {
-        id: "ki_0_5m".to_string(),
-        name: "Potassium Iodide 0.50 M".to_string(),
-        formula: "KI".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.50),
-        density_g_ml: 1.060,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "KI (0.5 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 14. Silver Nitrate 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("Ag+".to_string(), 0.0001);
-    comp.insert("NO3-".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0553);
-    catalog.push(ReagentCatalogEntry {
-        id: "agno3_0_1m".to_string(),
-        name: "Silver Nitrate 0.10 M".to_string(),
-        formula: "AgNO3".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.012,
-        ghs: vec!["GHS05".to_string(), "GHS09".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "AgNO3 (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 15. Sodium Chloride 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("Na+".to_string(), 0.0001);
-    comp.insert("Cl-".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0554);
-    catalog.push(ReagentCatalogEntry {
-        id: "nacl_0_1m".to_string(),
-        name: "Sodium Chloride 0.10 M".to_string(),
-        formula: "NaCl".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.004,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "NaCl (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 16. Cobalt(II) Chloride 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("Co+2".to_string(), 0.0001);
-    comp.insert("Cl-".to_string(), 0.0002);
-    comp.insert("H2O".to_string(), 0.0553);
-    catalog.push(ReagentCatalogEntry {
-        id: "cocl2_0_1m".to_string(),
-        name: "Cobalt(II) Chloride 0.10 M".to_string(),
-        formula: "CoCl2".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.010,
-        ghs: vec!["GHS08".to_string(), "GHS09".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "CoCl2 (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 17. Cobalt(II) Chloride in 10 M Chloride
-    let mut comp = HashMap::new();
-    comp.insert("Co+2".to_string(), 0.0001);
-    comp.insert("Cl-".to_string(), 0.010);
-    comp.insert("H+".to_string(), 0.0098);
-    comp.insert("H2O".to_string(), 0.045);
-    catalog.push(ReagentCatalogEntry {
-        id: "cocl2_10m_cl".to_string(),
-        name: "Cobalt(II) in 10 M Chloride".to_string(),
-        formula: "CoCl2 / HCl".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.150,
-        ghs: vec!["GHS05".to_string(), "GHS08".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "Co(II) / 10M Cl-".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 18. Iron(III) Nitrate 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("Fe+3".to_string(), 0.0001);
-    comp.insert("NO3-".to_string(), 0.0003);
-    comp.insert("H2O".to_string(), 0.0550);
-    catalog.push(ReagentCatalogEntry {
-        id: "fe_no3_3_0_1m".to_string(),
-        name: "Iron(III) Nitrate 0.10 M".to_string(),
-        formula: "Fe(NO3)3".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.020,
-        ghs: vec!["GHS05".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "Fe(NO3)3 (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 19. Potassium Thiocyanate 0.10 M
-    let mut comp = HashMap::new();
-    comp.insert("K+".to_string(), 0.0001);
-    comp.insert("SCN-".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0553);
-    catalog.push(ReagentCatalogEntry {
-        id: "kscn_0_1m".to_string(),
-        name: "Potassium Thiocyanate 0.10 M".to_string(),
-        formula: "KSCN".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.10),
-        density_g_ml: 1.005,
-        ghs: vec!["GHS07".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "KSCN (0.1 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 20. Potassium Persulfate 0.04 M
-    let mut comp = HashMap::new();
-    comp.insert("S2O8-2".to_string(), 0.00004);
-    comp.insert("K+".to_string(), 0.00008);
-    comp.insert("H2O".to_string(), 0.0554);
-    catalog.push(ReagentCatalogEntry {
-        id: "s2o8_0_04m".to_string(),
-        name: "Potassium Persulfate 0.040 M".to_string(),
-        formula: "K2S2O8".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.04),
-        density_g_ml: 1.005,
-        ghs: vec!["GHS03".to_string(), "GHS07".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "K2S2O8 (0.04 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 21. Potassium Iodide 0.05 M
-    let mut comp = HashMap::new();
-    comp.insert("K+".to_string(), 0.00005);
-    comp.insert("I-".to_string(), 0.00005);
-    comp.insert("H2O".to_string(), 0.0554);
-    catalog.push(ReagentCatalogEntry {
-        id: "ki_0_05m".to_string(),
-        name: "Potassium Iodide 0.050 M".to_string(),
-        formula: "KI".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.05),
-        density_g_ml: 1.005,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "KI (0.05 M)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 22. Sodium Thiosulfate 0.002 M
-    let mut comp = HashMap::new();
-    comp.insert("S2O3-2".to_string(), 0.000002);
-    comp.insert("Na+".to_string(), 0.000004);
-    comp.insert("H2O".to_string(), 0.0555);
-    catalog.push(ReagentCatalogEntry {
-        id: "na2s2o3_0_002m".to_string(),
-        name: "Sodium Thiosulfate 0.0020 M".to_string(),
-        formula: "Na2S2O3".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.002),
-        density_g_ml: 1.000,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "Na2S2O3 (2 mM)".to_string(),
-        by_mass: false,
-        dropper: None,
-        inchi_key: None,
-    });
-
-    // 23. Starch Indicator Solution
-    let mut comp = HashMap::new();
-    comp.insert("starch".to_string(), 0.0001);
-    comp.insert("H2O".to_string(), 0.0555);
-    catalog.push(ReagentCatalogEntry {
-        id: "starch_sol".to_string(),
-        name: "Starch Indicator 1%".to_string(),
-        formula: "(C6H10O5)n".to_string(),
-        form: "solution".to_string(),
-        concentration_m: None,
-        density_g_ml: 1.000,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "Starch 1%".to_string(),
-        by_mass: false,
-        dropper: Some(true),
-        inchi_key: None,
-    });
-
-    // 24. Phenolphthalein Indicator
-    let mut comp = HashMap::new();
-    comp.insert("HIn_phph".to_string(), 0.00003);
-    comp.insert("C2H5OH".to_string(), 0.008);
-    comp.insert("H2O".to_string(), 0.030);
-    catalog.push(ReagentCatalogEntry {
-        id: "phenolphthalein_drop".to_string(),
-        name: "Phenolphthalein 1% (Dropper)".to_string(),
-        formula: "C20H14O4".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.03),
-        density_g_ml: 0.920,
-        ghs: vec!["GHS02".to_string(), "GHS08".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "Phenolphthalein".to_string(),
-        by_mass: false,
-        dropper: Some(true),
-        inchi_key: None,
-    });
-
-    // 25. Bromothymol Blue Indicator
-    let mut comp = HashMap::new();
-    comp.insert("HIn_btb".to_string(), 0.00002);
-    comp.insert("H2O".to_string(), 0.0555);
-    catalog.push(ReagentCatalogEntry {
-        id: "bromothymol_blue_drop".to_string(),
-        name: "Bromothymol Blue (Dropper)".to_string(),
-        formula: "C27H28Br2O5S".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.02),
-        density_g_ml: 1.000,
-        ghs: vec![],
-        signal_word: "".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "Bromothymol Blue".to_string(),
-        by_mass: false,
-        dropper: Some(true),
-        inchi_key: None,
-    });
-
-    // 26. Methyl Orange Indicator
-    let mut comp = HashMap::new();
-    comp.insert("HIn_mo".to_string(), 0.00003);
-    comp.insert("H2O".to_string(), 0.0555);
-    catalog.push(ReagentCatalogEntry {
-        id: "methyl_orange_drop".to_string(),
-        name: "Methyl Orange (Dropper)".to_string(),
-        formula: "C14H14N3NaO3S".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.03),
-        density_g_ml: 1.000,
-        ghs: vec!["GHS06".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "Methyl Orange".to_string(),
-        by_mass: false,
-        dropper: Some(true),
-        inchi_key: None,
-    });
-
-    // 26b. Methyl Red Indicator (0.1 % w/v = 3.7 mM; red below pH 4.4, yellow above 6.2)
-    let mut comp = HashMap::new();
-    comp.insert("HIn_mr".to_string(), 0.0000037);
-    comp.insert("H2O".to_string(), 0.0555);
-    catalog.push(ReagentCatalogEntry {
-        id: "methyl_red_drop".to_string(),
-        name: "Methyl Red (Dropper)".to_string(),
-        formula: "C15H15N3O2".to_string(),
-        form: "solution".to_string(),
-        concentration_m: Some(0.0037),
-        density_g_ml: 1.000,
-        ghs: vec!["GHS07".to_string()],
-        signal_word: "Warning".to_string(),
-        bottle_colour: "amber".to_string(),
-        composition: comp,
-        label: "Methyl Red".to_string(),
-        by_mass: false,
-        dropper: Some(true),
-        inchi_key: None,
-    });
-
-    // 27. Magnesium Metal Ribbon
-    let mut comp = HashMap::new();
-    comp.insert("Mg(s)".to_string(), 1.0 / 24.305);
-    catalog.push(ReagentCatalogEntry {
-        id: "mg_ribbon".to_string(),
-        name: "Magnesium Ribbon".to_string(),
-        formula: "Mg".to_string(),
-        form: "solid".to_string(),
-        concentration_m: None,
-        density_g_ml: 1.74,
-        ghs: vec!["GHS02".to_string()],
-        signal_word: "Danger".to_string(),
-        bottle_colour: "clear".to_string(),
-        composition: comp,
-        label: "Mg Ribbon".to_string(),
-        by_mass: true,
-        dropper: None,
-        inchi_key: None,
-    });
-
+/// The bench's reagents (`data/reagent_catalog.json`): bottles, hazard data and the composition of each. The InChIKey of
+/// the main species identifies an import as this reagent.
+pub fn get_reagent_catalog() -> Vec<ReagentCatalogEntry> {
+    static CAT: std::sync::OnceLock<Vec<ReagentCatalogEntry>> = std::sync::OnceLock::new();
+    let mut catalog = CAT.get_or_init(|| serde_json::from_str::<CatalogFile>(include_str!("../data/reagent_catalog.json")).expect("data/reagent_catalog.json").reagents).clone();
+    // reagents registered at run time (imports, custom compounds) replace a shelf reagent of the same id
     if let Ok(lock) = CUSTOM_REAGENTS.lock() {
         for reagent in lock.iter() {
             catalog.retain(|r| r.id != reagent.id);
             catalog.push(reagent.clone());
         }
     }
-
     catalog
 }

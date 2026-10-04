@@ -71,7 +71,14 @@ fn fixed_state(elem: &str) -> Option<i32> {
 /// than the least electronegative takes its anionic state (N -3, S -2, Cl -1, ...) and the least electronegative one
 /// closes the charge balance. The result never depends on hash order.
 pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
-    let mut states = HashMap::new();
+    determine_oxidation_states_exact(species).into_iter().map(|(e, ox)| (e, ox.round() as i32)).collect()
+}
+
+/// `determine_oxidation_states` without the rounding: the average oxidation state of the atoms of each element, which is
+/// fractional for an element whose atoms differ (the carbons of hydroquinone average -1/3, of benzoquinone 0: the couple
+/// is two electrons apart although both round to 0).
+pub fn determine_oxidation_states_exact(species: &str) -> HashMap<String, f64> {
+    let mut states: HashMap<String, f64> = HashMap::new();
     let charge = crate::ions::species_charge(species);
     let elements = crate::ions::species_elements(species).unwrap_or_default();
     if elements.is_empty() {
@@ -81,7 +88,7 @@ pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
     // Single element species: the charge is shared by its atoms
     if elements.len() == 1 {
         let (elem, &count) = elements.iter().next().unwrap();
-        let ox = if count > 0.0 { (charge as f64 / count).round() as i32 } else { 0 };
+        let ox = if count > 0.0 { charge as f64 / count } else { 0.0 };
         states.insert(elem.clone(), ox);
         return states;
     }
@@ -100,7 +107,7 @@ pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
         };
         match fixed {
             Some(ox) => {
-                states.insert((*e).clone(), ox);
+                states.insert((*e).clone(), ox as f64);
                 fixed_sum += ox as f64 * count;
             }
             None => open.push((*e, count)),
@@ -114,11 +121,11 @@ pub fn determine_oxidation_states(species: &str) -> HashMap<String, i32> {
         for (e, count) in rest {
             // an electronegative element takes its anionic state; one that is not an anion former defaults to 0
             let ox = ANION_FORMERS.iter().find(|(x, _, _)| *x == e.as_str()).map_or(0, |(_, _, o)| *o);
-            states.insert((*e).clone(), ox);
+            states.insert((*e).clone(), ox as f64);
             sum += ox as f64 * count;
         }
         if last_count > 0.0 {
-            states.insert(last_el.clone(), ((charge as f64 - sum) / last_count).round() as i32);
+            states.insert(last_el.clone(), (charge as f64 - sum) / last_count);
         }
     }
     states

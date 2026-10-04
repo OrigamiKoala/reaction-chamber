@@ -459,8 +459,13 @@ impl Vessel {
     // ------------------------------------------------------------------------------------------------ electrolytes
     /// The electrolyte environment of the primary phase: its ions and the electrostriction of its salts.
     pub(crate) fn ion_env(&self) -> Option<IonEnv> {
+        self.ion_env_of(&self.species_mol)
+    }
+
+    /// The electrolyte environment of a liquid phase holding `phase` (amounts by species).
+    pub(crate) fn ion_env_of(&self, phase: &HashMap<String, f64>) -> Option<IonEnv> {
         let mut env = IonEnv::default();
-        for (sp, &mol) in &self.species_mol {
+        for (sp, &mol) in phase {
             if mol > 0.0 && ions::species_charge(sp) != 0 {
                 env.ions.insert(sp.clone(), mol);
             }

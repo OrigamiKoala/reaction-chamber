@@ -1,0 +1,50 @@
+{
+ "_comment": "Acids with a tabulated aqueous pKa below 0: fully dissociated at bench concentrations (src/acid_estimate.rs). Every other acid is a weak-acid ladder estimated from its structure or formula class.",
+ "strong_acids": [
+  {
+   "formula": "HCl",
+   "pKa": -6.3,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HBr",
+   "pKa": -9.0,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HI",
+   "pKa": -10.0,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HNO3",
+   "pKa": -1.4,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HClO4",
+   "pKa": -10.0,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HClO3",
+   "pKa": -1.0,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HBrO3",
+   "pKa": -2.0,
+   "source": "Bordwell / CRC (aqueous pKa)"
+  },
+  {
+   "formula": "HMnO4",
+   "pKa": -2.25,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  },
+  {
+   "formula": "HSCN",
+   "pKa": -1.3,
+   "source": "CRC Handbook of Chemistry and Physics (aqueous pKa)"
+  }
+ ]
+}

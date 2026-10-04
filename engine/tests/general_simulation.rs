@@ -151,7 +151,7 @@ fn test_arbitrary_custom_kinetic_reaction_network() {
         is_reversible: false,
         k_eq_298: None,
         tier: ProvenanceTier::Tabulated,
-        source: "Physical Organic Chemistry".to_string(),
+        source: "Physical Organic Chemistry".to_string(), phase_class: None,
     });
 
     // Seed vessel with water, EtAc, and OH-

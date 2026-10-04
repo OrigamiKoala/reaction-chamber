@@ -1,0 +1,6 @@
+{
+  "_comment": "Electrode materials of the cell. `inert` electrodes carry current and take part in no reaction themselves (platinum, graphite: no stable aqueous cation under the cell's conditions). Every other element that is a metal with an aqueous cation or a solid record in the species store is an active electrode, listed by decreasing standard potential (nobler first); metals whose couple lies below `water_reactive_e0_v` reduce water violently and are not offered.",
+  "inert": ["Pt", "C"],
+  "water_reactive_e0_v": -2.5,
+  "source": "Standard electrode potentials, CRC Handbook of Chemistry and Physics; the cutoff is below Mg (-2.37 V) and above Ca (-2.87 V)"
+}

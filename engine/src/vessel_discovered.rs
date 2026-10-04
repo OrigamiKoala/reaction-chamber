@@ -47,10 +47,15 @@ impl Vessel {
                 gas_pa.insert(sp, p);
             }
         }
+        // the standard states of the formation data are molal: solutes enter the quotient as gamma m. A phase without
+        // water has no molality; its volume stands in for the solvent mass (1 kg/L)
+        let water_kg = self.species_mol.get(AQUEOUS_SOLVENT).copied().unwrap_or(0.0) * 0.01801528;
+        let vol_l = (self.reaction_volume_ml() / 1000.0).max(1e-6);
         ActivityContext {
+            solvent_kg: if water_kg > 1e-9 { water_kg } else { vol_l },
             gamma,
             ln_aw: a_w.max(1e-10).ln(),
-            vol_l: (self.reaction_volume_ml() / 1000.0).max(1e-6),
+            vol_l,
             gas_pa,
             sealed: self.sealed,
             head_m3,
@@ -111,7 +116,7 @@ impl Vessel {
                 (p.max(1e-6) / crate::vle::P_BAR_PA).ln()
             } else {
                 let n = self.species_mol.get(sp).copied().unwrap_or(0.0) + delta(sp);
-                (n.max(1e-30) / ctx.vol_l).ln() + ctx.gamma.get(sp).copied().unwrap_or(0.0)
+                (n.max(1e-30) / ctx.solvent_kg).ln() + ctx.gamma.get(sp).copied().unwrap_or(0.0)
             };
             ln_q += coeff * ln_a;
         }
@@ -380,5 +385,58 @@ impl Vessel {
             active: true,
             role: None,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vessel::VesselConfig;
+
+    fn beaker() -> Vessel {
+        Vessel::new(VesselConfig {
+            vessel_type: "beaker-250".into(),
+            capacity_ml: 500.0,
+            glass_mass_g: 110.0,
+            inner_radius_cm: 3.5,
+            temperature_k: Some(298.15),
+            room_k: Some(298.15),
+            sealed: Some(false),
+            stopper_pop_atm: Some(1.0e4),
+            burst_atm: Some(1.0e4),
+        })
+    }
+
+    /// E1: the quotient of a discovered reaction uses molalities (the basis of the standard states and of the activity
+    /// coefficients), not mol per litre of solution: in 5 m NaCl a litre holds 0.84 kg of water.
+    #[test]
+    fn discovered_quotients_are_molal() {
+        let mut v = beaker();
+        v.species_mol.insert("H2O".into(), 1000.0 / 18.01528);
+        v.species_mol.insert("Na+".into(), 5.0);
+        v.species_mol.insert("Cl-".into(), 5.0);
+        v.species_mol.insert("A".into(), 1.0);
+        v.species_mol.insert("B".into(), 1.0);
+        let ctx = v.activity_context();
+        assert!((ctx.solvent_kg - 1.0).abs() < 1e-6, "{}", ctx.solvent_kg);
+        let vol_l = ctx.vol_l;
+        assert!(vol_l > 1.1, "5 m NaCl occupies more than a litre per kg of water: {}", vol_l);
+        // 2 A -> B with Delta_r G0 = 0
+        let rxn = DiscoveredReaction {
+            species_names: vec!["A".into(), "B".into()],
+            nu: vec![(0, -2.0), (1, 1.0)],
+            delta_h0_j: 0.0,
+            delta_g0_j: 0.0,
+            kind: DiscoveredRxnKind::Redox { z_electrons: 1.0 },
+            partners: None,
+        };
+        let not_gas = |_: &str| false;
+        let none = |_: &str| 0.0;
+        let q = v.discovered_ln_q_minus_ln_k(&rxn, &ctx, &not_gas, &none);
+        let g = |s: &str| ctx.gamma.get(s).copied().unwrap_or(0.0);
+        let molal = (1.0f64 / 1.0).ln() - 2.0 * (1.0f64 / 1.0).ln() + g("B") - 2.0 * g("A");
+        assert!((q - molal).abs() < 1e-9, "ln Q {} vs molal {}", q, molal);
+        // the molar quotient would differ by ln(c_B / c_A^2) = ln(V) here
+        assert!((q - (molal + vol_l.ln())).abs() > 0.1);
     }
 }

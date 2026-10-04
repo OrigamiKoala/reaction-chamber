@@ -47,7 +47,7 @@ impl LiquidPhase {
         Self {
             id: "aqueous".to_string(),
             kind: PhaseKind::Aqueous,
-            solvent_species: Some("H2O".to_string()),
+            solvent_species: Some(crate::db::seed::WATER.to_string()),
             species_mol: HashMap::new(),
             volume_ml: 0.0,
             mass_g: 0.0,
@@ -99,6 +99,10 @@ impl LiquidPhase {
             solvent_class: String::new(),
             species: self.neat_species.clone(),
             name: self.name.clone(),
+            ph: None,
+            ph_activity: None,
+            ph_junction_mv: None,
+            water_mole_fraction: 0.0,
         }
     }
 }

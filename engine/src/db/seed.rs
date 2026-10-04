@@ -425,16 +425,8 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("MnO4-", "MnO4-", -1, -541.4, -447.2, 117.0, None, Some("[O-][Mn](=O)(=O)=O")),
         make_aq("Cr2O7-2", "Cr2O7-2", -2, -1490.3, -1301.1, 220.0, None, None),
         make_aq("CrO4-2", "CrO4-2", -2, -881.2, -727.75, 110.0, None, None),
-        make_aq_identity("HIn_phph", "C20H14O4", 0),
-        make_aq_identity("In_phph-", "C20H13O4-", -1),
         make_aq_identity("starch", "C6H10O5", 0),
         make_aq_identity("starch_I3", "C6H10O5I3-", -1),
-        make_aq_identity("HIn_btb", "C27H28Br2O5S", 0),
-        make_aq_identity("In_btb-", "C27H27Br2O5S-", -1),
-        make_aq_identity("HIn_mo", "C14H15N3O3S", 0),
-        make_aq_identity("In_mo-", "C14H14N3O3S-", -1),
-        make_aq_identity("HIn_mr", "C15H15N3O2", 0),
-        make_aq_identity("In_mr-", "C15H14N3O2-", -1),
 
         // Stage 6 Redox & Speciation Aqueous Species
         make_identity("HCOOH", "CH2O2", "BDAGIHXWWSANSR-UHFFFAOYSA-N"),
@@ -452,8 +444,8 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_aq("Al(OH)2+", "Al(OH)2+", 1, -995.0, -902.0, 50.0, None, None),
         make_aq("Al(OH)4-", "Al(OH)4-", -1, -1500.8, -1305.6, 90.0, None, None),
         make_aq("Fe+2", "Fe+2", 2, -89.1, -78.9, -20.0, None, Some("[Fe+2]")),
-        make_aq("FeOH+2", "FeOH+2", 2, -287.0, -233.0, 50.0, None, None),
-        make_aq("Fe(OH)2+", "Fe(OH)2+", 1, -520.0, -440.0, 100.0, None, None),
+        make_aq("FeOH+2", "FeOH+2", 2, -292.0, -233.0, 50.0, None, None),
+        make_aq("Fe(OH)2+", "Fe(OH)2+", 1, -550.0, -440.0, 100.0, None, None),
         make_aq("Cu+", "Cu+", 1, 71.67, 49.98, -30.0, None, Some("[Cu+]")),
         make_aq("Mn+2", "Mn+2", 2, -220.8, -228.1, -25.0, None, Some("[Mn+2]")),
         make_aq("S-2", "S-2", -2, 33.1, 85.8, -100.0, None, Some("[S-2]")),
@@ -502,6 +494,13 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_solid("ZnS(s)", "ZnS", -206.0, -201.3, 46.0, 4.09),
         make_solid("ZnSO4(s)", "ZnSO4", -982.8, -871.5, 99.0, 3.54),
         make_solid("Cu(s)", "Cu", 0.0, 0.0, 24.44, 8.96),
+        // elements in their reference state (dfH = dfG = 0 by definition): the metals the console offers as electrodes and
+        // whose cations the store holds (Cp, density: CRC Handbook)
+        make_solid("Ag(s)", "Ag", 0.0, 0.0, 25.35, 10.49),
+        make_solid("Pb(s)", "Pb", 0.0, 0.0, 26.44, 11.34),
+        make_solid("Al(s)", "Al", 0.0, 0.0, 24.20, 2.70),
+        make_solid("Co(s)", "Co", 0.0, 0.0, 24.81, 8.90),
+        make_solid("Mn(s)", "Mn", 0.0, 0.0, 26.32, 7.43),
         make_solid("CuSO4(s)", "CuSO4", -771.4, -662.2, 100.0, 3.60),
         make_solid("Na(s)", "Na", 0.0, 0.0, 28.2, 0.97),
         make_solid("Na2S(s)", "Na2S", -364.8, -349.8, 77.0, 1.86),
@@ -526,6 +525,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
 
     crate::db::seed_vle::attach_vle_data(&mut records);
     crate::db::seed_phases::attach_phase_data(&mut records);
+    records.extend(indicator_records());
     records
 }
 
@@ -541,3 +541,61 @@ pub const HYDROGEN_GAS: &str = "H2(g)";
 pub const OXYGEN_GAS: &str = "O2(g)";
 pub const CARBON_DIOXIDE_GAS: &str = "CO2(g)";
 pub const NITROGEN_GAS: &str = "N2(g)";
+
+
+/// One acid-base indicator dye of `data/indicators.json`: the acid and base forms as structures and the pKa of the site.
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct IndicatorDef {
+    pub name: String,
+    pub acid: String,
+    pub base: String,
+    pub acid_formula: String,
+    pub acid_smiles: String,
+    pub base_formula: String,
+    pub base_smiles: String,
+    #[serde(rename = "pKa")]
+    pub pka: f64,
+    #[serde(rename = "pKa_source")]
+    pub pka_source: String,
+    #[serde(rename = "dH_kj")]
+    pub dh_kj: f64,
+    #[serde(rename = "dH_source")]
+    pub dh_source: String,
+}
+
+#[derive(serde::Deserialize)]
+struct IndicatorFile {
+    indicators: Vec<IndicatorDef>,
+}
+
+/// The indicator dyes (`data/indicators.json`).
+pub fn indicator_defs() -> &'static [IndicatorDef] {
+    static D: std::sync::OnceLock<Vec<IndicatorDef>> = std::sync::OnceLock::new();
+    D.get_or_init(|| serde_json::from_str::<IndicatorFile>(include_str!("../../data/indicators.json")).expect("data/indicators.json").indicators)
+}
+
+/// Species records of the indicator dyes: structures (SMILES) but no formation data (the dyes are measured by their pKa),
+/// and one acid-base site on the acid form whose `site` names the conjugate base species. The equilibrium row is generated
+/// from that site (`chem_db::record_acid_equilibria`).
+fn indicator_records() -> Vec<SpeciesRecord> {
+    let mut out = Vec::new();
+    for d in indicator_defs() {
+        let mut acid = make_aq_identity(&d.acid, &d.acid_formula, 0);
+        acid.identity.smiles = Some(d.acid_smiles.clone());
+        acid.identity.names.push(d.name.clone());
+        let mut dh = Datum::new(d.dh_kj, "kJ/mol", ProvenanceTier::Estimated, &d.dh_source);
+        dh.T_K = Some(298.15);
+        acid.acid_base.push(crate::db::record::AcidBaseSite {
+            site: Some(d.base.clone()),
+            pKa: Datum::new(d.pka, "pKa", ProvenanceTier::Tabulated, &d.pka_source),
+            dH: Some(dh),
+            T_K: Some(298.15),
+            I: Some(0.0),
+        });
+        let mut base = make_aq_identity(&d.base, &d.base_formula, -1);
+        base.identity.smiles = Some(d.base_smiles.clone());
+        out.push(acid);
+        out.push(base);
+    }
+    out
+}

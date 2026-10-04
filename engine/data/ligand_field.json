@@ -172,5 +172,6 @@
     "S-2",
     "HS-"
   ],
-  "_comment2": "anion_ligands: the ligand a solid's anion offers a cation (halides, hydroxide, cyanide... as themselves); other oxyanions bind through oxygen like the aqua ligand; anion_without_ligand have no tabulated field strength."
+  "_comment2": "anion_ligands: the ligand a solid's anion offers a cation (halides, hydroxide, cyanide... as themselves); other oxyanions bind through oxygen like the aqua ligand; anion_without_ligand have no tabulated field strength.",
+  "complex_anion_ligand": "NCS"
 }

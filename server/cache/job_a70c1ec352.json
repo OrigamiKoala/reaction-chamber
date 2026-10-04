@@ -1,0 +1,29 @@
+{
+  "job_id": "job_a70c1ec352",
+  "status": "completed",
+  "reaction": "CC(Br)C + [OH-] -> C=CC + H2O + [Br-]",
+  "family": "e2_elimination",
+  "solvent": "water",
+  "temperature_k": 298.15,
+  "method": "rdkit_uff",
+  "energy_hartree": 0.2742963614411758,
+  "delta_e_electronic_kcal": 169.84,
+  "xtb_raw_delta_g_kcal": 171.84,
+  "calibrated_delta_g_kcal": 139.7,
+  "uncertainty_kcal": 0.2,
+  "calibrated_rate_constant": 2.4575106080266134e-90,
+  "arrhenius_ea_j_mol": 721657.8,
+  "arrhenius_a": 18284870929643.176,
+  "num_imaginary_frequencies": 3,
+  "imaginary_frequency_cm1": 725.9,
+  "validation_flags": [
+    "conformer_optimized",
+    "reactant_ground_state",
+    "ts_saddle_found",
+    "imaginary_freq_3",
+    "calibrated_ok"
+  ],
+  "failure_reason": null,
+  "runtime_sec": 0.0204,
+  "tier": "estimated"
+}

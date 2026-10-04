@@ -208,7 +208,7 @@ fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>, smiles: Option
     let plain = |species: Vec<(String, f64)>| AcidModel { species, equilibria: vec![], note: None };
     // Fully deprotonated base: find an anion definition whose formula equals elems minus (H count equal to -charge_of_base)
     let mut best: Option<(&ions::IonDef, f64)> = None;
-    for def in ions::ANIONS {
+    for def in ions::anions() {
         if let Some(u) = ions::parse_formula_strict(def.formula) {
             // elements of acid = u + k H  with k = -def.charge  (k>=1)
             let k = (-def.charge) as f64;
@@ -229,17 +229,17 @@ fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>, smiles: Option
         // Dissociation continues from the singly-deprotonated anion when an equilibrium exists for it
         if k >= 2.0 {
             let proto = format!("H{}", def.formula);
-            let inter = ions::ANIONS.iter().find(|x| x.formula == proto && x.charge == def.charge + 1);
+            let inter = ions::anions().iter().find(|x| x.formula == proto && x.charge == def.charge + 1);
             if let Some(i) = inter {
                 if species_is_reactant_in_equilibria(i.id) {
-                    return plain(vec![("H+".to_string(), 1.0), (i.id.to_string(), 1.0)]);
+                    return plain(vec![(crate::db::seed::PROTON.to_string(), 1.0), (i.id.to_string(), 1.0)]);
                 }
             }
         }
         // Tabulated strong acid (pKa < 0): fully dissociated
         if let Some((pka, src)) = acid_estimate::strong_acid(elems) {
             return AcidModel {
-                species: vec![("H+".to_string(), k), (def.id.to_string(), 1.0)],
+                species: vec![(crate::db::seed::PROTON.to_string(), k), (def.id.to_string(), 1.0)],
                 equilibria: vec![],
                 note: Some(format!("strong acid, tabulated pKa {:.1} ({})", pka, src)),
             };
@@ -264,7 +264,7 @@ fn acid_species(split: &IonicSplit, elems: &HashMap<String, f64>, smiles: Option
         for j in 1..ki {
             let mut e = elems.clone();
             *e.get_mut("H").unwrap() -= j as f64;
-            let existing = ions::ANIONS.iter().find(|x| x.charge == -(j as i32) && ions::parse_formula_strict(x.formula).as_ref() == Some(&e));
+            let existing = ions::anions().iter().find(|x| x.charge == -(j as i32) && ions::parse_formula_strict(x.formula).as_ref() == Some(&e));
             let id = match existing {
                 Some(x) => x.id.to_string(),
                 None => format!("{}{}", solubility::hill_from_elems(&e), if j == 1 { "-".to_string() } else { format!("-{}", j) }),
@@ -333,12 +333,12 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     let ionic_smiles = req.smiles.as_ref().map_or(true, |s| s.contains('.') || s.contains('+') || s.contains('-') || !has_c);
     let known_confirmed = known_neutral_confirmed(&elems, req.inchi_key.as_deref());
     let split = ions::decompose_elems(&elems)
-        .filter(|sp| ionic_smiles || sp.cations.iter().all(|c| c.id == "H+"))
+        .filter(|sp| ionic_smiles || sp.cations.iter().all(|c| c.id == crate::db::seed::PROTON))
         .filter(|sp| {
             // A carbon "acid" must be one: its structure has as many carboxylic-acid OH groups as acidic hydrogens
             // (citric acid yes, methyl formate no), or its InChIKey is a molecule the engine already knows (HCN).
             // The formula alone (C2H4O2 = acetic acid = methyl formate) proves nothing.
-            let carbon_acid = has_c && sp.cations.iter().all(|c| c.id == "H+");
+            let carbon_acid = has_c && sp.cations.iter().all(|c| c.id == crate::db::seed::PROTON);
             if !carbon_acid {
                 return true;
             }
@@ -359,12 +359,12 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
 
     // ---- species released per formula unit
     let (kind, species): (&str, Vec<(String, f64)>) = if let Some(sp) = &split {
-        if sp.cations.iter().all(|c| c.id == "H+") {
+        if sp.cations.iter().all(|c| c.id == crate::db::seed::PROTON) {
             let am = acid_species(sp, &elems, req.smiles.as_deref());
             equilibria = am.equilibria;
             acid_note = am.note;
             ("acid", am.species)
-        } else if sp.anions.iter().any(|a| a.id == "OH-") && sp.cations.iter().all(|c: &IonCount| c.id != "H+") {
+        } else if sp.anions.iter().any(|a| a.id == crate::db::seed::HYDROXIDE) && sp.cations.iter().all(|c: &IonCount| c.id != crate::db::seed::PROTON) {
             ("base", sp.all().map(|i| (i.id.clone(), i.n)).collect())
         } else {
             ("salt", sp.all().map(|i| (i.id.clone(), i.n)).collect())
@@ -470,14 +470,14 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             }
         }
         if n_water > 0.0 {
-            *composition.entry("H2O".to_string()).or_default() += n_water * per_g;
+            *composition.entry(crate::db::seed::WATER.to_string()).or_default() += n_water * per_g;
         }
     } else if neat_liquid {
         // neat liquid: per mL amounts = density / molar mass; it forms its own phase unless it mixes with what is there
         let per_ml = thermo.rho_liquid / mw_total;
         composition.insert(neat_species.clone().unwrap_or_else(|| inert_id.clone()), per_ml);
         if n_water > 0.0 {
-            *composition.entry("H2O".to_string()).or_default() += n_water * per_ml;
+            *composition.entry(crate::db::seed::WATER.to_string()).or_default() += n_water * per_ml;
         }
     } else {
         // aqueous solution of `molarity` mol/L; per mL amounts = mol/L / 1000
@@ -488,13 +488,13 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             *composition.entry(sp.clone()).or_default() += n * c / 1000.0;
         }
         let water_g = (rho - c * mw_total / 1000.0).max(0.5);
-        *composition.entry("H2O".to_string()).or_default() += water_g / 18.015 + n_water * c / 1000.0;
+        *composition.entry(crate::db::seed::WATER.to_string()).or_default() += water_g / 18.015 + n_water * c / 1000.0;
     }
 
     // Solid ions are only meaningful if every species has a known mass
     for sp in composition.keys() {
         let base = sp.trim_end_matches("(s)").trim_end_matches("(l)").trim_end_matches("(g)");
-        if sp != "H2O" && base != inert_id.as_str() && ions::species_mass(sp).is_none() {
+        if sp != crate::db::seed::WATER && base != inert_id.as_str() && ions::species_mass(sp).is_none() {
             return none(req, "Contains a species the engine cannot represent.");
         }
     }

@@ -495,7 +495,7 @@ impl Vessel {
                 let e0 = h.e0(t_k, p_pa);
                 let has_el = |s: &str| crate::ions::species_elements(s).map_or(false, |e| e.contains_key(&el.element));
                 let matches_el = h.ox.iter().any(|(s, _)| has_el(s)) || h.red.iter().any(|(s, _)| has_el(s));
-                let matches_water = h.ox.iter().any(|(s, _)| s == "H+" || s == "O2(g)") || h.red.iter().any(|(s, _)| s == "H2(g)" || s == "OH-");
+                let matches_water = h.ox.iter().any(|(s, _)| s == crate::db::seed::PROTON || s == crate::db::seed::OXYGEN_GAS) || h.red.iter().any(|(s, _)| s == crate::db::seed::HYDROGEN_GAS || s == crate::db::seed::HYDROXIDE);
                 if matches_el || matches_water {
                     rows.push(ElectrodeReactionRow {
                         electrode: role.to_string(),
@@ -732,4 +732,87 @@ fn reverse_equation(h: &HalfReaction) -> String {
         v.iter().map(|(s, c)| if (*c - 1.0).abs() < 1e-9 { s.clone() } else { format!("{} {}", c.round(), s) }).collect::<Vec<_>>().join(" + ")
     };
     format!("{} -> {} + {} e-", side(&h.red), side(&h.ox), h.n_e.round())
+}
+
+// ------------------------------------------------------------------------------------------------ electrode materials
+
+/// One electrode material the console offers.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ElectrodeMaterialInfo {
+    pub symbol: String,
+    /// Standard reduction potential of the metal's cation couple (V vs SHE) from the store's formation data; absent for the
+    /// inert electrodes.
+    pub e0_v: Option<f64>,
+    /// True for an inert electrode (carries current, takes part in no reaction itself).
+    pub inert: bool,
+}
+
+/// Metals whose cation couple lies below this standard potential (V) react violently with the water of the cell: Na, K, Ca,
+/// Ba, Li. They are not electrode materials.
+#[derive(serde::Deserialize)]
+struct ElectrodeMaterialData {
+    inert: Vec<String>,
+    water_reactive_e0_v: f64,
+}
+
+fn electrode_material_data() -> &'static ElectrodeMaterialData {
+    static DATA: std::sync::OnceLock<ElectrodeMaterialData> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| serde_json::from_str(include_str!("../data/electrode_materials.json")).expect("electrode_materials.json is valid"))
+}
+
+/// Electrode materials the engine can use, from the species store (I4) and `data/electrode_materials.json`: the inert ones
+/// (platinum, graphite) first, then every metal that has an aqueous cation with formation data (its half-reaction and
+/// potential follow from that data) or a solid record of its own, by decreasing standard potential (metals without a
+/// potential last, alphabetically), except the violently water-reactive ones.
+pub fn electrode_materials() -> Vec<ElectrodeMaterialInfo> {
+    let mut e0: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
+    let mut with_solid: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Ok(store) = crate::db::SpeciesStore::global().read() {
+        for r in store.iter() {
+            let (body, ch) = crate::ions::split_charge(&r.identity.formula);
+            let Some(elems) = crate::ions::parse_formula_strict(body) else { continue };
+            if elems.len() != 1 {
+                continue;
+            }
+            let (el, n) = elems.iter().next().map(|(k, v)| (k.clone(), *v)).unwrap();
+            if !crate::compound_thermo::is_metal_element(&el) {
+                continue;
+            }
+            if ch > 0 && n == 1.0 {
+                // monatomic cation: E0 = dfG(ion) / (z F)
+                if let Some(dfg) = r.phases.get("aq").and_then(|p| p.thermo.as_ref()).and_then(|t| t.dfG.as_ref()) {
+                    let z = ch as f64;
+                    let e = dfg.value * 1000.0 / (z * crate::physics::FARADAY);
+                    // the couple of the lowest charge state that has a record is the one a plain electrode shows first
+                    let cur = e0.get(&el).copied();
+                    if cur.map_or(true, |c| e < c) {
+                        e0.insert(el.clone(), e);
+                    }
+                }
+            } else if ch == 0 && r.phases.contains_key("s") {
+                with_solid.insert(el);
+            }
+        }
+    }
+    let mut metals: Vec<String> = e0.keys().cloned().chain(with_solid.iter().cloned()).collect();
+    metals.sort();
+    metals.dedup();
+    let data = electrode_material_data();
+    metals.retain(|m| !data.inert.contains(m) && e0.get(m).map_or(true, |e| *e > data.water_reactive_e0_v));
+    // nobler first; metals with no potential after those that have one
+    metals.sort_by(|a, b| match (e0.get(a), e0.get(b)) {
+        (Some(x), Some(y)) => y.partial_cmp(x).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
+    });
+    let mut out: Vec<ElectrodeMaterialInfo> = data
+        .inert
+        .iter()
+        .map(|f| ElectrodeMaterialInfo { symbol: f.clone(), e0_v: e0.get(f).copied(), inert: true })
+        .collect();
+    for m in metals {
+        out.push(ElectrodeMaterialInfo { e0_v: e0.get(&m).copied(), symbol: m, inert: false });
+    }
+    out
 }
