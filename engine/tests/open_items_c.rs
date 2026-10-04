@@ -119,3 +119,48 @@ fn isomers_have_distinct_ids() {
     // registering the same molecule again finds the same id
     assert_eq!(a, id_of("OC(C)(C)CC"));
 }
+
+/// R2: carbon is not excluded from redox discovery. An organic couple reacts when its record carries a self-exchange rate
+/// (hydroquinone / benzoquinone here, rate recalled order of magnitude 1e4 M^-1 s^-1); without the datum the same couple is
+/// as inert as every other bond-rearranging couple.
+#[test]
+fn organic_couple_with_a_rate_record_is_oxidised() {
+    use reaction_chamber_engine::db::record::{Datum, RedoxCouple};
+    use reaction_chamber_engine::db::SpeciesStore;
+    use reaction_chamber_engine::types::ProvenanceTier;
+
+    let qh2 = id_of("Oc1ccc(O)cc1");
+    let q = id_of("O=C1C=CC(=O)C=C1");
+    let run = |with_rate: bool| -> f64 {
+        {
+            let global = SpeciesStore::global();
+            let mut store = global.write().unwrap();
+            let mut rec = store.get(&qh2).cloned().expect("hydroquinone record");
+            rec.redox.clear();
+            if with_rate {
+                rec.redox.push(RedoxCouple {
+                    partner: q.clone(),
+                    E0: Datum::new(0.70, "V", ProvenanceTier::Estimated, "recalled quinone / hydroquinone potential"),
+                    n_electrons: Some(2),
+                    k_self: Some(Datum::new(1.0e4, "M-1 s-1", ProvenanceTier::Speculative, "recalled order of magnitude")),
+                });
+            }
+            store.register(rec);
+        }
+        let mut v = beaker();
+        v.species_mol.insert("H2O".into(), 100.0 / 18.015);
+        v.species_mol.insert(qh2.clone(), 0.002);
+        v.species_mol.insert("MnO4-".into(), 0.001);
+        v.species_mol.insert("K+".into(), 0.001);
+        v.species_mol.insert("H+".into(), 0.1);
+        v.species_mol.insert("Cl-".into(), 0.1);
+        for _ in 0..40 {
+            v.step(0.5).unwrap();
+        }
+        v.species_mol.get(&q).copied().unwrap_or(0.0)
+    };
+    let with = run(true);
+    let without = run(false);
+    assert!(with > 1.0e-6 * 0.1, "benzoquinone formed with the rate record: {:e}", with);
+    assert!(with > 100.0 * without.max(1e-30), "with {:e} vs without {:e}", with, without);
+}
