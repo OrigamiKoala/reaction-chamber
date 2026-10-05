@@ -40,7 +40,7 @@ import { GasTubes, GasHost } from './gas_collection';
 import { FilterRigs } from './filtration';
 import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
 import { ControlRig } from './controls3d';
-import { BALANCE_POS, BURNER_POS, ELECTROCHEM_POS, HOTPLATE_POS, INDICATOR_IDS, INDICATOR_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_POS, PH_METER_POS, ROOM, SPECTRO_POS, WORKSTATION_POS } from './layout';
+import { ANALYTICAL_Z_SHIFT, BALANCE_POS, BURNER_POS, ELECTROCHEM_POS, HOTPLATE_POS, INDICATOR_IDS, INDICATOR_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_POS, PH_METER_POS, ROOM, SPECTRO_POS, WORKSTATION_POS } from './layout';
 import { Workstation } from '../equipment/workstation';
 
 /** Bench instruments the user can click (right panel shows their controls). */
@@ -1399,7 +1399,7 @@ export class BenchScene {
     const d = f.multiplyScalar(fwd).addScaledVector(r, right);
     const t = this.controls.target;
     const nx = THREE.MathUtils.clamp(t.x + d.x, -130, ROOM.xMax - 45);
-    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, 146);
+    const nz = THREE.MathUtils.clamp(t.z + d.z, BENCH.zMin + 5, 146 + ANALYTICAL_Z_SHIFT);
     d.set(nx - t.x, 0, nz - t.z);
     t.add(d);
     this.camera.position.add(d);
@@ -1418,7 +1418,7 @@ export class BenchScene {
     } else if (station === 'mass_spec') {
       this.focusPoint(MASS_SPEC_POS.clone().add(new THREE.Vector3(-4, 30, 0)), 98, true);
     } else if (station === 'nmr') {
-      this.focusPoint(new THREE.Vector3((NMR_POS.x + NMR_CRYO_POS.x) / 2 + 4, 22, 100), 205, true);
+      this.focusPoint(new THREE.Vector3((NMR_POS.x + NMR_CRYO_POS.x) / 2 + 4, 22, NMR_CRYO_POS.z), 205, true);
     } else if (station === 'electrochem') {
       this.focusPoint(ELECTROCHEM_POS.clone().add(new THREE.Vector3(0, 6, 0)), 40, true);
     }

@@ -9,14 +9,14 @@ import {
   windowTexture,
   woodTexture,
 } from '../render/textures';
-import { GAS_CYLINDER_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, ROOM } from './layout';
+import { ANALYTICAL_Z_SHIFT as AZ, GAS_CYLINDER_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, ROOM } from './layout';
 
 /**
  * Static lab environment. 1 unit = 1 cm. Bench top surface is y = 0; the front edge of the worktop is at z = +32,
  * the back wall at z = -45. The reagent shelf stands at the back of the bench (3 tiers × 9 slots).
  */
 export const BENCH = { xMin: -120, xMax: 120, zMin: -45, zMax: 32, thickness: 3.2, floorY: -90 };
-export const ANALYTICAL_BENCH = { xMin: -95, xMax: 108, zMin: 76, zMax: 141, thickness: 3.2, floorY: -90 };
+export const ANALYTICAL_BENCH = { xMin: -95, xMax: 108, zMin: 76 + AZ, zMax: 141 + AZ, thickness: 3.2, floorY: -90 };
 export const SHELF = {
   tiers: [1.6, 21.6, 41.6], // standing heights of the tiers
   slots: 9,
@@ -158,9 +158,9 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   const fTex = floorTexture().clone();
   fTex.repeat.set((ROOM_W + 120) / 50, 12);
   fTex.needsUpdate = true;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W + 120, 600), new THREE.MeshStandardMaterial({ map: fTex, roughness: 0.75 }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W + 120, 800), new THREE.MeshStandardMaterial({ map: fTex, roughness: 0.75 }));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(ROOM_CX, BENCH.floorY, 100);
+  floor.position.set(ROOM_CX, BENCH.floorY, 235);
   floor.receiveShadow = true;
   scene.add(floor);
 
@@ -201,8 +201,8 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   scene.add(rightSplash);
   // side walls
   for (const sx of [ROOM.xMin, ROOM.xMax]) {
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(400, 310), paintMat);
-    wall.position.set(sx, BENCH.floorY + 155, 155);
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(560, 310), paintMat);
+    wall.position.set(sx, BENCH.floorY + 155, 235);
     wall.rotation.y = sx < 0 ? Math.PI / 2 : -Math.PI / 2;
     wall.receiveShadow = true;
     scene.add(wall);
@@ -219,14 +219,14 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
   sill.position.set(-157, 24, 40);
   scene.add(sill);
   // ceiling
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, 400), new THREE.MeshStandardMaterial({ color: 0xdcdfdc, roughness: 0.95 }));
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, 560), new THREE.MeshStandardMaterial({ color: 0xdcdfdc, roughness: 0.95 }));
   ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.set(ROOM_CX, ROOM.ceilingY, 155);
+  ceiling.position.set(ROOM_CX, ROOM.ceilingY, 235);
   scene.add(ceiling);
   // recessed 60 x 120 troffers: two rows over the benches, one over the instruments, two over the NMR bay
   const troffer = new THREE.MeshBasicMaterial({ color: 0xd2d9e0, toneMapped: true });
   const troffFrame = new THREE.MeshStandardMaterial({ color: 0xb9bec2, roughness: 0.6 });
-  const troffers: Array<[number, number]> = [[-60, 20], [60, 20], [-45, 106], [45, 106], [230, 40], [230, 140], [320, 40], [320, 140], [170, 140]];
+  const troffers: Array<[number, number]> = [[-60, 20], [60, 20], [-45, 106 + AZ], [45, 106 + AZ], [-60, 100 + AZ - 90], [60, 100 + AZ - 90], [230, 160], [230, 150 + AZ], [320, 160], [320, 150 + AZ], [170, 150 + AZ]];
   for (const [lx, lz] of troffers) {
     const frame = new THREE.Mesh(new THREE.PlaneGeometry(64, 34), troffFrame);
     frame.rotation.x = Math.PI / 2;
@@ -236,12 +236,21 @@ export function buildLabRoom(scene: THREE.Scene, renderer: THREE.WebGLRenderer):
     panel.position.set(lx, ROOM.ceilingY - 0.5, lz);
     scene.add(frame, panel);
   }
+  // back wall of the NMR bay, well in front of the wet-bench wall (single sided: from behind it is not drawn)
+  const bayW = ROOM.xMax - ROOM.bayXMin;
+  const bayWall = new THREE.Mesh(new THREE.PlaneGeometry(bayW, ROOM.ceilingY - BENCH.floorY), paintMat);
+  bayWall.position.set((ROOM.xMax + ROOM.bayXMin) / 2, (ROOM.ceilingY + BENCH.floorY) / 2, ROOM.zBay);
+  bayWall.receiveShadow = true;
+  scene.add(bayWall);
   // cove base along the walls
   const baseMat = new THREE.MeshStandardMaterial({ color: 0x2d3235, roughness: 0.8 });
   const baseBack = new THREE.Mesh(new THREE.BoxGeometry(ROOM.xMax - 162, 9, 1.2), baseMat);
   baseBack.position.set((ROOM.xMax + 162) / 2, BENCH.floorY + 4.5, BENCH.zMin + 0.6);
-  const baseRight = new THREE.Mesh(new THREE.BoxGeometry(1.2, 9, 400), baseMat);
-  baseRight.position.set(ROOM.xMax - 0.6, BENCH.floorY + 4.5, 155);
+  const baseBay = new THREE.Mesh(new THREE.BoxGeometry(bayW, 9, 1.2), baseMat);
+  baseBay.position.set((ROOM.xMax + ROOM.bayXMin) / 2, BENCH.floorY + 4.5, ROOM.zBay + 0.6);
+  scene.add(baseBay);
+  const baseRight = new THREE.Mesh(new THREE.BoxGeometry(1.2, 9, 560), baseMat);
+  baseRight.position.set(ROOM.xMax - 0.6, BENCH.floorY + 4.5, 235);
   const baseLeft = baseRight.clone();
   baseLeft.position.x = ROOM.xMin + 0.6;
   scene.add(baseBack, baseRight, baseLeft);
@@ -580,7 +589,7 @@ function buildNmrBay(scene: THREE.Scene) {
   // signs on the back wall behind the magnet
   const signMat = new THREE.MeshBasicMaterial({ map: magnetSignTexture(), toneMapped: true, color: 0xe6e6e6 });
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(33, 44), signMat);
-  sign.position.set(cx - 50, 62, ROOM.zBack + 0.3);
+  sign.position.set(cx - 50, 62, ROOM.zBay + 0.3);
   scene.add(sign);
 
   // door in the back wall with a magnet sign; leaf, frame, vision panel, lever handle
@@ -588,23 +597,23 @@ function buildNmrBay(scene: THREE.Scene) {
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa1a6, roughness: 0.5, metalness: 0.5 });
   const leafMat = new THREE.MeshStandardMaterial({ color: 0xb6896a, roughness: 0.7 });
   const door = new THREE.Mesh(new THREE.BoxGeometry(92, 204, 4), leafMat);
-  door.position.set(doorX, fy + 102, ROOM.zBack + 2.2);
+  door.position.set(doorX, fy + 102, ROOM.zBay + 2.2);
   door.receiveShadow = true;
   scene.add(door);
   for (const [dx, w, h, dy] of [[-48, 4, 212, 106], [48, 4, 212, 106], [0, 100, 4, 212]] as Array<[number, number, number, number]>) {
     const f = new THREE.Mesh(new THREE.BoxGeometry(w, h, 6), frameMat);
-    f.position.set(doorX + dx, fy + dy, ROOM.zBack + 3);
+    f.position.set(doorX + dx, fy + dy, ROOM.zBay + 3);
     scene.add(f);
   }
   const vision = new THREE.Mesh(new THREE.PlaneGeometry(16, 60), new THREE.MeshStandardMaterial({ color: 0x9db4c0, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.55 }));
-  vision.position.set(doorX, fy + 130, ROOM.zBack + 4.3);
+  vision.position.set(doorX, fy + 130, ROOM.zBay + 4.3);
   scene.add(vision);
   const lever = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 12, 12), chrome);
   lever.rotation.z = Math.PI / 2;
-  lever.position.set(doorX - 34, fy + 100, ROOM.zBack + 7);
+  lever.position.set(doorX - 34, fy + 100, ROOM.zBay + 7);
   const rose = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 1.2, 20), chrome);
   rose.rotation.x = Math.PI / 2;
-  rose.position.set(doorX - 38, fy + 100, ROOM.zBack + 4.6);
+  rose.position.set(doorX - 38, fy + 100, ROOM.zBay + 4.6);
   scene.add(lever, rose);
   const doorSign = new THREE.Mesh(
     new THREE.PlaneGeometry(22, 14),
@@ -624,7 +633,7 @@ function buildNmrBay(scene: THREE.Scene) {
       toneMapped: true,
     })
   );
-  doorSign.position.set(doorX, fy + 172, ROOM.zBack + 4.4);
+  doorSign.position.set(doorX, fy + 172, ROOM.zBay + 4.4);
   scene.add(doorSign);
 
   // fire extinguisher on a bracket
@@ -642,7 +651,7 @@ function buildNmrBay(scene: THREE.Scene) {
   const strap = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 3, 24), new THREE.MeshStandardMaterial({ color: 0x23272b, roughness: 0.6 }));
   strap.position.y = 26;
   ext.add(extBody, extNeck, extHead, extHose, strap);
-  ext.position.set(200, fy + 62, ROOM.zBack + 6);
+  ext.position.set(200, fy + 62, ROOM.zBay + 6);
   scene.add(ext);
   // this is a non-magnetic (aluminium / brass free) model: say so on its label
   const extLabel = new THREE.Mesh(

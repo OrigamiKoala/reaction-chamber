@@ -25,13 +25,13 @@ import { NmrMachine } from '${web}/src/equipment/nmr';
 import { MassSpectrometer } from '${web}/src/equipment/mass_spec';
 import { ControlRig } from '${web}/src/bench/controls3d';
 import { Workstation } from '${web}/src/equipment/workstation';
-import { WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM } from '${web}/src/bench/layout';
-export { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
+import { WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM } from '${web}/src/bench/layout';
+export { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const code = out.outputFiles[0].text;
 const mod = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
-const { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
+const { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
 
 let n = 0;
 const ok = async (name, fn) => {
@@ -556,8 +556,8 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
       assert.ok(!(overlapX > 0.01 && overlapZ > 0.01), `${names[i]} overlaps ${names[j]} (x ${overlapX.toFixed(1)}, z ${overlapZ.toFixed(1)})`);
     }
   }
-  // the UV-vis and the GC/MS stand on the analytical island bench (x -95..108, z 76..141), body only (hoses leave it on purpose)
-  const onBench = (b, name) => assert.ok(b.min.x >= -95 && b.max.x <= 108 && b.min.z >= 76 && b.max.z <= 141, `${name} on the bench: x ${b.min.x.toFixed(1)}..${b.max.x.toFixed(1)} z ${b.min.z.toFixed(1)}..${b.max.z.toFixed(1)}`);
+  // the UV-vis and the GC/MS stand on the analytical island bench (x -95..108, z 76..141 + shift), body only (hoses leave it on purpose)
+  const onBench = (b, name) => assert.ok(b.min.x >= -95 && b.max.x <= 108 && b.min.z >= 76 + ANALYTICAL_Z_SHIFT && b.max.z <= 141 + ANALYTICAL_Z_SHIFT, `${name} on the bench: x ${b.min.x.toFixed(1)}..${b.max.x.toFixed(1)} z ${b.min.z.toFixed(1)}..${b.max.z.toFixed(1)}`);
   onBench(items.spectro, 'UV-vis');
   onBench(items.ms, 'GC/MS');
   // the NMR console is a floor cabinet past the bench end (it must not stand inside the bench), inside the room, one metre-ish from the magnet
