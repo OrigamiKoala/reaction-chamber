@@ -5,10 +5,10 @@ import { createGlassMesh } from '../render/glass_material';
 import { LcdDisplay, roundedBox, setWorldPose } from './lcd';
 
 /**
- * Benchtop digital pH meter + combination glass electrode on a cable.
+ * Benchtop digital pH meter + wireless (Bluetooth) combination glass electrode: no cable, so the probe can follow a carried vessel freely.
  * Instrument model: 0.01 pH resolution, tau = 3 s, "---" when the probe is not immersed.
  * `group` = meter body (placed by the scene); `probe` = electrode (child of group, posed in world space via
- * `setProbeWorldPose`); the cable is re-shaped whenever the probe moves.
+ * `setProbeWorldPose`).
  */
 export const PH_PROBE_RADIUS = 0.6;
 
@@ -21,10 +21,6 @@ export class PHMeter {
   private immersed = true;
   /** The liquid layer the electrode tip is in (undefined: not known, the whole-vessel pH is used). */
   private probeLayer: LiquidLayer | null | undefined = undefined;
-  private cable: THREE.Mesh;
-  private cableMat: THREE.MeshStandardMaterial;
-  private lastCableKey = '';
-  private socketLocal = new THREE.Vector3(0, 5.2, -8.4);
 
   constructor() {
     this.group.name = 'instrument_ph_meter';
@@ -54,20 +50,9 @@ export class PHMeter {
       b.rotation.x = 0.32;
       this.group.add(b);
     }
-    // BNC socket
-    const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16), new THREE.MeshStandardMaterial({ color: 0xc0c4c8, metalness: 1, roughness: 0.3 }));
-    sock.rotation.x = Math.PI / 2;
-    sock.position.set(0, 2.6, -9.2);
-    this.group.add(sock);
-    this.socketLocal.set(0, 2.6, -9.6);
-
     this.buildProbe();
     this.group.add(this.probe);
 
-    this.cableMat = new THREE.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.55 });
-    this.cable = new THREE.Mesh(new THREE.BufferGeometry(), this.cableMat);
-    this.cable.castShadow = true;
-    this.group.add(this.cable);
     this.group.traverse((o) => (o.raycast = () => {}));
     this.lcd.set('---');
   }
@@ -103,38 +88,21 @@ export class PHMeter {
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, PH_PROBE_RADIUS, 1.6, 16), new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.45 }));
     cap.position.y = 2.1 + 11.5 + 0.8;
     this.probe.add(cap);
-    const relief = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 1.6, 10), epoxy);
-    relief.position.y = 2.1 + 11.5 + 2.4;
-    this.probe.add(relief);
+    // wireless transmitter head (replaces the cable) with a small status LED
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.55, 2.4, 16), epoxy);
+    head.position.y = 2.1 + 11.5 + 2.8;
+    this.probe.add(head);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0x4cd964 }));
+    led.position.set(0, 2.1 + 11.5 + 3.4, 0.56);
+    this.probe.add(led);
   }
 
-  /** Length from the tip to the cable exit, cm. */
+  /** Length of the probe from the tip to the top of the transmitter cap, cm. */
   public static readonly PROBE_LENGTH = 17.0;
 
-  /** Pose the electrode in world space (tip position + axis quaternion), and re-route the cable. */
+  /** Pose the electrode in world space (tip position + axis quaternion). */
   public setProbeWorldPose(pos: THREE.Vector3, quat: THREE.Quaternion) {
     setWorldPose(this.probe, pos, quat);
-    this.updateCable();
-  }
-
-  private updateCable() {
-    this.group.updateWorldMatrix(true, false);
-    const top = new THREE.Vector3(0, PHMeter.PROBE_LENGTH - 0.2, 0).applyQuaternion(this.probe.quaternion).add(this.probe.position);
-    const key = `${top.x.toFixed(2)},${top.y.toFixed(2)},${top.z.toFixed(2)}`;
-    if (key === this.lastCableKey) return;
-    this.lastCableKey = key;
-    const s = this.socketLocal.clone();
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.probe.quaternion);
-    const p1 = top.clone().addScaledVector(up, 4);
-    const mid = top.clone().lerp(s, 0.5);
-    const dist = top.distanceTo(s);
-    mid.y = Math.max(0.6, Math.min(top.y, s.y) - dist * 0.25);
-    const p3 = s.clone().add(new THREE.Vector3(0, 0, -3));
-    p3.y = 1.0;
-    const curve = new THREE.CatmullRomCurve3([top, p1, mid, p3, s]);
-    const g = new THREE.TubeGeometry(curve, 48, 0.22, 8, false);
-    this.cable.geometry.dispose();
-    this.cable.geometry = g;
   }
 
   /** Records the vessel being measured (placement is animated by the scene). */

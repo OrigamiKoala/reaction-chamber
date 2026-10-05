@@ -648,8 +648,10 @@ async function initApp() {
   window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || anyModalOpen()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // while something is carried the mouse button is down, so stray focus in a text field must not swallow the walking keys
+    const typing = isTypingTarget(e.target) && !bench.isHolding();
     // Q / E: camera down / up (also while carrying something, to see the top of a burette)
-    if ((e.code === 'KeyQ' || e.code === 'KeyE') && !isTypingTarget(e.target) && bench.setMoveKey(e.code, true)) {
+    if ((e.code === 'KeyQ' || e.code === 'KeyE') && !typing && bench.setMoveKey(e.code, true)) {
       e.preventDefault();
       return;
     }
@@ -657,7 +659,7 @@ async function initApp() {
     if (/^(Key[WASD]|Shift(Left|Right))$/.test(e.code) || (!bench.isHolding() && /^Arrow(Up|Down|Left|Right)$/.test(e.code))) {
       const el = e.target as HTMLElement;
       const isArrow = e.code.startsWith('Arrow');
-      const blocked = isTypingTarget(e.target) || (isArrow && !!el.closest?.('button, a, select, [role="menuitem"], [role="tab"], [role="slider"]'));
+      const blocked = typing || (isArrow && !!el.closest?.('button, a, select, [role="menuitem"], [role="tab"], [role="slider"]'));
       if (!blocked && bench.setMoveKey(e.code, true)) {
         if (!e.code.startsWith('Shift')) e.preventDefault();
         return;

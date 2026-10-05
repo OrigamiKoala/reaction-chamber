@@ -1218,7 +1218,8 @@ export class BenchScene {
 
   /** Where a vessel released at (x, z) comes to rest: hot plate, balance pan, or the nearest free bench spot. */
   private resolveDrop(id: string, x: number, z: number, prefer?: DropPlace): DropSpot {
-    // anywhere past the wet bench (aisle, analytical area) comes back onto the wet bench
+    // past the middle of the aisle a vessel is set down on the analytical bench; anything else comes to rest on the wet bench
+    if (z > (BENCH.zMax + ANALYTICAL_BENCH.zMin) / 2) return this.resolveAnalyticalDrop(id, x, z);
     x = THREE.MathUtils.clamp(x, -108, 108);
     z = THREE.MathUtils.clamp(z, -27, 27);
     const b = this.glasswareMap.get(id);
@@ -1246,6 +1247,32 @@ export class BenchScene {
       }
     }
     return { place: 'bench', pos };
+  }
+
+  /** Rest spot on the analytical island bench: the nearest free place clear of the instruments, monitors and bench edges. */
+  private resolveAnalyticalDrop(id: string, x: number, z: number): DropSpot {
+    const A = ANALYTICAL_BENCH;
+    const b = this.glasswareMap.get(id);
+    const r = b ? Math.max(b.footprint, b.profile.maxOuterRadius) : 4;
+    const boxes = [
+      { x0: SPECTRO_POS.x - 22, x1: SPECTRO_POS.x + 22, z0: SPECTRO_POS.z - 17, z1: SPECTRO_POS.z + 17 },
+      { x0: MASS_SPEC_POS.x - 46, x1: MASS_SPEC_POS.x + 40, z0: MASS_SPEC_POS.z - 26, z1: MASS_SPEC_POS.z + 30 },
+      { x0: SPECTRO_MONITOR.pos.x - 17, x1: SPECTRO_MONITOR.pos.x + 17, z0: SPECTRO_MONITOR.pos.z - 6, z1: SPECTRO_MONITOR.pos.z + 6 },
+      { x0: MS_MONITOR.pos.x - 17, x1: MS_MONITOR.pos.x + 17, z0: MS_MONITOR.pos.z - 6, z1: MS_MONITOR.pos.z + 6 },
+    ];
+    const blocked = (cx: number, cz: number, cr: number): boolean => {
+      if (cx - cr < A.xMin + 4 || cx + cr > A.xMax - 4 || cz - cr < A.zMin + 4 || cz + cr > A.zMax - 4) return true;
+      for (const [vid, o] of this.glasswareMap) {
+        if (vid === id) continue;
+        const rr = cr + Math.max(o.footprint, o.profile.maxOuterRadius) + 0.6;
+        if (Math.hypot(o.group.position.x - cx, o.group.position.z - cz) < rr) return true;
+      }
+      return boxes.some((f) => cx > f.x0 - cr && cx < f.x1 + cr && cz > f.z0 - cr && cz < f.z1 + cr);
+    };
+    const cx = THREE.MathUtils.clamp(x, A.xMin + 4 + r, A.xMax - 4 - r);
+    const cz = THREE.MathUtils.clamp(z, A.zMin + 4 + r, A.zMax - 4 - r);
+    const free = nearestFreeSpot(cx, cz, r, blocked, 90);
+    return { place: 'bench', pos: new THREE.Vector3(free ? free[0] : cx, 0, free ? free[1] : cz) };
   }
 
   /** The vessel has come to rest at `spot`. */
