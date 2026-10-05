@@ -14,6 +14,23 @@ pub const FARADAY_CONST: f64 = FARADAY;
 #[derive(serde::Deserialize)]
 struct LabilityFile {
     labile: Vec<String>,
+    #[serde(default)]
+    fast_precipitating_solids: Vec<String>,
+}
+
+/// Whether a compound solid that is not yet in the vessel may be formed by a discovered redox reaction in solution: it is
+/// an elemental solid (cementation, plating), a registered mineral (the precipitation model of the solubility table decides
+/// how it forms), or listed in `data/redox_lability.json` as precipitating at once from its redox precursor.
+pub fn solid_may_form_in_solution(solid_id: &str) -> bool {
+    static FAST: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    let fast = FAST.get_or_init(|| serde_json::from_str::<LabilityFile>(include_str!("../../data/redox_lability.json")).expect("data/redox_lability.json").fast_precipitating_solids.into_iter().collect());
+    if fast.contains(solid_id) {
+        return true;
+    }
+    if crate::ions::species_elements(solid_id).map_or(false, |e| e.len() == 1) {
+        return true;
+    }
+    crate::chem_db::is_registered_mineral(solid_id)
 }
 
 fn labile_set() -> &'static std::collections::HashSet<String> {

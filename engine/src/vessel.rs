@@ -376,9 +376,6 @@ pub struct VesselControls {
     pub bath_coupling_w_k: Option<f64>,
     pub igniter: Option<bool>,
     pub burner_w: Option<f64>,
-    /// Debug: enable the substring-matched organic network generator (off by default, see `update_network`).
-    #[serde(default)]
-    pub debug_network_generator: Option<bool>,
     /// Partial update of the atmosphere an open vessel exchanges with (pressure, dry composition, humidity).
     #[serde(default)]
     pub atmosphere: Option<crate::gas_phase::AtmosphereSpec>,
@@ -475,8 +472,6 @@ pub struct Vessel {
     pub kinetic_reactions: Vec<GeneralKineticRxn>,
     /// Cumulative element ledger (see `conservation::ElementLedger`).
     pub ledger: ElementLedger,
-    /// Debug switch: the substring-matched organic network generator is OFF unless this is set (Stage 9 replaces it).
-    pub debug_network_generator: bool,
     /// State for the generic reaction log (precipitate / gas / colour / temperature events).
     pub ev: crate::vessel_ext::EventState,
     pub phases: crate::phases::PhaseState,
@@ -564,7 +559,6 @@ impl Vessel {
             minerals: chem_db::get_default_minerals(),
             kinetic_reactions: chem_db::get_default_kinetic_reactions(),
             ledger: ElementLedger::default(),
-            debug_network_generator: false,
             ev: crate::vessel_ext::EventState::default(),
             phases: crate::phases::PhaseState::new(temp_k),
             particle_populations: HashMap::new(),
@@ -1143,9 +1137,6 @@ impl Vessel {
         }
         if let Some(bw) = controls.burner_w {
             self.controls.burner_w = Some(bw);
-        }
-        if let Some(dbg) = controls.debug_network_generator {
-            self.debug_network_generator = dbg;
         }
         if let Some(spec) = controls.electrolysis {
             self.set_electrolysis(Some(spec));
@@ -2047,6 +2038,8 @@ impl Vessel {
             ph.mass_g = self.phase_mass_g(map);
             ph.density_g_ml = if ph.volume_ml > 0.001 { ph.mass_g / ph.volume_ml } else { 1.0 };
             ph.neat_species = if aqueous { None } else { lead };
+            ph.dielectric_constant = self.phase_dielectric_constant(map);
+            ph.refractive_index = crate::props::lorentz_lorenz_refractive_index(map, ph.volume_ml);
             liquids.push(ph);
         }
         self.phases.liquids = liquids;
@@ -2135,7 +2128,8 @@ impl Vessel {
 
         let pkw = self.pkw();
 
-        let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+        let (mut gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+            self.apply_mixed_solvent_born(&mut gamma_cache);
 
         if m_h > 0.0 && m_oh > 0.0 && (m_h - m_oh).abs() <= 1e-6 * m_h.max(m_oh) {
             return 0.5 * (pkw - a_w.log10());

@@ -123,7 +123,7 @@ fn group_at(mol: &Mol, a: usize, from: usize) -> Option<(&'static str, Vec<usize
             if mol.atoms[a].charge == 1 && oxy.len() >= 2 || (oxy.len() >= 2 && mol.double_to(a, "O", None)) {
                 let mut c = vec![a];
                 c.extend(oxy);
-                return Some(("NO2", c));
+                return Some(("nitro", c));
             }
             if mol.atoms[a].charge == 1 && mol.atoms[a].h >= 1 {
                 return Some(("NH3+", vec![a]));

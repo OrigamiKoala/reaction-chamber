@@ -199,7 +199,8 @@ impl Vessel {
 
         let t_k = self.temperature_k;
         let p_pa = self.pressure_atm * 101_325.0;
-        let (gamma, _aw) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+        let (mut gamma, _aw) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+            self.apply_mixed_solvent_born(&mut gamma);
         let hyd = self.hydro_state();
         // species present in the vessel
         // (a species without formation data, an ion pair or a generated complex, has no E0 and takes no part)

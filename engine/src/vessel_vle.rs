@@ -782,14 +782,19 @@ impl Vessel {
                 let p_inf_bar = atm.iter().find(|(k, _)| *k == gas_id).map(|(_, p)| *p).unwrap_or(0.0) / vle::P_BAR_PA;
                 it.k * kg_w * exp_g * p_inf_bar
             };
+            // the surface exchanges the gas toward its equilibrium with the atmosphere (in either direction); bubbles, where the
+            // liquid is supersaturated, take gas out on top of that, in proportion to what each gas has dissolved. The two add:
+            // a gas far below saturation (CO2 in a sodium hydroxide solution) still absorbs while the liquid fizzes with the
+            // others, and a gas above its target never goes below the lower of the two targets.
             let mut n_new = it.n_aq + (n_target - it.n_aq) * (1.0 - (-lam_surface * dt_s).exp());
             let mut bubbling = false;
             if supersat && bubble_factor < 1.0 {
                 let n_bub = it.n_aq * bubble_factor;
                 let via_bubbles = it.n_aq + (n_bub - it.n_aq) * (1.0 - (-lam_bubble * dt_s).exp());
-                if via_bubbles < n_new {
-                    n_new = via_bubbles;
-                    bubbling = true;
+                let loss = via_bubbles - it.n_aq; // <= 0
+                if loss < -1e-18 {
+                    n_new = (n_new + loss).max(n_target.min(n_bub).min(it.n_aq));
+                    bubbling = n_new < it.n_aq;
                 }
             }
             if self.sealed && it.p_eq_pa > p_ambient {

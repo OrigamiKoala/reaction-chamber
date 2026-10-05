@@ -211,6 +211,11 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
             if super::redox::is_derived_ion_form(&rec.id) {
                 continue;
             }
+            // in water a compound solid forms only through its precipitation model (solids already present still react as
+            // reactants: the partner side of a couple is what gets *made*)
+            if aqueous_env && rec.id.ends_with("(s)") && !super::redox::solid_may_form_in_solution(&rec.id) {
+                continue;
+            }
             let ox_map = determine_oxidation_states_exact(&rec.id);
             for elem in elems.keys() {
                 if let Some(&ox) = ox_map.get(elem) {
@@ -352,101 +357,200 @@ pub fn discover_thermal_decompositions(
     cached_discovery(1, key.clone(), t_k, p_pa, || discover_decomposition_structures(&key))
 }
 
-fn discover_decomposition_structures(solids: &[String]) -> Vec<Structure> {
-    let mut discovered: Vec<Structure> = Vec::new();
-    let mut seen_signatures = HashSet::new();
-
-    for solid_sp in solids {
-        let elem_map = match crate::ions::species_elements(solid_sp) {
-            Some(m) => m,
-            None => continue,
-        };
-        let solid_elements: HashSet<String> = elem_map.keys().cloned().collect();
-
-        let mut candidate_solids = Vec::new();
-        let mut candidate_gases = Vec::new();
-
-        if let Ok(store) = SpeciesStore::global().read() {
-            for rec in store.iter() {
-                if rec.identity.charge != 0 {
-                    continue;
-                }
-                let elems = rec.elements();
-                let is_multi_carbon = elems.get("C").copied().unwrap_or(0.0) > 1.0;
-                if elems.is_empty() || is_multi_carbon || !elems.keys().all(|e| solid_elements.contains(e)) {
-                    continue;
-                }
-                if rec.has_phase("s") && &rec.id != solid_sp {
-                    candidate_solids.push(rec.id.clone());
-                } else if rec.has_phase("g") {
-                    candidate_gases.push(rec.id.clone());
-                }
-            }
+/// Solves `sum_j x_j col_j = target` for the strictly positive `x` when the columns are linearly independent and the system is
+/// consistent (Gaussian elimination with partial pivoting on the normal form); None otherwise.
+fn solve_positive_combination(cols: &[&Vec<f64>], target: &[f64]) -> Option<Vec<f64>> {
+    let (m, k) = (target.len(), cols.len());
+    if k == 0 || k > m {
+        return None;
+    }
+    // augmented matrix m x (k + 1)
+    let mut a: Vec<Vec<f64>> = (0..m).map(|r| { let mut row: Vec<f64> = cols.iter().map(|c| c[r]).collect(); row.push(target[r]); row }).collect();
+    let mut pivot_row = 0;
+    let mut pivot_col_of_row = Vec::new();
+    for c in 0..k {
+        let Some(p) = (pivot_row..m).max_by(|&i, &j| a[i][c].abs().partial_cmp(&a[j][c].abs()).unwrap_or(std::cmp::Ordering::Equal)) else { return None };
+        if a[p][c].abs() < 1e-9 {
+            return None; // dependent columns
         }
-
-        // Build candidate sets:
-        // 1. Direct decomposition to gases only (e.g. NH4Cl(s) -> NH3(g) + HCl(g))
-        let mut candidate_sets: Vec<Vec<String>> = Vec::new();
-        let mut direct_set = vec![solid_sp.clone()];
-        direct_set.extend(candidate_gases.iter().cloned());
-        candidate_sets.push(direct_set);
-
-        // 2. Decomposition to another solid + gases (e.g. NaHCO3(s) -> Na2CO3(s) + CO2(g) + H2O(g))
-        for p_solid in &candidate_solids {
-            let mut sol_set = vec![solid_sp.clone(), p_solid.clone()];
-            sol_set.extend(candidate_gases.iter().cloned());
-            candidate_sets.push(sol_set);
+        a.swap(pivot_row, p);
+        let d = a[pivot_row][c];
+        for j in c..=k {
+            a[pivot_row][j] /= d;
         }
-
-        for mut candidate_ids in candidate_sets {
-            candidate_ids.sort();
-            candidate_ids.dedup();
-            if candidate_ids.len() < 2 {
-                continue;
-            }
-
-            let basis = build_reaction_basis(&candidate_ids);
-
-            for rxn in basis {
-                let mut nu_oriented = rxn.nu;
-
-                // Invert if target solid is on the product side (c > 0)
-                let target_coeff = nu_oriented.iter().find(|&&(i, _)| &candidate_ids[i] == solid_sp).map(|&(_, c)| c).unwrap_or(0.0);
-                if target_coeff > 0.0 {
-                    nu_oriented = nu_oriented.into_iter().map(|(i, c)| (i, -c)).collect();
-                }
-
-                let decomposes_target = nu_oriented.iter().any(|&(i, c)| c < 0.0 && &candidate_ids[i] == solid_sp);
-                let all_reactants_solid = nu_oriented.iter().all(|&(i, c)| c >= 0.0 || candidate_ids[i].ends_with("(s)"));
-                let has_gas_product = nu_oriented.iter().any(|&(i, c)| c > 0.0 && candidate_ids[i].ends_with("(g)"));
-
-                // Exclude pure physical sublimation of identical molecule (e.g. H2O(s) -> H2O(g))
-                // which is handled by physical VLE/sublimation rather than chemical decomposition.
-                let is_pure_sublimation = nu_oriented.len() == 2 && {
-                    let r = candidate_ids[nu_oriented[0].0].trim_end_matches("(s)").trim_end_matches("(g)");
-                    let p = candidate_ids[nu_oriented[1].0].trim_end_matches("(s)").trim_end_matches("(g)");
-                    r == p
-                };
-
-                if decomposes_target && all_reactants_solid && has_gas_product && !is_pure_sublimation {
-                    let mut sig_parts: Vec<String> = nu_oriented.iter()
-                        .map(|&(i, c)| format!("{}:{}", candidate_ids[i], c.round()))
-                        .collect();
-                    sig_parts.sort();
-                    let sig = sig_parts.join(";");
-                    if seen_signatures.insert(sig) {
-                        discovered.push(Structure {
-                            species_names: candidate_ids.clone(),
-                            nu: nu_oriented,
-                            kind: DiscoveredRxnKind::ThermalDecomposition,
-                            partners: None,
-                        });
+        for r in 0..m {
+            if r != pivot_row {
+                let f = a[r][c];
+                if f != 0.0 {
+                    for j in c..=k {
+                        a[r][j] -= f * a[pivot_row][j];
                     }
                 }
             }
         }
+        pivot_col_of_row.push(c);
+        pivot_row += 1;
     }
+    // rows below the pivots must read 0 = 0
+    if (pivot_row..m).any(|r| a[r][k].abs() > 1e-9) {
+        return None;
+    }
+    let x: Vec<f64> = (0..k).map(|c| a[c][k]).collect();
+    if x.iter().all(|v| *v > 1e-9) { Some(x) } else { None }
+}
 
+/// Smallest multiplier in 1..=6 that turns every coefficient into a whole number (else 1).
+fn whole_number_scale(coeffs: &[f64]) -> f64 {
+    for f in 1..=6 {
+        if coeffs.iter().all(|c| ((c * f as f64) - (c * f as f64).round()).abs() < 1e-6) {
+            return f as f64;
+        }
+    }
+    1.0
+}
+
+/// The minimal thermal decompositions of each solid: it turns into one or two other solids plus a set of gases, with the gases
+/// chosen so that no gas is redundant (every gas of the set is needed by the element balance and the coefficients are all
+/// positive). Which pathways *proceed* is decided by the sign of their Gibbs energy at the vessel's temperature, not here,
+/// so this set depends only on the species present. (A basis of the null space would give arbitrary combinations of
+/// pathways, and which ones depended on the order and number of species in the store.)
+fn discover_decomposition_structures(solids: &[String]) -> Vec<Structure> {
+    let mut discovered: Vec<Structure> = Vec::new();
+    const MAX_GASES: usize = 3;
+
+    for solid_sp in solids {
+        let mut local: Vec<Structure> = Vec::new();
+        let mut seen_signatures = HashSet::new();
+        let Some(elem_map) = crate::ions::species_elements(solid_sp) else { continue };
+        let mut elements: Vec<String> = elem_map.keys().cloned().collect();
+        elements.sort();
+        let target: Vec<f64> = elements.iter().map(|e| elem_map[e]).collect();
+        let column = |sp: &str| -> Option<Vec<f64>> {
+            let m = crate::ions::species_elements(sp)?;
+            if m.keys().any(|k| !elements.contains(k)) {
+                return None;
+            }
+            Some(elements.iter().map(|e| m.get(e).copied().unwrap_or(0.0)).collect())
+        };
+
+        let mut candidate_solids: Vec<(String, Vec<f64>)> = Vec::new();
+        let mut candidate_gases: Vec<(String, Vec<f64>)> = Vec::new();
+        if let Ok(store) = SpeciesStore::global().read() {
+            for rec in store.iter() {
+                if rec.identity.charge != 0 || rec.id == *solid_sp {
+                    continue;
+                }
+                let elems = rec.elements();
+                if elems.is_empty() || elems.get("C").copied().unwrap_or(0.0) > 1.0 {
+                    continue;
+                }
+                let Some(col) = column(&rec.id) else { continue };
+                if rec.has_phase("s") {
+                    candidate_solids.push((rec.id.clone(), col));
+                } else if rec.has_phase("g") {
+                    candidate_gases.push((rec.id.clone(), col));
+                }
+            }
+        }
+
+        // product solid sets: none, each one, each pair
+        let mut solid_sets: Vec<Vec<usize>> = vec![Vec::new()];
+        for i in 0..candidate_solids.len() {
+            solid_sets.push(vec![i]);
+        }
+        for i in 0..candidate_solids.len() {
+            for j in (i + 1)..candidate_solids.len() {
+                solid_sets.push(vec![i, j]);
+            }
+        }
+        for sset in &solid_sets {
+            // gas subsets of growing size; a subset is skipped once a smaller subset of it already solved the balance
+            let max_g = if sset.len() == 2 { 2 } else { MAX_GASES };
+            let ng = candidate_gases.len();
+            let mut solved_subsets: Vec<Vec<usize>> = Vec::new();
+            for size in 0..=max_g.min(ng) {
+                let mut idx: Vec<usize> = (0..size).collect();
+                loop {
+                    let contains_solved = solved_subsets.iter().any(|ss| ss.iter().all(|g| idx.contains(g)));
+                    if !contains_solved && (size > 0 || !sset.is_empty()) && sset.len() + size <= elements.len() {
+                        let mut cols: Vec<&Vec<f64>> = sset.iter().map(|&i| &candidate_solids[i].1).collect();
+                        cols.extend(idx.iter().map(|&g| &candidate_gases[g].1));
+                        if let Some(x) = solve_positive_combination(&cols, &target) {
+                            let n_solid = sset.len();
+                            // reaction: solid -> products, coefficients scaled to whole numbers
+                            let mut coeffs: Vec<f64> = vec![1.0];
+                            coeffs.extend(x.iter().copied());
+                            let scale = whole_number_scale(&coeffs);
+                            let mut names: Vec<String> = vec![solid_sp.clone()];
+                            names.extend(sset.iter().map(|&i| candidate_solids[i].0.clone()));
+                            names.extend(idx.iter().map(|&g| candidate_gases[g].0.clone()));
+                            let nu: Vec<(usize, f64)> = names.iter().enumerate().map(|(k, _)| (k, if k == 0 { -scale } else { x[k - 1] * scale })).collect();
+                            // indices refer to a sorted species list so that the vessel can look species up by position
+                            let mut order: Vec<usize> = (0..names.len()).collect();
+                            order.sort_by(|&i, &j| names[i].cmp(&names[j]));
+                            let sorted_names: Vec<String> = order.iter().map(|&i| names[i].clone()).collect();
+                            let nu_sorted: Vec<(usize, f64)> = order.iter().enumerate().map(|(new_i, &old_i)| (new_i, nu[old_i].1)).collect();
+                            let has_gas_product = idx.len() > 0;
+                            let is_pure_sublimation = nu_sorted.len() == 2 && {
+                                let r = sorted_names[0].trim_end_matches("(s)").trim_end_matches("(g)");
+                                let p = sorted_names[1].trim_end_matches("(s)").trim_end_matches("(g)");
+                                r == p
+                            };
+                            let _ = n_solid;
+                            if has_gas_product && !is_pure_sublimation {
+                                let mut sig_parts: Vec<String> = nu_sorted.iter().map(|&(i, c)| format!("{}:{}", sorted_names[i], c.round())).collect();
+                                sig_parts.sort();
+                                if seen_signatures.insert(sig_parts.join(";")) {
+                                    local.push(Structure { species_names: sorted_names, nu: nu_sorted, kind: DiscoveredRxnKind::ThermalDecomposition, partners: None });
+                                }
+                            }
+                            solved_subsets.push(idx.clone());
+                        }
+                    }
+                    // next combination of `size` gases
+                    if size == 0 {
+                        break;
+                    }
+                    let mut i = size;
+                    let mut advanced = false;
+                    while i > 0 {
+                        i -= 1;
+                        if idx[i] != i + ng - size {
+                            idx[i] += 1;
+                            for j in (i + 1)..size {
+                                idx[j] = idx[j - 1] + 1;
+                            }
+                            advanced = true;
+                            break;
+                        }
+                    }
+                    if !advanced {
+                        break;
+                    }
+                }
+            }
+        }
+        // Keep the pathways that are the Gibbs minimum of the products at some temperature of the bench: of all the ways a
+        // solid can fall apart, the stable assemblage is the one of lowest standard Gibbs energy per mole of the solid, and
+        // assemblages that are never the lowest (CH4 + O2, Na metal + carbon dioxide + oxygen, ...) are not products at any T.
+        const WINDOW_K: [f64; 8] = [298.15, 400.0, 500.0, 650.0, 800.0, 1000.0, 1300.0, 1600.0];
+        let mut keep = vec![false; local.len()];
+        for &t in &WINDOW_K {
+            let dgs: Vec<Option<f64>> = local.iter().map(|st| {
+                let mol_solid = st.nu.iter().find(|(i, _)| st.species_names[*i] == *solid_sp).map(|(_, c)| c.abs()).filter(|c| *c > 0.0)?;
+                reaction_thermo(&st.species_names, &st.nu, t, 101_325.0, true).map(|(_, dg)| dg / mol_solid)
+            }).collect();
+            let best = dgs.iter().flatten().copied().fold(f64::INFINITY, f64::min);
+            for (k, dg) in dgs.iter().enumerate() {
+                if let Some(dg) = dg {
+                    if *dg <= best + 1_000.0 {
+                        keep[k] = true;
+                    }
+                }
+            }
+        }
+        discovered.extend(local.into_iter().zip(keep).filter(|(_, k)| *k).map(|(st, _)| st));
+    }
     discovered
 }
 

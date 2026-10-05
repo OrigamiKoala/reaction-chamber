@@ -294,9 +294,11 @@ fn s10_8_flame_test_colours_from_emission_data() {
     import(salt("s10_srcl2", "Strontium chloride", "Cl2Sr"));
     let mut v = vessel_at(300.0, 100.0);
     v.set_controls(VesselControls { igniter: Some(true), ..Default::default() });
-    ml(&mut v, "water", 4.0);
+    // (methanol salts the chloride out of the water: in 4 mL water + 20 mL methanol only ~0.06 M stays dissolved and the
+    // flame is pink, so the salt is dosed in the proportion where most of it stays dissolved)
+    ml(&mut v, "water", 8.0);
     grams(&mut v, "s10_srcl2", 2.0);
-    ml(&mut v, "s10_etoh", 20.0);
+    ml(&mut v, "s10_etoh", 12.0);
     run(&mut v, 2.0, 0.1);
     let f = v.snapshot().flame.expect("the methanol solution burns");
     println!("[s10_8] burning methanol + SrCl2: {:?}", f);

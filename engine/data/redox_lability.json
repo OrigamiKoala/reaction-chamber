@@ -1,6 +1,6 @@
 {
  "version": 1,
- "comment": "Elements whose common aqueous redox couples exchange electrons fast enough (outer-sphere or low-barrier inner-sphere transfer, seconds to minutes at 10-100 mM) for the bench to see them. Couples of other elements (S, N, C, Cl, Co, ...) are kinetically inert on bench time: they react only through a registered kinetic row (measured rate law) or a species record that carries a self-exchange rate (RedoxCouple.k_self). Thermodynamics decides *whether*, never *that* an inert couple reacts. Chromium is labile as a redox element: Cr(VI) is reduced by Fe(II), I-, sulfite, alcohols in seconds to minutes through Cr(V)/Cr(IV) (the substitution inertness of Cr(III) concerns its ligand exchange, not these electron transfers).",
+ "comment": "Elements whose common aqueous redox couples exchange electrons fast enough (outer-sphere or low-barrier inner-sphere transfer, seconds to minutes at 10-100 mM) for the bench to see them. Couples of other elements (S, N, C, Cl, Co, ...) are kinetically inert on bench time: they react only through a registered kinetic row (measured rate law) or a species record that carries a self-exchange rate (RedoxCouple.k_self). Thermodynamics decides *whether*, never *that* an inert couple reacts. Chromium is labile as a redox element: Cr(VI) is reduced by Fe(II), I-, sulfite, alcohols in seconds to minutes through Cr(V)/Cr(IV) (the substitution inertness of Cr(III) concerns its ligand exchange, not these electron transfers). Alkali / alkaline-earth metals (K, Li, Ca) and the aqua-ion metals Ni, Cd are labile: their couples have no electron-transfer barrier.",
  "tier": "Estimated",
  "source": "Taube, Chem. Rev. 50 (1952) 69 (labile vs inert complexes); Basolo & Pearson, Mechanisms of Inorganic Reactions; Marcus self-exchange tables (Sutin, Acc. Chem. Res. 1968) -- recalled, verify",
  "labile": [
@@ -14,6 +14,15 @@
   "Na",
   "Mg",
   "Ce",
-  "Cr"
- ]
+  "Cr",
+  "K",
+  "Li",
+  "Ca",
+  "Ni",
+  "Cd"
+ ],
+ "fast_precipitating_solids": [
+  "MnO2(s)"
+ ],
+ "fast_precipitating_comment": "Compound solids that form from solution within seconds when their redox precursor is reduced or oxidised (amorphous hydrous oxides: manganese dioxide from permanganate). Every other compound solid that a discovered electron transfer could make in water (hematite, magnetite, cuprite, zincite, ...) has to nucleate and grow, which only the solubility table's precipitation model describes: they are not products of a discovered redox reaction unless they are already present. Elemental solids (cementation, plating) and registered minerals are always allowed."
 }

@@ -470,7 +470,6 @@ impl Vessel {
         let eps = crate::transfer::hydro::dissipation_w_kg(&hyd.st, hyd.rho_l, hyd.nu, vol_m3);
         let shear_rate = (eps / hyd.nu.max(1e-9)).sqrt();
         let shear_eff = (shear_rate * shear_rate + 0.04).sqrt();
-        let gamma_ref = 50.0;
 
         for sp in live {
             let props = self.solid_props(&sp);
@@ -485,9 +484,8 @@ impl Vessel {
             let solid_vol_m3 = self.solid_mol.get(&sp).copied().unwrap_or(0.0) * chem_db::get_species_thermo(&sp).mw * 1e-3 / rho_p.max(100.0);
             let phi_solid = (solid_vol_m3 / (self.total_liquid_volume_ml() * 1e-6).max(1e-9)).clamp(0.0, 0.5);
 
-            let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * t_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
-            let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
-            let d_max_shear = (20.0 * d_pe1) / (1.0 + shear_eff / gamma_ref).sqrt();
+            // collision efficiency of the colloid: 0 while its repulsion holds, 1 once the electrolyte has screened it
+            let alpha_coll = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
 
             let mean_of = |c: &[f64; N_CLASSES]| c.iter().sum::<f64>() / N_CLASSES as f64;
             let published = self.ev.susp.get(&sp).copied();
@@ -499,34 +497,41 @@ impl Vessel {
             let mut floc_cls = self.ev.floc_d_cls.get(&sp).copied().unwrap_or(d_cls);
 
             for k in 0..N_CLASSES {
-                let d_primary = d_cls[k];
-                let d_cur = floc_cls[k].max(d_primary);
-                let d_target = d_primary + w * (d_max_shear.max(d_primary) - d_primary);
-
-                // Fractal aggregate (D_f ~ 2.0): R_agg = a0 * sqrt(g), rho_eff = rho_l + (rho_p - rho_l) / sqrt(g)
-                let g = (d_cur / d_primary.max(1e-12)).powi(2).max(1.0);
-                let rho_eff_cur = hyd.rho_l + (rho_p - hyd.rho_l) / g.sqrt();
-                let v_s_agg = crate::transfer::hydro::terminal_velocity(d_cur, rho_eff_cur, hyd.rho_l, hyd.eta).abs();
-
-                // Dynamic aggregation vs shear breakage
-                let d_eff = if d_cur < d_target {
-                    let alpha_sed = 1.5 * phi_solid * v_s_agg / d_primary.max(1e-9);
-                    let alpha_shear = 1.2 * shear_eff * phi_solid * (d_cur / d_primary.max(1e-9));
-                    let alpha_br = (8.0 * crate::transport::K_BOLTZMANN * t_k / (3.0 * hyd.eta)) * (phi_solid / (std::f64::consts::PI / 6.0 * d_primary.powi(3) * g)).max(0.0);
-                    let k_coll = w * (alpha_sed + alpha_shear + alpha_br);
-                    let tau_agg = (1.0 / k_coll.max(0.1)).clamp(0.5, 10.0);
-                    d_target + (d_cur - d_target) * (-dt_s / tau_agg).exp()
-                } else if d_cur > d_target {
-                    let k_break = 0.2 * shear_eff.sqrt().max(0.1);
-                    let tau_break = (1.0 / k_break).clamp(0.2, 5.0);
-                    d_target + (d_cur - d_target) * (-dt_s / tau_break).exp()
-                } else {
-                    d_target
-                };
-                let d_eff = d_eff.clamp(d_primary, 50.0 * d_pe1.max(d_primary));
+                use crate::transfer::settling as st;
+                let d_primary = d_cls[k].max(1e-12);
+                let d_cap = st::max_floc_diameter_m(d_primary, phi_solid, shear_eff, hyd.nu).max(d_primary);
+                let mut d_eff = floc_cls[k].max(d_primary);
+                if d_eff > d_cap {
+                    // shear (or crowding) breaks flocs back to the largest size the flow and the solid content allow
+                    let tau_break = (1.0 / (0.2 * shear_eff.sqrt().max(0.1))).clamp(0.2, 5.0);
+                    d_eff = d_cap + (d_eff - d_cap) * (-dt_s / tau_break).exp();
+                } else if alpha_coll > 0.0 && d_eff < d_cap {
+                    // collisional growth of the mean primaries per floc, g = (d / d_primary)^D_f, integrated in sub-steps
+                    // that never let g change by more than a quarter (the rate rises with size: it can run away)
+                    let n_primary = phi_solid / (std::f64::consts::PI / 6.0 * d_primary.powi(3));
+                    let mut g = (d_eff / d_primary).powf(st::FLOC_FRACTAL_DIM);
+                    let g_cap = (d_cap / d_primary).powf(st::FLOC_FRACTAL_DIM);
+                    let mut t_left = dt_s;
+                    for _ in 0..80 {
+                        if t_left <= 1e-9 || g >= g_cap {
+                            break;
+                        }
+                        let d_f = d_primary * g.powf(1.0 / st::FLOC_FRACTAL_DIM);
+                        let rho_f = hyd.rho_l + (rho_p - hyd.rho_l) * st::floc_solid_fraction(d_primary, d_f);
+                        let v_s = crate::transfer::hydro::terminal_velocity(d_f, rho_f, hyd.rho_l, hyd.eta).abs();
+                        let rate = st::aggregation_rate_per_s(alpha_coll, n_primary, d_f, hyd.eta, t_k, shear_eff, v_s);
+                        if rate <= 0.0 {
+                            break;
+                        }
+                        let h = (0.25 * g / rate).min(t_left);
+                        g += rate * h;
+                        t_left -= h;
+                    }
+                    d_eff = (d_primary * g.min(g_cap).powf(1.0 / st::FLOC_FRACTAL_DIM)).max(d_eff);
+                }
                 floc_cls[k] = d_eff;
 
-                let rho_eff = hyd.rho_l + (rho_p - hyd.rho_l) * (d_primary / d_eff);
+                let rho_eff = hyd.rho_l + (rho_p - hyd.rho_l) * crate::transfer::settling::floc_solid_fraction(d_primary, d_eff);
                 let tau = if column.len() > 1 {
                     self.settling_time_through(&column, d_eff, rho_eff, phi_solid, t_k)
                 } else {
@@ -588,20 +593,10 @@ impl Vessel {
             let n = cls.len().max(1) as f64;
             return cls.iter().sum::<f64>() / n;
         }
-        let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-9);
-        let ions: Vec<(f64, f64)> = self.species_mol.iter().filter(|(s, m)| **m > 0.0 && ions::species_charge(s) != 0).map(|(s, m)| (m / vol_l, ions::species_charge(s) as f64)).collect();
-        let gamma_index = crate::transfer::settling::coagulation_index(&ions);
-        let w = ((gamma_index - 0.3) / 0.7).clamp(0.0, 1.0);
-        let hyd = self.hydro_state();
-        let rho_p = props.density_g_ml * 1000.0;
-        let d_pe1 = (6.0 * crate::transport::K_BOLTZMANN * self.temperature_k / (std::f64::consts::PI * crate::transfer::hydro::G_ACCEL * (rho_p - hyd.rho_l).abs().max(1.0))).powf(0.25);
-        let vol_m3 = (self.total_liquid_volume_ml() * 1e-6).max(1e-9);
-        let eps = crate::transfer::hydro::dissipation_w_kg(&hyd.st, hyd.rho_l, hyd.nu, vol_m3);
-        let shear_rate = (eps / hyd.nu.max(1e-9)).sqrt();
-        let shear_eff = (shear_rate * shear_rate + 0.04).sqrt();
-        let d_max_shear = (20.0 * d_pe1) / (1.0 + shear_eff / 50.0).sqrt();
+        // no floc state yet (the solid has not been stepped): the primaries themselves
+        let _ = props;
         let n = view.class_d_m.len().max(1) as f64;
-        view.class_d_m.iter().map(|&d| d + w * (d_max_shear.max(d) - d)).sum::<f64>() / n
+        view.class_d_m.iter().sum::<f64>() / n
     }
 
     // ------------------------------------------------------------------------------------------ events

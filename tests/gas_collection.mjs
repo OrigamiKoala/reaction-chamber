@@ -128,7 +128,9 @@ const molsMatching = (list, re) => list.filter((x) => re.test(x.species)).reduce
   dose(src, { reagent_id: 'nahco3_s', mass_g: 0.3 });
   const s = run([src, syr], 10);
   assert.ok(s[syr].gas.total_mol < 1e-12, 'nothing is collected without a tube');
-  assert.ok(s[src].pressure_atm > 1.1 || s[src].gas.total_mol > 1e-3, 'gas stays in the stoppered flask');
+  // (after 10 s only part of the 3.6 mmol of CO2 has left the supersaturated liquid: the viscosity of water at 20 C is 1.0 cP,
+  // which sets the degassing rate; what matters is that it accumulates in the flask)
+  assert.ok(s[src].pressure_atm > 1.05 || s[src].gas.total_mol > 5e-4, 'gas stays in the stoppered flask');
   eng.vessel_gas_link(src, syr);
   // (Stage 8: the supersaturated CO2 leaves the liquid over tens of seconds, not at once)
   const s2 = run([src, syr], 60);

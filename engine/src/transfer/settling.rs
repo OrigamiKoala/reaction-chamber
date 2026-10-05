@@ -74,10 +74,43 @@ pub fn coagulation_index(ions_mol_l_and_charge: &[(f64, f64)]) -> f64 {
     cat.max(an)
 }
 
-/// Effective settling diameter of an aggregated colloid: open fractal aggregates settle like a sphere about up to 5x the
-/// primary size, approached as the coagulation index passes 1.
-pub fn aggregate_diameter_m(primary_m: f64, gamma_index: f64) -> f64 {
-    primary_m * (1.0 + 4.0 * gamma_index / (1.0 + gamma_index))
+/// Fractal dimension of sedimenting / sheared flocs (Tang & Raper 2002: 2.0-2.4 for flocs formed by shear and differential
+/// settling; diffusion-limited clusters are 1.8, restructured flocs approach 2.5).
+pub const FLOC_FRACTAL_DIM: f64 = 2.3;
+/// Largest solid volume fraction a floc can reach inside its own envelope (a floc cannot be denser than random packing).
+pub const FLOC_MAX_SOLID_FRACTION: f64 = 0.5;
+/// Mean relative settling speed of two flocs of the same size class over their settling speed: aggregates of a
+/// polydisperse suspension differ in size, so the differential-sedimentation kernel does not vanish for "equal" flocs.
+pub const POLYDISPERSITY_FACTOR: f64 = 0.5;
+
+/// Solid volume fraction of a floc of diameter `d_floc` made of primaries of diameter `d_primary`.
+pub fn floc_solid_fraction(d_primary: f64, d_floc: f64) -> f64 {
+    (d_floc / d_primary.max(1e-12)).max(1.0).powf(FLOC_FRACTAL_DIM - 3.0)
+}
+
+/// Rate (1/s) at which the mean number of primaries per floc, g = (d_floc / d_primary)^D_f, grows by collisions of flocs of
+/// that size (Smoluchowski: d<g>/dt = 1/2 alpha beta N0 with N0 the primary-particle number density). The kernel is the sum of
+/// the Brownian, orthokinetic-shear and differential-sedimentation collision frequencies of two flocs of radius `d_floc / 2`:
+///   beta_B = 8 k T / (3 eta),  beta_S = (4/3) G (2 r)^3,  beta_DS = pi (2 r)^2 kappa v_s.
+/// `alpha` is the collision efficiency (1 when the electrolyte has screened the repulsion, 0 for a stable colloid).
+pub fn aggregation_rate_per_s(alpha: f64, n_primary_per_m3: f64, d_floc: f64, eta_pa_s: f64, t_k: f64, shear_g: f64, v_settle_m_s: f64) -> f64 {
+    if alpha <= 0.0 || n_primary_per_m3 <= 0.0 {
+        return 0.0;
+    }
+    let r = 0.5 * d_floc;
+    let beta_b = 8.0 * crate::transport::K_BOLTZMANN * t_k / (3.0 * eta_pa_s.max(1e-9));
+    let beta_s = (4.0 / 3.0) * shear_g.max(0.0) * (2.0 * r).powi(3);
+    let beta_ds = std::f64::consts::PI * (2.0 * r).powi(2) * POLYDISPERSITY_FACTOR * v_settle_m_s.abs();
+    0.5 * alpha * (beta_b + beta_s + beta_ds) * n_primary_per_m3
+}
+
+/// Largest floc diameter (m): the smaller of the space-filling size (the floc's own solid fraction cannot pass
+/// `FLOC_MAX_SOLID_FRACTION`) and the Kolmogorov microscale of the flow, sqrt(nu / G), above which turbulent shear breaks
+/// flocs.
+pub fn max_floc_diameter_m(d_primary: f64, solid_fraction: f64, shear_g: f64, nu_m2_s: f64) -> f64 {
+    let fill = d_primary * (FLOC_MAX_SOLID_FRACTION / solid_fraction.max(1e-12)).max(1.0).powf(1.0 / (3.0 - FLOC_FRACTAL_DIM));
+    let kolmogorov = (nu_m2_s.max(1e-9) / shear_g.max(1e-6)).sqrt();
+    fill.min(kolmogorov.max(d_primary))
 }
 
 #[cfg(test)]
@@ -96,6 +129,20 @@ mod tests {
     #[test]
     fn colloids_stay_suspended_by_brownian_motion() {
         assert!(settling_time_s(0.04, 50e-9, 4500.0, 998.0, 1.0e-3, 0.0, 293.15).is_infinite());
+    }
+
+    #[test]
+    fn floc_growth_kernels_and_caps() {
+        // a stable colloid (alpha 0) does not aggregate; shear and settling raise the rate; the Brownian part is size independent
+        assert_eq!(aggregation_rate_per_s(0.0, 1e20, 1e-6, 1e-3, 298.0, 1.0, 0.0), 0.0);
+        let b = aggregation_rate_per_s(1.0, 1e20, 1e-7, 1e-3, 298.0, 0.0, 0.0);
+        assert!((b / aggregation_rate_per_s(1.0, 1e20, 1e-6, 1e-3, 298.0, 0.0, 0.0) - 1.0).abs() < 1e-9);
+        assert!(aggregation_rate_per_s(1.0, 1e20, 1e-5, 1e-3, 298.0, 1.0, 0.0) > 10.0 * b);
+        // space filling: more solid means smaller flocs; a Kolmogorov scale caps vigorous stirring
+        let quiet = max_floc_diameter_m(1e-8, 1e-3, 0.2, 1e-6);
+        assert!(max_floc_diameter_m(1e-8, 1e-2, 0.2, 1e-6) < quiet);
+        assert!(max_floc_diameter_m(1e-8, 1e-3, 500.0, 1e-6) < 50e-6);
+        assert!(floc_solid_fraction(1e-8, 1e-4) < floc_solid_fraction(1e-8, 1e-6));
     }
 
     #[test]

@@ -183,7 +183,8 @@ impl Vessel {
     pub(crate) fn step_equilibria_limited(&mut self, dt_sweep_s: f64, transport_dt_s: f64, kinetic_dt_s: f64) -> f64 {
         self.kinetic_dt_s = kinetic_dt_s;
         let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-12);
-        let (gamma, _) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
+        let (mut gamma, _) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
+            self.apply_mixed_solvent_born(&mut gamma);
         let supers = self.supersaturated_minerals(vol_l, &gamma);
         self.precip_cap.clear();
 

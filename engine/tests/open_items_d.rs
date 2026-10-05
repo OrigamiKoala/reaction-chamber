@@ -92,8 +92,9 @@ fn aldehyde_hydrate_equilibrates_at_the_data_k() {
     let q = h / a;
     assert!((q / k_eq - 1.0).abs() < 0.15, "Q = {:e}, K = {:e}", q, k_eq);
     let carbon: f64 = v.species_mol.iter().filter_map(|(k, &n)| resolve_molecule(k).map(|m| n * m.atoms.iter().filter(|x| x.element == "C").count() as f64)).sum();
-    // acetaldehyde boils at 20 C: a few tenths of a percent leave the open vessel in ten minutes
-    assert!(carbon <= 0.02 * (1.0 + 1e-9) && carbon > 0.02 * 0.98, "carbon {:e}", carbon);
+    // acetaldehyde boils at 20 C and the bench is at 25 C: a few percent of this 0.2 M solution leave the open vessel in
+    // ten minutes (it was a few tenths at the 22 C room of an earlier version); the rest is conserved
+    assert!(carbon <= 0.02 * (1.0 + 1e-9) && carbon > 0.02 * 0.94, "carbon {:e}", carbon);
 }
 
 /// Base-catalysed aldol addition then dehydration to the enone for an aldehyde the code has never seen; a ketone with no

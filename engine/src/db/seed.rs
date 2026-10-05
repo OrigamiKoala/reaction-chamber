@@ -378,6 +378,58 @@ fn make_solid_with_params(id: &str, formula: &str, df_h: f64, df_g: f64, cp: f64
     }
 }
 
+/// Rows of `data/species_inorganic.json`: common inorganic species with NBS formation data (recalled, tier Estimated).
+#[derive(serde::Deserialize)]
+struct InorganicFile {
+    aq: Vec<(String, String, i32, f64, f64, Option<f64>, Option<String>)>,
+    s: Vec<(String, String, f64, f64, f64, f64)>,
+    l: Vec<(String, String, f64, f64, f64, String, String)>,
+    g: Vec<(String, String, f64, f64, f64, Option<String>)>,
+}
+
+const SRC_INORGANIC: &str = "NBS Tables of Chemical Thermodynamic Properties (1982) / CRC Handbook, recalled from memory (verify via the pipeline's NBS parser)";
+
+/// Marks every datum of the record as recalled (Estimated) rather than checked against the table.
+fn label_recalled(mut rec: SpeciesRecord, cp_known: bool) -> SpeciesRecord {
+    for p in rec.phases.values_mut() {
+        if let Some(t) = p.thermo.as_mut() {
+            t.tier = ProvenanceTier::Estimated;
+            t.source = SRC_INORGANIC.to_string();
+            if !cp_known {
+                t.cp = None;
+            }
+            for d in [t.dfH.as_mut(), t.dfG.as_mut(), t.S.as_mut(), t.cp.as_mut()].into_iter().flatten() {
+                d.tier = ProvenanceTier::Estimated;
+                d.source = SRC_INORGANIC.to_string();
+            }
+        }
+        if let Some(r) = p.rho.as_mut() {
+            r.tier = ProvenanceTier::Estimated;
+            r.source = SRC_INORGANIC.to_string();
+        }
+    }
+    rec
+}
+
+fn inorganic_species() -> Vec<SpeciesRecord> {
+    let f: InorganicFile = serde_json::from_str(include_str!("../../data/species_inorganic.json")).expect("data/species_inorganic.json");
+    let mut out = Vec::new();
+    for (id, formula, charge, h, g, cp, ik) in &f.aq {
+        let rec = make_aq(id, formula, *charge, *h, *g, cp.unwrap_or(0.0), ik.as_deref(), None);
+        out.push(label_recalled(rec, cp.is_some()));
+    }
+    for (id, formula, h, g, cp, rho) in &f.s {
+        out.push(label_recalled(make_solid(id, formula, *h, *g, *cp, *rho), true));
+    }
+    for (id, formula, h, g, cp, ik, smiles) in &f.l {
+        out.push(label_recalled(make_liquid(id, formula, *h, *g, *cp, ik, smiles), true));
+    }
+    for (id, formula, h, g, cp, ik) in &f.g {
+        out.push(label_recalled(make_gas(id, formula, *h, *g, *cp, ik.as_deref()), true));
+    }
+    out
+}
+
 pub fn seed_species() -> Vec<SpeciesRecord> {
     let mut records = vec![
         make_aq("H+", "H+", 1, 0.0, 0.0, 0.0, None, Some("[H+]")),
@@ -522,6 +574,15 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
         make_gas("H2S(g)", "H2S", -20.6, -33.4, 34.2, Some("RWSXRVCMGQZWBV-UHFFFAOYSA-N")),
         make_gas("ethene", "C2H4", 52.4, 68.4, 42.9, Some("VGGSQFUCUMXWEO-UHFFFAOYSA-N")),
     ];
+
+    // inorganic species of the data file replace identity-only seeds of the same id (acids whose formation data were missing)
+    for rec in inorganic_species() {
+        if let Some(i) = records.iter().position(|r| r.id == rec.id) {
+            records[i] = rec;
+        } else {
+            records.push(rec);
+        }
+    }
 
     // Optical records are the seed rows of `optics/records.rs` (data/optics_seed.json), looked up by species id.
 

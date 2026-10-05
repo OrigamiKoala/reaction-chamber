@@ -303,6 +303,12 @@ pub fn discover_half_reactions(present: &[String], extra_elements: &[String], t_
             if el.is_empty() || !el.keys().all(|e| elements.contains(e)) || el.get("C").copied().unwrap_or(0.0) > 1.0 {
                 continue;
             }
+            // a compound solid is an electrode product only where a precipitation model exists for it (elemental solids,
+            // registered minerals and the listed fast-precipitating oxides): cuprite, zincite or magnetite films are not
+            // formed by a few volts in a salt solution
+            if rec.id.ends_with("(s)") && !crate::gem::redox::solid_may_form_in_solution(&rec.id) {
+                continue;
+            }
             candidates.push(rec.id.clone());
         }
     }
@@ -431,10 +437,51 @@ pub struct ElectroCtx<'a> {
     pub total_area_m2: f64,
 }
 
+/// Whether `sp` is the molecule of the gas record `gas_id` in any phase: the gas itself or its dissolved form (the record
+/// of the same InChIKey). Gas evolution and consumption have the same electrode kinetics whether the product leaves as a
+/// bubble or stays dissolved, so the classification is by molecule, not by the phase suffix of an id.
+fn is_form_of_gas(sp: &str, gas_id: &str) -> bool {
+    if sp == gas_id {
+        return true;
+    }
+    let global = crate::db::SpeciesStore::global();
+    let Ok(store) = global.read() else { return false };
+    match (store.get(sp).and_then(|r| r.identity.inchikey.clone()), store.get(gas_id).and_then(|r| r.identity.inchikey.clone())) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// A gas record, or the dissolved form of a substance that is a gas under ordinary conditions: a neutral species with a
+/// gas-phase twin in the store and no liquid or solid record of its own (water, ethanol and iodine have one, so they are
+/// not "gases" that evolve; dissolved O2, H2, Cl2, CO2 are).
+fn is_gas_like(sp: &str) -> bool {
+    if sp.ends_with("(g)") {
+        return true;
+    }
+    if crate::ions::species_charge(sp) != 0 {
+        return false;
+    }
+    let global = crate::db::SpeciesStore::global();
+    let Ok(store) = global.read() else { return false };
+    let Some(rec) = store.get(sp) else { return false };
+    if store.gas_partner(rec).is_none() {
+        return false;
+    }
+    match rec.identity.inchikey.as_ref() {
+        Some(ik) => !store.all_by_inchikey(ik).iter().any(|r| r.has_phase("l") || r.has_phase("s")),
+        None => false,
+    }
+}
+
 /// Exchange current density of a half-reaction on an electrode (A/m2), and whether it is tabulated.
 pub fn exchange_current_a_m2(h: &HalfReaction, e: &Electrode) -> (f64, bool) {
-    let is_her = h.red.iter().any(|(s, _)| s == HYDROGEN_GAS) || h.ox.iter().any(|(s, _)| s == HYDROGEN_GAS);
-    let is_oer = h.ox.iter().any(|(s, _)| s == OXYGEN_GAS) || h.red.iter().any(|(s, _)| s == OXYGEN_GAS);
+    let involves = |gas: &str| h.red.iter().chain(h.ox.iter()).any(|(s, _)| is_form_of_gas(s, gas));
+    let is_her = involves(HYDROGEN_GAS);
+    // every reaction among H, O, water and its ions (O2, H2O2, HO2-, O3, ...) forms or breaks an O-O bond or moves oxygen
+    // atoms: it shares the sluggish kinetics of oxygen evolution, whatever its product is
+    let only_h_and_o = h.ox.iter().chain(h.red.iter()).all(|(sp, _)| crate::ions::species_elements(sp).map_or(false, |e| e.keys().all(|k| k == "H" || k == "O")));
+    let is_oer = involves(OXYGEN_GAS) || (only_h_and_o && !is_her);
     if is_her {
         if let Some(i) = her_i0_a_m2(&e.element) {
             return (i, true);
@@ -490,8 +537,8 @@ pub fn is_bond_rearranging(h: &HalfReaction) -> bool {
 /// determining step in the evolving direction (0.5; the Volmer or Heyrovsky step of H2, the water-oxidation step of
 /// O2, the Cl adsorption step of Cl2): Tafel slope 118 mV at 25 C. Everything else is symmetric, n / 2 each.
 fn transfer_coefficients(h: &HalfReaction) -> (f64, f64) {
-    let evolves_at_cathode = h.red.iter().any(|(s, _)| s.ends_with("(g)"));
-    let evolves_at_anode = h.ox.iter().any(|(s, _)| s.ends_with("(g)"));
+    let evolves_at_cathode = h.red.iter().any(|(s, _)| is_gas_like(s));
+    let evolves_at_anode = h.ox.iter().any(|(s, _)| is_gas_like(s));
     if evolves_at_cathode {
         (ALPHA, h.n_e - ALPHA)
     } else if evolves_at_anode {

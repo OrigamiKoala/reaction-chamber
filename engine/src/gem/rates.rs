@@ -31,8 +31,10 @@ pub const K_SELF_LABILE_REARRANGING: f64 = 1.0e-3;
 pub const K_SELF_BOND_REARRANGING: f64 = 1.0e-14;
 /// Pre-exponential factor of a solid-state decomposition, 1/s (a lattice vibration frequency).
 pub const NU_SOLID_STATE: f64 = 1.0e13;
-/// Lowest activation energy assumed for a decomposition, J/mol.
-pub const EA_DECOMPOSITION_MIN: f64 = 40_000.0;
+/// Lowest activation energy assumed for a decomposition, J/mol: the bond-breaking and lattice-rearrangement barrier of a
+/// solid-state reaction even when the reaction itself is nearly thermoneutral (dehydrations of hydroxides, 80-100 kJ/mol;
+/// metastable Cu(OH)2 turns to CuO over hours at room temperature, not at once).
+pub const EA_DECOMPOSITION_MIN: f64 = 100_000.0;
 
 /// A rate constant with the tier of the data behind it.
 #[derive(Clone, Debug)]

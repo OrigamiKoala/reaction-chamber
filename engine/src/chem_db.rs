@@ -549,6 +549,13 @@ fn reconcile_mineral_enthalpy(m: &mut GeneralMineral) {
     }
 }
 
+/// Whether `solid_id` is the solid of a registered mineral (a core row, a row of the solubility table, or an import).
+pub fn is_registered_mineral(solid_id: &str) -> bool {
+    core_rows().minerals.iter().any(|m| m.solid_species == solid_id)
+        || crate::solubility::table_minerals().iter().any(|m| m.solid_species == solid_id)
+        || CUSTOM_MINERALS.lock().map_or(false, |l| l.iter().any(|m| m.solid_species == solid_id))
+}
+
 pub fn get_default_minerals() -> Vec<GeneralMineral> {
     let mut list = core_rows().minerals.clone();
     // Data-driven solubility table: any cation/anion pair with IAP > Ksp precipitates (engine/data/solubility.json).

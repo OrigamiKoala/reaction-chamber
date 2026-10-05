@@ -1078,7 +1078,9 @@ impl Vessel {
         Some((vol.clone(), ls.exp().min(1.0) * vol.psat_pa(t_k)))
     }
 
-    /// Static dielectric constant (relative permittivity) of a liquid phase.
+    /// Static dielectric constant (relative permittivity) of a liquid phase: the volume-weighted mean of its liquid solvent
+    /// components (water and molecules with a liquid description). Ions and dissolved solutes do not enter: they are the
+    /// solutes whose transfer energies this value determines.
     pub fn phase_dielectric_constant(&self, phase_map: &HashMap<String, f64>) -> f64 {
         let mut total_vol = 0.0;
         let mut sum_eps_v = 0.0;
@@ -1091,96 +1093,56 @@ impl Vessel {
             } else if let Some(m) = self.molecule(k).filter(|m| m.liquid_data) {
                 n * m.v_liquid_m3_mol(self.temperature_k) * 1e6
             } else {
-                n * crate::volume::ion_apparent_molar_volume(k, 0.0)
+                continue;
             };
             if v > 0.0 {
-                let eps = self.component_dielectric(k);
-                sum_eps_v += eps * v;
+                sum_eps_v += self.component_dielectric(k) * v;
                 total_vol += v;
             }
         }
         if total_vol <= 1e-12 {
-            78.4
+            crate::transport::dielectric_water(self.temperature_k)
         } else {
             (sum_eps_v / total_vol).clamp(1.5, 100.0)
         }
     }
 
+    /// Born transfer shift of the ions of the water-containing phase when a co-solvent lowers (or raises) its dielectric
+    /// constant: adds ln gamma_Born(eps_mix) to every ion's ln gamma of `gamma` (molal basis, water standard state, so the
+    /// shift is zero for pure water). This is the change of ion solvation of the mixed solvent; it is what salts the
+    /// solid out of water-alcohol mixtures and moves acid constants.
+    pub(crate) fn apply_mixed_solvent_born(&self, gamma: &mut HashMap<String, f64>) {
+        if self.species_mol.keys().all(|k| k == AQUEOUS_SOLVENT || ions::species_charge(k) != 0 || self.molecule(k).map_or(true, |m| !m.liquid_data)) {
+            return;
+        }
+        let eps = self.phase_dielectric_constant(&self.species_mol);
+        let eps_w = crate::transport::dielectric_water(self.temperature_k);
+        if (1.0 / eps - 1.0 / eps_w).abs() < 1e-6 {
+            return;
+        }
+        let t_k = self.temperature_k;
+        for (sp, ln_g) in gamma.iter_mut() {
+            if ions::species_charge(sp) != 0 {
+                *ln_g += crate::activity::BornTransferActivity::ln_gamma_born(sp, eps, t_k);
+            }
+        }
+    }
+
+    /// Dielectric constant of the pure liquid component at the vessel's temperature: water from the IAPWS expression, other
+    /// molecules from their tabulated point (by InChIKey, `dielectric.rs`), else a composition estimate (Speculative).
+    /// Never keyed by a compound name.
     fn component_dielectric(&self, key: &str) -> f64 {
-        if key == AQUEOUS_SOLVENT || key == "H2O" || key == "H2O(l)" || key.starts_with("H2O") {
-            return 78.4;
+        let t = self.temperature_k;
+        let ik = self.molecule(key).and_then(|m| m.inchikey.clone()).or_else(|| self.compound_for(key).and_then(|c| c.inchi_key.clone()));
+        let water_ik = self.molecule(AQUEOUS_SOLVENT).and_then(|m| m.inchikey.clone());
+        if key == AQUEOUS_SOLVENT || (ik.is_some() && ik == water_ik) {
+            return crate::transport::dielectric_water(t);
         }
-        let inchi = self.molecule(key).and_then(|m| m.inchikey.clone())
-            .or_else(|| self.compound_for(key).and_then(|c| c.inchi_key.clone()));
-        if let Some(ik) = &inchi {
-            match ik.as_str() {
-                "XLYOFNOQVPJJNP-UHFFFAOYSA-N" => return 78.4,
-                "YMWUJEATGCHHMB-UHFFFAOYSA-N" => return 8.93,
-                "HEDRZPFGACZZDS-UHFFFAOYSA-N" => return 4.81,
-                "VZGDMQKNWNREIO-UHFFFAOYSA-N" => return 2.24,
-                "VLKUTIPJWUSYMG-UHFFFAOYSA-N" => return 1.88,
-                "IMNFDUFMRHMDMM-UHFFFAOYSA-N" => return 1.92,
-                "OFBQJSOFQDEBGM-UHFFFAOYSA-N" => return 1.84,
-                "XDTMQSROBMDMFD-UHFFFAOYSA-N" => return 2.02,
-                "UHOVQNZJYSORNB-UHFFFAOYSA-N" => return 2.28,
-                "YXFVVABEGXRONW-UHFFFAOYSA-N" => return 2.38,
-                "RTZKUSPAPEZZQV-UHFFFAOYSA-N" => return 4.33,
-                "XEKOWRVHYACXOJ-UHFFFAOYSA-N" => return 6.02,
-                "WYURNTSHIVDZCO-UHFFFAOYSA-N" => return 7.58,
-                "CSCPPACGZOOCGX-UHFFFAOYSA-N" => return 20.7,
-                "OKKJLVBELUTLKV-UHFFFAOYSA-N" => return 32.7,
-                "LFQSCWFLJHTTHZ-UHFFFAOYSA-N" => return 24.3,
-                "BDERNNFJNOPAEC-UHFFFAOYSA-N" => return 19.4,
-                "LRHPLDYGYMQRHN-UHFFFAOYSA-N" => return 17.5,
-                "KBPLFHHGFOOTCA-UHFFFAOYSA-N" => return 10.3,
-                "WEVYAHXRMPXWKA-UHFFFAOYSA-N" => return 37.5,
-                "ZMXDDKWLCZADIW-UHFFFAOYSA-N" => return 36.7,
-                "IAZDPXIOMUYVGZ-UHFFFAOYSA-N" => return 46.7,
-                "LYGJENRVBDWLQH-UHFFFAOYSA-N" => return 35.8,
-                "JUJWROOIHBZHMG-UHFFFAOYSA-N" => return 12.4,
-                _ => {}
-            }
+        if let Some(e) = ik.as_deref().and_then(crate::dielectric::tabulated_298) {
+            return crate::dielectric::at_temperature(e, t);
         }
-        let lower = key.to_lowercase();
-        if lower.contains("water") {
-            78.4
-        } else if lower.contains("dichloromethane") || lower.contains("dcm") || lower.contains("ch2cl2") {
-            8.93
-        } else if lower.contains("chloroform") {
-            4.81
-        } else if lower.contains("hexane") || lower.contains("heptane") || lower.contains("pentane") || lower.contains("octane") {
-            1.9
-        } else if lower.contains("benzene") || lower.contains("toluene") || lower.contains("xylene") {
-            2.3
-        } else if lower.contains("ether") {
-            4.3
-        } else if lower.contains("acetate") {
-            6.0
-        } else if lower.contains("ethanol") {
-            24.3
-        } else if lower.contains("methanol") {
-            32.7
-        } else if lower.contains("propanol") || lower.contains("butanol") {
-            18.0
-        } else if lower.contains("dmso") {
-            46.7
-        } else if lower.contains("acetonitrile") {
-            37.5
-        } else {
-            let el = ions::species_elements(key).unwrap_or_default();
-            let has_n = el.contains_key("N");
-            let has_o = el.contains_key("O");
-            let has_hal = el.contains_key("Cl") || el.contains_key("Br") || el.contains_key("F");
-            if has_n && has_o {
-                35.0
-            } else if has_o {
-                12.0
-            } else if has_hal {
-                6.0
-            } else {
-                2.2
-            }
-        }
+        let el = ions::species_elements(key).unwrap_or_default();
+        crate::dielectric::at_temperature(crate::dielectric::estimate_298(&el), t)
     }
 
     /// Partitions ions between the aqueous phase and non-aqueous phases according to Born transfer free energy
@@ -1237,7 +1199,8 @@ impl Vessel {
                     continue;
                 }
                 let z = ions::species_charge(sp) as f64;
-                let ln_g = crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_org, t_k);
+                // transfer free energy from the (possibly mixed) water-containing phase to the organic phase
+                let ln_g = crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_org, t_k) - crate::activity::BornTransferActivity::ln_gamma_born(sp, eps_aq, t_k);
                 ion_data.push(IonPart {
                     sp: sp.clone(),
                     charge: z,

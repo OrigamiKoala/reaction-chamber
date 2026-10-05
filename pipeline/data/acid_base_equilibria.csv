@@ -3,13 +3,13 @@
 id,name,reactants,products,log_k,dh_kj,source
 HF_dissoc,Hydrofluoric acid dissociation,HF:1,H+:1|F-:1,-3.17,13.0,IUPAC pKa dataset
 HCN_dissoc,Hydrocyanic acid dissociation,HCN:1,H+:1|CN-:1,-9.21,43.6,IUPAC pKa dataset
-HNO2_dissoc,Nitrous acid dissociation,HNO2:1,H+:1|NO2-:1,-3.25,0,IUPAC pKa dataset
-HClO_dissoc,Hypochlorous acid dissociation,HClO:1,H+:1|ClO-:1,-7.54,0,IUPAC pKa dataset
+HNO2_dissoc,Nitrous acid dissociation,HNO2:1,H+:1|NO2-:1,-3.25,14.6,IUPAC pKa dataset; dH from the NBS formation enthalpies
+HClO_dissoc,Hypochlorous acid dissociation,HClO:1,H+:1|ClO-:1,-7.54,13.8,IUPAC pKa dataset; dH from the NBS formation enthalpies
 HCOOH_dissoc,Formic acid dissociation,HCOOH:1,H+:1|HCOO-:1,-3.75,-0.1,IUPAC pKa dataset
 H2S_dissoc_1,Hydrogen sulfide first dissociation,H2S:1,H+:1|HS-:1,-7.05,22.3,IUPAC pKa dataset
 HS_dissoc_2,Hydrosulfide dissociation,HS-:1,H+:1|S-2:1,-19.0,0,IUPAC pKa dataset
 H2SO3_dissoc_1,Sulfurous acid first dissociation,H2SO3:1,H+:1|HSO3-:1,-1.85,0,IUPAC pKa dataset
-HSO3_dissoc_2,Bisulfite dissociation,HSO3-:1,H+:1|SO3-2:1,-7.2,0,IUPAC pKa dataset
+HSO3_dissoc_2,Bisulfite dissociation,HSO3-:1,H+:1|SO3-2:1,-7.2,-9.3,IUPAC pKa dataset; dH from the NBS formation enthalpies
 HSO4_dissoc,Bisulfate dissociation,HSO4-:1,H+:1|SO4-2:1,-1.99,-22.0,IUPAC pKa dataset
 H3PO4_dissoc_1,Phosphoric acid first dissociation,H3PO4:1,H+:1|H2PO4-:1,-2.15,-8.0,IUPAC pKa dataset
 H2PO4_dissoc_2,Dihydrogen phosphate dissociation,H2PO4-:1,H+:1|HPO4-2:1,-7.2,3.6,IUPAC pKa dataset

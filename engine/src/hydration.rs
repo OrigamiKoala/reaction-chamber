@@ -158,6 +158,38 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
             _ => return None,
         }
     }
+    // Aliphatic rings: the cycle rank of the graph without aromatic-aromatic bonds. A ring is a smaller cavity than the
+    // open chain of the same atoms (cyclohexane is 1.25 kcal/mol more soluble than hexane), a term the atom groups lack.
+    let mut edges = 0usize;
+    for i in 0..n {
+        for &(j, _) in &nbrs[i] {
+            if i < j && !(arom(i) && arom(j)) {
+                edges += 1;
+            }
+        }
+    }
+    let mut seen = vec![false; n];
+    let mut components = 0usize;
+    for s0 in 0..n {
+        if seen[s0] {
+            continue;
+        }
+        components += 1;
+        let mut stack = vec![s0];
+        seen[s0] = true;
+        while let Some(u) = stack.pop() {
+            for &(v, _) in &nbrs[u] {
+                if !seen[v] && !(arom(u) && arom(v)) {
+                    seen[v] = true;
+                    stack.push(v);
+                }
+            }
+        }
+    }
+    let rank = edges + components - n;
+    if rank > 0 {
+        *counts.entry("ring_aliph".to_string()).or_insert(0.0) += rank as f64;
+    }
     Some(counts)
 }
 

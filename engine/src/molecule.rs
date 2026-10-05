@@ -150,6 +150,9 @@ pub struct Molecule {
     pub cp_solid_j_mol_k: Option<f64>,
     /// Andrade parameters (A, B) of the liquid viscosity ln(eta/cP) = A + B/T from the record's `transport.eta_l`.
     pub andrade_viscosity: Option<(f64, f64)>,
+    /// Static dielectric constant of the pure liquid at 298.15 K: a labelled point (`kind: "dielectric"`) of the record;
+    /// its temperature dependence is the generic ln(eps) slope of `vessel_phase::DIELECTRIC_LN_SLOPE_PER_K`.
+    pub dielectric_298: Option<f64>,
     pub gamma_points: Vec<GammaPoint>,
     /// Weakest tier of the data that determines the molecule's phase behaviour.
     pub tier: ProvenanceTier,
@@ -485,6 +488,7 @@ pub fn resolve(key: &str, compound: Option<&CompoundThermo>) -> Option<Molecule>
         v_solid_m3_mol: v_solid,
         cp_liquid_j_mol_k: cp_l,
         cp_solid_j_mol_k: cp_s,
+        dielectric_298: point(&recs, "dielectric").and_then(|p| p.value).filter(|v| *v >= 1.0),
         andrade_viscosity: recs.iter().find_map(|r| r.transport.as_ref().and_then(|t| t.eta_l.as_ref())).and_then(|j| Some((j.get("A")?.as_f64()?, j.get("B")?.as_f64()?))),
         gamma_points,
         tier,

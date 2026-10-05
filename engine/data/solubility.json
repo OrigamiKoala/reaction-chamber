@@ -3036,9 +3036,9 @@
     "NO2-": 1.0
    },
    "log_k_298": -3.25,
-   "delta_h_kj": 0.0,
+   "delta_h_kj": 14.6,
    "tier": "Tabulated",
-   "source": "IUPAC pKa dataset"
+   "source": "IUPAC pKa dataset; dH from the NBS formation enthalpies"
   },
   {
    "id": "HClO_dissoc",
@@ -3052,9 +3052,9 @@
     "ClO-": 1.0
    },
    "log_k_298": -7.54,
-   "delta_h_kj": 0.0,
+   "delta_h_kj": 13.8,
    "tier": "Tabulated",
-   "source": "IUPAC pKa dataset"
+   "source": "IUPAC pKa dataset; dH from the NBS formation enthalpies"
   },
   {
    "id": "HCOOH_dissoc",
@@ -3100,9 +3100,9 @@
     "SO3-2": 1.0
    },
    "log_k_298": -7.2,
-   "delta_h_kj": 0.0,
+   "delta_h_kj": -9.3,
    "tier": "Tabulated",
-   "source": "IUPAC pKa dataset"
+   "source": "IUPAC pKa dataset; dH from the NBS formation enthalpies"
   },
   {
    "id": "HSO4_dissoc",
@@ -3249,39 +3249,6 @@
    "source": "PHREEQC llnl.dat (log K); the enthalpy follows from the formation enthalpies of Al+3, OH- and Al(OH)4- (llnl.dat gives it for the H+ form of the reaction)"
   },
   {
-   "id": "chromium_monohydroxo",
-   "name": "Chromium(III) monohydroxide formation",
-   "equation": "Cr+3 + H2O <=> CrOH+2 + H+",
-   "reactants": {
-    "Cr+3": 1.0,
-    "H2O": 1.0
-   },
-   "products": {
-    "CrOH+2": 1.0,
-    "H+": 1.0
-   },
-   "log_k_298": -4.0,
-   "delta_h_kj": 40.0,
-   "tier": "Tabulated",
-   "source": "Baes & Mesmer (1976) / PHREEQC"
-  },
-  {
-   "id": "cr_tetrahydroxo",
-   "name": "Tetrahydroxochromate(III) formation",
-   "equation": "Cr+3 + 4 OH- <=> Cr(OH)4-",
-   "reactants": {
-    "Cr+3": 1.0,
-    "OH-": 4.0
-   },
-   "products": {
-    "Cr(OH)4-": 1.0
-   },
-   "log_k_298": 29.9,
-   "delta_h_kj": -45.0,
-   "tier": "Tabulated",
-   "source": "Baes & Mesmer (1976) / PHREEQC"
-  },
-  {
    "id": "iron_monohydroxo",
    "name": "Iron(III) monohydroxide formation",
    "equation": "Fe+3 + H2O <=> FeOH+2 + H+",
@@ -3346,6 +3313,108 @@
    "delta_h_kj": 50.0,
    "tier": "Tabulated",
    "source": "PHREEQC llnl.dat"
+  },
+  {
+   "id": "chromium_monohydroxo",
+   "name": "Chromium(III) monohydroxide formation",
+   "equation": "Cr+3 + H2O <=> CrOH+2 + H+",
+   "reactants": {
+    "Cr+3": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "CrOH+2": 1.0,
+    "H+": 1.0
+   },
+   "log_k_298": -4.0,
+   "delta_h_kj": 40.0,
+   "tier": "Tabulated",
+   "source": "Baes & Mesmer (1976) / PHREEQC"
+  },
+  {
+   "id": "cr_tetrahydroxo",
+   "name": "Tetrahydroxochromate(III) formation",
+   "equation": "Cr+3 + 4 OH- <=> Cr(OH)4-",
+   "reactants": {
+    "Cr+3": 1.0,
+    "OH-": 4.0
+   },
+   "products": {
+    "Cr(OH)4-": 1.0
+   },
+   "log_k_298": 29.9,
+   "delta_h_kj": -45.0,
+   "tier": "Tabulated",
+   "source": "Baes & Mesmer (1976) / PHREEQC"
+  },
+  {
+   "id": "chlorine_hydrolysis",
+   "name": "Chlorine hydrolysis",
+   "equation": "Cl2(aq) + H2O <=> HClO + H+ + Cl-",
+   "reactants": {
+    "Cl2(aq)": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "HClO": 1.0,
+    "H+": 1.0,
+    "Cl-": 1.0
+   },
+   "log_k_298": -3.34,
+   "delta_h_kj": 21.1,
+   "tier": "Tabulated",
+   "source": "NBS Tables; measured K = 4.2e-4 (Connick & Chia 1959)"
+  },
+  {
+   "id": "bromine_hydrolysis",
+   "name": "Bromine hydrolysis",
+   "equation": "Br2(aq) + H2O <=> HBrO + H+ + Br-",
+   "reactants": {
+    "Br2(aq)": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "HBrO": 1.0,
+    "H+": 1.0,
+    "Br-": 1.0
+   },
+   "log_k_298": -8.2,
+   "delta_h_kj": 53.9,
+   "tier": "Tabulated",
+   "source": "NBS Tables; measured K = 5.7e-9 (Beckwith & Margerum 1997)"
+  },
+  {
+   "id": "HBrO_dissoc",
+   "name": "Hypobromous acid dissociation",
+   "equation": "HBrO <=> H+ + BrO-",
+   "reactants": {
+    "HBrO": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "BrO-": 1.0
+   },
+   "log_k_298": -8.58,
+   "delta_h_kj": 18.9,
+   "tier": "Tabulated",
+   "source": "NBS Tables; measured pKa 8.6"
+  },
+  {
+   "id": "so2_hydrolysis",
+   "name": "Sulfur dioxide hydration and first dissociation",
+   "equation": "SO2(aq) + H2O <=> H+ + HSO3-",
+   "reactants": {
+    "SO2(aq)": 1.0,
+    "H2O": 1.0
+   },
+   "products": {
+    "H+": 1.0,
+    "HSO3-": 1.0
+   },
+   "log_k_298": -1.85,
+   "delta_h_kj": -17.4,
+   "tier": "Tabulated",
+   "source": "NBS Tables; apparent pKa1 of 'sulfurous acid' 1.85"
   }
  ]
 }

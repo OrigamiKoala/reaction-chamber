@@ -554,8 +554,6 @@ export interface VesselControls {
   igniter?: boolean;
   /** Direct burner flame heating, watts (0 = off). */
   burner_w?: number;
-  /** Debug: enable the substring-matched organic network generator (off by default, Stage 9 replaces it). */
-  debug_network_generator?: boolean;
   /** Atmosphere an open vessel exchanges with: pressure, dry composition, humidity (vacuum, pressurised, inert, O2-rich all possible). */
   atmosphere?: AtmosphereSpec;
   /** Electrochemistry / electrolysis setup. */

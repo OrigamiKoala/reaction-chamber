@@ -23,3 +23,9 @@ lto = true
 inherits = "release"
 lto = false
 codegen-units = 16
+
+# Plain `cargo test` (the `test` profile, which inherits `dev`) used to build the engine at opt-level 0: the simulation-heavy
+# suites then ran 15x or more slower (`audit_invariants` 68 s optimised, over 17 min unoptimised). Make it the same
+# configuration as `release-test` so `cargo test` and `cargo rtest` take the same time and give the same results.
+[profile.test]
+inherits = "release-test"

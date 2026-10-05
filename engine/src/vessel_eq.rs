@@ -322,7 +322,8 @@ impl Vessel {
             })
             .map(|(i, _)| i)
             .collect();
-        let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+        let (mut gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, t_k);
+            self.apply_mixed_solvent_born(&mut gamma_cache);
         let ln_aw = a_w.max(1e-10).ln();
 
         for e in 0..self.equilibria.len() {
@@ -843,12 +844,13 @@ impl Vessel {
             }
         };
         let compute_act_corr = |n_vec: &[f64]| -> Vec<f64> {
-            let (gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw_from_slices(
+            let (mut gamma_cache, a_w) = crate::activity::batch_aqueous_gamma_and_aw_from_slices(
                 &names,
                 n_vec,
                 &self.species_mol,
                 t_k,
             );
+            self.apply_mixed_solvent_born(&mut gamma_cache);
             let ln_aw = a_w.max(1e-10).ln();
             let mut corr = vec![0.0; nr];
             for (r, rx) in rxns.iter().enumerate() {

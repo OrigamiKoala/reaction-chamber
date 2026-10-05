@@ -367,14 +367,6 @@ fn s0_4_no_invented_organic_species_after_any_pair_of_catalog_reagents() {
     assert!(offenders.is_empty(), "{} offenders, first: {:?}", offenders.len(), &offenders[..offenders.len().min(5)]);
 }
 
-#[test]
-fn s0_4_generator_still_available_behind_the_debug_flag() {
-    let mut v = beaker();
-    assert!(!v.debug_network_generator);
-    v.set_controls(VesselControls { debug_network_generator: Some(true), ..Default::default() });
-    assert!(v.debug_network_generator);
-}
-
 // ---- 0.6 acids -----------------------------------------------------------------------------------------------------
 
 #[test]

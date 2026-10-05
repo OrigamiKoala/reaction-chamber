@@ -1,4 +1,5 @@
 pub mod types;
+pub mod dielectric;
 pub mod kinetics;
 pub mod physics;
 pub mod conservation;

@@ -857,19 +857,29 @@ impl ActivityModel for UnifacActivity {
 pub struct BornTransferActivity;
 
 impl BornTransferActivity {
-    /// Born transfer free energy factor ln(gamma_Born) for species between water (eps=78.4) and a phase of dielectric constant `eps_phase`.
+    /// Born radius (Angstrom) of an ion: the crystal radius plus the Rashin-Honig offset that moves the dielectric boundary
+    /// to the solvent-accessible surface (+0.85 for cations, +0.10 for anions). Not the hydrated size of the Debye-Hueckel
+    /// ion-size parameter.
+    pub fn born_radius_angstrom(species: &str, charge: f64) -> f64 {
+        let r = crate::crystal::ionic_radius_angstrom(species).unwrap_or_else(|| BDotActivity::ion_size_angstrom(species) * 0.4);
+        r + if charge > 0.0 { 0.85 } else { 0.10 }
+    }
+
+    /// Born transfer factor ln(gamma_Born) of an ion from water (at `t_k`) to a medium of dielectric constant `eps_phase`:
+    /// (N_A e^2 z^2 / 8 pi eps0 r)(1/eps_phase - 1/eps_water) / RT. Zero for neutral species and for water itself.
     pub fn ln_gamma_born(species: &str, eps_phase: f64, t_k: f64) -> f64 {
         let charge = crate::chem_db::get_species_thermo(species).charge as f64;
         if charge == 0.0 {
             return 0.0;
         }
-        let eps_water = 78.4;
-        let eps_p = eps_phase.clamp(1.5, 100.0);
-        if (eps_p - eps_water).abs() < 0.5 {
+        let eps_water = crate::transport::dielectric_water(t_k);
+        let eps_p = eps_phase.clamp(1.5, 120.0);
+        if (1.0 / eps_p - 1.0 / eps_water).abs() < 1e-6 {
             return 0.0;
         }
-        let r_ion_angstrom = BDotActivity::ion_size_angstrom(species);
-        let factor = (83500.0 * charge * charge / (r_ion_angstrom * t_k.max(100.0))) * (1.0 / eps_p - 1.0 / eps_water);
+        let r = Self::born_radius_angstrom(species, charge);
+        // N_A e^2 / (8 pi eps0) = 694.6 kJ Angstrom / mol; divided by R = 8.314 J/(mol K) gives 83 540 K Angstrom
+        let factor = (83540.0 * charge * charge / (r * t_k.max(100.0))) * (1.0 / eps_p - 1.0 / eps_water);
         factor.clamp(-40.0, 50.0)
     }
 }

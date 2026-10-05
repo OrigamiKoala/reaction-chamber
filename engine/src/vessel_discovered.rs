@@ -34,7 +34,8 @@ impl Vessel {
     /// the aqueous solution, its volume, and the partial pressure (Pa) of every gas the reactions can meet (the headspace
     /// when sealed, the atmosphere when open).
     pub(crate) fn activity_context(&self) -> ActivityContext {
-        let (gamma, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
+        let (mut gamma, a_w) = crate::activity::batch_aqueous_gamma_and_aw(&self.species_mol, self.temperature_k);
+            self.apply_mixed_solvent_born(&mut gamma);
         let mut gas_pa: HashMap<String, f64> = HashMap::new();
         let mut head_m3 = 0.0;
         if self.sealed {
@@ -364,29 +365,49 @@ impl Vessel {
         for x in xi.iter_mut() {
             *x *= scale;
         }
-        // 4. apply
+        // 4. apply: the net change of every species once (the common scale made it feasible; applying the reactions one
+        // after another would clamp a species that a consumer empties before a producer refills it, and destroy atoms)
         let mut heat_j = 0.0;
         let vol_l = ctx.vol_l.max(0.001);
+        let mut net: BTreeMap<String, f64> = BTreeMap::new();
+        for ((rxn, _), extent) in items.iter().zip(&xi) {
+            if *extent <= 1e-15 {
+                continue;
+            }
+            for &(idx, coeff) in &rxn.nu {
+                *net.entry(rxn.species_names[idx].clone()).or_default() += coeff * *extent;
+            }
+        }
+        // what each species gains from the reactions that produce it (the solids' initial inventory counts only production)
+        let mut produced: BTreeMap<String, f64> = BTreeMap::new();
+        for ((rxn, _), extent) in items.iter().zip(&xi) {
+            if *extent <= 1e-15 {
+                continue;
+            }
+            for &(idx, coeff) in &rxn.nu {
+                if coeff > 0.0 {
+                    *produced.entry(rxn.species_names[idx].clone()).or_default() += coeff * *extent;
+                }
+            }
+        }
+        for (sp, change) in &net {
+            if sp.ends_with("(s)") {
+                let cur = self.solid_mol.entry(sp.clone()).or_insert(0.0);
+                *cur = (*cur + change).max(0.0);
+                if let Some(p) = produced.get(sp) {
+                    *self.initial_solids.entry(sp.clone()).or_insert(0.0) += p;
+                }
+            } else if gas_like(sp) {
+                self.release_gas(sp, *change, dt_s, nucleation);
+            } else {
+                let cur = self.species_mol.entry(sp.clone()).or_insert(0.0);
+                *cur = (*cur + change).max(0.0);
+            }
+        }
         for ((rxn, _), extent) in items.iter().zip(&xi) {
             let extent = *extent;
             if extent <= 1e-15 {
                 continue;
-            }
-            for &(idx, coeff) in &rxn.nu {
-                let sp = &rxn.species_names[idx];
-                let change = coeff * extent;
-                if sp.ends_with("(s)") {
-                    let cur = self.solid_mol.entry(sp.clone()).or_insert(0.0);
-                    *cur = (*cur + change).max(0.0);
-                    if coeff > 0.0 {
-                        *self.initial_solids.entry(sp.clone()).or_insert(0.0) += change;
-                    }
-                } else if gas_like(sp) {
-                    self.release_gas(sp, change, dt_s, nucleation);
-                } else {
-                    let cur = self.species_mol.entry(sp.clone()).or_insert(0.0);
-                    *cur = (*cur + change).max(0.0);
-                }
             }
             heat_j -= extent * rxn.delta_h0_j;
             let rate = if kind == "redox" { extent / (vol_l * dt_s.max(0.001)) } else { extent / dt_s.max(0.001) };

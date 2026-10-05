@@ -63,6 +63,7 @@ fn test_m5_demo1_copper_ammonia_complex() {
     assert!(cu_oh2_excess < 1e-6 * cu_init, "Precipitate dissolves completely in excess NH3 (left {:e} mol)", cu_oh2_excess);
 
     let cu_nh3_4 = *v.species_mol.get("Cu(NH3)4+2").unwrap_or(&0.0);
+    println!("DBGCU {:?} {:?} ev={:?}", v.species_mol.iter().filter(|(k, x)| k.contains("Cu") && **x > 1e-9).collect::<Vec<_>>(), v.solid_mol, snap3.events.iter().map(|e| e.detail.clone()).collect::<Vec<_>>());
     assert!(cu_nh3_4 > 0.002, "Cu(NH3)4+2 complex should dominate (> 2.0e-3 mol)");
     assert!(snap3.ph.unwrap() > 10.0, "Final pH should be alkaline (10.5 - 11.5)");
 

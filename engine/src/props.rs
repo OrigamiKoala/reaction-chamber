@@ -42,37 +42,45 @@ pub fn calculate_viscosity_cp(
     total_volume_ml: f64,
     andrade: &dyn Fn(&str) -> Option<(f64, f64)>,
 ) -> f64 {
-    let h2o_mol = species_mol.get(crate::db::seed::WATER).copied().unwrap_or(0.0);
-    if h2o_mol > 0.0 && total_volume_ml > 0.0 {
-        // IAPWS 2008 correlation for pure liquid water
-        let eta_pure_w = 0.890 * (1.4 * (298.15 / t_k - 1.0)).exp();
-        
-        // Jones-Dole electrolyte viscosity extension: eta / eta_0 = 1 + A*sqrt(c) + B*c
-        let vol_l = total_volume_ml / 1000.0;
-        let mut ion_conc_sum = 0.0;
-        for (sp, &mol) in species_mol {
-            let charge = crate::chem_db::get_species_thermo(sp).charge;
-            if charge != 0 && mol > 0.0 {
-                ion_conc_sum += mol / vol_l;
-            }
+    // Neutral liquid components mix by the logarithmic (Arrhenius) rule ln eta = sum x_i ln eta_i, each with its own
+    // curve: water from the IAPWS-type fit of `transport`, others from the Andrade parameters of their record (else the
+    // labelled default). Ions are not solvent components; they act through the Jones-Dole term below.
+    let mut neutral_mol = 0.0;
+    let mut ion_mol = 0.0;
+    for (sp, &mol) in species_mol {
+        if mol <= 0.0 {
+            continue;
         }
-        let b_coeff = 0.08; // average B coefficient for 1:1 salts
-        let factor = 1.0 + 0.005 * ion_conc_sum.sqrt() + b_coeff * ion_conc_sum;
-        eta_pure_w * factor
-    } else {
-        // Organic phase viscosity via Andrade equation ln(eta) = A + B/T
-        let mut log_sum = 0.0;
-        let total_mol: f64 = species_mol.values().copied().filter(|&m| m > 0.0).sum();
-        if total_mol <= 0.0 {
-            return 1.0;
+        if crate::ions::species_charge(sp) != 0 {
+            ion_mol += mol;
+        } else {
+            neutral_mol += mol;
         }
-        for (sp, &mol) in species_mol {
-            if mol <= 0.0 { continue; }
-            let x = mol / total_mol;
-            let (a, b) = andrade(sp).unwrap_or(ANDRADE_DEFAULT);
-            let eta_i = (a + b / t_k).exp();
-            log_sum += x * eta_i.ln();
-        }
-        log_sum.exp().clamp(0.1, 50.0)
     }
+    if neutral_mol <= 0.0 {
+        return 1.0;
+    }
+    let mut log_sum = 0.0;
+    for (sp, &mol) in species_mol {
+        if mol <= 0.0 || crate::ions::species_charge(sp) != 0 {
+            continue;
+        }
+        let x = mol / neutral_mol;
+        let eta_i = if sp == crate::db::seed::WATER {
+            crate::transport::viscosity_water_pa_s(t_k) * 1e3
+        } else {
+            let (a, b) = andrade(sp).unwrap_or(ANDRADE_DEFAULT);
+            (a + b / t_k).exp()
+        };
+        log_sum += x * eta_i.ln();
+    }
+    let eta_solvent = log_sum.exp();
+    // Jones-Dole electrolyte extension eta / eta_0 = 1 + A sqrt(c) + B c with the average coefficients of 1:1 salts.
+    let factor = if ion_mol > 0.0 && total_volume_ml > 0.0 {
+        let c = ion_mol / (total_volume_ml / 1000.0);
+        1.0 + 0.005 * c.sqrt() + 0.08 * c
+    } else {
+        1.0
+    };
+    (eta_solvent * factor).clamp(0.05, 50.0)
 }
