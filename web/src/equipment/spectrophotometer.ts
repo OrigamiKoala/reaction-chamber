@@ -196,7 +196,7 @@ export class Spectrophotometer {
     beamLed.rotation.x = Math.PI / 2;
     beamLed.position.set(10.7, 3.5, 0.56);
     panel.add(beamLed);
-    const lg = textLegend('READY', 1.9, 0.5, { ink: '#8d979f', weight: 700 });
+    const lg = textLegend('POWER', 1.9, 0.5, { ink: '#8d979f', weight: 700 });
     lg.rotation.x = 0;
     lg.position.set(9.3, 2.7, 0.54);
     const lg2 = textLegend('LAMP', 1.9, 0.5, { ink: '#8d979f', weight: 700 });
@@ -260,10 +260,10 @@ export class Spectrophotometer {
       ctx.font = `700 ${Math.round(h * 0.085)}px Arial, sans-serif`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      ctx.fillText('UV-VIS  350-750 nm', w * 0.03, h * 0.065);
+      ctx.fillText('UV-Vis', w * 0.03, h * 0.065);
       ctx.textAlign = 'right';
       ctx.fillStyle = this.isScanning ? '#ffc233' : '#5df08a';
-      ctx.fillText(this.isScanning ? 'SCANNING' + '.'.repeat(Math.floor(this.time * 6) % 4) : this.blankName !== null && this.lastScan?.blank ? 'BLANKED' : 'READY', w * 0.97, h * 0.065);
+      ctx.fillText(this.isScanning ? 'SCANNING' + '.'.repeat(Math.floor(this.time * 6) % 4) : this.blankName !== null && this.lastScan?.blank ? 'BLANKED' : '', w * 0.97, h * 0.065);
       // plot area
       const px0 = w * 0.1;
       const px1 = w * 0.96;

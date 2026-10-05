@@ -15,8 +15,14 @@ export const BALANCE_POS = new THREE.Vector3(90, 0, -4);
 export const ANALYTICAL_Z_SHIFT = 130;
 const S = ANALYTICAL_Z_SHIFT;
 
-/** Lab PC between the spectrophotometer (x = -65) and the GC/MS (x = 17) on the analytical bench; shows their software. */
-export const WORKSTATION_POS = new THREE.Vector3(-30.5, 0, 93 + S);
+/**
+ * Each analytical instrument has its own result monitor (its control software): the UV-vis's stands behind it on the bench, the GC/MS's
+ * on a tall neck behind it (so it shows over the top of the instrument), the NMR's hangs on the bay's back wall above the console.
+ */
+export const MONITOR_SCALE = 1.3;
+export const SPECTRO_MONITOR = { pos: new THREE.Vector3(-65, 0, 78 + S), lift: 14, rotY: 0, wall: false };
+export const MS_MONITOR = { pos: new THREE.Vector3(30, 0, 78 + S), lift: 60, rotY: 0, wall: false };
+export const NMR_MONITOR = { pos: new THREE.Vector3(176, 52, 100 + S - 110 + 3.6), lift: 0, rotY: 0, wall: true };
 
 /** Indicator dropper bottles are put out beside the titration station (front left of it) by the titration setup. */
 export const INDICATOR_IDS = ['phenolphthalein_drop', 'methyl_orange_drop', 'bromothymol_blue_drop', 'methyl_red_drop'];

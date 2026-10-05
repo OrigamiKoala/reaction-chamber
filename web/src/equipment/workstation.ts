@@ -65,27 +65,49 @@ export class Workstation {
   private active = 0;
   private activeSeen = -1;
 
-  constructor() {
+  /** One window per monitor: no taskbar. */
+  private single: boolean;
+  private lift: number;
+
+  /**
+   * `scale` enlarges the whole monitor, `lift` raises it on a longer neck (so it shows over the top of an instrument),
+   * `single` = a dedicated monitor for one instrument (no taskbar, no keyboard), `wall` = hung on a wall bracket (no neck / foot).
+   */
+  constructor(opts: { scale?: number; lift?: number; single?: boolean; wall?: boolean } = {}) {
+    const lift = opts.lift ?? 0;
+    this.single = !!opts.single;
+    this.group.scale.setScalar(opts.scale ?? 1);
+    this.lift = lift;
     this.group.name = 'workstation';
     const plastic = new THREE.MeshStandardMaterial({ color: 0x1e2125, roughness: 0.45, metalness: 0.1 });
     const stand = new THREE.MeshStandardMaterial({ color: 0x2b2f34, roughness: 0.4, metalness: 0.5 });
     // monitor: 36 W x 21.8 H x 2.2 D bezel on a neck and a foot
     const bezel = new THREE.Mesh(new THREE.BoxGeometry(36, 21.8, 2.2), plastic);
-    bezel.position.set(0, 17.6, 0);
+    bezel.position.set(0, 17.6 + lift, 0);
     bezel.castShadow = true;
     this.group.add(bezel);
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(4, 9, 1.6), stand);
-    neck.position.set(0, 5.2, -0.6);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(4, 9 + lift, 1.6), stand);
+    neck.position.set(0, 5.2 + lift / 2, -0.6);
     neck.castShadow = true;
-    this.group.add(neck);
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(7, 7.4, 0.8, 32), stand);
+    if (!opts.wall) this.group.add(neck);
+    const foot = new THREE.Mesh(this.single ? new THREE.BoxGeometry(9, 0.8, 3.2) : new THREE.CylinderGeometry(7, 7.4, 0.8, 32), stand);
     foot.position.set(0, 0.4, 0.6);
     foot.castShadow = true;
-    this.group.add(foot);
+    if (!opts.wall) this.group.add(foot);
+    else {
+      const bracket = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 1.4), stand);
+      bracket.position.set(0, 17.6, -1.8);
+      this.group.add(bracket);
+    }
     this.screen = new ScreenPanel(WORKSTATION_SCREEN_W, WORKSTATION_SCREEN_H, PX_PER_CM);
-    this.screen.mesh.position.set(0, 17.9, 1.12);
+    this.screen.mesh.position.set(0, 17.9 + lift, 1.12);
     this.group.add(this.screen.mesh);
     // keyboard and mouse on the bench in front of the monitor
+    if (!this.single) this.addKeyboard(plastic);
+    this.paint();
+  }
+
+  private addKeyboard(plastic: THREE.Material): void {
     const kbd = new THREE.Mesh(roundedBox(14, 1.0, 4.6, 0.5), plastic);
     kbd.position.set(-2, 0, 13);
     kbd.castShadow = true;
@@ -96,18 +118,21 @@ export class Workstation {
     const mouse = new THREE.Mesh(roundedBox(3.2, 1.3, 5, 1.4), plastic);
     mouse.position.set(10, 0, 13);
     this.group.add(mouse);
-    this.paint();
   }
 
   /** Register an instrument screen (its software window). The first one is shown until another changes. */
   public addSource(id: string, label: string, title: string, panel: ScreenPanel): void {
     const index = this.sources.length;
     this.sources.push({ id, label, title, panel, seen: panel.version });
+    if (this.single) {
+      this.paint();
+      return;
+    }
     // click target over the button the painter draws
     const bw = WORKSTATION_SCREEN_W * BTN_W_FRAC;
     const bh = WORKSTATION_SCREEN_H * BAR_FRAC * 0.76;
     const cx = (BTN_X0_FRAC + index * (BTN_W_FRAC + BTN_GAP_FRAC) + BTN_W_FRAC / 2 - 0.5) * WORKSTATION_SCREEN_W;
-    const cy = 17.9 - (0.5 - BAR_FRAC / 2) * WORKSTATION_SCREEN_H;
+    const cy = 17.9 + this.lift - (0.5 - BAR_FRAC / 2) * WORKSTATION_SCREEN_H;
     const btn = new TaskbarButton(`workstation.${id}`, label, title, bw, bh, () => this.show(index));
     btn.group.position.set(cx, cy, 1.5);
     this.group.add(btn.group);
@@ -153,7 +178,7 @@ export class Workstation {
       g.addColorStop(1, '#0d1f33');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
-      const bar = Math.round(h * BAR_FRAC);
+      const bar = this.single ? 0 : Math.round(h * BAR_FRAC);
       if (cur) {
         // application window
         const mx = Math.round(w * 0.025);
@@ -187,6 +212,7 @@ export class Workstation {
         ctx.drawImage(src, cx + (cw - dw) / 2, cy + (ch - dh) / 2, dw, dh);
       }
       // taskbar
+      if (this.single) return;
       ctx.fillStyle = '#0a121b';
       ctx.fillRect(0, h - bar, w, bar);
       ctx.font = `600 ${Math.round(bar * 0.42)}px Arial, sans-serif`;

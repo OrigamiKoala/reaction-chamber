@@ -3,6 +3,7 @@
 // drag up / down (or scroll) turns a knob, a click steps a selector or presses a button. The instruments own their
 // controls and report changes through plain callbacks; nothing here knows about chemistry.
 import * as THREE from 'three';
+import { autoFitText } from './text_fit';
 import { roundedBox } from '../equipment/lcd';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -42,10 +43,13 @@ export function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingC
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  if (ctx) draw(ctx, w, h);
+  if (ctx) {
+    autoFitText(ctx, w);
+    draw(ctx, w, h);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -112,7 +116,7 @@ function scalePlate(o: PlateOpts): THREE.Mesh {
         ctx.lineTo(x1, y1);
         ctx.stroke();
       }
-      ctx.font = `700 ${Math.round(R * 0.2)}px Arial, Helvetica, sans-serif`;
+      ctx.font = `700 ${Math.round(R * 0.25)}px Arial, Helvetica, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       for (const l of o.labels ?? []) {
@@ -120,7 +124,7 @@ function scalePlate(o: PlateOpts): THREE.Mesh {
         ctx.fillText(l.text, x, y);
       }
       if (o.caption) {
-        ctx.font = `800 ${Math.round(R * 0.21)}px Arial, Helvetica, sans-serif`;
+        ctx.font = `800 ${Math.round(R * 0.26)}px Arial, Helvetica, sans-serif`;
         ctx.fillText(o.caption, cx, cy + R * 0.9);
       }
     },
@@ -285,6 +289,8 @@ export interface SelectorOpts {
   labels: string[];
   value?: number;
   radius?: number;
+  /** Printed scale plate radius = radius x this (default 2.2). */
+  plateScale?: number;
   accent?: number;
   ink?: string;
   /** 'lever' = a gas-cock handle instead of a round knob. */
@@ -343,7 +349,7 @@ export class Selector implements Control3D {
     }
     if (!o.noPlate) {
       const labels = o.labels.map((text, i) => ({ at: n === 1 ? 0.5 : i / (n - 1), text }));
-      const plate = scalePlate({ radius: (o.style === 'lever' ? 3.2 : r * 2.2), ticks: 0, labels, caption: o.caption, sweep: [this.angles[0], this.angles[n - 1]], ink: o.ink });
+      const plate = scalePlate({ radius: (o.style === 'lever' ? 3.2 : r * (o.plateScale ?? 2.2)), ticks: 0, labels, caption: o.caption, sweep: [this.angles[0], this.angles[n - 1]], ink: o.ink });
       plate.position.y = 0.025;
       this.group.add(plate);
     }

@@ -103,6 +103,9 @@ export interface HandlingHost {
   resolveDrop(id: string, x: number, z: number, prefer?: DropPlace): DropSpot;
   /** The vessel has settled at `spot`: claim slot / hot plate / balance pan. */
   commitDrop(id: string, spot: DropSpot): void;
+  /** Instrument whose sample inlet is under (x, z): releasing a carried vessel there hands it its sample (the vessel goes back where it came from). */
+  samplePortAt?(x: number, z: number): { id: string; label: string } | null;
+  sampleDelivered?(portId: string, vesselId: string): void;
   openFlow(src: FlowSourceRef, targetId: string, form: FlowForm): FlowSink | null;
   markDirty(): void;
   onSelectVessel(id: string): void;
@@ -561,6 +564,10 @@ export class HandlingController {
     h.tilt += (0 - h.tilt) * (1 - Math.exp(-dt * TILT_DOWN));
     h.yaw += angleDelta(h.yaw, h.homeYaw) * (1 - Math.exp(-dt * 6));
     this.updateSwing(h, dt);
+    if (h.kind === 'vessel' && h.mode !== 'pipette') {
+      const port = this.host.samplePortAt?.(h.pos.x, h.pos.z) ?? null;
+      this.setHint(port ? `Release to put a sample of this in the ${port.label}` : 'Carry it · release to set it down · Esc to put back');
+    }
   }
 
   private updateSwing(h: Held, dt: number) {
@@ -1104,7 +1111,8 @@ export class HandlingController {
     // vessel: set it down where it is, or go back to where it was picked up (Esc, or released while pouring)
     const vb = h.vb!;
     if (!host.vessels().has(h.id)) return;
-    const goHome = cancel || wasLocked;
+    const port = !cancel && !wasLocked ? host.samplePortAt?.(h.obj.position.x, h.obj.position.z) ?? null : null;
+    const goHome = cancel || wasLocked || !!port;
     const spot = goHome
       ? host.resolveDrop(h.id, h.home.pos.x, h.home.pos.z, h.home.place === 'shelf' ? 'bench' : h.home.place)
       : host.resolveDrop(h.id, h.obj.position.x, h.obj.position.z);
@@ -1127,6 +1135,7 @@ export class HandlingController {
         },
       })
     );
+    if (port) host.sampleDelivered?.(port.id, h.id);
   }
 
   // ---------------------------------------------------------------- hint

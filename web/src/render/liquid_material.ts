@@ -416,11 +416,18 @@ function makeSurfaceMaterial(u: LiquidUniforms): THREE.MeshPhysicalMaterial {
           // free surface: faint sheen + a bright meniscus ring where it meets the wall (outlines the level from any angle)
           float lqRing = vTop > 0.5 ? smoothstep( 0.86, 0.995, length( vObj.xz ) / max( uR, 1e-3 ) ) : 0.0;
           vec3 lqBase = vTop > 0.5 ? vec3( 0.03, 0.034, 0.038 ) + vec3( 0.07, 0.075, 0.08 ) * lqRing : vec3( 0.0 );
-          gl_FragColor = vec4( totalDiffuse * lqSa * 1.1 + lqSpec * specScale + vec3( 0.16 ) * iface + vec3( 0.34, 0.36, 0.38 ) * lqLine + lqBase, 1.0 );
+          // Seen steeply from above the liquid is only a filter over whatever lies below it, and the worktop under the glass is
+          // black, so the near half of the column would vanish. Volume scattering of the room light (light enters, scatters
+          // part-way down, leaves through the remaining column, hence sqrt(T)) keeps the whole body readable from any angle.
+          vec3 lqDirV = normalize( vRay );
+          float lqSteep = smoothstep( 0.45, 0.9, -lqDirV.y );
+          float lqPath = lqExit( vObj, lqDirV );
+          vec3 lqInscatter = sqrt( exp( -lqOd ) ) * vec3( 0.12 ) * ( 1.0 - exp( -0.35 * lqPath ) ) * lqSteep;
+          gl_FragColor = vec4( totalDiffuse * lqSa * 1.1 + lqSpec * specScale + vec3( 0.16 ) * iface + vec3( 0.34, 0.36, 0.38 ) * lqLine + lqBase + lqInscatter, 1.0 );
         }`
       );
   };
-  m.customProgramCacheKey = () => 'liquid_surface_v3';
+  m.customProgramCacheKey = () => 'liquid_surface_v4';
   return m;
 }
 

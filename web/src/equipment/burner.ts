@@ -333,7 +333,7 @@ const HELD_DIR = new THREE.Vector3(0.3, -0.85, 0.43).normalize();
 /** The wire is drawn into the flame when the carried tip is within this distance of the flame axis (cm). */
 const FLAME_GRAB_R = 4;
 
-/** The wire loop: click = dip in the selected vessel and hold in the flame; drag = carry it by hand (dip in a vessel, hold in the flame). */
+/** The wire loop: drag = carry it by hand (dip it in any vessel, hold it in the flame); a plain click only explains how. */
 class LoopControl implements Control3D {
   public readonly id = 'burner.loop';
   public readonly group = new THREE.Group();
@@ -357,7 +357,7 @@ class LoopControl implements Control3D {
   public hint(): string {
     return this.active()
       ? 'Carrying the wire loop · move over a vessel to dip it, over a lit flame to test · release to put it back'
-      : 'Flame test · drag to carry the wire loop (dip it in a vessel, then hold it in the lit flame), or click to dip the selected vessel and hold it in the flame';
+      : 'Flame test · drag the wire loop over any vessel to dip it, then hold it in the lit flame';
   }
 
   public press(): void {}

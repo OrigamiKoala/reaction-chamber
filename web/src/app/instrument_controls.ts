@@ -23,6 +23,8 @@ export interface InstrumentControlsDeps {
 }
 
 export interface InstrumentControls {
+  /** A vessel carried to an instrument's sample inlet. */
+  deliver(port: 'uvvis' | 'ms' | 'nmr', vesselId: string): void;
   /** Pull the console state (potentiostat knobs, lamps) from the lab: selection or controls changed. */
   sync(): void;
 }
@@ -69,31 +71,10 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
   };
 
   // ------------------------------------------------------------------ burner: the gas tap lights it; the loop does the flame test
+  // a plain click on the loop does nothing but explain: the loop is carried by hand to whichever vessel the user chooses
   ins.burner.onLoop = (into) => {
-    if (!into) return true;
-    const b = ins.burner;
-    if (!b.isActive) {
-      toast('Open the gas tap first: the burner has to be lit for a flame test.', 'info');
-      return false;
-    }
-    const id = selected();
-    if (!id) {
-      toast('Select the vessel with the sample first (click it), then dip the loop.', 'info');
-      return false;
-    }
-    b.flameTestInfo = `Dipping the loop in ${nameOf(id)}…`;
-    sim.flameTest(id, BUNSEN_FLAME_K).then(
-      (r) => {
-        if (!b.loopInFlame) return; // withdrawn meanwhile
-        b.setFlameTest(r.emitter_rgb, r.metal_share);
-        b.flameTestInfo = r.emitters.length ? `${nameOf(id)}: emission from ${r.emitters.join(', ')}` : `${nameOf(id)}: no emitting metal, the flame keeps its own colour`;
-      },
-      (err) => {
-        b.setLoopInFlame(false);
-        toast(`Flame test failed: ${errText(err)}`, 'warning');
-      }
-    );
-    return true;
+    if (into) toast('Drag the wire loop over any vessel to dip it, then hold it in the flame.', 'info');
+    return false;
   };
 
   // carried by hand: the wire picks up the liquid of the vessel it is dipped in; held in the lit flame it colours it
@@ -220,12 +201,14 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
 
   // ------------------------------------------------------------------ UV-vis
   const sp = ins.spectrophotometer;
+  let spVessel: string | null = null; // the vessel last carried to the cuvette compartment
+  const spLoaded = (): string | null => (spVessel && lab.has(spVessel) ? spVessel : null);
   sp.onBlank = () => {
     if (sp.scanning) return;
-    const id = selected();
+    const id = spLoaded();
     const snap = id ? lab.snapshot(id) : null;
     if (!id || !snap || snap.total_liquid_ml < 0.05) {
-      toast('Select the reference vessel (the pure solvent, click it), then press BLANK.', 'info');
+      toast('Carry the reference vessel (the pure solvent) to the spectrophotometer, then press BLANK.', 'info');
       return;
     }
     const name = nameOf(id);
@@ -236,9 +219,9 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
   };
   sp.onScan = () => {
     if (sp.scanning) return;
-    const id = selected();
+    const id = spLoaded();
     if (!id) {
-      toast('Select the vessel to scan (click it), then press SCAN.', 'info');
+      toast('Carry the vessel to scan to the spectrophotometer (drag it onto the instrument), then press SCAN.', 'info');
       return;
     }
     const snap = lab.snapshot(id);
@@ -264,22 +247,13 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
       nmr.eject();
       return;
     }
-    const id = selected();
-    if (!id) {
-      toast('Select the vessel to run (click it), then press LIFT to load it into the magnet.', 'info');
-      return;
-    }
-    loadNmr(id);
+    toast('Carry the vessel to the NMR console (drag it onto the cabinet) to load a sample.', 'info');
   };
   nmr.onAcquire = () => {
     if (nmr.isAcquiring) return;
     if (nmr.lift !== 'inserted') {
-      const id = selected();
-      if (!id) {
-        toast('Select the vessel to run (click it), then press ACQUIRE.', 'info');
-        return;
-      }
-      loadNmr(id);
+      toast('No sample in the magnet: carry a vessel to the NMR console first.', 'info');
+      return;
     }
     const id = nmrVessel && lab.has(nmrVessel) ? nmrVessel : null;
     if (!id) {
@@ -300,22 +274,13 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
   };
   ms.onLoad = () => {
     if (ms.isAcquiring) return;
-    const id = selected();
-    if (!id) {
-      toast('Select the vessel to run (click it), then press LOAD to put a vial in the tray.', 'info');
-      return;
-    }
-    loadVial(id);
+    toast('Carry the vessel to the GC/MS autosampler (drag it onto the instrument) to put a vial in the tray.', 'info');
   };
   ms.onInject = () => {
     if (ms.isAcquiring) return;
     if (!ms.vialLoaded) {
-      const id = selected();
-      if (!id) {
-        toast('Select the vessel to run (click it), then press INJECT.', 'info');
-        return;
-      }
-      loadVial(id);
+      toast('No vial in the tray: carry a vessel to the GC/MS first.', 'info');
+      return;
     }
     const id = msVessel && lab.has(msVessel) ? msVessel : null;
     if (!id) {
@@ -326,7 +291,31 @@ export function wireInstrumentControls(deps: InstrumentControlsDeps): Instrument
   };
   ms.onError = (msg) => toast(`Mass spectrometer: ${msg}`, 'warning');
 
+  /** A carried vessel was released over an instrument: it takes a sample of the vessel's liquid. */
+  const deliver = (port: 'uvvis' | 'ms' | 'nmr', id: string) => {
+    const snap = lab.snapshot(id);
+    if (!snap || snap.total_liquid_ml < 0.05) {
+      toast(`${nameOf(id)} holds no liquid to sample.`, 'warning');
+      return;
+    }
+    if (port === 'uvvis') {
+      if (sp.scanning) return;
+      spVessel = id;
+      sp.setSample(nameOf(id));
+      toast(`Cuvette of ${nameOf(id)} in the spectrophotometer. Press BLANK (reference) or SCAN.`, 'info');
+    } else if (port === 'nmr') {
+      if (nmr.isAcquiring) return;
+      loadNmr(id);
+      toast(`Tube of ${nameOf(id)} loaded. Set the nucleus, solvent and scans, then press ACQUIRE.`, 'info');
+    } else {
+      if (ms.isAcquiring) return;
+      loadVial(id);
+      toast(`Vial of ${nameOf(id)} in the autosampler tray. Press INJECT.`, 'info');
+    }
+  };
+
   return {
+    deliver,
     sync() {
       const vid = selected();
       const spec = vid ? lab.ctl(vid).electrolysis : null;

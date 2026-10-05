@@ -213,7 +213,7 @@ export class NmrMachine {
     const bezel = frontPlate(18.4, 8.2, 0.25, 0.6, new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.6 }));
     bezel.position.set(-14.4, 28.2, PANEL_Z);
     this.group.add(bezel);
-    const model = textLegend('FT-NMR SPECTROMETER  400 MHz', 18, 0.85, { ink: '#8d979f', weight: 700 });
+    const model = textLegend('NMR SPECTROMETER', 18, 0.85, { ink: '#8d979f', weight: 700 });
     model.rotation.x = 0;
     model.position.set(-14.4, 21.9, PANEL_Z + 0.04);
     this.group.add(model);
@@ -224,6 +224,7 @@ export class NmrMachine {
       caption: 'NUCLEUS',
       labels: ['1H', '13C'],
       radius: 1.15,
+      plateScale: 3.0,
       accent: 0x62d2ff,
       describe: (i) => (i === 0 ? '400 MHz proton' : '100 MHz carbon'),
       onChange: (i) => {
@@ -235,6 +236,7 @@ export class NmrMachine {
       caption: 'LOCK SOLVENT',
       labels: ['CDCl3', 'DMSO', 'D2O', 'CD3OD', 'Acet.'],
       radius: 1.15,
+      plateScale: 3.0,
       accent: 0xffd34a,
       describe: (i) => `deuterated ${SOLVENTS[i]}${i === 2 || i === 3 ? ' (exchanges O-H / N-H protons)' : ''}`,
       onChange: (i) => {
@@ -247,6 +249,7 @@ export class NmrMachine {
       labels: ['16', '64', '256', '1k', '4k'],
       value: 0,
       radius: 1.15,
+      plateScale: 3.0,
       accent: 0x5df08a,
       describe: (i) => `${SCAN_COUNTS[i]} transients (signal / noise grows as the square root; 13C of a dilute sample needs hundreds)`,
       onChange: (i) => {
@@ -698,7 +701,7 @@ export class NmrMachine {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#6dffb0';
       ctx.font = `700 ${Math.round(h * 0.075)}px Arial, sans-serif`;
-      ctx.fillText('FT-NMR  400 MHz  ·  9.4 T', w * 0.03, h * 0.06);
+      ctx.fillText('NMR', w * 0.03, h * 0.06);
       const state = acq ? 'ACQUIRING' : this.pending ? 'LOADING' : this.liftState === 'inserted' ? 'LOCKED' : this.liftState === 'ejected' ? 'TUBE EJECTED' : 'NO SAMPLE';
       ctx.textAlign = 'right';
       ctx.fillStyle = acq || this.pending ? '#ffc233' : this.liftState === 'inserted' ? '#6dffb0' : '#8fb7a8';
@@ -706,17 +709,16 @@ export class NmrMachine {
       ctx.textAlign = 'left';
       ctx.font = `${Math.round(h * 0.07)}px "Courier New", monospace`;
       ctx.fillStyle = '#9fe8c4';
-      const f = this.nucleus === '1H' ? '400.13 MHz' : '100.61 MHz';
-      ctx.fillText(`Nucleus  ${this.nucleus === '1H' ? '1H' : '13C'}  ${f}`, w * 0.03, h * 0.19);
+      ctx.fillText(`Nucleus  ${this.nucleus === '1H' ? '1H' : '13C'}`, w * 0.03, h * 0.19);
       ctx.fillText(`Solvent  ${this.solvent}`, w * 0.03, h * 0.27);
       ctx.fillText(`Scans    ${this.scans}`, w * 0.03, h * 0.35);
       ctx.fillStyle = '#6fa890';
-      ctx.fillText(this.currentSampleName ? `Sample   ${this.currentSampleName.slice(0, 22)}` : 'Sample   (none)', w * 0.5, h * 0.19);
+      ctx.fillText(this.currentSampleName ? `Sample   ${this.currentSampleName.slice(0, 22)}` : 'Sample   (none)', w * 0.03, h * 0.43);
       // progress / spectrum preview
       const x0 = w * 0.04;
       const x1 = w * 0.96;
-      const y0 = h * 0.43;
-      const y1 = h * 0.92;
+      const y0 = h * 0.52;
+      const y1 = h * 0.94;
       ctx.strokeStyle = '#1b4a38';
       ctx.lineWidth = 1;
       ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
@@ -754,7 +756,7 @@ export class NmrMachine {
       } else {
         ctx.fillStyle = '#4f7f6c';
         ctx.textAlign = 'center';
-        ctx.fillText(this.liftState === 'inserted' ? 'press ACQUIRE' : 'press LIFT to load the selected vessel', w / 2, (y0 + y1) / 2);
+        ctx.fillText(this.liftState === 'inserted' ? 'press ACQUIRE' : 'bring a sample to the magnet', w / 2, (y0 + y1) / 2);
       }
     });
   }
@@ -771,7 +773,7 @@ export class NmrMachine {
       ctx.textAlign = 'left';
       ctx.font = `700 ${Math.round(h * 0.2)}px "Courier New", monospace`;
       ctx.fillStyle = '#6dffb0';
-      ctx.fillText(`${this.nucleus === '1H' ? '1H  400.13' : '13C 100.61'} MHz`, w * 0.05, h * 0.2);
+      ctx.fillText(`NUCLEUS ${this.nucleus}`, w * 0.05, h * 0.2);
       ctx.fillStyle = '#9fe8c4';
       ctx.fillText(`LOCK ${this.solvent}`, w * 0.05, h * 0.46);
       ctx.fillText(`NS ${this.scans}`, w * 0.05, h * 0.72);

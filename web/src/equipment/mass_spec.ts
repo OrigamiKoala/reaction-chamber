@@ -136,12 +136,12 @@ export class MassSpectrometer {
     this.group.add(this.gcScreen.mesh);
     this.readyLed = mkLed(GC_X - 3.0, 43.4, PF1 + 0.06, 0x1d3a26);
     this.runLed = mkLed(GC_X + 0.6, 43.4, PF1 + 0.06, 0x3a2e14);
-    legend('READY', 2.9, 0.55, GC_X - 3.0, 42.2, PF1 + 0.04);
+    legend('POWER', 2.9, 0.55, GC_X - 3.0, 42.2, PF1 + 0.04);
     legend('RUN', 2.9, 0.55, GC_X + 0.6, 42.2, PF1 + 0.04);
     this.loadBtn = new PushButton({
       id: 'ms.load',
       label: 'LOAD',
-      size: [3.8, 1.6],
+      size: [6.4, 2.6],
       color: 0x3a444c,
       lamp: 0xffc233,
       hintText: 'Load a vial: puts the selected vessel\'s liquid in the autosampler tray (click the vessel first)',
@@ -150,14 +150,14 @@ export class MassSpectrometer {
     const injectBtn = new PushButton({
       id: 'ms.inject',
       label: 'INJECT',
-      size: [7.6, 2.7],
+      size: [6.4, 2.6],
       color: 0x1f7a3f,
       lamp: 0x6dff9b,
       hintText: 'Inject (the GC START key): the autosampler draws the vial and injects; EI runs the GC programme and records a spectrum of every compound that elutes, ESI infuses the liquid (loads the selected vessel if the tray is empty)',
       onPress: () => this.onInject?.(),
     });
-    place(this.loadBtn, this.group, [GC_X + 6.0, 40.4, PF1 + 0.02]);
-    place(injectBtn, this.group, [GC_X + 14.2, 40.4, PF1 + 0.02]);
+    place(this.loadBtn, this.group, [GC_X + 5.8, 40.4, PF1 + 0.02]);
+    place(injectBtn, this.group, [GC_X + 13.4, 40.4, PF1 + 0.02]);
 
     // oven door: a frame proud of the front, a dark liner, the column coil in its cage, a smoked-glass window
     const frameMat = new THREE.MeshStandardMaterial({ color: 0xf3f4f1, roughness: 0.38 });
@@ -373,6 +373,7 @@ export class MassSpectrometer {
       caption: 'SOURCE',
       labels: ['EI', 'ESI+', 'ESI-'],
       radius: 1.15,
+      plateScale: 3.0,
       accent: 0xb27dff,
       describe: (i) => (i === 0 ? 'GC/MS, 70 eV electron ionisation: fragments, one spectrum per eluting compound' : i === 1 ? 'electrospray, positive: [M+H]+, [M+Na]+ and pre-formed cations' : 'electrospray, negative: [M-H]- and pre-formed anions'),
       onChange: (i) => {
@@ -557,7 +558,7 @@ export class MassSpectrometer {
     this.ovenGlowMat.color.setRGB(running ? 0.22 : 0.1, running ? 0.09 : 0.07, running ? 0.05 : 0.06);
     this.columnMat.emissive.setRGB(running ? 0.18 : 0, running ? 0.05 : 0, 0);
     if (running) this.fanBlades.rotation.z += dt * 14;
-    this.readyLed.color.setHex(this.phase === 'idle' ? 0x35e070 : 0x1d3a26);
+    this.readyLed.color.setHex(0x35e070); // power lamp
     this.runLed.color.setHex(this.phase !== 'idle' ? 0xffb02e : 0x3a2e14);
     this.drawScreens();
   }
@@ -591,8 +592,8 @@ export class MassSpectrometer {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#c6a8ff';
       ctx.font = `700 ${Math.round(h * 0.075)}px Arial, sans-serif`;
-      ctx.fillText(`GC/MS  ·  ${this.ionization === 'EI' ? 'EI 70 eV' : this.ionization === 'ESI_POS' ? 'ESI (+)' : 'ESI (−)'}`, w * 0.03, h * 0.06);
-      const state = this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'SCANNING' : this.pending ? 'STARTING' : this.vial.visible ? 'VIAL LOADED' : 'READY';
+      ctx.fillText(`GC/MS  ·  ${this.ionization === 'EI' ? 'EI' : this.ionization === 'ESI_POS' ? 'ESI +' : 'ESI −'}`, w * 0.03, h * 0.06);
+      const state = this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'SCANNING' : this.pending ? 'STARTING' : this.vial.visible ? 'VIAL LOADED' : '';
       ctx.textAlign = 'right';
       ctx.fillStyle = this.phase !== 'idle' ? '#ffc233' : '#7be0a0';
       ctx.fillText(state, w * 0.97, h * 0.06);
@@ -600,8 +601,6 @@ export class MassSpectrometer {
       ctx.font = `${Math.round(h * 0.07)}px "Courier New", monospace`;
       ctx.fillStyle = '#b9a6e8';
       ctx.fillText(this.currentSampleName ? `Vial  ${this.currentSampleName.slice(0, 24)}` : 'Vial  (tray empty)', w * 0.03, h * 0.19);
-      ctx.fillStyle = '#8c7fb5';
-      ctx.fillText('m/z 10-500 · quad · 1.2e-5 Torr', w * 0.03, h * 0.27);
       const x0 = w * 0.05;
       const x1 = w * 0.96;
       const y0 = h * 0.36;
@@ -657,7 +656,7 @@ export class MassSpectrometer {
       } else {
         ctx.fillStyle = '#6a5d96';
         ctx.textAlign = 'center';
-        ctx.fillText(this.vial.visible ? 'press INJECT' : 'press LOAD for the selected vessel', w / 2, (y0 + y1) / 2);
+        ctx.fillText(this.vial.visible ? 'press INJECT' : 'bring a sample to the autosampler', w / 2, (y0 + y1) / 2);
       }
     });
     const gkey = `${this.phase}|${this.vial.visible}|${this.injectedOnce}`;
@@ -668,16 +667,16 @@ export class MassSpectrometer {
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
       ctx.font = `700 ${Math.round(h * 0.26)}px "Courier New", monospace`;
-      ctx.fillText(this.phase === 'idle' ? 'GC  OVEN 40°C' : 'GC  RAMP 40>280°C', w * 0.06, h * 0.3);
+      ctx.fillText('GC/MS', w * 0.06, h * 0.3);
       ctx.fillStyle = '#9fe8c4';
-      ctx.fillText(`INLET 250°C  He 1.2mL/m`, w * 0.06, h * 0.62);
-      ctx.fillStyle = this.phase === 'idle' ? '#7be0a0' : '#ffc233';
-      ctx.fillText(this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'RUN' : 'READY', w * 0.06, h * 0.88);
+      ctx.fillText(this.vial.visible ? 'VIAL IN TRAY' : 'TRAY EMPTY', w * 0.06, h * 0.62);
+      ctx.fillStyle = '#ffc233';
+      ctx.fillText(this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'RUN' : '', w * 0.06, h * 0.88);
     });
   }
 
   private paintStatus() {
-    const state = this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'SCANNING' : this.pending ? 'STARTING' : this.vial.visible ? 'VIAL LOADED' : 'READY';
+    const state = this.phase === 'injecting' ? 'INJECTING' : this.phase === 'scanning' ? 'SCANNING' : this.pending ? 'STARTING' : this.vial.visible ? 'VIAL LOADED' : '';
     const key = `${this.ionization}|${state}`;
     this.msStatus.draw(key, (ctx, w, h) => {
       ctx.fillStyle = '#0d0a18';
@@ -686,9 +685,7 @@ export class MassSpectrometer {
       ctx.textAlign = 'left';
       ctx.font = `700 ${Math.round(h * 0.22)}px "Courier New", monospace`;
       ctx.fillStyle = '#c6a8ff';
-      ctx.fillText(this.ionization === 'EI' ? 'SOURCE EI 70 eV' : this.ionization === 'ESI_POS' ? 'SOURCE ESI (+)' : 'SOURCE ESI (-)', w * 0.05, h * 0.2);
-      ctx.fillStyle = '#b9a6e8';
-      ctx.fillText('VACUUM  1.2e-5 Torr', w * 0.05, h * 0.5);
+      ctx.fillText(this.ionization === 'EI' ? 'SOURCE EI' : this.ionization === 'ESI_POS' ? 'SOURCE ESI +' : 'SOURCE ESI -', w * 0.05, h * 0.3);
       ctx.fillStyle = this.phase !== 'idle' ? '#ffc233' : '#7be0a0';
       ctx.fillText(state, w * 0.05, h * 0.8);
     });

@@ -421,7 +421,7 @@ export class InstrumentPanel {
       setText(this.vals.air, `${Math.round(b.airOpen * 100)} % open`);
       setText(this.sub, b.isActive ? (b.loopInFlame ? 'Lit • wire loop in the flame' : 'Lit') : 'Gas off');
       if (this.status) {
-        setText(this.status, b.flameTestInfo ? `Flame test: ${b.flameTestInfo}` : 'Flame test: click the wire loop to dip it in the selected vessel and hold it in the flame.');
+        setText(this.status, b.flameTestInfo ? `Flame test: ${b.flameTestInfo}` : 'Flame test: drag the wire loop into the liquid of any vessel, then hold it in the lit flame.');
       }
     } else if (id === 'electrochem') {
       const vid = selected;
