@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoFitText } from './text_fit';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   cabinetTexture,
@@ -339,20 +340,6 @@ function addProps(scene: THREE.Scene) {
   wb.position.set(-104, 0, -20);
   wb.rotation.y = 0.6;
   scene.add(wb);
-
-  // paper towel roll on a holder
-  const roll = new THREE.Mesh(
-    new THREE.CylinderGeometry(6, 6, 24, 40),
-    new THREE.MeshStandardMaterial({ color: 0xf6f5f0, roughness: 0.95 })
-  );
-  roll.rotation.z = Math.PI / 2;
-  roll.position.set(104, 7.2, -32);
-  roll.castShadow = true;
-  roll.receiveShadow = true;
-  scene.add(roll);
-  const holder = new THREE.Mesh(new THREE.BoxGeometry(30, 1, 10), new THREE.MeshStandardMaterial({ color: 0xb8bdc1, metalness: 1, roughness: 0.35 }));
-  holder.position.set(104, 0.5, -32);
-  scene.add(holder);
 }
 
 function buildAnalyticalBench(scene: THREE.Scene) {
@@ -454,10 +441,13 @@ function signTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number)
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  if (ctx) draw(ctx, w, h);
+  if (ctx) {
+    autoFitText(ctx, w);
+    draw(ctx, w, h);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
 }
 

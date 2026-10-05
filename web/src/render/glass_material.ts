@@ -57,7 +57,7 @@ export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): 
     shader.uniforms.uFresnelAlpha = { value: fres };
     shader.uniforms.uEdgeTint = { value: edge };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nvarying vec3 vGC;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nvarying vec3 vGC;\nvarying float vGY;')
       .replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -68,12 +68,13 @@ export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): 
         #else
           vGC = ( modelMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
         #endif
-        vGW = ( modelMatrix * gwp ).xyz;`
+        vGW = ( modelMatrix * gwp ).xyz;
+        vGY = gwp.y;`
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        '#include <common>\nvarying vec3 vGW;\nvarying vec3 vGC;\nuniform float uFresnelAlpha;\nuniform vec3 uEdgeTint;'
+        '#include <common>\nvarying vec3 vGW;\nvarying vec3 vGC;\nvarying float vGY;\nuniform float uFresnelAlpha;\nuniform vec3 uEdgeTint;'
       )
       .replace(
         'void main() {',
@@ -82,6 +83,9 @@ export function makeGlassMaterial(far: boolean, o: Partial<GlassOptions> = {}): 
           vec2 toFrag = vGW.xz - vGC.xz;
           vec2 toCam = cameraPosition.xz - vGC.xz;
           float sideTest = dot( toFrag, toCam );
+          // the floor of the glass lies behind the liquid whichever side it is on (seen from above its near half would
+          // otherwise be drawn over the liquid, which then has nothing to tint there and reads as empty)
+          if ( vGY < 0.5 ) sideTest = -1.0;
           #ifdef GLASS_FAR
             if ( sideTest > 0.0 ) discard;
           #else

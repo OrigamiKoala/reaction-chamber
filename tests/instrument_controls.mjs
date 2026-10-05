@@ -25,13 +25,13 @@ import { NmrMachine } from '${web}/src/equipment/nmr';
 import { MassSpectrometer } from '${web}/src/equipment/mass_spec';
 import { ControlRig } from '${web}/src/bench/controls3d';
 import { Workstation } from '${web}/src/equipment/workstation';
-import { WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM } from '${web}/src/bench/layout';
-export { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
+import { SPECTRO_MONITOR, MS_MONITOR, NMR_MONITOR, MONITOR_SCALE, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM } from '${web}/src/bench/layout';
+export { Workstation, SPECTRO_MONITOR, MS_MONITOR, NMR_MONITOR, MONITOR_SCALE, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig };
 `;
 const out = await build({ stdin: { contents: entry, resolveDir: web, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error' });
 const code = out.outputFiles[0].text;
 const mod = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
-const { Workstation, WORKSTATION_POS, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
+const { Workstation, SPECTRO_MONITOR, MS_MONITOR, NMR_MONITOR, MONITOR_SCALE, SPECTRO_POS, MASS_SPEC_POS, NMR_POS, NMR_CRYO_POS, NMR_FIVE_GAUSS_R, GAS_CYLINDER_POS, ANALYTICAL_Z_SHIFT, ROOM, THREE, HotPlate, Burner, ElectrochemStation, Spectrophotometer, NmrMachine, MassSpectrometer, ControlRig } = mod;
 
 let n = 0;
 const ok = async (name, fn) => {
@@ -485,37 +485,26 @@ await ok('GC/MS: LOAD puts a vial in the tray, INJECT runs the autosampler then 
   near(t, 6, 0.6, 'injection 4 s + scan 2 s');
 });
 
-await ok('lab PC shows the software window of the instrument that changed last', () => {
-  const w = new Workstation();
-  w.addSource('uvvis', 'UV-Vis', 'x', sp.software);
-  w.addSource('nmr', 'NMR', 'y', nmr.software);
-  w.addSource('gcms', 'GC/MS', 'z', ms.software);
-  assert.equal(w.shown, 'uvvis');
+await ok('each analytical instrument has its own result monitor, repainted when its software changes', () => {
+  const mk = (id, o, at) => {
+    const w = new Workstation({ scale: MONITOR_SCALE, lift: at.lift, single: true, wall: at.wall });
+    w.group.position.copy(at.pos);
+    w.addSource(id, id, id, o.software);
+    return w;
+  };
+  const wu = mk('uvvis', sp, SPECTRO_MONITOR);
+  const wn = mk('nmr', nmr, NMR_MONITOR);
+  const wm = mk('gcms', ms, MS_MONITOR);
+  assert.deepEqual([wu.shown, wn.shown, wm.shown], ['uvvis', 'nmr', 'gcms']);
+  for (const w of [wu, wn, wm]) assert.equal(w.controls.length, 0, 'a dedicated monitor has no taskbar');
   nmr.animate(0.05);
-  nmr.nucleus = nmr.nucleus === '1H' ? '13C' : '1H'; // changes the software window of the NMR
+  nmr.nucleus = nmr.nucleus === '1H' ? '13C' : '1H';
   nmr.animate(0.05);
-  w.update();
-  assert.equal(w.shown, 'nmr');
-  ms.ionization = ms.ionization === 'ESI_POS' ? 'EI' : 'ESI_POS';
-  ms.animate(0.05);
-  w.update();
-  assert.equal(w.shown, 'gcms');
-  // the taskbar buttons are click targets: a click brings that window to the front
-  assert.equal(w.controls.length, 3);
-  const tabs = new ControlRig({ container: { addEventListener() {}, removeEventListener() {} }, orbit: { enabled: true }, setHint() {} });
-  tabs.register(w.controls);
-  tabs.begin(tabs.get('workstation.uvvis'), ev(0, 0));
-  tabs.onUp(ev(0, 0));
-  assert.equal(w.shown, 'uvvis');
-  tabs.begin(tabs.get('workstation.nmr'), ev(0, 0));
-  tabs.onUp(ev(0, 0));
-  assert.equal(w.shown, 'nmr');
-  w.update();
-  assert.equal(w.shown, 'nmr', 'a chosen window stays in front until another instrument changes');
-  // the buttons sit on the monitor's taskbar
-  w.group.updateMatrixWorld(true);
-  const nmrBtn = tabs.get('workstation.nmr').hit.getWorldPosition(new THREE.Vector3());
-  assert.ok(nmrBtn.y > 5 && nmrBtn.y < 10, `taskbar height ${nmrBtn.y}`);
+  wn.update();
+  assert.equal(wn.shown, 'nmr');
+  // the results screen is bigger than the old shared one (32.6 x 18.3 cm)
+  const sc = new THREE.Box3().setFromObject(wn.group);
+  assert.ok(sc.max.x - sc.min.x > 44, 'monitor width ' + (sc.max.x - sc.min.x).toFixed(1));
   // the instruments themselves carry no big screen: their software canvases are not part of their models
   for (const [n, o] of [['UV-vis', sp], ['NMR', nmr], ['MS', ms]]) {
     let found = false;
@@ -539,13 +528,17 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
     spectro: box(sp.group),
     ms: body(ms.group),
     nmrConsole: body(nmr.group),
-    workstation: (() => {
-      const w = new Workstation();
-      w.group.position.copy(WORKSTATION_POS);
-      w.group.updateMatrixWorld(true);
-      return box(w.group);
-    })(),
   };
+  // result monitors: the UV-vis's and GC/MS's stand on the bench behind the instrument, the NMR's hangs on the bay wall
+  const mon = (at) => {
+    const w = new Workstation({ scale: MONITOR_SCALE, lift: at.lift, single: true, wall: at.wall });
+    w.group.position.copy(at.pos);
+    w.group.updateMatrixWorld(true);
+    return box(w.group);
+  };
+  items.spectro_monitor = mon(SPECTRO_MONITOR);
+  items.ms_monitor = mon(MS_MONITOR);
+  items.nmr_monitor = mon(NMR_MONITOR);
   const names = Object.keys(items);
   for (let i = 0; i < names.length; i++) {
     for (let j = i + 1; j < names.length; j++) {
@@ -553,6 +546,7 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
       const b = items[names[j]];
       const overlapX = Math.min(a.max.x, b.max.x) - Math.max(a.min.x, b.min.x);
       const overlapZ = Math.min(a.max.z, b.max.z) - Math.max(a.min.z, b.min.z);
+      if (overlapX > 0.01 && overlapZ > 0.01) console.log(names[i], names[j], 'z', a.min.z, a.max.z, b.min.z, b.max.z);
       assert.ok(!(overlapX > 0.01 && overlapZ > 0.01), `${names[i]} overlaps ${names[j]} (x ${overlapX.toFixed(1)}, z ${overlapZ.toFixed(1)})`);
     }
   }
@@ -560,6 +554,9 @@ await ok('analytical bench layout: instruments clear each other, the monitor and
   const onBench = (b, name) => assert.ok(b.min.x >= -95 && b.max.x <= 108 && b.min.z >= 76 + ANALYTICAL_Z_SHIFT && b.max.z <= 141 + ANALYTICAL_Z_SHIFT, `${name} on the bench: x ${b.min.x.toFixed(1)}..${b.max.x.toFixed(1)} z ${b.min.z.toFixed(1)}..${b.max.z.toFixed(1)}`);
   onBench(items.spectro, 'UV-vis');
   onBench(items.ms, 'GC/MS');
+  onBench(items.spectro_monitor, 'UV-vis monitor');
+  onBench(items.ms_monitor, 'GC/MS monitor');
+  assert.ok(items.ms_monitor.max.y - 22 * MONITOR_SCALE > items.ms.max.y, `the GC/MS monitor screen shows over the top of the instrument (${items.ms_monitor.max.y.toFixed(1)} vs ${items.ms.max.y.toFixed(1)})`);
   // the NMR console is a floor cabinet past the bench end (it must not stand inside the bench), inside the room, one metre-ish from the magnet
   const nc = items.nmrConsole;
   assert.ok(nc.min.x >= 110 && nc.max.x <= ROOM.xMax, `NMR console x ${nc.min.x.toFixed(1)}..${nc.max.x.toFixed(1)}`);

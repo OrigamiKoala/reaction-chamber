@@ -21,7 +21,7 @@ import { layerIndexAtHeight } from '../equipment/probe_math';
 import { HOTPLATE_TOP_Y } from '../equipment/hotplate';
 import { BURNER_TOP_Y } from '../equipment/burner';
 import { BottleAssembly, BottleInput, createBottleAssembly, entryToBottleInput, defaultContentColor, isLooseSolid } from '../equipment/bottle';
-import { buildLabRoom, LabRoom, BENCH } from './lab_room';
+import { buildLabRoom, LabRoom, BENCH, ANALYTICAL_BENCH } from './lab_room';
 import { ReagentShelf } from './shelf';
 import { Animator, AnimTask, PourSource, dropsTask, ease, moveTask, once, pourTask, solidTask } from './animations';
 import { setParticleViewport } from '../render/particles';
@@ -40,7 +40,7 @@ import { GasTubes, GasHost } from './gas_collection';
 import { FilterRigs } from './filtration';
 import { STATION_FOOTPRINT, TitrationHost, TitrationRig, ViewPlan } from './titration';
 import { ControlRig } from './controls3d';
-import { ANALYTICAL_Z_SHIFT, BALANCE_POS, BURNER_POS, ELECTROCHEM_POS, HOTPLATE_POS, INDICATOR_IDS, INDICATOR_POS, MASS_SPEC_POS, NMR_CRYO_POS, NMR_POS, PH_METER_POS, ROOM, SPECTRO_POS, WORKSTATION_POS } from './layout';
+import { ANALYTICAL_Z_SHIFT, BALANCE_POS, BURNER_POS, ELECTROCHEM_POS, HOTPLATE_POS, INDICATOR_IDS, INDICATOR_POS, MASS_SPEC_POS, MONITOR_SCALE, MS_MONITOR, NMR_CRYO_POS, NMR_MONITOR, SPECTRO_MONITOR, NMR_POS, PH_METER_POS, ROOM, SPECTRO_POS } from './layout';
 import { Workstation } from '../equipment/workstation';
 
 /** Bench instruments the user can click (right panel shows their controls). */
@@ -99,8 +99,8 @@ const VERT_KEYS: Record<string, number> = { KeyE: 1, KeyQ: -1 };
 const WALK_SPEED = 55; // cm/s
 const CAMERA_MAX_TARGET_Y = 130;
 /** Distilled water stands on the bench, front left of the hot plate: in view and one reach from every vessel slot. */
+export type SamplePort = 'uvvis' | 'ms' | 'nmr';
 export const BENCH_WATER_ID = 'water';
-const BENCH_WATER_POS = new THREE.Vector3(-21, 0, 22);
 
 /** Instrument that owns a control, from the control id prefix ('hotplate.heat' -> 'hotplate'). */
 const CONTROL_OWNER: Record<string, InstrumentId> = {
@@ -141,6 +141,8 @@ export class BenchScene {
   public onVesselLifted?: (id: string, from: DropPlace) => void;
   /** A carried vessel came to rest. For 'hotplate' the handler must call `placeVesselOnHotPlate(id)` (Lab.moveToHotPlate). */
   public onVesselPlaced?: (id: string, place: DropPlace) => void;
+  /** A carried vessel was released over an analytical instrument's sample inlet. */
+  public onSampleDelivered?: (port: SamplePort, vesselId: string) => void;
   /** Total mass (glass + contents, g) of a vessel for the balance. Falls back to the snapshot's contents mass. */
   public massProvider?: (id: string) => number;
   /** Opens a drain of a burette / separatory funnel into a vessel (null target = onto the bench). Lab.openDrain; null refuses. */
@@ -188,7 +190,7 @@ export class BenchScene {
 
   private thermoMotion: ProbeMotion;
   private phMotion: ProbeMotion;
-  private workstation: Workstation;
+  private workstations: Workstation[];
   private thermoPark = { pos: new THREE.Vector3(26, THERMOMETER_RADIUS + 0.05, 7), up: new THREE.Vector3(1, 0, 0) };
   private phPark = { pos: new THREE.Vector3(33, PH_PROBE_RADIUS + 0.05, 2.5), up: new THREE.Vector3(0.97, 0, -0.1).normalize() };
 
@@ -235,7 +237,7 @@ export class BenchScene {
     this.controls.minDistance = 16;
     this.controls.maxDistance = 240;
     this.controls.minPolarAngle = 0.08;
-    this.controls.maxPolarAngle = 1.45;
+    this.controls.maxPolarAngle = Math.PI - 0.04; // can tilt up to look at the ceiling
     this.controls.rotateSpeed = 0.6;
     this.controls.zoomSpeed = 0.9;
     this.controls.update();
@@ -264,12 +266,19 @@ export class BenchScene {
 
     spectrophotometer.group.position.copy(SPECTRO_POS);
     massSpec.group.position.copy(MASS_SPEC_POS);
-    this.workstation = new Workstation();
-    this.workstation.group.position.copy(WORKSTATION_POS);
-    this.workstation.addSource('uvvis', 'UV-Vis', 'SpecScan - UV-Vis spectrophotometer', spectrophotometer.software);
-    this.workstation.addSource('nmr', 'NMR', 'NMRControl - 400 MHz spectrometer', nmr.software);
-    this.workstation.addSource('gcms', 'GC/MS', 'ChromaView - GC/MS data system', massSpec.software);
-    this.scene.add(this.workstation.group);
+    // one result monitor per instrument (its control software window)
+    this.workstations = [
+      { id: 'uvvis', title: 'SpecScan', panel: spectrophotometer.software, at: SPECTRO_MONITOR },
+      { id: 'nmr', title: 'NMR', panel: nmr.software, at: NMR_MONITOR },
+      { id: 'gcms', title: 'GC/MS', panel: massSpec.software, at: MS_MONITOR },
+    ].map((d) => {
+      const w = new Workstation({ scale: MONITOR_SCALE, lift: d.at.lift, single: true, wall: d.at.wall });
+      w.group.position.copy(d.at.pos);
+      w.group.rotation.y = d.at.rotY;
+      w.addSource(d.id, d.title, d.title, d.panel);
+      this.scene.add(w.group);
+      return w;
+    });
     nmr.group.position.copy(NMR_POS);
     nmr.cryoMagnet.position.copy(NMR_CRYO_POS);
 
@@ -321,7 +330,7 @@ export class BenchScene {
       }
       return null;
     };
-    this.controlRig.register([...hotPlate.controls, ...burner.controls, ...electrochem.controls, ...spectrophotometer.controls, ...nmr.controls, ...massSpec.controls, ...this.workstation.controls]);
+    this.controlRig.register([...hotPlate.controls, ...burner.controls, ...electrochem.controls, ...spectrophotometer.controls, ...nmr.controls, ...massSpec.controls]);
     nmr.routeCables();
     this.instruments = {
       thermometer,
@@ -345,7 +354,6 @@ export class BenchScene {
       { x0: BALANCE_POS.x - 13, x1: BALANCE_POS.x + 13, z0: -19, z1: 11 },
       { x0: -97, x1: -73, z0: -18, z1: 22 },
       { x0: INDICATOR_POS[0].x - 4, x1: INDICATOR_POS[3].x + 4, z0: 16, z1: 24 },
-      { x0: BENCH_WATER_POS.x - 3, x1: BENCH_WATER_POS.x + 3, z0: BENCH_WATER_POS.z - 3, z1: BENCH_WATER_POS.z + 3 },
       { x0: ELECTROCHEM_POS.x - 15, x1: ELECTROCHEM_POS.x + 15, z0: -25, z1: -2 },
       STATION_FOOTPRINT,
     ];
@@ -503,10 +511,6 @@ export class BenchScene {
   // ---------------------------------------------------------------- bottles
   /** Place a catalog reagent bottle on the (capped, LRU) reagent shelf. id = entry.id */
   public addReagentBottle(entry: ReagentCatalogEntry): void {
-    if (entry.id === BENCH_WATER_ID) {
-      this.shelf.pin({ ...entryToBottleInput(entry), bench: true, bottle_colour: 'clear' }, BENCH_WATER_POS, 0.1);
-      return;
-    }
     this.shelf.add(entryToBottleInput(entry));
   }
 
@@ -1060,7 +1064,10 @@ export class BenchScene {
         return out;
       },
       groundAt: (x, z) => this.groundAt(x, z),
-      bounds: (bottle) => (bottle ? { x0: -108, x1: 108, z0: -42, z1: 28 } : { x0: -108, x1: 108, z0: -27, z1: 27 }),
+      // a vessel can be carried across the aisle to the analytical instruments; bottles stay on the wet bench
+      bounds: (bottle) => (bottle ? { x0: -108, x1: 108, z0: -42, z1: 28 } : { x0: -108, x1: NMR_POS.x + 45, z0: -27, z1: ANALYTICAL_BENCH.zMax - 8 }),
+      samplePortAt: (x, z) => this.samplePortAt(x, z),
+      sampleDelivered: (port, id) => this.onSampleDelivered?.(port as SamplePort, id),
       liftVessel: (id) => this.liftVessel(id),
       resolveDrop: (id, x, z, prefer) => this.resolveDrop(id, x, z, prefer),
       commitDrop: (id, spot) => this.commitDrop(id, spot),
@@ -1200,8 +1207,20 @@ export class BenchScene {
     return false;
   }
 
+  /** The analytical instrument whose sample inlet a carried vessel at (x, z) is over (UV-vis cuvette compartment, GC/MS autosampler, NMR console). */
+  private samplePortAt(x: number, z: number): { id: SamplePort; label: string } | null {
+    const inBox = (c: THREE.Vector3, x0: number, x1: number, z0: number, z1: number) => x > c.x + x0 && x < c.x + x1 && z > c.z + z0 && z < c.z + z1;
+    if (inBox(SPECTRO_POS, -24, 24, -20, 20)) return { id: 'uvvis', label: 'spectrophotometer' };
+    if (inBox(MASS_SPEC_POS, -48, 42, -28, 33)) return { id: 'ms', label: 'GC/MS autosampler' };
+    if (inBox(NMR_POS, -32, 32, -34, 34)) return { id: 'nmr', label: 'NMR spectrometer' };
+    return null;
+  }
+
   /** Where a vessel released at (x, z) comes to rest: hot plate, balance pan, or the nearest free bench spot. */
   private resolveDrop(id: string, x: number, z: number, prefer?: DropPlace): DropSpot {
+    // anywhere past the wet bench (aisle, analytical area) comes back onto the wet bench
+    x = THREE.MathUtils.clamp(x, -108, 108);
+    z = THREE.MathUtils.clamp(z, -27, 27);
     const b = this.glasswareMap.get(id);
     if (b && (prefer === undefined || prefer === 'bench')) {
       const snap = this.titration.resolveDrop(id, x, z, b); // burette -> clamp, flask -> tile / under a funnel
@@ -1622,6 +1641,7 @@ export class BenchScene {
     if (this.downPos) this.cameraTween = null; // user takes over the camera
     this.updateWalk(dt);
     this.controls.update();
+    if (this.camera.position.y < 3) this.camera.position.y = 3; // never under the worktop
     const animBusy = this.animator.active;
     this.animator.tick(dt, time);
     this.refreshPan();
@@ -1682,7 +1702,7 @@ export class BenchScene {
       spectrophotometer.animate(dt);
       nmr.animate(dt);
       massSpec.animate(dt);
-      this.workstation.update();
+      for (const w of this.workstations) w.update();
     } catch (e) {
       if (!this.tickWarned.has('analytical')) {
         this.tickWarned.add('analytical');

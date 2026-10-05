@@ -207,6 +207,10 @@ async function initApp() {
     instruments: () => bench.instruments,
     vesselPosition: (id) => bench.getGlassware(id)?.group.position ?? null,
   });
+  bench.onSampleDelivered = (port, id) => {
+    instControls.deliver(port, id);
+    setInstrument(port === 'uvvis' ? 'spectrophotometer' : port === 'ms' ? 'mass_spec' : 'nmr', false);
+  };
   bench.onControlUsed = (id) => setInstrument(id, false);
   topBar.onSelectStation = (station) => {
     if (station === 'bench') {
@@ -649,8 +653,8 @@ async function initApp() {
       e.preventDefault();
       return;
     }
-    if (bench.isHolding()) return;
-    if (/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(e.code)) {
+    // walking also works while carrying a vessel (to take it across the aisle to an analytical instrument)
+    if (/^(Key[WASD]|Shift(Left|Right))$/.test(e.code) || (!bench.isHolding() && /^Arrow(Up|Down|Left|Right)$/.test(e.code))) {
       const el = e.target as HTMLElement;
       const isArrow = e.code.startsWith('Arrow');
       const blocked = isTypingTarget(e.target) || (isArrow && !!el.closest?.('button, a, select, [role="menuitem"], [role="tab"], [role="slider"]'));
@@ -659,6 +663,7 @@ async function initApp() {
         return;
       }
     }
+    if (bench.isHolding() && e.key !== 'Escape') return;
     if (e.key === 'Escape') {
       if (topBar.menuOpen) topBar.closeMenu(true);
       else if (addCard.isOpen) addCard.hide();
