@@ -449,6 +449,26 @@ impl Vessel {
         (eta, cp, k, beta)
     }
 
+    /// The liquid at the glass wall: the layer that holds most of the volume (its viscosity, conductivity, expansivity).
+    pub(crate) fn film_liquid(&self) -> crate::heat_transfer::FilmLiquid {
+        let t = self.temperature_k;
+        let main = self
+            .liquid_maps()
+            .filter(|m| !m.is_empty())
+            .map(|m| (m, self.phase_volume_ml(m, t)))
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let Some((map, vol)) = main else { return crate::heat_transfer::FilmLiquid::WATER };
+        if vol <= 1e-6 {
+            return crate::heat_transfer::FilmLiquid::WATER;
+        }
+        let mass = self.phase_mass_g(map);
+        let (eta_mpa_s, cp_j_g_k, k, beta) = self.layer_thermal_properties(map, vol, mass);
+        let rho = (mass / vol * 1000.0).clamp(300.0, 3000.0);
+        let nu = eta_mpa_s * 1e-3 / rho;
+        let alpha = k / (rho * cp_j_g_k.max(0.1) * 1000.0);
+        crate::heat_transfer::FilmLiquid { nu_m2_s: nu, pr: (nu / alpha).clamp(1.0, 5000.0), k_w_m_k: k, beta_per_k: beta.max(0.5e-4) }
+    }
+
     /// Volume of the water-containing (primary) liquid phase, mL.
     pub fn aqueous_volume_ml(&self) -> f64 {
         if !self.has_aqueous_phase() {

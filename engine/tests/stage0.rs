@@ -552,16 +552,22 @@ fn s0_9_bicarbonate_plus_vinegar_cools_with_the_degassing_enthalpy() {
 }
 
 #[test]
-fn s0_9_one_gas_constant_and_one_glass_factor() {
+fn s0_9_one_gas_constant_and_the_glass_as_a_node() {
     assert_eq!(reaction_chamber_engine::physics::R_GAS, 8.314462618);
     assert_eq!(reaction_chamber_engine::templates::R_IDEAL, reaction_chamber_engine::physics::R_GAS);
-    // pouring 10 mL of 80 C water into an empty beaker: the same glass fraction as every other path
+    // pouring 10 mL of 80 C water into an empty beaker: the contents are at the temperature they came with (the glass is a
+    // node of its own, not a share of the contents' heat capacity), and the wall then takes heat from them through the film
     let mut v = beaker();
     v.dose(DoseRequest { reagent_id: "water".into(), volume_ml: Some(10.0), mass_g: None, drops: None, temperature_k: Some(353.15), solid_form: None }).unwrap();
+    assert!((v.temperature_k - 353.15).abs() < 0.01, "{}", v.temperature_k);
+    assert!((v.glass_temp_k - 298.15).abs() < 0.01, "{}", v.glass_temp_k);
     // (Stage 5: 10 mL of water at 80 C is 9.718 g, its density at that temperature, not the 10.0 g the stamped 1 g/mL gave)
     let cp_water = 10.0 * 0.97179 * 4.184;
-    let expected = (353.15 * cp_water + 298.15 * 110.0 * 0.84 * 0.15) / (cp_water + 110.0 * 0.84 * 0.15);
-    assert!((v.temperature_k - expected).abs() < 0.2, "{} vs {}", v.temperature_k, expected);
+    let balance = (353.15 * cp_water + 298.15 * 110.0 * 0.84) / (cp_water + 110.0 * 0.84); // contents + whole wall
+    run(&mut v, 120.0, 0.5);
+    // after two minutes the wall and the contents are within a few kelvin of the calorimeter balance (less the room's share)
+    assert!(v.temperature_k < 353.0 && (v.temperature_k - balance).abs() < 8.0, "{} vs balance {}", v.temperature_k, balance);
+    assert!((v.glass_temp_k - v.temperature_k).abs() < 8.0, "wall {} contents {}", v.glass_temp_k, v.temperature_k);
 }
 
 #[test]
@@ -658,7 +664,8 @@ fn s0_14_any_boiling_liquid_boils_on_screen_and_a_dry_vessel_has_no_steam() {
     let mut v = beaker();
     ml(&mut v, "ethanol", 50.0);
     v.set_controls(VesselControls { heater_w: Some(400.0), ..Default::default() });
-    run(&mut v, 40.0, 0.5);
+    // (the plate heats the glass, the glass the ethanol through the film: about 75 s to the boiling point)
+    run(&mut v, 90.0, 0.5);
     let s = v.snapshot();
     assert!((v.temperature_k - 351.5).abs() < 1.0, "ethanol T {}", v.temperature_k);
     assert!(s.boil_intensity > 0.12, "boiling ethanol must read as boiling: {}", s.boil_intensity);
@@ -667,7 +674,7 @@ fn s0_14_any_boiling_liquid_boils_on_screen_and_a_dry_vessel_has_no_steam() {
     let mut hard = beaker();
     ml(&mut hard, "ethanol", 50.0);
     hard.set_controls(VesselControls { heater_w: Some(900.0), ..Default::default() });
-    run(&mut hard, 40.0, 0.5);
+    run(&mut hard, 90.0, 0.5);
     assert!(hard.snapshot().boil_intensity > s.boil_intensity);
     // water below its boiling point does not boil; just under it nothing bubbles
     let mut warm = beaker();

@@ -82,11 +82,53 @@ pub fn bath_coupling_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred
     u * (a_wet + a_base)
 }
 
-/// Conductance (W/K) of the liquid film between the contents and the glass wall (wetted wall and base).
-pub fn film_conductance_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred: bool) -> f64 {
-    let (a_wet, a_base, _, _) = vessel_areas(r_m, capacity_ml, liquid_ml);
-    let h_in = if stirred { H_LIQUID_STIRRED } else { H_LIQUID_STILL };
-    h_in * (a_wet + a_base)
+/// Properties of the liquid at the glass wall that set its film coefficient (SI): kinematic viscosity, Prandtl number,
+/// conductivity, expansivity.
+#[derive(Clone, Copy, Debug)]
+pub struct FilmLiquid {
+    pub nu_m2_s: f64,
+    pub pr: f64,
+    pub k_w_m_k: f64,
+    pub beta_per_k: f64,
+}
+
+impl FilmLiquid {
+    /// Water near room temperature (used when a vessel holds no liquid to ask).
+    pub const WATER: FilmLiquid = FilmLiquid { nu_m2_s: 0.9e-6, pr: 6.1, k_w_m_k: 0.607, beta_per_k: 2.6e-4 };
+}
+
+/// Nucleate-boiling coefficient (W/(m^2 K)) at the heated glass of a boiling liquid (Rohsenow: 3-10 kW/(m^2 K) for water at
+/// moderate flux); the glass is within a few kelvin of the liquid while it boils.
+pub const H_NUCLEATE_BOILING: f64 = 5000.0;
+
+/// Natural-convection coefficient of a vertical wall of height `l_m` (Churchill-Chu) and of a horizontal plate facing up
+/// (turbulent, `Nu = 0.15 Ra^(1/3)`, independent of its size), W/(m^2 K), for a liquid film at `delta_k` between wall and bulk.
+fn natural_h(liq: &FilmLiquid, delta_k: f64, l_m: f64) -> (f64, f64) {
+    let d = delta_k.abs().max(2.0);
+    let alpha = liq.nu_m2_s / liq.pr;
+    let g_term = G * liq.beta_per_k * d / (liq.nu_m2_s * alpha);
+    let ra_l = g_term * l_m.max(0.005).powi(3);
+    let nu_wall = (0.825 + 0.387 * ra_l.powf(1.0 / 6.0) / (1.0 + (0.492 / liq.pr).powf(9.0 / 16.0)).powf(8.0 / 27.0)).powi(2);
+    let h_wall = nu_wall * liq.k_w_m_k / l_m.max(0.005);
+    let h_base = 0.15 * liq.k_w_m_k * g_term.powf(1.0 / 3.0);
+    (h_wall, h_base)
+}
+
+/// Conductance (W/K) of the liquid film between the contents and the glass wall (wetted wall and base): natural convection
+/// from the properties of the liquid and the wall-to-bulk temperature difference, at least the stirred value when the liquid is
+/// stirred, nucleate boiling at the glass of a boiling liquid.
+pub fn film_conductance_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred: bool, delta_k: f64, liq: &FilmLiquid, boiling: bool) -> f64 {
+    let (a_wet, a_base, _, h_liquid) = vessel_areas(r_m, capacity_ml, liquid_ml);
+    let (mut h_wall, mut h_base) = natural_h(liq, delta_k, h_liquid);
+    if stirred {
+        h_wall = h_wall.max(H_LIQUID_STIRRED);
+        h_base = h_base.max(H_LIQUID_STIRRED);
+    }
+    if boiling {
+        h_wall = h_wall.max(H_NUCLEATE_BOILING);
+        h_base = h_base.max(H_NUCLEATE_BOILING);
+    }
+    h_wall * a_wet + h_base * a_base
 }
 
 /// Conductance (W/K) between the glass wall node (mid-wall) and a bath around the wetted wall and base: half the wall's own

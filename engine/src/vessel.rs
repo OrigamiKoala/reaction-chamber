@@ -1570,7 +1570,13 @@ impl Vessel {
         // follows the liquid height and the wall temperature, so a vessel cools fast while hot and slowly near room temperature)
         let g_amb = crate::heat_transfer::ambient_loss_w_per_k(r_m, self.config.capacity_ml, liquid_ml, self.glass_temp_k, self.room_k, t_bath.is_some());
         // the liquid film between the contents and the wall
-        let g_in = if two_node { crate::heat_transfer::film_conductance_w_per_k(r_m, self.config.capacity_ml, liquid_ml, stirred) } else { 0.0 };
+        let g_in = if two_node {
+            let liq = self.film_liquid();
+            let boiling = self.boil_vapour_ml_s > 0.0;
+            crate::heat_transfer::film_conductance_w_per_k(r_m, self.config.capacity_ml, liquid_ml, stirred, self.glass_temp_k - self.temperature_k, &liq, boiling)
+        } else {
+            0.0
+        };
 
         // Backward Euler on the two nodes (unconditionally stable for any step and any time scale):
         //   (Cc/dt + Gin + Gbd) Tc' - Gin Tg'              = Cc/dt Tc + Q + Gbd Tbath
