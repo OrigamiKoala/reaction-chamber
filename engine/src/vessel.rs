@@ -271,6 +271,10 @@ pub struct ConservationInfo {
     pub unverified_species: Vec<String>,
 }
 
+fn standard_atm() -> f64 {
+    1.0
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VesselSnapshot {
     pub t_sim_s: f64,
@@ -281,6 +285,9 @@ pub struct VesselSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bath: Option<crate::bath::BathVisual>,
     pub pressure_atm: f64,
+    /// Pressure outside the vessel, atm (the atmosphere control: 1 by default): what a gauge reads its gauge pressure against.
+    #[serde(default = "standard_atm")]
+    pub ambient_atm: f64,
     pub sealed: bool,
     pub burst: bool,
     pub ph: Option<f64>,
@@ -1922,6 +1929,7 @@ impl Vessel {
             bath_k: self.bath_k,
             bath: self.bath.as_ref().map(|b| b.visual()),
             pressure_atm: self.pressure_atm,
+            ambient_atm: self.atmosphere.pressure_atm,
             sealed: self.sealed,
             burst: self.burst,
             ph,

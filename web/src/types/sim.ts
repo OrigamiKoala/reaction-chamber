@@ -388,6 +388,8 @@ export interface VesselSnapshot {
   bath?: BathVisual;
   /** Total gas pressure, atm. Open vessel: the atmosphere's pressure (1.0 by default). Sealed: equation of state of the closed gas mixture. */
   pressure_atm: number;
+  /** Pressure outside the vessel, atm (the atmosphere control; 1 by default): the reference of a gauge reading. Absent in snapshots that predate it. */
+  ambient_atm?: number;
   sealed: boolean;
   /** Vessel has failed (glass burst). Stopper-pop sets sealed=false and emits an event instead. */
   burst: boolean;

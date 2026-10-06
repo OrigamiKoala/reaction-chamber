@@ -132,7 +132,10 @@ fn electrode_mass_obeys_faradays_law() {
         p.step(0.5).unwrap();
     }
     let ps = p.snapshot();
-    assert!(ps.electrodes[0].mass_change_g.abs() < 1e-9, "the platinum anode neither gains nor loses: {:e}", ps.electrodes[0].mass_change_g);
+    // (the anode of platinum plates no metal; a microgram of copper(II) oxide from copper(I) that the cathode made and the anode
+    // oxidised is booked with it since the eighth pass: before, those atoms left the vessel unaccounted)
+    assert!(ps.electrodes[0].mass_change_g.abs() < 0.01 * ps.electrodes[1].mass_change_g, "the platinum anode gains next to nothing: {:e} g against {:e} g on the cathode", ps.electrodes[0].mass_change_g, ps.electrodes[1].mass_change_g);
+    assert!(ps.electrodes[0].deposit.as_ref().map_or(true, |d| d.species != "Cu(s)"), "no copper plates on the anode");
     assert!(ps.electrodes[1].mass_change_g > 0.0 && ps.electrodes[1].deposit.is_some());
 }
 

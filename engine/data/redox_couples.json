@@ -1,0 +1,72 @@
+{
+ "version": 1,
+ "comment": "Self-exchange rate constants (RedoxCouple.k_self, M-1 s-1) of couples that move an oxygen atom. A couple whose two forms differ by electrons only (I2 / I-, Cl2 / Cl-, Hg2+2 / Hg+2) needs no row: the structure says so (gem/redox.rs is_electron_transfer_couple). A couple of an element that is not in redox_lability.json, whose forms differ in composition, is inert on bench time unless a row here (or a registered kinetic row) says otherwise: thermodynamics decides whether a reaction is allowed, never that a kinetically hindered couple reacts. The rows are the oxo-transfer couples whose reduced or oxidised end is kinetically *reactive* (the O-O bond of a peroxide, the weak X-O bond of a hypohalite, the lone pair of sulfite and nitrite), as opposed to the inert ends (sulfate, nitrate, perchlorate, O2, N2). The value is an effective Marcus self-exchange rate: oxo transfer is not outer-sphere electron transfer and has no measurable self-exchange, so each value is fitted once, with the cross relation of gem/rates.rs, to the order of magnitude of one measured rate of the couple with a reference partner (see 'fit'); the cross relation then carries it to every other partner by its driving force. Tier Speculative. Species that the store does not hold are skipped.",
+ "couples": [
+  {
+   "id": "peroxide_oxygen",
+   "reduced": ["H2O"],
+   "oxidised": ["H2O2"],
+   "n_electrons": 2,
+   "E0_V": 1.776,
+   "k_self": 1e-18,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the O-O bond reduction H2O2 + 2H+ + 2e- -> 2 H2O (E0 1.776 V, NBS / CRC)",
+   "fit": "H2O2 + I- (uncatalysed path): 0.0115 M-1 s-1 at 25 C (Liebhafsky & Mohammad 1933), recalled"
+  },
+  {
+   "id": "peroxodisulfate_oxygen",
+   "reduced": ["SO4-2", "HSO4-"],
+   "oxidised": ["S2O8-2"],
+   "n_electrons": 2,
+   "E0_V": 2.01,
+   "k_self": 1e-21,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the O-O bond reduction S2O8-2 + 2e- -> 2 SO4-2 (E0 2.01 V)",
+   "fit": "S2O8-2 + I-: 0.03 M-1 s-1 at 25 C (the registered kinetic row of the iodine clock, Indelli & Prue 1958); the cross relation carries it to Fe(II), thiosulfate, sulfite and the rest"
+  },
+  {
+   "id": "hypohalite_oxygen",
+   "reduced": ["Cl-"],
+   "oxidised": ["ClO-", "HClO"],
+   "n_electrons": 2,
+   "E0_V": 1.482,
+   "k_self": 1e-2,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the X-O bond reduction HOCl + H+ + 2e- -> Cl- + H2O (E0 1.482 V)",
+   "fit": "OCl- + I- at pH 10: of the order of 1e1-1e3 M-1 s-1 (hypochlorite oxidises iodide at once at bench concentrations; the reaction is a nucleophilic attack of I- on the O-Cl bond, which the electron-transfer cross relation can only mimic with a large effective self-exchange rate), recalled"
+  },
+  {
+   "id": "hypobromite_oxygen",
+   "reduced": ["Br-"],
+   "oxidised": ["BrO-", "HBrO"],
+   "n_electrons": 2,
+   "E0_V": 1.33,
+   "k_self": 1e-2,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the X-O bond reduction HOBr + H+ + 2e- -> Br- + H2O (E0 1.33 V); same class as hypochlorite",
+   "fit": "class value of the hypohalites"
+  },
+  {
+   "id": "sulfite_oxidation",
+   "reduced": ["SO3-2", "HSO3-", "H2SO3", "SO2(aq)"],
+   "oxidised": ["SO4-2", "HSO4-", "H2SO4"],
+   "n_electrons": 2,
+   "E0_V": 0.172,
+   "k_self": 1e-8,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the oxidation of sulfur(IV) to sulfur(VI) by oxygen-atom transfer from water (E0 0.172 V, SO4-2 / H2SO3)",
+   "fit": "sulfite with a strong oxidant (permanganate, dichromate, iodine, Fe(III)): fast on the bench, 1e3 M-1 s-1 and more, recalled order of magnitude"
+  },
+  {
+   "id": "nitrite_oxidation",
+   "reduced": ["NO2-", "HNO2"],
+   "oxidised": ["NO3-"],
+   "n_electrons": 2,
+   "E0_V": 0.94,
+   "k_self": 1e-10,
+   "tier": "Speculative",
+   "source": "effective self-exchange of the oxidation of nitrite to nitrate by oxygen-atom transfer from water (E0 0.94 V, NO3- / HNO2)",
+   "fit": "nitrite with permanganate in acid: of the order of 1e1 M-1 s-1, recalled"
+  }
+ ]
+}

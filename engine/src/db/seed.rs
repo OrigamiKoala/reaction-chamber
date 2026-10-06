@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::types::ProvenanceTier;
 use crate::db::record::{
-    Datum, Identity, PhaseData, PhaseThermo, SpeciesRecord,
+    Datum, Identity, PhaseData, PhaseThermo, RedoxCouple, SpeciesRecord,
 };
 
 fn make_aq(id: &str, formula: &str, charge: i32, df_h: f64, df_g: f64, cp: f64, inchi: Option<&str>, smiles: Option<&str>) -> SpeciesRecord {
@@ -430,6 +430,47 @@ fn inorganic_species() -> Vec<SpeciesRecord> {
     out
 }
 
+/// Rows of `data/redox_couples.json`: the self-exchange rate of oxo-transfer couples, attached to the oxidised form's record.
+#[derive(serde::Deserialize)]
+struct RedoxCoupleFile {
+    couples: Vec<RedoxCoupleRow>,
+}
+
+#[derive(serde::Deserialize)]
+struct RedoxCoupleRow {
+    reduced: Vec<String>,
+    oxidised: Vec<String>,
+    n_electrons: i32,
+    #[serde(rename = "E0_V")]
+    e0_v: f64,
+    k_self: f64,
+    tier: ProvenanceTier,
+    source: String,
+}
+
+/// Gives every record of an oxidised form the couples of `data/redox_couples.json` (species the store does not hold are skipped).
+fn attach_redox_couples(records: &mut [SpeciesRecord]) {
+    let f: RedoxCoupleFile = serde_json::from_str(include_str!("../../data/redox_couples.json")).expect("data/redox_couples.json");
+    for row in &f.couples {
+        for ox in &row.oxidised {
+            for red in &row.reduced {
+                if !records.iter().any(|r| &r.id == red) {
+                    continue;
+                }
+                if let Some(rec) = records.iter_mut().find(|r| &r.id == ox) {
+                    rec.redox.retain(|c| &c.partner != red);
+                    rec.redox.push(RedoxCouple {
+                        partner: red.clone(),
+                        E0: Datum::new(row.e0_v, "V", row.tier.clone(), &row.source),
+                        n_electrons: Some(row.n_electrons),
+                        k_self: Some(Datum::new(row.k_self, "M-1 s-1", row.tier.clone(), &row.source)),
+                    });
+                }
+            }
+        }
+    }
+}
+
 pub fn seed_species() -> Vec<SpeciesRecord> {
     let mut records = vec![
         make_aq("H+", "H+", 1, 0.0, 0.0, 0.0, None, Some("[H+]")),
@@ -586,6 +627,7 @@ pub fn seed_species() -> Vec<SpeciesRecord> {
 
     // Optical records are the seed rows of `optics/records.rs` (data/optics_seed.json), looked up by species id.
 
+    attach_redox_couples(&mut records);
     crate::db::seed_vle::attach_vle_data(&mut records);
     crate::db::seed_phases::attach_phase_data(&mut records);
     records.extend(indicator_records());

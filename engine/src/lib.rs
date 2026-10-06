@@ -39,7 +39,6 @@ pub mod network_generator;
 pub mod db;
 pub mod thermo;
 pub mod gem;
-pub mod energy_balance;
 pub mod heat_transfer;
 pub mod phases;
 pub mod volume;

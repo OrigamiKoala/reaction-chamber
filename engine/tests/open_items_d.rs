@@ -177,12 +177,14 @@ fn expansion_is_bounded_by_thermodynamics_and_size() {
 
 /// Organic oxidation through redox discovery: ethanol and isopropanol reduce permanganate on the minutes scale in acid
 /// (the class rate scale of the oxidation templates), the secondary alcohol faster; tert-butanol has no alpha hydrogen and
-/// no oxidised form; nothing oxidises in plain air.
+/// no oxidised form; nothing oxidises in plain air. (The acid is sulfuric: permanganate oxidises the chloride of a hydrochloric
+/// acid background, the interference that keeps analysts from using HCl in permanganate work, which since the eighth pass the
+/// engine reproduces, so the control with tert-butanol would no longer be inert.)
 #[test]
 fn alcohols_are_oxidised_by_permanganate_but_not_by_air() {
     let rate = |smi: &str| -> f64 {
         let alc = id_of(smi);
-        let mut v = aqueous(&[(&alc, 0.005), ("MnO4-", 2e-4), ("K+", 2e-4), ("H+", 0.01), ("Cl-", 0.01)]);
+        let mut v = aqueous(&[(&alc, 0.005), ("MnO4-", 2e-4), ("K+", 2e-4), ("H+", 0.01), ("SO4-2", 0.005)]);
         v.update_network();
         run(&mut v, 60.0, 0.5);
         let m = v.species_mol.get("MnO4-").copied().unwrap_or(0.0);
@@ -194,7 +196,7 @@ fn alcohols_are_oxidised_by_permanganate_but_not_by_air() {
     assert!(tb < 0.02 * e, "tert-butanol: {:e}", tb);
     // the product is the carbonyl compound / acid, with the element balance kept
     let alc = id_of("CC(C)O");
-    let mut v = aqueous(&[(&alc, 0.005), ("MnO4-", 4e-4), ("K+", 4e-4), ("H+", 0.01), ("Cl-", 0.01)]);
+    let mut v = aqueous(&[(&alc, 0.005), ("MnO4-", 4e-4), ("K+", 4e-4), ("H+", 0.01), ("SO4-2", 0.005)]);
     v.update_network();
     run(&mut v, 300.0, 0.5);
     // acetone, or its hydrate (the group-additivity K of a ketone hydrate is orders of magnitude too high: a known limit)
