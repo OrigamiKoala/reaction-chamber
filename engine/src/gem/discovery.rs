@@ -88,6 +88,8 @@ thread_local! {
     static DISCOVERY_CACHE: std::cell::RefCell<(u64, HashMap<(u8, Vec<String>), CacheEntry>)> = Default::default();
 }
 
+/// Standard Gibbs energy per electron (J/mol e-) above which a redox reaction is never proposed.
+const REDOX_UPHILL_LIMIT_J_PER_E: f64 = 150_000.0;
 /// Largest temperature drift (K) over which cached reaction enthalpies and Gibbs energies are reused.
 const THERMO_REUSE_K: f64 = 0.5;
 const CACHE_MAX_ENTRIES: usize = 64;
@@ -114,7 +116,14 @@ fn cached_discovery(kind: u8, key: Vec<String>, t_k: f64, p_pa: f64, build: impl
             .iter()
             .zip(&entry.thermo)
             .filter_map(|(st, th)| {
-                th.map(|(dh, dg)| DiscoveredReaction {
+                th.filter(|&(_, dg)| match st.kind {
+                    // a redox reaction that is uphill by more than `REDOX_UPHILL_LIMIT_J_PER_E` per electron at standard states
+                    // cannot be brought downhill by any concentration a vessel holds (RT ln Q over 17 decades is 100 kJ):
+                    // it is not a candidate (K+ -> K(s) by any oxidant, Fe(s) from Fe2+ by H2)
+                    DiscoveredRxnKind::Redox { z_electrons } => dg <= REDOX_UPHILL_LIMIT_J_PER_E * z_electrons.max(1.0),
+                    _ => true,
+                })
+                .map(|(dh, dg)| DiscoveredReaction {
                     species_names: st.species_names.clone(),
                     nu: st.nu.clone(),
                     delta_h0_j: dh,
@@ -254,6 +263,17 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
             }
             if super::redox::is_derived_ion_form(&rec.id) {
                 continue;
+            }
+            // a molecular solid that has a dissolved form of its own (I2(s) / I2(aq)) is not made by a redox reaction in
+            // solution: the redox makes the dissolved molecule and the phase flash crystallises it (solubility, Schroder-van
+            // Laar), so a second copy of every reaction for the solid is redundant. A solid already present still reacts.
+            if aqueous_env && rec.id.ends_with("(s)") && !present_species.iter().any(|s| s == &rec.id) {
+                let has_dissolved = store.get_by_formula(&rec.identity.formula).iter().any(|t| {
+                    t.id != rec.id && t.identity.charge == 0 && !t.id.ends_with("(l)") && !t.id.ends_with("(g)") && !t.id.ends_with("(s)") && t.has_phase("aq")
+                });
+                if has_dissolved {
+                    continue;
+                }
             }
             // in water a compound solid forms only through its precipitation model (solids already present still react as
             // reactants: the partner side of a couple is what gets *made*)

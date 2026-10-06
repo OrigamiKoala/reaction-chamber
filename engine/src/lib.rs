@@ -44,6 +44,7 @@ pub mod phases;
 pub mod volume;
 pub mod props;
 pub mod activity;
+pub mod thermal_props;
 pub mod transport;
 pub mod transfer;
 pub mod vessel_transfer;

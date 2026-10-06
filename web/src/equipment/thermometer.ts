@@ -3,12 +3,12 @@ import { VesselSnapshot } from '../types/sim';
 import { GlasswareMeshBundle } from '../bench/glassware';
 import { createGlassMesh } from '../render/glass_material';
 import { thermometerScaleTexture } from '../render/textures';
-import { BulbState, stepBulb } from './probe_math';
+import { BulbState, liquidPropsFromLayer, stepBulb } from './probe_math';
 
 /**
  * 28 cm glass laboratory thermometer (red spirit, -20..110 °C, white enamel scale backing).
  * Local origin = bulb tip, axis +Y. Instrument model: two-node bulb (glass wall + spirit core, `probe_math.ts`: film
- * coefficient from the stirring, conduction in the spirit, about 8 s stirred and 14 s unstirred), 0.1 K resolution.
+ * coefficient from the stirring and the properties of the liquid layer, conduction in the spirit, about 8 s stirred and 14 s unstirred), 0.1 K resolution.
  * The scene moves the whole `group` (see BenchScene.setSelectedVessel).
  */
 export const THERMOMETER_RADIUS = 0.34;
@@ -91,7 +91,9 @@ export class Thermometer {
 
   public update(snap: VesselSnapshot | null, dt: number, stirRpm = 0) {
     if (snap) {
-      stepBulb(this.bulb, snap.temperature_k, stirRpm, Math.min(Math.max(dt, 0), 5));
+      // the bulb sits in the main liquid: the layer holding most of the volume sets the film coefficient
+      const main = snap.layers.reduce<(typeof snap.layers)[number] | null>((a, l) => (a === null || l.volume_ml > a.volume_ml ? l : a), null);
+      stepBulb(this.bulb, snap.temperature_k, stirRpm, Math.min(Math.max(dt, 0), 5), liquidPropsFromLayer(main, snap.temperature_k));
       this.displayedTempK = this.bulb.spiritK;
     }
 

@@ -44,8 +44,18 @@ export const BULB = (() => {
 })();
 const BULB_AREA_M2 = Math.PI * BULB.diameterM * BULB.lengthM;
 
-/** Water near the bulb: kinematic viscosity (m2/s), Prandtl number, conductivity (W/(m K)), expansivity (1/K), diffusivity. */
-function waterProps(tK: number) {
+/** The liquid around the bulb: the engine's layer values (`LiquidLayer` viscosity, specific heat, conductivity, expansivity, density). */
+export interface LiquidProps {
+  /** kinematic viscosity (m2/s), Prandtl number, conductivity (W/(m K)), expansivity (1/K), thermal diffusivity (m2/s) */
+  nu: number;
+  pr: number;
+  k: number;
+  beta: number;
+  alpha: number;
+}
+
+/** Water, used when the snapshot has no layer data (a fit around room temperature). */
+function waterProps(tK: number): LiquidProps {
   const nu = 1.0e-6 * Math.exp(-0.0245 * (tK - 293.15));
   const pr = 7.0 * Math.exp(-0.026 * (tK - 293.15));
   const k = 0.598 + 0.0012 * (tK - 293.15);
@@ -53,18 +63,32 @@ function waterProps(tK: number) {
   return { nu, pr, k, beta, alpha: nu / pr };
 }
 
+/** Properties of the liquid layer a probe is in, from the snapshot (SI). Absent fields fall back to water. */
+export function liquidPropsFromLayer(
+  layer: { density_g_ml?: number; viscosity_mpa_s?: number; specific_heat_j_g_k?: number; thermal_conductivity_w_m_k?: number; expansivity_per_k?: number } | null | undefined,
+  tK: number,
+): LiquidProps {
+  if (!layer || !(layer.viscosity_mpa_s! > 0) || !(layer.thermal_conductivity_w_m_k! > 0) || !(layer.specific_heat_j_g_k! > 0) || !(layer.density_g_ml! > 0)) return waterProps(tK);
+  const rho = layer.density_g_ml! * 1000;
+  const mu = layer.viscosity_mpa_s! * 1e-3;
+  const cp = layer.specific_heat_j_g_k! * 1000;
+  const k = layer.thermal_conductivity_w_m_k!;
+  const alpha = k / (rho * cp);
+  return { nu: mu / rho, pr: (mu * cp) / k, k, beta: Math.max(0.5e-4, layer.expansivity_per_k ?? 2e-4), alpha };
+}
+
 /** Churchill-Chu natural convection around a horizontal cylinder, W/(m2 K). */
-export function filmNatural(tLiquidK: number, deltaK: number): number {
-  const w = waterProps(tLiquidK);
+export function filmNatural(tLiquidK: number, deltaK: number, props?: LiquidProps): number {
+  const w = props ?? waterProps(tLiquidK);
   const ra = (9.81 * w.beta * Math.max(deltaK, 0.2) * BULB.diameterM ** 3) / (w.nu * w.alpha);
   const nu = (0.6 + (0.387 * ra ** (1 / 6)) / (1 + (0.559 / w.pr) ** (9 / 16)) ** (8 / 27)) ** 2;
   return (nu * w.k) / BULB.diameterM;
 }
 
 /** Churchill-Bernstein forced convection across a cylinder, W/(m2 K), for a stirrer at `rpm` (bar 3 cm: the liquid at the wall moves at a quarter of the tip speed). */
-export function filmForced(tLiquidK: number, rpm: number): number {
+export function filmForced(tLiquidK: number, rpm: number, props?: LiquidProps): number {
   if (rpm <= 0) return 0;
-  const w = waterProps(tLiquidK);
+  const w = props ?? waterProps(tLiquidK);
   const u = 0.25 * Math.PI * 0.03 * (rpm / 60);
   const re = (u * BULB.diameterM) / w.nu;
   const nu = 0.3 + (0.62 * Math.sqrt(re) * w.pr ** (1 / 3)) / (1 + (0.4 / w.pr) ** (2 / 3)) ** 0.25 * (1 + (re / 282000) ** (5 / 8)) ** 0.8;
@@ -72,9 +96,9 @@ export function filmForced(tLiquidK: number, rpm: number): number {
 }
 
 /** Combined film coefficient (W/(m2 K)). */
-export function bulbFilmCoefficient(tLiquidK: number, deltaK: number, stirRpm: number): number {
-  const hn = filmNatural(tLiquidK, deltaK);
-  const hf = filmForced(tLiquidK, stirRpm);
+export function bulbFilmCoefficient(tLiquidK: number, deltaK: number, stirRpm: number, props?: LiquidProps): number {
+  const hn = filmNatural(tLiquidK, deltaK, props);
+  const hf = filmForced(tLiquidK, stirRpm, props);
   return (hn ** 3 + hf ** 3) ** (1 / 3);
 }
 
@@ -84,11 +108,11 @@ export interface BulbState {
 }
 
 /** Advances the two-node bulb by `dt` seconds in liquid at `tLiquidK` (explicit sub-steps well inside the fastest time constant, ~0.1 s). */
-export function stepBulb(s: BulbState, tLiquidK: number, stirRpm: number, dt: number): void {
+export function stepBulb(s: BulbState, tLiquidK: number, stirRpm: number, dt: number, props?: LiquidProps): void {
   const n = Math.max(1, Math.ceil(dt / 0.02));
   const h = dt / n;
   for (let i = 0; i < n; i++) {
-    const film = bulbFilmCoefficient(tLiquidK, Math.abs(tLiquidK - s.glassK), stirRpm) * BULB_AREA_M2;
+    const film = bulbFilmCoefficient(tLiquidK, Math.abs(tLiquidK - s.glassK), stirRpm, props) * BULB_AREA_M2;
     const qIn = film * (tLiquidK - s.glassK);
     const qWall = BULB.gSpiritWK * (s.glassK - s.spiritK);
     s.glassK += ((qIn - qWall) / BULB.cGlassJK) * h;

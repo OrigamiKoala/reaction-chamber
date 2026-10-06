@@ -63,4 +63,27 @@ ok('the reading converges to the liquid temperature and never overshoots', () =>
   assert.ok(t.glassK > t.spiritK);
 });
 
+ok('the liquid around the bulb sets the film: a viscous oil answers slower than water, a layer without data is water', () => {
+  const water = { density_g_ml: 1.0, viscosity_mpa_s: 0.89, specific_heat_j_g_k: 4.18, thermal_conductivity_w_m_k: 0.607, expansivity_per_k: 2.6e-4 };
+  const oil = { density_g_ml: 0.9, viscosity_mpa_s: 60, specific_heat_j_g_k: 1.9, thermal_conductivity_w_m_k: 0.14, expansivity_per_k: 7e-4 };
+  const pw = P.liquidPropsFromLayer(water, 298.15);
+  const po = P.liquidPropsFromLayer(oil, 298.15);
+  assert.ok(Math.abs(pw.pr - 6.1) < 0.3, `Pr water ${pw.pr}`);
+  const hw = P.bulbFilmCoefficient(298.15, 5, 0, pw);
+  const ho = P.bulbFilmCoefficient(298.15, 5, 0, po);
+  assert.ok(ho < 0.5 * hw, `oil ${ho} vs water ${hw}`);
+  const stepsTo = (props) => {
+    const s = { glassK: 299, spiritK: 299 };
+    let t = 0;
+    while (s.spiritK < 299.632 && t < 3000) {
+      P.stepBulb(s, 300, 0, 0.05, props);
+      t += 0.05;
+    }
+    return t;
+  };
+  assert.ok(stepsTo(po) > 1.5 * stepsTo(pw));
+  const fb = P.liquidPropsFromLayer(null, 298.15);
+  assert.ok(Math.abs(fb.k - 0.598) < 0.05);
+});
+
 console.log(`${n} probe maths checks passed`);

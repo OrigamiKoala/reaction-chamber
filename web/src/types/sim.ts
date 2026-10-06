@@ -48,6 +48,11 @@ export interface LiquidLayer {
   ph_junction_mv?: number;
   /** Mole fraction of water among the layer's molecules (ions left out). */
   water_mole_fraction?: number;
+  /** Transport properties of the layer at the vessel's temperature (a probe's film coefficient). */
+  viscosity_mpa_s?: number;
+  specific_heat_j_g_k?: number;
+  thermal_conductivity_w_m_k?: number;
+  expansivity_per_k?: number;
 }
 
 export type SolidKind = 'powder' | 'crystal' | 'metal' | 'gel' | 'curds';

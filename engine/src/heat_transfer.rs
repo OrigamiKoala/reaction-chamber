@@ -82,6 +82,21 @@ pub fn bath_coupling_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred
     u * (a_wet + a_base)
 }
 
+/// Conductance (W/K) of the liquid film between the contents and the glass wall (wetted wall and base).
+pub fn film_conductance_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64, stirred: bool) -> f64 {
+    let (a_wet, a_base, _, _) = vessel_areas(r_m, capacity_ml, liquid_ml);
+    let h_in = if stirred { H_LIQUID_STIRRED } else { H_LIQUID_STILL };
+    h_in * (a_wet + a_base)
+}
+
+/// Conductance (W/K) between the glass wall node (mid-wall) and a bath around the wetted wall and base: half the wall's own
+/// conduction in series with the bath film.
+pub fn bath_outer_conductance_w_per_k(r_m: f64, capacity_ml: f64, liquid_ml: f64) -> f64 {
+    let (a_wet, a_base, _, _) = vessel_areas(r_m, capacity_ml, liquid_ml);
+    let u = 1.0 / (0.5 * WALL_THICKNESS_M / WALL_CONDUCTIVITY + 1.0 / H_BATH);
+    u * (a_wet + a_base)
+}
+
 /// Highest surface temperature (K) a laboratory hot plate's ceramic top reaches (its thermostat / element limit: about 350 C
 /// on the common stirrer-hotplates; the knob sets the *power* up to what this temperature can pass on).
 pub const HOT_PLATE_MAX_SURFACE_K: f64 = 623.15;

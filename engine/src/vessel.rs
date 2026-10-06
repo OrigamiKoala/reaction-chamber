@@ -15,9 +15,6 @@ use crate::conservation::{self, ElementError, ElementLedger};
 use crate::physics::R_GAS;
 use crate::activity::ActivityModel;
 
-/// Fraction of the glass heat capacity that follows the contents' temperature on the time scale of a tick (the one
-/// glass factor used by dosing, portions, equilibria heat and the thermal step; Stage 2 replaces it with a glass node).
-pub(crate) const GLASS_THERMAL_FRACTION: f64 = 0.15;
 /// Specific heat of borosilicate glass, J/(g K).
 pub(crate) const GLASS_CP_J_G_K: f64 = 0.84;
 /// Below this amount of water (mol, ~18 ng) no aqueous phase exists. Every other aqueous tolerance scales with volume.
@@ -77,6 +74,16 @@ pub struct LiquidLayer {
     /// Mole fraction of water among the layer's molecules (ions left out).
     #[serde(default)]
     pub water_mole_fraction: f64,
+    /// Dynamic viscosity (mPa s), specific heat (J/(g K)), thermal conductivity (W/(m K)) and volumetric thermal expansivity
+    /// (1/K) of the layer at the vessel's temperature: what a probe's film coefficient needs (`thermal_props`, `props`).
+    #[serde(default)]
+    pub viscosity_mpa_s: f64,
+    #[serde(default)]
+    pub specific_heat_j_g_k: f64,
+    #[serde(default)]
+    pub thermal_conductivity_w_m_k: f64,
+    #[serde(default)]
+    pub expansivity_per_k: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -455,6 +462,9 @@ pub struct Vessel {
     /// (the reaction and phase-change heats are internal). With `enthalpy_state_j` it makes the energy audit of
     /// `vessel_energy`.
     pub external_energy_j: f64,
+    /// Temperature (K) of the glass wall, the second thermal node of the vessel: the contents exchange heat with it through
+    /// the liquid film, the hot plate, the bath and the room act on it (`step_thermal`).
+    pub glass_temp_k: f64,
     /// Vapour volume flow (mL/s) and mass flow (g/s) of every liquid that boiled in the last step (water, ethanol,
     /// inert compounds): the visual boil state is derived from it, not from a water-only temperature test.
     pub boil_vapour_ml_s: f64,
@@ -551,6 +561,7 @@ impl Vessel {
             flame_power_w: 0.0,
             recent_reaction_heat_w: 0.0,
             external_energy_j: 0.0,
+            glass_temp_k: temp_k,
             boil_vapour_ml_s: 0.0,
             boil_mass_g_s: 0.0,
             eq_moved: false,
@@ -974,9 +985,17 @@ impl Vessel {
         Ok(())
     }
 
-    /// Heat capacity (J/K) of the part of the glass that follows the contents (see `GLASS_THERMAL_FRACTION`).
+    /// Heat capacity (J/K) the glass adds to an *instantaneous* change of the contents' temperature (a dose mixing in, a
+    /// reaction or a phase change releasing heat, a dissolution): none. The glass is a node of its own (`glass_node_cp`) that
+    /// the contents only reach through the liquid film, so an event warms or cools the contents alone and the wall follows
+    /// over its own time constant (`step_thermal`).
     pub(crate) fn glass_heat_capacity(&self) -> f64 {
-        self.config.glass_mass_g * GLASS_CP_J_G_K * GLASS_THERMAL_FRACTION
+        0.0
+    }
+
+    /// Heat capacity (J/K) of the glass wall node.
+    pub(crate) fn glass_node_cp(&self) -> f64 {
+        self.config.glass_mass_g.max(0.0) * GLASS_CP_J_G_K
     }
 
     pub fn remove_liquid(&mut self, volume_ml: f64, include_solids: bool) -> Result<Portion, String> {
@@ -1515,32 +1534,79 @@ impl Vessel {
     }
 
     fn step_thermal(&mut self, dt_s: f64, reaction_heat_joules: f64) {
-        let cp_contents = self.contents_heat_capacity(); // J/K
-        let cp_glass = self.glass_heat_capacity(); // J/K
-        let cp_total = (cp_contents + cp_glass).max(1.0);
+        let cp_c = self.contents_heat_capacity().max(1e-3); // J/K, the contents
+        let cp_g = self.glass_node_cp(); // J/K, the glass wall
+        let r_m = self.config.inner_radius_cm / 100.0;
+        let liquid_ml = self.total_liquid_volume_ml();
+        let stirred = self.stir_rpm() > 0.0;
+        // a vessel without glass mass is a single node (the glass follows the contents)
+        let two_node = cp_g >= 1.0;
+        if !two_node {
+            self.glass_temp_k = self.temperature_k;
+        }
 
-        let mut net_energy_j = reaction_heat_joules;
-        let mut external_j = 0.0;
-
-        // External heater / hot plate
+        // What acts on the glass wall: the hot plate or burner under it, the bath around it, the room on it. The contents
+        // exchange heat with the wall through the liquid film.
         let heater_w = self.controls.heater_w.unwrap_or(0.0);
         let burner_w = self.controls.burner_w.unwrap_or(0.0);
         // a hot plate passes on what its surface temperature allows (`heat_transfer::hot_plate_heat_w`): the knob sets the
         // power, the plate top cannot exceed its limit, so a vessel emptied by boiling does not run away to 1300 K
-        let plate_w = crate::heat_transfer::hot_plate_heat_w(heater_w, self.temperature_k, self.room_k, self.config.inner_radius_cm / 100.0);
-        external_j += (plate_w + burner_w) * dt_s;
+        let plate_w = crate::heat_transfer::hot_plate_heat_w(heater_w, self.glass_temp_k, self.room_k, r_m);
+        let q_source_w = plate_w + burner_w;
 
-        // Thermal bath coupling: liquid film, glass wall and bath film in series over the wetted wall and base
-        if let Some(t_bath) = self.bath_k {
-            let r_m = self.config.inner_radius_cm / 100.0;
-            let k_bath = self.controls.bath_coupling_w_k.unwrap_or_else(|| crate::heat_transfer::bath_coupling_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.stir_rpm() > 0.0));
-            let q_into_vessel_w = k_bath * (t_bath - self.temperature_k);
-            external_j += q_into_vessel_w * dt_s;
-            // a finite bath pays for it: what the vessel takes leaves the bath's ice and water, the room warms or cools the
-            // bath through its open surface and walls
+        // Thermal bath: the glass wall faces it through the wall and the bath film. An explicit coupling (a thermostat of a
+        // test, `bath_coupling_w_k`) is the contents-to-bath coupling as a whole and acts on the contents directly.
+        let mut g_bath_glass = 0.0;
+        let mut g_bath_direct = 0.0;
+        let t_bath = self.bath_k;
+        if t_bath.is_some() {
+            match self.controls.bath_coupling_w_k {
+                Some(k) => g_bath_direct = k,
+                None if two_node => g_bath_glass = crate::heat_transfer::bath_outer_conductance_w_per_k(r_m, self.config.capacity_ml, liquid_ml),
+                None => g_bath_direct = crate::heat_transfer::bath_coupling_w_per_k(r_m, self.config.capacity_ml, liquid_ml, stirred),
+            }
+        }
+        // Loss to the room from the glass wall: natural convection and radiation, the base to the bench (the coefficient
+        // follows the liquid height and the wall temperature, so a vessel cools fast while hot and slowly near room temperature)
+        let g_amb = crate::heat_transfer::ambient_loss_w_per_k(r_m, self.config.capacity_ml, liquid_ml, self.glass_temp_k, self.room_k, t_bath.is_some());
+        // the liquid film between the contents and the wall
+        let g_in = if two_node { crate::heat_transfer::film_conductance_w_per_k(r_m, self.config.capacity_ml, liquid_ml, stirred) } else { 0.0 };
+
+        // Backward Euler on the two nodes (unconditionally stable for any step and any time scale):
+        //   (Cc/dt + Gin + Gbd) Tc' - Gin Tg'              = Cc/dt Tc + Q + Gbd Tbath
+        //  -Gin Tc' + (Cg/dt + Gin + Gamb + Ggb) Tg'      = Cg/dt Tg + Qsrc + Gamb Troom + Ggb Tbath
+        let tc0 = self.temperature_k;
+        let tg0 = self.glass_temp_k;
+        let tb = t_bath.unwrap_or(self.room_k);
+        let q_c = reaction_heat_joules / dt_s;
+        let (tc1, tg1) = if two_node {
+            let a11 = cp_c / dt_s + g_in + g_bath_direct;
+            let a12 = -g_in;
+            let a22 = cp_g / dt_s + g_in + g_amb + g_bath_glass;
+            let b1 = cp_c / dt_s * tc0 + q_c + g_bath_direct * tb;
+            let b2 = cp_g / dt_s * tg0 + q_source_w + g_amb * self.room_k + g_bath_glass * tb;
+            let det = a11 * a22 - a12 * a12;
+            ((b1 * a22 - a12 * b2) / det, (a11 * b2 - a12 * b1) / det)
+        } else {
+            // one node: the sources, the bath and the room all act on the contents
+            let t1 = (cp_c / dt_s * tc0 + q_c + q_source_w + g_amb * self.room_k + g_bath_direct * tb) / (cp_c / dt_s + g_amb + g_bath_direct);
+            (t1, t1)
+        };
+
+        // energy the surroundings put into the vessel (contents + glass) over the step, from the new temperatures
+        let q_bath_w = g_bath_direct * (tb - tc1) + g_bath_glass * (tb - tg1);
+        let q_amb_w = g_amb * (if two_node { tg1 } else { tc1 } - self.room_k);
+        let external_j = (q_source_w + q_bath_w - q_amb_w) * dt_s;
+        self.external_energy_j += external_j;
+        self.temperature_k = tc1;
+        self.glass_temp_k = tg1;
+
+        // a finite bath pays for what the vessel takes: it leaves the bath's ice and water, the room warms or cools the bath
+        // through its open surface and walls
+        if let Some(t_bath) = t_bath {
             if self.bath.is_some() {
-                let (bath_t, bath_water_g) = self.bath.as_ref().map(|b| (b.t_k, b.water_g)).unwrap_or((t_bath, 0.0));
                 let r_bath = 1.75 * r_m;
+                let (bath_t, bath_water_g) = self.bath.as_ref().map(|b| (b.t_k, b.water_g)).unwrap_or((t_bath, 0.0));
                 // the open surface of the bath lets its water evaporate into the room's air (a hot bath steams and shrinks)
                 let (evap_mol_s, evap_w, evap_g_s) = if bath_water_g > 0.0 {
                     self.bath_evaporation(bath_t, std::f64::consts::PI * (r_bath * r_bath - r_m * r_m).max(0.0))
@@ -1551,23 +1617,13 @@ impl Vessel {
                 if let Some(b) = &mut self.bath {
                     let volume_ml = (b.mass_g() / 0.998).max(1.0);
                     let g_room = crate::heat_transfer::ambient_loss_w_per_k(r_bath, volume_ml * 1.25, volume_ml, b.t_k, self.room_k, false).max(0.5);
-                    b.step(q_into_vessel_w + evap_w, g_room, self.room_k, dt_s);
+                    // what the vessel takes leaves the bath
+                    b.step(q_bath_w + evap_w, g_room, self.room_k, dt_s);
                     b.lose_water(evap_g_s * dt_s);
                     self.bath_k = Some(b.t_k);
                 }
             }
         }
-
-        // Loss to the room: natural convection and radiation from the wall, conduction through the base (the coefficient
-        // follows the liquid height and the temperature, so a vessel cools fast while hot and slowly near room temperature)
-        let r_m = self.config.inner_radius_cm / 100.0;
-        let g_ambient = crate::heat_transfer::ambient_loss_w_per_k(r_m, self.config.capacity_ml, self.total_liquid_volume_ml(), self.temperature_k, self.room_k, self.bath_k.is_some());
-        external_j -= g_ambient * (self.temperature_k - self.room_k) * dt_s;
-        net_energy_j += external_j;
-        self.external_energy_j += external_j;
-
-        let delta_t = net_energy_j / cp_total;
-        self.temperature_k += delta_t;
 
         // Solid-liquid and liquid-liquid equilibrium at conserved enthalpy: freezing and melting plateaus, dissolution
         // and crystallisation with their heats, immiscible phases (`vessel_phase`).
@@ -1576,8 +1632,14 @@ impl Vessel {
         // Boiling and evaporation of every volatile liquid (open vessel): the bubble point of the actual mixture at the
         // atmosphere's pressure, and evaporation toward the atmosphere's partial pressures below it (see `vessel_vle`).
         let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
+        let (t_mix, he_before) = (self.temperature_k, self.excess_enthalpy_at(self.temperature_k));
         self.step_boil_open(dt_s, cp_total);
         self.step_evaporation_open(dt_s, cp_total);
+        // the vapour is an ideal gas: the excess enthalpy the liquid gained or lost by what left it is paid by the contents
+        self.book_vapour_excess_enthalpy(he_before, t_mix);
+        if !two_node {
+            self.glass_temp_k = self.temperature_k;
+        }
     }
 
     fn step_headspace(&mut self, _dt_s: f64) {
@@ -1587,8 +1649,10 @@ impl Vessel {
         }
         // isochoric vapour-liquid flash of the closed gas inventory (air, vapour, evolved gas) at the headspace volume
         let cp_total = (self.contents_heat_capacity() + self.glass_heat_capacity()).max(1.0);
+        let (t_mix, he_before) = (self.temperature_k, self.excess_enthalpy_at(self.temperature_k));
         self.step_sealed_sublimation(cp_total);
         let p_pa = self.step_sealed_flash(cp_total);
+        self.book_vapour_excess_enthalpy(he_before, t_mix);
         self.pressure_atm = p_pa / 101325.0;
 
         let pop_thresh = self.config.stopper_pop_atm.unwrap_or(2.2);
@@ -1636,6 +1700,7 @@ impl Vessel {
                 (sp, name)
             };
             let n_layer = crate::props::lorentz_lorenz_refractive_index(&v.species_mol, v.volume_ml);
+            let thermal = self.layer_thermal_properties(&v.species_mol, v.volume_ml, v.mass_g);
             let po = self.phase_optics(&v.species_mol, v.volume_ml, lead_species.as_deref());
             let (scatter, albedo) = if idx == 0 { self.suspension_optics(n_layer) } else { (vec![0.0; optics::N_BINS], vec![1.0; optics::N_BINS]) };
             layers.push(LiquidLayer {
@@ -1655,6 +1720,10 @@ impl Vessel {
                 ph_activity: if aqueous && idx == 0 { electrode.1 } else { None },
                 ph_junction_mv: if aqueous && idx == 0 { electrode.2 } else { None },
                 water_mole_fraction: if aqueous { electrode.3 } else { 0.0 },
+                viscosity_mpa_s: thermal.0,
+                specific_heat_j_g_k: thermal.1,
+                thermal_conductivity_w_m_k: thermal.2,
+                expansivity_per_k: thermal.3,
             });
         }
         // densest at the bottom (first in the list for rendering order)

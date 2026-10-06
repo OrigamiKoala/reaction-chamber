@@ -103,6 +103,10 @@ impl LiquidPhase {
             ph_activity: None,
             ph_junction_mv: None,
             water_mole_fraction: 0.0,
+            viscosity_mpa_s: 0.0,
+            specific_heat_j_g_k: 0.0,
+            thermal_conductivity_w_m_k: 0.0,
+            expansivity_per_k: 0.0,
         }
     }
 }

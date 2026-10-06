@@ -192,6 +192,24 @@ impl Vessel {
         self.excess_enthalpy_of(&phases, self.temperature_k)
     }
 
+    /// Total excess (mixing) enthalpy of the liquids at temperature `t_k`, J.
+    pub fn excess_enthalpy_at(&self, t_k: f64) -> f64 {
+        let phases: Vec<&HashMap<String, f64>> = self.liquid_maps().collect();
+        self.excess_enthalpy_of(&phases, t_k).0
+    }
+
+    /// Charges the contents for the change of the liquids' excess enthalpy that a vapour leaving or returning caused
+    /// (`he_before` was taken at `t_k` before the change): the heat of vaporisation of a mixture is the pure latent heat minus
+    /// the partial excess enthalpy of the component (an ideal gas carries none), so what the liquid gained or lost in excess
+    /// enthalpy is paid by the sensible heat. Positive change = absorbed = the contents cool.
+    pub fn book_vapour_excess_enthalpy(&mut self, he_before: f64, t_k: f64) {
+        let q = self.excess_enthalpy_at(t_k) - he_before;
+        if q.is_finite() && q.abs() > 1e-9 {
+            let cp = self.contents_heat_capacity().max(1.0);
+            self.temperature_k -= q / cp;
+        }
+    }
+
     /// Total excess (mixing) enthalpy of the liquids, J.
     pub fn excess_enthalpy_j(&self) -> f64 {
         self.excess_enthalpy_now().0

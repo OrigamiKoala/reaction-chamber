@@ -18,3 +18,6 @@ pipeline/cache/
 
 # built WASM engine (cd engine && cargo build --release --target wasm32-unknown-unknown && wasm-bindgen ... --out-dir ../web/src/wasm/engine --target web)
 web/src/wasm/
+
+# raw downloads of external databases (see docs/plans/data-acquisition-plan.md)
+pipeline/raw/
