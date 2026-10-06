@@ -171,7 +171,7 @@ async function initApp() {
       temperature: safe(() => ins?.thermometer?.readout().formatted, snap ? `${(snap.temperature_k - 273.15).toFixed(1)} °C` : '—'),
       ph: safe(() => ins?.phMeter?.readout().formatted, snap?.ph != null ? snap.ph.toFixed(2) : '—'),
       mass: safe(() => ins?.balance?.readout().formatted, snap ? `${snap.contents_mass_g.toFixed(2)} g` : '—'),
-      pressure: safe(() => ins?.pressureGauge?.readout().formatted, snap ? `${(snap.pressure_atm - 1).toFixed(2)} atm (g)` : '—'),
+      pressure: safe(() => ins?.pressureGauge?.readout().formatted, snap ? `${(snap.pressure_atm - (snap.ambient_atm ?? 1)).toFixed(2)} atm (g)` : '—'),
     };
   };
 

@@ -241,7 +241,9 @@ fn test_m5_demo4_catalysed_h2o2_decomposition() {
     }
 
     let delta_t = v.temperature_k - t_init;
-    assert!(delta_t >= 8.0 && delta_t <= 20.0, "Delta T {:.1} K should be between +10 and +15 K", delta_t);
+    // (the glass wall is a node of its own and takes part of the heat over the 40 s: 7.6 K where the old stand-in of 15 % of the
+    // glass gave 8-10 K; the full-glass calorimeter value of this reaction is about 7 K)
+    assert!(delta_t >= 6.0 && delta_t <= 20.0, "Delta T {:.1} K should be between +6 and +15 K", delta_t);
     let o2_evolved = v.gas_fluxes.iter().any(|g| g.species == "O2(g)") || v.mass_lost_g > 0.2;
     assert!(o2_evolved, "O2 gas must evolve during catalysed decomposition");
 }
@@ -458,15 +460,16 @@ fn test_m5_demo10_water_heating_boiling_steam() {
         ..Default::default()
     });
 
-    // Run 30 seconds
-    for _ in 0..60 {
+    // Run 45 seconds (the plate heats the glass base, which passes the heat on through the liquid film: about 0.9 K/s)
+    for _ in 0..90 {
         v.step(0.5).unwrap();
     }
 
     assert!(v.temperature_k > 320.0, "Temperature rises under 600 W heat");
 
-    // Force to boiling
+    // Force to boiling (the wall with it: it is a thermal node of its own)
     v.temperature_k = 373.15;
+    v.glass_temp_k = 373.15;
     v.step(1.0).unwrap();
     let snap = v.snapshot();
     // Stage 4: the plateau is the bubble point of the liquid at the atmosphere's pressure (water: 373.12 K at 1 atm,

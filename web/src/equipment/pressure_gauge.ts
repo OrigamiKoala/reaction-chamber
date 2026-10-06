@@ -12,6 +12,8 @@ export class PressureGauge {
   private needle: THREE.Mesh;
   private dial = new THREE.Group();
   private displayedPressureAtm: number = 1.0;
+  /** Pressure outside the vessel (the engine's atmosphere), the zero of the gauge reading. */
+  private ambientAtm: number = 1.0;
   private tauSeconds: number = 0.5;
   private attached = false;
 
@@ -123,20 +125,21 @@ export class PressureGauge {
 
   public update(snap: VesselSnapshot | null, dt: number) {
     if (!snap) return;
+    this.ambientAtm = snap.ambient_atm ?? 1.0;
     if (!this.attached || !snap.sealed || snap.burst) {
       this.group.visible = false;
-      this.displayedPressureAtm += (1.0 - this.displayedPressureAtm) * Math.min(1, dt / this.tauSeconds);
+      this.displayedPressureAtm += (this.ambientAtm - this.displayedPressureAtm) * Math.min(1, dt / this.tauSeconds);
       return;
     }
     this.group.visible = true;
     const alpha = Math.min(1.0, dt / this.tauSeconds);
     this.displayedPressureAtm += (snap.pressure_atm - this.displayedPressureAtm) * alpha;
-    this.setNeedle(this.displayedPressureAtm - 1.0);
+    this.setNeedle(this.displayedPressureAtm - this.ambientAtm);
   }
 
   public readout(): { pressure_atm: number; gauge_atm: number; formatted: string } {
     const pAbs = Math.round(this.displayedPressureAtm * 100) / 100;
-    const pGauge = Math.max(0.0, Math.round((pAbs - 1.0) * 100) / 100);
+    const pGauge = Math.max(0.0, Math.round((pAbs - this.ambientAtm) * 100) / 100);
     return {
       pressure_atm: pAbs,
       gauge_atm: pGauge,

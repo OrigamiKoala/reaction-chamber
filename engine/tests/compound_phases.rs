@@ -106,15 +106,18 @@ fn naphthalene_melts_with_a_plateau_and_latent_heat() {
     let mut plateau_j = 0.0;
     let mut saw_partial = false;
     let mut t_before_melt_ok = true;
-    for _ in 0..1500 {
-        let t = v.temperature_k;
+    // (the glass wall is a node of its own: it has to be heated too, so the melt takes minutes, not a minute; the heat that goes
+    // into the contents is what the surroundings supplied minus what warmed the wall)
+    let wall_cp = 50.0 * 0.84;
+    for _ in 0..6000 {
+        let (ext0, tg0) = (v.external_energy_j, v.glass_temp_k);
         let l0 = liq(&v, "C10H8");
         v.step(dt).unwrap();
         let (s1, l1) = (sol(&v, "C10H8(s)"), liq(&v, "C10H8"));
         if l0 < 1e-12 && l1 < 1e-12 && v.temperature_k > tm + 0.05 { t_before_melt_ok = false; }
         if s1 > 1e-9 && l1 > 1e-9 {
             saw_partial = true;
-            plateau_j += (reaction_chamber_engine::heat_transfer::hot_plate_heat_w(150.0, t, 295.15, 0.025) - reaction_chamber_engine::heat_transfer::ambient_loss_w_per_k(0.035, 250.0, v.total_liquid_volume_ml(), t, 295.15, false) * (t - 295.15)) * dt;
+            plateau_j += (v.external_energy_j - ext0) - wall_cp * (v.glass_temp_k - tg0);
             assert!((v.temperature_k - tm).abs() < 0.2, "T {} off the melting plateau", v.temperature_k);
         }
         if s1 <= 1e-9 && l1 > 1e-9 && v.temperature_k > tm + 3.0 { break; }
@@ -172,8 +175,9 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
     let mut saw_flux = false;
     let mut boil_steps = 0;
     let mut lost_at_start = None;
-    for _ in 0..4000 {
-        let t = v.temperature_k;
+    let wall_cp = 50.0 * 0.84; // (the glass wall is a node of its own: the heat into the contents is what the surroundings gave minus what warmed the wall)
+    for _ in 0..8000 {
+        let (ext0, tg0) = (v.external_energy_j, v.glass_temp_k);
         v.step(dt).unwrap();
         if v.gas_fluxes.iter().any(|g| g.species == "C6H12(g)" && g.rate_ml_s > 0.0) {
             saw_flux = true;
@@ -181,7 +185,7 @@ fn low_boiling_liquid_boils_off_with_mass_loss_and_gas_flux() {
                 assert!((v.temperature_k - tb).abs() < 0.01, "T {} should sit at the boiling point", v.temperature_k);
             }
             lost_at_start.get_or_insert(v.mass_lost_g);
-            boil_j += (reaction_chamber_engine::heat_transfer::hot_plate_heat_w(200.0, t, 295.15, 0.025) - 0.5 * (t - 295.15)) * dt;
+            boil_j += (v.external_energy_j - ext0) - wall_cp * (v.glass_temp_k - tg0);
             boil_steps += 1;
         }
         if sp(&v, "C6H12") < 1e-9 { break; }

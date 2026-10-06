@@ -29,6 +29,62 @@ fn is_helper(sp: &str) -> bool {
     sp == crate::db::seed::WATER || sp == crate::db::seed::PROTON || sp == crate::db::seed::HYDROXIDE
 }
 
+/// A kinetic row as the families of its reactants and of its products.
+struct RowFamilies {
+    lhs: BTreeSet<String>,
+    rhs: BTreeSet<String>,
+    reversible: bool,
+}
+
+/// The family of a species: what the fast equilibria and the phases make of one another, i.e. the non-hydrogen elements in lowest
+/// whole-number proportions, so I2(aq), I2(s) and I3- are one family (iodine), SO4-2 and HSO4- another (sulfate), while IO3- or
+/// Br2 are not.
+fn species_family(s: &str) -> String {
+    let base = s.trim_end_matches("(g)").trim_end_matches("(aq)").trim_end_matches("(l)").trim_end_matches("(s)");
+    match crate::ions::species_elements(s).or_else(|| crate::ions::species_elements(base)) {
+        Some(el) => {
+            let mut v: Vec<(String, i64)> = el.iter().filter(|(k, _)| k.as_str() != "H").map(|(k, &n)| (k.clone(), n.round().max(1.0) as i64)).collect();
+            let gcd = |mut a: i64, mut b: i64| {
+                while b != 0 {
+                    (a, b) = (b, a % b);
+                }
+                a
+            };
+            let g = v.iter().fold(0, |acc, (_, n)| gcd(acc, *n)).max(1);
+            v.iter_mut().for_each(|(_, n)| *n /= g);
+            v.sort();
+            format!("{:?}", v)
+        }
+        None => base.to_string(),
+    }
+}
+
+/// True when a registered kinetic row is the same reaction as `rxn`: the same families on each side once the solvent and its
+/// ions are set aside (either direction for a reversible row). A measured rate law replaces the estimated one of the reaction it
+/// describes, whatever form its products leave in; otherwise every variant of the reaction would run beside it.
+fn covered_by_rows(rows: &[RowFamilies], rxn: &DiscoveredReaction, cache: &mut std::collections::HashMap<String, String>) -> bool {
+    if rows.is_empty() {
+        return false;
+    }
+    let mut side = |positive: bool| -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        for &(i, c) in &rxn.nu {
+            if (c > 0.0) != positive {
+                continue;
+            }
+            let sp = rxn.species_names[i].as_str();
+            if is_helper(sp.trim_end_matches("(g)").trim_end_matches("(aq)").trim_end_matches("(l)")) {
+                continue;
+            }
+            let fam = cache.entry(sp.to_string()).or_insert_with(|| species_family(sp)).clone();
+            out.insert(fam);
+        }
+        out
+    };
+    let (lhs, rhs) = (side(false), side(true));
+    rows.iter().any(|k| (k.lhs == lhs && k.rhs == rhs) || (k.reversible && k.lhs == rhs && k.rhs == lhs))
+}
+
 impl Vessel {
     /// What a reaction quotient needs from the vessel at the start of a step: activity coefficients and water activity of
     /// the aqueous solution, its volume, and the partial pressure (Pa) of every gas the reactions can meet (the headspace
@@ -63,20 +119,17 @@ impl Vessel {
         }
     }
 
-    /// True when a registered kinetic row is the same reaction as `rxn` (reactants and products equal once the solvent and
-    /// its ions are set aside; either direction for a reversible row).
-    fn kinetic_row_covers(&self, rxn: &DiscoveredReaction) -> bool {
-        // phase tags of dissolved / liquid / gaseous forms are set aside: a kinetic row that makes O2(g) is the reaction
-        // that makes dissolved O2 (the gas leaves by Henry exchange)
-        let norm = |s: &str| s.trim_end_matches("(g)").trim_end_matches("(aq)").trim_end_matches("(l)").to_string();
-        let strip = |it: &mut dyn Iterator<Item = &str>| -> BTreeSet<String> { it.map(norm).filter(|s| !is_helper(s)).collect() };
-        let lhs = strip(&mut rxn.nu.iter().filter(|&&(_, c)| c < 0.0).map(|&(i, _)| rxn.species_names[i].as_str()));
-        let rhs = strip(&mut rxn.nu.iter().filter(|&&(_, c)| c > 0.0).map(|&(i, _)| rxn.species_names[i].as_str()));
-        self.kinetic_reactions.iter().any(|k| {
-            let kl = strip(&mut k.reactants.keys().map(|s| s.as_str()));
-            let kr = strip(&mut k.products.keys().chain(k.gas_products.keys()).map(|s| s.as_str()));
-            (kl == lhs && kr == rhs) || (k.is_reversible && kl == rhs && kr == lhs)
-        })
+    /// The registered kinetic rows as families (see `covered_by_rows`), computed once per step.
+    fn kinetic_row_families(&self) -> Vec<RowFamilies> {
+        let strip = |it: &mut dyn Iterator<Item = &str>| -> BTreeSet<String> { it.filter(|s| !is_helper(s.trim_end_matches("(g)").trim_end_matches("(aq)").trim_end_matches("(l)"))).map(species_family).collect() };
+        self.kinetic_reactions
+            .iter()
+            .map(|k| RowFamilies {
+                lhs: strip(&mut k.reactants.keys().map(|s| s.as_str())),
+                rhs: strip(&mut k.products.keys().chain(k.gas_products.keys()).map(|s| s.as_str())),
+                reversible: k.is_reversible,
+            })
+            .collect()
     }
 
     /// Amount (mol) of the species `sp` the vessel can give to a reaction; infinite for the gas of an open atmosphere that
@@ -153,7 +206,7 @@ impl Vessel {
             return max_xi;
         }
         let (mut lo, mut hi) = (0.0, max_xi);
-        for _ in 0..80 {
+        for _ in 0..56 {
             let mid = 0.5 * (lo + hi);
             if f(mid) < 0.0 {
                 lo = mid;
@@ -165,14 +218,30 @@ impl Vessel {
     }
 
     /// Relaxation rate (1/s) of a homogeneous electron transfer: the encounter of donor and acceptor at the Marcus
-    /// cross-relation rate constant, k12 x the concentration of the more abundant partner (the scarcer one decays at that
+    /// cross-relation rate constant, k12 x the concentration of the partner of the limiting reactant (which decays at that
     /// pseudo-first-order rate). A gas partner is represented by its dissolved twin.
-    fn redox_homogeneous_rate(&self, rxn: &DiscoveredReaction, ctx: &ActivityContext) -> f64 {
+    fn redox_homogeneous_rate(&self, rxn: &DiscoveredReaction, ctx: &ActivityContext, ionic_strength: f64) -> f64 {
         let (Some(p), DiscoveredRxnKind::Redox { z_electrons }) = (&rxn.partners, &rxn.kind) else { return 0.0 };
         let name = |i: usize| rxn.species_names[i].as_str();
-        let et = crate::gem::rates::electron_transfer_rate(name(p.donor), name(p.donor_product), name(p.acceptor), name(p.acceptor_product), *z_electrons, rxn.delta_g0_j, self.temperature_k, self.calc_ionic_strength());
+        // the driving force of the electron transfer is the one at the solution's own acidity: the standard reaction Gibbs energy
+        // (a_H+ = 1 for a reaction written with H+, a_OH- = 1 for one written with OH-) corrected by the activities of the
+        // solvent's own ions and of the solvent (the formal potential at this pH, not the one at pH 0)
+        let rt = R_GAS * self.temperature_k.max(1.0);
+        let mut dg_j = rxn.delta_g0_j;
+        for &(idx, c) in &rxn.nu {
+            let sp = name(idx);
+            if is_helper(sp) {
+                let ln_a = if sp == AQUEOUS_SOLVENT { ctx.ln_aw } else { (self.species_mol.get(sp).copied().unwrap_or(0.0).max(1e-30) / ctx.solvent_kg).ln() + ctx.gamma.get(sp).copied().unwrap_or(0.0) };
+                dg_j += rt * c * ln_a;
+            }
+        }
+        let et = crate::gem::rates::electron_transfer_rate(name(p.donor), name(p.donor_product), name(p.acceptor), name(p.acceptor_product), *z_electrons, dg_j, self.temperature_k, ionic_strength);
         let conc = |sp: &str| -> f64 {
-            if sp.ends_with("(s)") {
+            if sp == AQUEOUS_SOLVENT {
+                // the solvent is at unit activity: its 55 M does not multiply the rate of a reaction it takes part in (a
+                // pseudo-first-order rate constant already contains it), or oxidising water would be 55 times too fast
+                1.0
+            } else if sp.ends_with("(s)") {
                 // a solid takes part through its surface; its amount per volume bounds the encounter concentration
                 self.solid_mol.get(sp).copied().unwrap_or(0.0) / ctx.vol_l
             } else if sp.ends_with("(g)") {
@@ -184,7 +253,12 @@ impl Vessel {
             }
         };
         let (c_d, c_a) = (conc(name(p.donor)), conc(name(p.acceptor)));
-        et.k12 * c_d.max(c_a)
+        // the reactant that runs out first (by amount per stoichiometric coefficient) is consumed at the pseudo-first-order rate
+        // k12 [other], so the rate law is second order whichever partner is the scarcer one (the larger concentration is not
+        // always the partner of the limiting reactant: 2 I- per H2O2 makes iodide the limiting one at equal amounts)
+        let coeff = |i: usize| rxn.nu.iter().find(|&&(j, _)| j == i).map_or(1.0, |&(_, c)| c.abs().max(1e-9));
+        let (e_d, e_a) = (c_d / coeff(p.donor), c_a / coeff(p.acceptor));
+        et.k12 * if e_d <= e_a { c_a } else { c_d }
     }
 
     /// Thermal decomposition of the solids present (solid -> solid + gas, solid -> gases), found by
@@ -197,9 +271,11 @@ impl Vessel {
             return 0.0;
         }
         let ctx = self.activity_context();
+        let rows = self.kinetic_row_families();
+        let mut family_cache: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         let items: Vec<(DiscoveredReaction, f64)> = rxns
             .into_iter()
-            .filter(|r| !self.kinetic_row_covers(r))
+            .filter(|r| !covered_by_rows(&rows, r, &mut family_cache))
             .map(|r| {
                 let lam = crate::gem::rates::decomposition_rate(r.delta_h0_j, t_k);
                 (r, lam)
@@ -217,21 +293,63 @@ impl Vessel {
         let rxns = crate::gem::discovery::discover_reactions(&self.species_mol, &self.solid_mol, t_k, p_pa);
         let ctx = self.activity_context();
         let mut items: Vec<(DiscoveredReaction, f64)> = Vec::new();
-        for rxn in rxns {
-            if !matches!(rxn.kind, DiscoveredRxnKind::Redox { .. }) {
-                continue;
-            }
+        let is_gas = |sp: &str| sp.ends_with("(g)");
+        // The same reaction is found written with H+ and with OH- (and with neither): all of them relax to the same equilibrium, so
+        // each would count its rate. One version of each reaction is kept, the one whose extent is largest: a version that
+        // *consumes* H+ or OH- is limited by the small pool of that ion at the moment (the acid-base equilibria restore the pool
+        // only after the step), a version that releases it is not, so in a neutral or basic solution the version that makes H+
+        // is the one that can run, and in an acid one the version that uses it.
+        let core_key = |r: &DiscoveredReaction| -> Vec<(String, i64)> {
+            // the participants other than the solvent's own species, scaled to the largest coefficient (the versions are
+            // balanced independently and come out with different multiples)
+            let core: Vec<(&String, f64)> = r.nu.iter().filter(|&&(i, _)| !is_helper(&r.species_names[i])).map(|&(i, c)| (&r.species_names[i], c)).collect();
+            let scale = core.iter().map(|(_, c)| c.abs()).fold(0.0, f64::max).max(1e-12);
+            let mut k: Vec<(String, i64)> = core.iter().map(|(n, c)| ((*n).clone(), (c / scale * 1e6).round() as i64)).collect();
+            k.sort();
+            k
+        };
+        let rows = self.kinetic_row_families();
+        let mut family_cache: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut conducting: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+        let mut best: BTreeMap<Vec<(String, i64)>, (f64, usize)> = BTreeMap::new();
+        let mut candidates: Vec<(DiscoveredReaction, f64)> = Vec::new();
+        for rxn in rxns.into_iter().filter(|r| matches!(r.kind, DiscoveredRxnKind::Redox { .. })) {
             // a conducting solid (a metal) reacts through its electrode reactions (`step_electrochemistry`)
-            if rxn.nu.iter().any(|&(idx, c)| c < 0.0 && crate::vessel_electro::is_conducting_solid(&rxn.species_names[idx])) {
+            if rxn.nu.iter().any(|&(idx, c)| c < 0.0 && *conducting.entry(rxn.species_names[idx].clone()).or_insert_with(|| crate::vessel_electro::is_conducting_solid(&rxn.species_names[idx]))) {
                 continue;
             }
-            if self.kinetic_row_covers(&rxn) {
+            // measured kinetics replace the estimated rate of the same reaction
+            if covered_by_rows(&rows, &rxn, &mut family_cache) {
+                continue;
+            }
+            // a reaction without driving force at this composition is not worth a rate (most of the candidates)
+            let ext = self.discovered_equilibrium_extent(&rxn, &ctx, &is_gas);
+            if ext <= 1e-15 {
+                continue;
+            }
+            // extents of versions with different multiples compare per electron transferred
+            let z = match rxn.kind {
+                DiscoveredRxnKind::Redox { z_electrons } => z_electrons.max(1.0),
+                _ => 1.0,
+            };
+            let key = core_key(&rxn);
+            let score = ext * z;
+            let slot = best.entry(key).or_insert((-1.0, usize::MAX));
+            if score > slot.0 * (1.0 + 1e-9) {
+                *slot = (score, candidates.len());
+            }
+            candidates.push((rxn, score));
+        }
+        let ionic_strength = self.calc_ionic_strength();
+        let keep: std::collections::BTreeSet<usize> = best.values().map(|&(_, i)| i).collect();
+        for (i, (rxn, _)) in candidates.into_iter().enumerate() {
+            if !keep.contains(&i) {
                 continue;
             }
             // the electron transfer itself (Marcus encounter rate of the two couples) limits every reaction; one with a
             // (non-conducting) solid reactant is also limited by the surface of the solid: the film relaxation rate
             // k A / V of its particle population
-            let lam_et = self.redox_homogeneous_rate(&rxn, &ctx);
+            let lam_et = self.redox_homogeneous_rate(&rxn, &ctx, ionic_strength);
             let has_solid_reactant = rxn.nu.iter().any(|&(idx, c)| c < 0.0 && rxn.species_names[idx].ends_with("(s)"));
             let lam = if has_solid_reactant {
                 let hyd = self.hydro_state();
@@ -251,8 +369,8 @@ impl Vessel {
             };
             items.push((rxn, lam));
         }
-        let is_gas = |sp: &str| sp.ends_with("(g)");
-        self.advance_discovered(items, "redox", dt_s, &ctx, &is_gas, "wall")
+        let r = self.advance_discovered(items, "redox", dt_s, &ctx, &is_gas, "wall");
+        r
     }
 
     /// Advances a set of discovered reactions together (see the module comment) and returns the heat released (J).
@@ -282,39 +400,120 @@ impl Vessel {
         if xi.iter().all(|&x| x <= 1e-15) {
             return 0.0;
         }
+        // a reaction whose extent in this step is a ten-millionth of the biggest one's moves nothing that can be seen and
+        // costs as much as any other in the search for the common scale below: it is left out (its turn comes when the big
+        // ones have run their course, since the comparison is relative)
+        let x_biggest = xi.iter().cloned().fold(0.0, f64::max);
+        for x in xi.iter_mut() {
+            if *x < 1e-7 * x_biggest {
+                *x = 0.0;
+            }
+        }
+        // The search for the common scale below evaluates the reaction quotients of every reaction hundreds of times: the species
+        // of the reactions in play are numbered once and the quotients are read from plain arrays (the same formula as
+        // `discovered_ln_q_minus_ln_k`).
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        let mut names: Vec<&str> = Vec::new();
+        let mut dense: Vec<Vec<(usize, f64)>> = Vec::with_capacity(items.len());
+        for (r, _) in &items {
+            let mut v = Vec::with_capacity(r.nu.len());
+            for &(i, c) in &r.nu {
+                let sp = r.species_names[i].as_str();
+                let k = *index.entry(sp).or_insert_with(|| {
+                    names.push(sp);
+                    names.len() - 1
+                });
+                v.push((k, c));
+            }
+            dense.push(v);
+        }
+        struct Sp {
+            kind: u8, // 0 solid, 1 solvent, 2 gas, 3 solute
+            n: f64,
+            gamma: f64,
+            p_pa: f64,
+            avail: f64,
+        }
+        let sp_state: Vec<Sp> = names
+            .iter()
+            .map(|&sp| {
+                let kind = if sp.ends_with("(s)") {
+                    0
+                } else if sp == AQUEOUS_SOLVENT {
+                    1
+                } else if gas_like(sp) {
+                    2
+                } else {
+                    3
+                };
+                Sp {
+                    kind,
+                    n: self.species_mol.get(sp).copied().unwrap_or(0.0),
+                    gamma: ctx.gamma.get(sp).copied().unwrap_or(0.0),
+                    p_pa: ctx.gas_pa.get(sp).copied().unwrap_or(0.0),
+                    avail: self.discovered_available(sp, ctx, gas_like),
+                }
+            })
+            .collect();
+        let rt = R_GAS * self.temperature_k.max(1.0);
+        let ln_qk = |k: usize, delta: &[f64]| -> f64 {
+            let mut ln_q = 0.0;
+            for &(s, c) in &dense[k] {
+                let st = &sp_state[s];
+                let ln_a = match st.kind {
+                    0 => 0.0,
+                    1 => ctx.ln_aw,
+                    2 => {
+                        let mut p = st.p_pa;
+                        if ctx.sealed {
+                            p += delta[s] * rt / ctx.head_m3;
+                        }
+                        (p.max(1e-6) / crate::vle::P_BAR_PA).ln()
+                    }
+                    _ => ((st.n + delta[s]).max(1e-30) / ctx.solvent_kg).ln() + st.gamma,
+                };
+                ln_q += c * ln_a;
+            }
+            ln_q + items[k].0.delta_g0_j / rt
+        };
         // 2. together: the net change of every species the reactions share, as one common scale (no species below zero)
-        let net_of = |xi: &[f64], scale: f64| -> BTreeMap<String, f64> {
-            let mut net: BTreeMap<String, f64> = BTreeMap::new();
-            for ((r, _), x) in items.iter().zip(xi) {
+        let net_of = |xi: &[f64], scale: f64| -> Vec<f64> {
+            let mut net = vec![0.0; names.len()];
+            for (k, x) in xi.iter().enumerate() {
                 if *x <= 0.0 {
                     continue;
                 }
-                for &(idx, c) in &r.nu {
-                    *net.entry(r.species_names[idx].clone()).or_default() += c * x * scale;
+                for &(s, c) in &dense[k] {
+                    net[s] += c * x * scale;
                 }
             }
             net
         };
-        let net = net_of(&xi, 1.0);
-        let mut scale: f64 = 1.0;
-        for (sp, d) in &net {
-            if *d < 0.0 {
-                let have = self.discovered_available(sp, ctx, gas_like);
-                if have.is_finite() && -*d > have {
+        // the largest scale (<= 1) at which no species the reactions consume falls below zero
+        let availability_scale = |xi: &[f64]| -> f64 {
+            let net = net_of(xi, 1.0);
+            let mut scale: f64 = 1.0;
+            for (s, d) in net.iter().enumerate() {
+                let have = sp_state[s].avail;
+                if *d < 0.0 && have.is_finite() && -*d > have {
                     scale = scale.min((have / -*d).max(0.0));
                 }
             }
-        }
+            scale
+        };
+        let mut scale = availability_scale(&xi);
         // 3. no reaction may be driven past its own equilibrium by the others: the largest common scale at which none is
         // (bisection; the overshoot grows with the scale, so a few dozen evaluations find it to 1e-9). A reaction that the
         // others push past its equilibrium however small the step (it is at its own equilibrium already) would hold every
         // reaction back, so it sits this step out and the scale is found again for the rest.
         let overshoot_of = |xi: &[f64], sc: f64| -> Vec<f64> {
             let net = net_of(xi, sc);
-            let delta = |sp: &str| net.get(sp).copied().unwrap_or(0.0);
-            items.iter().zip(xi).map(|((r, _), x)| if *x > 1e-15 { self.discovered_ln_q_minus_ln_k(r, ctx, gas_like, &delta) } else { f64::NEG_INFINITY }).collect()
+            xi.iter().enumerate().map(|(k, x)| if *x > 1e-15 { ln_qk(k, &net) } else { f64::NEG_INFINITY }).collect()
         };
-        let overshoots = |xi: &[f64], sc: f64| overshoot_of(xi, sc).iter().any(|f| *f > 1e-9);
+        let overshoots = |xi: &[f64], sc: f64| {
+            let net = net_of(xi, sc);
+            xi.iter().enumerate().any(|(k, x)| *x > 1e-15 && ln_qk(k, &net) > 1e-9)
+        };
         let mut safe_scale = 0.0;
         for _ in 0..=items.len() {
             if !overshoots(&xi, scale) {
@@ -330,33 +529,39 @@ impl Vessel {
                 }
             }
             safe_scale = lo;
-            if lo >= 0.05 {
-                scale = lo;
-                break;
-            }
-            // the reaction pushed furthest past its equilibrium by even a thousandth of the step waits
-            let f = overshoot_of(&xi, 1e-3);
-            match f.iter().enumerate().filter(|(_, v)| **v > 1e-9).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)) {
-                Some((worst, _)) => xi[worst] = 0.0,
-                None => {
+            // The reaction pushed furthest past its equilibrium by the smallest scale that pushes any of them is found just above
+            // the safe scale (below it nothing overshoots). A *trace* reaction (an extent a few percent of the biggest one's) that
+            // sits at its equilibrium is pushed past it by any real progress of the others; it waits, and its reverse takes over
+            // next step if the others moved its equilibrium (the reverse is a candidate of its own). Nothing small holds the big
+            // reactions back. Among comparable reactions the old rule stays: a scale of at least 5 % is accepted, below it the
+            // furthest one waits.
+            let f = overshoot_of(&xi, hi);
+            let worst = f.iter().enumerate().filter(|(_, v)| **v > 1e-9).max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)).map(|(i, _)| i);
+            let x_max = xi.iter().cloned().fold(0.0, f64::max);
+            // every trace reaction pushed past its equilibrium at this scale waits at once (one search for all of them)
+            let traces: Vec<usize> = f.iter().enumerate().filter(|(i, v)| **v > 1e-9 && xi[*i] <= 0.02 * x_max).map(|(i, _)| i).collect();
+            if !traces.is_empty() {
+                for i in traces {
+                    xi[i] = 0.0;
+                }
+            } else {
+                if lo >= 0.05 {
                     scale = lo;
                     break;
+                }
+                match worst {
+                    Some(w) => xi[w] = 0.0,
+                    None => {
+                        scale = lo;
+                        break;
+                    }
                 }
             }
             if xi.iter().all(|&x| x <= 1e-15) {
                 return 0.0;
             }
-            scale = 1.0;
             // the common scale of the shared species is found again for the reactions that remain
-            let net = net_of(&xi, 1.0);
-            for (sp, d) in &net {
-                if *d < 0.0 {
-                    let have = self.discovered_available(sp, ctx, gas_like);
-                    if have.is_finite() && -*d > have {
-                        scale = scale.min((have / -*d).max(0.0));
-                    }
-                }
-            }
+            scale = availability_scale(&xi);
         }
         if overshoots(&xi, scale) {
             // every reaction that overshoots had its turn to wait and some still do: take the largest safe common scale

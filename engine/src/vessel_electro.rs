@@ -572,17 +572,22 @@ impl Vessel {
         let (mut trim_red, mut trim_ox) = (1.0, 1.0);
         if (e_red > 0.0) != (e_ox > 0.0) {
             // electrons have nowhere to come from (or go to): no current flows
-            xi.values_mut().for_each(|r| *r = 0.0);
             trim_red = 0.0;
             trim_ox = 0.0;
         } else if e_red > 0.0 && (e_red - e_ox).abs() > 0.0 {
             let (s_red, s_ox) = if e_red > e_ox { (e_ox / e_red, 1.0) } else { (1.0, e_red / e_ox) };
             trim_red = s_red;
             trim_ox = s_ox;
-            for (&hi, rate) in xi.iter_mut() {
-                *rate *= if *rate > 0.0 { s_red } else { s_ox };
-                let _ = hi;
-            }
+        }
+        // the extents of the half-reactions are rebuilt from the trimmed per-electrode flows, so that what is applied to the
+        // solution and what is booked with the electrodes is the same number (a half-reaction that one electrode drives
+        // forwards and the other backwards has a net rate whose sign is not the sign of either flow: trimming the net by
+        // its own sign left the two out of step and the difference was created from nothing)
+        xi.clear();
+        for f in flows {
+            let h = &halves[f.half];
+            let trim = if f.net_oxidation_a < 0.0 { trim_red } else { trim_ox };
+            *xi.entry(f.half).or_default() += -f.net_oxidation_a / (h.n_e * crate::physics::FARADAY) * trim;
         }
         // one common scale so that no reactant goes negative (and electrons stay balanced): the total demand on every
         // species, over all the half-reactions that consume it, against what the vessel holds
@@ -620,11 +625,24 @@ impl Vessel {
                 if ext_e.abs() < 1e-30 {
                     continue;
                 }
-                for (sp, c) in h.red.iter().filter(|(sp, _)| sp.ends_with("(s)")) {
-                    let own = electrodes[f.electrode].active_species.as_deref() == Some(sp.as_str());
-                    let d_mol = c * ext_e; // > 0 plates, < 0 dissolves
-                    if d_mol > 0.0 || own {
-                        self.book_electrode_solid(sp, d_mol, f.electrode);
+                // the solids of both sides of the half-reaction: a reduction plates its product (red side, d_mol > 0), an
+                // oxidation deposits its own (iodine, lead dioxide, sulfur on the anode: ox side, d_mol > 0); an electrode's
+                // own material also dissolves (d_mol < 0). `apply_species_change` leaves exactly these to this bookkeeping, so
+                // a solid made at an electrode that is not booked here would take its atoms out of the vessel unaccounted.
+                let sides: [(&Vec<(String, f64)>, f64); 2] = [(&h.red, 1.0), (&h.ox, -1.0)];
+                for (side, sign) in sides {
+                    for (sp, c) in side.iter().filter(|(sp, _)| sp.ends_with("(s)")) {
+                        let own = electrodes[f.electrode].active_species.as_deref() == Some(sp.as_str());
+                        let d_mol = sign * c * ext_e; // > 0 plates / deposits, < 0 dissolves
+                        if d_mol > 0.0 || own {
+                            self.book_electrode_solid(sp, d_mol, f.electrode);
+                        } else if d_mol < 0.0 {
+                            // a solid of the vessel that an electrode reduces / oxidises (the flow was capped by the amount
+                            // there): it is used up here, per electrode flow, not netted against the deposit another electrode
+                            // makes of the same solid (the net left the two out of step: atoms created from nothing)
+                            let m = self.solid_mol.entry(sp.clone()).or_default();
+                            *m = (*m + d_mol).max(0.0);
+                        }
                     }
                 }
             }
@@ -694,7 +712,9 @@ impl Vessel {
             return f64::INFINITY;
         }
         if sp.ends_with("(g)") {
-            return f64::INFINITY;
+            // a gas an electrode consumes comes from the headspace of a sealed vessel (what is there limits the extent) or from
+            // the atmosphere of an open one (unlimited, booked in `apply_species_change`)
+            return if self.sealed { self.headspace_gas_mol.get(sp).copied().unwrap_or(0.0) } else { f64::INFINITY };
         }
         if sp.ends_with("(s)") {
             // the electrode's own material is a reservoir (a cell electrode is macroscopic)
@@ -719,10 +739,9 @@ impl Vessel {
             // plating on (or dissolution of) an electrode of a cell stays on the electrode (booked per electrode in
             // `apply_flows`, `book_electrode_solid`): its atoms leave / enter the vessel through the electrode, not the pool
             if is_cell {
-                let own = flows.iter().any(|f| f.half == half && electrodes[f.electrode].active_species.as_deref() == Some(sp));
-                if d_mol > 0.0 || own {
-                    return;
-                }
+                // (the solids of every electrode flow are booked in `apply_flows`, plated, dissolved or used up, per electrode)
+                let _ = (half, flows, electrodes);
+                return;
             }
             if d_mol > 0.0 {
                 self.add_solid_particles(sp, d_mol, Some(DEPOSIT_DIAMETER_M));
@@ -754,8 +773,13 @@ impl Vessel {
                     self.gas.escaped_mol += d_mol;
                 }
             } else if self.sealed {
+                // consumed from the headspace (the extent was limited by what is there, so nothing is clamped away)
                 let g = self.headspace_gas_mol.entry(sp.to_string()).or_default();
                 *g = (*g + d_mol).max(0.0);
+            } else {
+                // consumed from the atmosphere of an open vessel: the atoms come in from outside
+                self.mass_lost_g += d_mol * chem_db::get_species_thermo(sp).mw;
+                self.ledger.book_out(sp, d_mol);
             }
             return;
         }

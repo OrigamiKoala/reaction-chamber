@@ -17,6 +17,10 @@ use crate::compound_thermo::{self, CompoundThermo, ThermoSummary};
 use crate::ions::{self, IonCount, IonicSplit};
 use crate::solubility;
 
+/// Density (g/mL) of a solid whose density neither the import nor the ion sizes give (a molecular or unparsed one): the middle of
+/// the range of ionic solids, used only for the volume a dissolved solid takes in a stock solution.
+const TYPICAL_SOLID_DENSITY_G_ML: f64 = 2.0;
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CompoundRequest {
     pub id: String,
@@ -383,7 +387,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     };
     let mw_total = mw_anh + n_water * 18.015;
     let molarity = req.molarity.filter(|m| *m > 0.0).unwrap_or(0.1);
-    let rho_s = req.density.filter(|d| *d > 0.3 && *d < 25.0);
+    let rho_s_supplied = req.density.filter(|d| *d > 0.3 && *d < 25.0);
 
     // PubChem writes many salts without charges ("Cl[Ag]", "I[Pb]I"), so a charge-free SMILES only rules out ionic
     // character for carbon compounds (organometallics, covalent organics); inorganic metal salts split by formula.
@@ -406,6 +410,15 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             let by_structure = req.smiles.as_deref().and_then(crate::smiles::parse).map_or(false, |m| m.carboxylic_acid_oh_count() == k);
             by_structure || known_confirmed.is_some()
         });
+
+    // The solid's density: the import's own, else the one the ion sizes give (`crystal.rs`: a packing of the ions), else the
+    // value of a typical ionic solid. Only the volume of the dissolved solid in a stock solution depends on it, a few percent
+    // of the solution's density; it is never a property the vessel would show for a solid, which has its own record.
+    let rho_s = rho_s_supplied.or_else(|| {
+        let s = split.as_ref()?;
+        let ions: Vec<(String, f64)> = s.all().map(|i| (i.id.clone(), i.n)).collect();
+        crate::crystal::estimate_density_g_ml(&ions, mw_anh)
+    });
 
     // Base species id of an inert compound: its Hill formula, tagged with the first InChIKey characters when the
     // identity is known, so isomers (dimethyl ether / ethanol) never share one engine species.
@@ -516,7 +529,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
             if let Some(mut m) = solubility::mineral_for_import(&c.id, c.n, &a.id, a.n) {
                 // The import's own density and colour (PubChem) describe this solid: they are not replaced by the
                 // generic cation-hue / default-density guesses of the mineral record.
-                if let Some(d) = rho_s {
+                if let Some(d) = rho_s_supplied {
                     m.density_g_ml = d;
                 }
                 if let Some(col) = req.color_linear_rgb {
@@ -555,7 +568,7 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     } else {
         // aqueous solution of `molarity` mol/L; per mL amounts = mol/L / 1000
         let c = molarity;
-        let rho_solid = rho_s.unwrap_or(2.0);
+        let rho_solid = rho_s.unwrap_or(TYPICAL_SOLID_DENSITY_G_ML);
         let rho = 0.997 + c * mw_total / 1000.0 * (1.0 - 0.997 / rho_solid.max(1.1));
         for (sp, n) in &species {
             *composition.entry(sp.clone()).or_default() += n * c / 1000.0;
@@ -589,9 +602,9 @@ pub fn model_compound(req: &CompoundRequest) -> CompoundModel {
     } else if neat_liquid {
         thermo.rho_liquid
     } else if by_mass {
-        if kind == "inert" { thermo.rho_solid } else { mineral.as_ref().map(|m| m.density_g_ml).or(rho_s).unwrap_or(2.0) }
+        if kind == "inert" { thermo.rho_solid } else { mineral.as_ref().map(|m| m.density_g_ml).or(rho_s).unwrap_or(TYPICAL_SOLID_DENSITY_G_ML) }
     } else {
-        0.997 + molarity * mw_total / 1000.0 * (1.0 - 0.997 / rho_s.unwrap_or(2.0).max(1.1))
+        0.997 + molarity * mw_total / 1000.0 * (1.0 - 0.997 / rho_s.unwrap_or(TYPICAL_SOLID_DENSITY_G_ML).max(1.1))
     };
     let label = if by_mass || neat_liquid || gas_species.is_some() { req.formula.clone() } else { format!("{} ({})", req.formula, mol_str(molarity)) };
     let entry = ReagentCatalogEntry {

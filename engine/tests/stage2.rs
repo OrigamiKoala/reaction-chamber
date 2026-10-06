@@ -1,8 +1,11 @@
 //! Stage 2 verification gates as specified in docs/plans/generalization-master-plan.md §9.
+//!
+//! (s2_5 and s2_7 exercised `energy_balance::EnergyBalance`, a stand-alone enthalpy model the vessel never used and that fell
+//! back to zero enthalpy for species without data; it is deleted. The adiabatic energy ledger of the real vessel is gated by
+//! `open_items_b.rs` (the energy audit of `vessel_energy.rs`) and the bounded dry beaker on a hot plate by `section7.rs` (hot_plate_cannot_exceed_its_surface_temperature).)
 
 use std::collections::HashMap;
 use reaction_chamber_engine::thermo::*;
-use reaction_chamber_engine::energy_balance::*;
 use reaction_chamber_engine::gem::*;
 
 #[test]
@@ -132,31 +135,6 @@ fn s2_4_hess_law_path_independence() {
 }
 
 #[test]
-fn s2_5_adiabatic_ledger_drift() {
-    // Gate: adiabatic ledger drift < 1e-6 per 1000 steps
-    let mut eb = EnergyBalance::new(100.0, 0.015, 298.15);
-    let mut species = HashMap::new();
-    species.insert("H2O(l)".to_string(), 55.5); // 1 L water
-    let solids = HashMap::new();
-
-    eb.sync_enthalpy(&species, &solids);
-    let initial_h = eb.h_total_j;
-
-    // 1000 adiabatic steps (heater = 0, surface = 0 so no heat loss)
-    eb.surface_area_m2 = 0.0;
-    for _ in 0..1000 {
-        eb.step(0.1, &species, &solids);
-    }
-
-    let drift = (eb.h_total_j - initial_h).abs() / initial_h.abs().max(1.0);
-    assert!(
-        drift < 1e-6,
-        "Adiabatic drift after 1000 steps: {}",
-        drift
-    );
-}
-
-#[test]
 fn s2_6_heating_ratio_ethanol_water() {
     // Gate: 50 g ethanol vs water heating ratio 1.71 ± 0.05
     // Cp(H2O) = 75.38 J/(mol K) / 18.015 g/mol = 4.1843 J/(g K)
@@ -174,32 +152,6 @@ fn s2_6_heating_ratio_ethanol_water() {
         (ratio - 1.71).abs() <= 0.05,
         "Ethanol to water heating ratio: got {}, expected 1.71 ± 0.05",
         ratio
-    );
-}
-
-#[test]
-fn s2_7_dry_beaker_steady_state() {
-    // Gate: dry 250 mL beaker on 300 W stays bounded (radiation and convection balance the heater near 750 K)
-    let mut eb = EnergyBalance::new(110.0, 0.015, 298.15);
-    eb.heater_power_w = 300.0;
-    let species = HashMap::new();
-    let solids = HashMap::new();
-    eb.sync_enthalpy(&species, &solids);
-
-    // Simulate for 600 seconds to reach steady-state
-    for _ in 0..6000 {
-        eb.step(0.1, &species, &solids);
-    }
-
-    assert!(
-        eb.temperature_k < 800.0,
-        "Dry beaker on 300W reached {} K, must stay bounded (< 800 K)",
-        eb.temperature_k
-    );
-    assert!(
-        eb.temperature_k > 450.0,
-        "Dry beaker on 300W must heat up significantly, got {} K",
-        eb.temperature_k
     );
 }
 

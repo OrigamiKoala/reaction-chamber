@@ -654,8 +654,9 @@ impl LuFactors {
                 let factor = row[col] / pivot;
                 row[col] = factor;
                 if factor != 0.0 {
-                    for c in (col + 1)..n {
-                        row[c] -= factor * prow[c];
+                    // (zipped slices: no bounds checks in the inner loop, so it vectorises whatever the codegen-unit split)
+                    for (r, p) in row[col + 1..n].iter_mut().zip(&prow[col + 1..n]) {
+                        *r -= factor * *p;
                     }
                 }
             }

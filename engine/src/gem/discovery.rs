@@ -88,6 +88,8 @@ thread_local! {
     static DISCOVERY_CACHE: std::cell::RefCell<(u64, HashMap<(u8, Vec<String>), CacheEntry>)> = Default::default();
 }
 
+/// Standard Gibbs energy per electron (J/mol e-) above which a redox reaction is never proposed.
+const REDOX_UPHILL_LIMIT_J_PER_E: f64 = 150_000.0;
 /// Largest temperature drift (K) over which cached reaction enthalpies and Gibbs energies are reused.
 const THERMO_REUSE_K: f64 = 0.5;
 const CACHE_MAX_ENTRIES: usize = 64;
@@ -114,7 +116,14 @@ fn cached_discovery(kind: u8, key: Vec<String>, t_k: f64, p_pa: f64, build: impl
             .iter()
             .zip(&entry.thermo)
             .filter_map(|(st, th)| {
-                th.map(|(dh, dg)| DiscoveredReaction {
+                th.filter(|&(_, dg)| match st.kind {
+                    // a redox reaction that is uphill by more than `REDOX_UPHILL_LIMIT_J_PER_E` per electron at standard states
+                    // cannot be brought downhill by any concentration a vessel holds (RT ln Q over 17 decades is 100 kJ):
+                    // it is not a candidate (K+ -> K(s) by any oxidant, Fe(s) from Fe2+ by H2)
+                    DiscoveredRxnKind::Redox { z_electrons } => dg <= REDOX_UPHILL_LIMIT_J_PER_E * z_electrons.max(1.0),
+                    _ => true,
+                })
+                .map(|(dh, dg)| DiscoveredReaction {
                     species_names: st.species_names.clone(),
                     nu: st.nu.clone(),
                     delta_h0_j: dh,
@@ -125,6 +134,42 @@ fn cached_discovery(kind: u8, key: Vec<String>, t_k: f64, p_pa: f64, build: impl
             })
             .collect()
     })
+}
+
+/// A gas that has no dissolved twin of its own but reacts with water completely: it is a dissolved acid or its anhydride, so a
+/// reaction in solution makes the ions (HCl(g) = H+ + Cl-, HI(g), HBr(g)) or the hydrate (SO3(g) + H2O = H2SO4), not the gas. The
+/// hydrate and the anion are looked up in the store by their atoms; nothing here names a compound.
+fn gas_reacts_with_water(store: &SpeciesStore, gas: &crate::db::SpeciesRecord) -> bool {
+    let el = gas.elements();
+    if el.is_empty() {
+        return false;
+    }
+    // the gas plus one water is a species of the store in another phase
+    let mut hydrate = el.clone();
+    *hydrate.entry("H".to_string()).or_insert(0.0) += 2.0;
+    *hydrate.entry("O".to_string()).or_insert(0.0) += 1.0;
+    if store.iter().any(|r| !r.id.ends_with("(g)") && r.identity.charge == 0 && r.elements() == hydrate) {
+        return true;
+    }
+    // one acidic hydrogen on what is a singly charged anion of the store (HX = H+ + X-)
+    if el.get("H") == Some(&1.0) && el.len() > 1 {
+        let mut rest = el;
+        rest.remove("H");
+        return store.iter().any(|r| r.identity.charge == -1 && r.elements() == rest);
+    }
+    false
+}
+
+/// An elemental metal is not made from an oxo species (MnO4-, Cr2O7-2, MnO2) by a reductant in solution: the reduction stops at
+/// the aqua cation, whose own reduction to the metal is far uphill for any reductant that is not an electrode. (Thermodynamics
+/// alone does not say so: the seven-electron reaction MnO4- -> Mn(s) is downhill for a mild reductant because the overall
+/// potential averages the steps, but the last of them is not.) Metal cations, ammines and the like are not affected.
+fn is_metal_from_oxo_species(reactant: &str, product: &str) -> bool {
+    let metal_solid = |sp: &str| {
+        sp.ends_with("(s)") && crate::ions::species_elements(sp).map_or(false, |e| e.len() == 1 && e.keys().all(|k| crate::compound_thermo::is_metal_element(k)))
+    };
+    let oxo = |sp: &str| crate::ions::species_elements(sp).map_or(false, |e| e.contains_key("O") && e.len() > 1);
+    (metal_solid(product) && oxo(reactant)) || (metal_solid(reactant) && oxo(product))
 }
 
 /// Discovers all independent redox reactions among the candidate species reachable from the vessel contents, with their
@@ -204,12 +249,31 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
             // (O2(g) / O2(aq), H2O(g) / H2O) is not a partner of a solution reaction, its twin is.
             if aqueous_env && rec.id.ends_with("(g)") {
                 let has_twin = store.get_by_formula(&rec.identity.formula).iter().any(|t| t.id != rec.id && (t.has_phase("aq") || t.has_phase("l")));
-                if has_twin {
+                if has_twin || gas_reacts_with_water(&store, rec) {
+                    continue;
+                }
+            }
+            // the same for a neat liquid that has a dissolved form of its own (Br2(l) / Br2(aq)): the solution holds the dissolved
+            // molecule, and the phase machinery (solubility, immiscible layers) decides how much of it is a layer of its own
+            if aqueous_env && rec.id.ends_with("(l)") {
+                let has_aq = store.get_by_formula(&rec.identity.formula).iter().any(|t| t.id != rec.id && !t.id.ends_with("(l)") && !t.id.ends_with("(g)") && !t.id.ends_with("(s)") && t.has_phase("aq"));
+                if has_aq {
                     continue;
                 }
             }
             if super::redox::is_derived_ion_form(&rec.id) {
                 continue;
+            }
+            // a molecular solid that has a dissolved form of its own (I2(s) / I2(aq)) is not made by a redox reaction in
+            // solution: the redox makes the dissolved molecule and the phase flash crystallises it (solubility, Schroder-van
+            // Laar), so a second copy of every reaction for the solid is redundant. A solid already present still reacts.
+            if aqueous_env && rec.id.ends_with("(s)") && !present_species.iter().any(|s| s == &rec.id) {
+                let has_dissolved = store.get_by_formula(&rec.identity.formula).iter().any(|t| {
+                    t.id != rec.id && t.identity.charge == 0 && !t.id.ends_with("(l)") && !t.id.ends_with("(g)") && !t.id.ends_with("(s)") && t.has_phase("aq")
+                });
+                if has_dissolved {
+                    continue;
+                }
             }
             // in water a compound solid forms only through its precipitation model (solids already present still react as
             // reactants: the partner side of a couple is what gets *made*)
@@ -232,7 +296,7 @@ fn discover_redox_structures(species_mol: &HashMap<String, f64>, solid_mol: &Has
     for half in &present_halves {
         if let Some(products) = candidate_products_by_elem.get(&half.elem) {
             for (p_sp, p_ox) in products {
-                if p_sp == &half.sp || !super::redox::couple_is_eligible(&half.elem, &half.sp, p_sp) {
+                if p_sp == &half.sp || !super::redox::couple_is_eligible(&half.elem, &half.sp, p_sp) || is_metal_from_oxo_species(&half.sp, p_sp) {
                     continue;
                 }
                 // a couple whose forms differ by less than 1/1000 of an electron per atom is the same oxidation level
@@ -567,7 +631,13 @@ mod tests {
         solids.insert("Zn(s)".to_string(), 0.05);
 
         let rxns = discover_reactions(&species, &solids, 298.15, 101325.0);
-        let redox_rxn = rxns.iter().find(|r| matches!(r.kind, DiscoveredRxnKind::Redox { .. }));
+        // the reaction of the zinc: it consumes Zn(s) and makes Zn+2 (the candidate list holds every redox pairing of the
+        // species present, most of them uphill)
+        let redox_rxn = rxns.iter().find(|r| {
+            matches!(r.kind, DiscoveredRxnKind::Redox { .. })
+                && r.nu.iter().any(|&(i, c)| c < 0.0 && r.species_names[i] == "Zn(s)")
+                && r.nu.iter().any(|&(i, c)| c > 0.0 && r.species_names[i] == "Zn+2")
+        });
         assert!(redox_rxn.is_some(), "Must discover Zn redox reaction");
 
         let r = redox_rxn.unwrap();

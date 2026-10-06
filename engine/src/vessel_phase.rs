@@ -397,6 +397,78 @@ impl Vessel {
             .collect()
     }
 
+    /// Viscosity (mPa s), specific heat (J/(g K)), thermal conductivity (W/(m K)) and volumetric expansivity (1/K) of a liquid
+    /// phase at the vessel's temperature. The viscosity is the phase's mixing rule (`props`), the specific heat the mass-weighted
+    /// species values, the conductivity Li's rule over the volume fractions of the neutral components (water by its fit, the
+    /// rest by Sato-Riedel from the vapour-pressure curve; ions leave the solvent's value), the expansivity the volume model's
+    /// temperature derivative.
+    pub(crate) fn layer_thermal_properties(&self, map: &HashMap<String, f64>, volume_ml: f64, mass_g: f64) -> (f64, f64, f64, f64) {
+        let t = self.temperature_k;
+        let andrade = |sp: &str| -> Option<(f64, f64)> { self.molecule(sp).and_then(|m| m.andrade_viscosity) };
+        let eta = crate::props::calculate_viscosity_cp(map, t, volume_ml.max(1e-6), &andrade);
+        let cp = if mass_g > 1e-12 {
+            map.iter().map(|(sp, &mol)| mol * chem_db::get_species_thermo(sp).mw * self.species_cp_j_g_k(sp)).sum::<f64>() / mass_g
+        } else {
+            4.18
+        };
+        let mut parts: Vec<(f64, f64)> = Vec::new();
+        for (sp, &mol) in map {
+            if mol <= 0.0 || ions::species_charge(sp) != 0 {
+                continue;
+            }
+            let single = HashMap::from([(sp.clone(), mol)]);
+            let v = self.phase_volume_ml(&single, t);
+            let k = if sp == crate::db::seed::WATER {
+                crate::thermal_props::water_conductivity(t)
+            } else {
+                match self.volatile_for(sp) {
+                    Some(vol) => {
+                        // normal boiling point: where the saturation curve passes 1 atm
+                        let (mut lo, mut hi) = (150.0_f64, vol.tc_k().unwrap_or(900.0).min(900.0));
+                        let tb = if vol.psat_pa(hi) > 101_325.0 && vol.psat_pa(lo) < 101_325.0 {
+                            for _ in 0..50 {
+                                let mid = 0.5 * (lo + hi);
+                                if vol.psat_pa(mid) > 101_325.0 { hi = mid } else { lo = mid }
+                            }
+                            0.5 * (lo + hi)
+                        } else {
+                            0.0
+                        };
+                        let tc = vol.tc_k().unwrap_or(tb * 1.5);
+                        crate::thermal_props::sato_riedel(vol.mw, tb, tc, t)
+                    }
+                    None => crate::thermal_props::K_ORGANIC_DEFAULT,
+                }
+            };
+            parts.push((v, k));
+        }
+        let k = if parts.is_empty() { crate::thermal_props::water_conductivity(t) } else { crate::thermal_props::li_mixture(&parts) };
+        let v_hi = self.phase_volume_ml(map, t + 1.0);
+        let v_lo = self.phase_volume_ml(map, t - 1.0);
+        let beta = if volume_ml > 1e-9 { ((v_hi - v_lo) / (2.0 * volume_ml)).max(0.0) } else { 2.1e-4 };
+        (eta, cp, k, beta)
+    }
+
+    /// The liquid at the glass wall: the layer that holds most of the volume (its viscosity, conductivity, expansivity).
+    pub(crate) fn film_liquid(&self) -> crate::heat_transfer::FilmLiquid {
+        let t = self.temperature_k;
+        let main = self
+            .liquid_maps()
+            .filter(|m| !m.is_empty())
+            .map(|m| (m, self.phase_volume_ml(m, t)))
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let Some((map, vol)) = main else { return crate::heat_transfer::FilmLiquid::WATER };
+        if vol <= 1e-6 {
+            return crate::heat_transfer::FilmLiquid::WATER;
+        }
+        let mass = self.phase_mass_g(map);
+        let (eta_mpa_s, cp_j_g_k, k, beta) = self.layer_thermal_properties(map, vol, mass);
+        let rho = (mass / vol * 1000.0).clamp(300.0, 3000.0);
+        let nu = eta_mpa_s * 1e-3 / rho;
+        let alpha = k / (rho * cp_j_g_k.max(0.1) * 1000.0);
+        crate::heat_transfer::FilmLiquid { nu_m2_s: nu, pr: (nu / alpha).clamp(1.0, 5000.0), k_w_m_k: k, beta_per_k: beta.max(0.5e-4) }
+    }
+
     /// Volume of the water-containing (primary) liquid phase, mL.
     pub fn aqueous_volume_ml(&self) -> f64 {
         if !self.has_aqueous_phase() {

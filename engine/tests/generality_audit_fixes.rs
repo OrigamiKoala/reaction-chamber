@@ -140,7 +140,9 @@ fn test_f6_sealed_air_pressurises_on_heating() {
     assert!((p_initial - 1.0).abs() < 0.05);
 
     // Heat dry sealed vessel to ~373.15 K (heating ratio 373.15 / 298.15 = 1.251)
+    // (the wall is a thermal node: a dry vessel's air has no heat capacity of its own, so the wall is heated with it)
     v.temperature_k = 373.15;
+    v.glass_temp_k = 373.15;
     let _ = v.step(0.01);
     let p_heated = v.pressure_atm;
     // Dry air pressure increases to ~ 1.25 atm

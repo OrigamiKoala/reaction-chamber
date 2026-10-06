@@ -90,7 +90,7 @@ impl Vessel {
         for k in keys {
             add(&mut out, k, "g", self.headspace_gas_mol[k]);
         }
-        out.h_j += self.glass_heat_capacity() * (t - 298.15);
+        out.h_j += self.glass_node_cp() * (self.glass_temp_k - 298.15);
         // the heat of mixing of the liquids (ideal mixing is what the species enthalpies describe)
         out.h_j += self.excess_enthalpy_j();
         out.uncovered.sort();

@@ -310,12 +310,16 @@ fn test_g5_iodine_clock_gate() {
             }
         }
 
-        // Final iodine atoms: I- + 2*I2 + 3*starch_I3 + 3*I3-
-        let final_i_minus = *v.species_mol.get("I-").unwrap_or(&0.0);
-        let final_i2 = *v.species_mol.get("I2(aq)").unwrap_or(&0.0);
-        let final_complex = *v.species_mol.get("starch_I3").unwrap_or(&0.0);
-        let final_i3_minus = *v.species_mol.get("I3-").unwrap_or(&0.0);
-        let final_i_atoms = final_i_minus + 2.0 * final_i2 + 3.0 * final_complex + 3.0 * final_i3_minus;
+        // Final iodine atoms: every iodine-bearing species of the vessel (the clock's own I-, I2, I3- and the starch complex, and
+        // the traces that the persulfate's oxidation of iodide leaves in equilibrium: hypoiodite, iodate), solids included.
+        // (Changed in the eighth pass: the count used to name four species; the discovered redox of persulfate now makes
+        // trace iodate and hypoiodite, a few 1e-8 mol, that the four-species sum cannot see.)
+        let iodine_in = |sp: &str| -> f64 {
+            let el = reaction_chamber_engine::ions::species_elements(sp)
+                .or_else(|| if sp == "starch_I3" { Some([("I".to_string(), 3.0)].into_iter().collect()) } else { None });
+            el.and_then(|e| e.get("I").copied()).unwrap_or(0.0)
+        };
+        let final_i_atoms: f64 = v.species_mol.iter().chain(v.solid_mol.iter()).map(|(sp, &mol)| iodine_in(sp) * mol).sum();
 
         (switch_time, init_i, final_i_atoms)
     };

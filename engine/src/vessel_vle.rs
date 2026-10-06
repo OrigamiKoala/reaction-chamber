@@ -18,8 +18,9 @@
 //! * **Dissolved gases** exchange with the gas phase through Henry's constant `k_H = exp(-(mu_aq - mu_g)/RT)` of the
 //!   records' chemical potentials, with the partial pressure of the atmosphere (open) or of the headspace (sealed).
 //!
-//! The rate constants of the transfer processes below are *documented placeholders* for the Stage 8 transport models
-//! (Sherwood correlations from stirring and geometry); everything else (equilibrium positions, heats) is derived.
+//! The rates of the transfer processes below come from the Stage 8 transport models (`transfer/`: film coefficients from the
+//! stirring and the geometry, Fuller / Wilke-Chang diffusivities, Sherwood correlations); the one remaining placeholder is
+//! `SPARGE_EFFICIENCY`, the share of a sparged gas that reaches Henry equilibrium. Equilibrium positions and heats are derived.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -71,6 +72,9 @@ struct FlashItem {
     key: String,
     n_liq0: f64,
     n_tot: f64,
+    /// Every liquid key that holds this molecule (its neat liquid and its dissolved form: `Br2(l)` and `Br2(aq)` share one gas
+    /// phase) with its amount: they are one inventory in the flash and are scaled together when the result is written back.
+    members: Vec<(String, f64)>,
 }
 
 /// The temperature-independent part of a flash problem.
@@ -972,7 +976,16 @@ impl Vessel {
         for (k, it) in inp.items.iter().enumerate() {
             let n_gas = out_best.n_gas[k];
             let n_liq = (it.n_tot - n_gas).max(0.0);
-            self.set_liquid_total(&it.key, if n_liq > MIN_AMOUNT_MOL { n_liq } else { 0.0 });
+            let n_liq = if n_liq > MIN_AMOUNT_MOL { n_liq } else { 0.0 };
+            if it.members.len() > 1 {
+                // the neat liquid and the dissolved form of one molecule share what evaporated or condensed in proportion
+                let f = if it.n_liq0 > 0.0 { n_liq / it.n_liq0 } else { 0.0 };
+                for (k, a) in &it.members {
+                    self.set_liquid_total(k, a * f);
+                }
+            } else {
+                self.set_liquid_total(&it.key, n_liq);
+            }
             if n_gas > MIN_AMOUNT_MOL {
                 self.headspace_gas_mol.insert(it.vol.gas_id.clone(), n_gas);
             } else {
@@ -1021,12 +1034,22 @@ impl Vessel {
         for key in keys {
             let Some(vol) = self.volatile_for(&key) else { continue };
             let n_liq0 = self.liquid_total(&key);
+            // another liquid key of a molecule already in the flash (same gas phase): one inventory, the gas counted once
+            if let Some(it) = items.iter_mut().find(|it| it.vol.gas_id == vol.gas_id) {
+                it.n_liq0 += n_liq0;
+                it.n_tot += n_liq0;
+                if n_liq0 > 0.0 {
+                    it.members.push((key, n_liq0));
+                }
+                continue;
+            }
             let n_gas = self.headspace_gas_mol.get(&vol.gas_id).copied().unwrap_or(0.0);
             if n_liq0 + n_gas <= MIN_AMOUNT_MOL {
                 continue;
             }
             n_gas0.push(n_gas);
-            items.push(FlashItem { vol, key, n_liq0, n_tot: n_liq0 + n_gas });
+            let members = if n_liq0 > 0.0 { vec![(key.clone(), n_liq0)] } else { Vec::new() };
+            items.push(FlashItem { vol, key, n_liq0, n_tot: n_liq0 + n_gas, members });
         }
         if items.is_empty() {
             return None;

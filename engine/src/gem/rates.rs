@@ -20,7 +20,8 @@ pub const Z_COLLISION: f64 = 1.0e11;
 /// Self-exchange rate constant (M^-1 s^-1) of a couple whose two forms differ only in charge: outer-sphere electron
 /// transfer between solvated ions (aqua and ammine couples span 1e-4 to 1e5, cyanide and polypyridine couples 1e3 to 1e8).
 pub const K_SELF_OUTER_SPHERE: f64 = 1.0;
-/// Self-exchange rate constant of a couple of a *labile* element (`redox_lability.json`) whose forms differ in composition
+/// Self-exchange rate constant of a couple whose forms differ by electrons only (see `redox::is_electron_transfer_couple`) or
+/// of a *labile* element (`redox_lability.json`) whose forms differ in composition
 /// (MnO4- / Mn2+, I2 / I-, Cu(OH)2 / Cu+): the transfer needs an oxygen or ligand rearrangement but the element is known to
 /// react on bench time scales, so the barrier is moderate.
 pub const K_SELF_LABILE_REARRANGING: f64 = 1.0e-3;
@@ -50,6 +51,36 @@ pub struct EtRate {
 /// (`data/reaction_templates.json`, tier Speculative), else the estimate by composition. Returns (k, from_data), where
 /// `from_data` is true for the first two.
 pub fn self_exchange_k(a: &str, b: &str) -> (f64, bool) {
+    // memoised per store generation: the answer depends on the species records, and discovery asks for the same few couples
+    // for every reaction of every step
+    thread_local! {
+        static MEMO: std::cell::RefCell<(u64, std::collections::HashMap<(String, String), (f64, bool)>)> = Default::default();
+    }
+    let generation = crate::db::SpeciesStore::generation();
+    let key = (a.to_string(), b.to_string());
+    let hit = MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.0 != generation {
+            m.0 = generation;
+            m.1.clear();
+        }
+        m.1.get(&key).copied()
+    });
+    if let Some(v) = hit {
+        return v;
+    }
+    let v = self_exchange_k_uncached(a, b);
+    MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.1.len() > 20_000 {
+            m.1.clear();
+        }
+        m.1.insert(key, v);
+    });
+    v
+}
+
+fn self_exchange_k_uncached(a: &str, b: &str) -> (f64, bool) {
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
         for (x, y) in [(a, b), (b, a)] {
             if let Some(rec) = store.get(x) {
@@ -73,7 +104,9 @@ pub fn self_exchange_k(a: &str, b: &str) -> (f64, bool) {
         (Some(ea), Some(eb)) => ea.keys().any(|e| eb.contains_key(e) && crate::gem::redox::is_labile_redox_element(e) && e != "H" && e != "O"),
         _ => false,
     };
-    (if same_atoms { K_SELF_OUTER_SPHERE } else if labile { K_SELF_LABILE_REARRANGING } else { K_SELF_BOND_REARRANGING }, false)
+    // forms that differ by electrons only (X2 / X-, S2O8-2 / SO4-2): a like-atom bond is made or broken, nothing is transferred
+    let electrons_only = crate::gem::redox::is_electron_transfer_couple(a, b);
+    (if same_atoms { K_SELF_OUTER_SPHERE } else if labile || electrons_only { K_SELF_LABILE_REARRANGING } else { K_SELF_BOND_REARRANGING }, false)
 }
 
 /// Encounter radius (m) of a species from its size.
