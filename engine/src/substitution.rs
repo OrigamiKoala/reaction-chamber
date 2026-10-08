@@ -41,6 +41,9 @@ pub struct WaterExchangeRow {
     /// and has not been checked. Absent = recalled.
     #[serde(default)]
     pub verification: Option<String>,
+    /// Where the mechanism label (Id / Ia / D) was read, when it was (absent = recalled).
+    #[serde(default)]
+    pub mechanism_source: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -107,7 +110,7 @@ pub fn eigen_wilkins_rate(
     let k_os = k_outer_sphere(metal_charge, ligand_charge, contact_distance_a, t_k);
     let k_f = k_os * row.k_ex;
     let ea_j = row.delta_h_kj.unwrap_or(50.0) * 1000.0;
-    let mut terms = vec![RateTerm { catalyst: None, k_298: k_f, ea_j_mol: ea_j }];
+    let mut terms = vec![RateTerm { catalyst: None, k_298: k_f, ea_j_mol: ea_j, z_product: (metal_charge * ligand_charge) as f64 }];
     let mut label = format!("k_ex = {:.2e} s^-1 ({}, {})", row.k_ex, row.mechanism, row.source);
 
     // conjugate-base path through the hydroxo ion
@@ -120,6 +123,7 @@ pub fn eigen_wilkins_rate(
                 catalyst: Some(crate::db::seed::HYDROXIDE.to_string()),
                 k_298: k_f_oh * 10f64.powf(*log_k_h) / kw,
                 ea_j_mol: orow.delta_h_kj.unwrap_or(50.0) * 1000.0 + (dh_h - DH_WATER_KJ) * 1000.0,
+                z_product: ((metal_charge - 1) * ligand_charge) as f64,
             });
             label.push_str(&format!("; hydroxo path {} k_ex = {:.2e} s^-1", hydroxo, orow.k_ex));
         }
@@ -194,6 +198,45 @@ mod tests {
         };
         attach_rate(&mut cu);
         assert!(cu.rate.is_none());
+    }
+
+    #[test]
+    fn ionic_strength_screens_an_attraction_and_helps_a_repulsion() {
+        let fe = eigen_wilkins_rate("Fe+3", 3, -1, 3.5, 298.15).unwrap();
+        assert_eq!(fe.terms[0].z_product, -3.0);
+        assert_eq!(fe.terms[1].z_product, -2.0, "the hydroxo path is the 2+ / 1- encounter");
+        let none = |_: &str| 1.0;
+        // the aqua term only (no hydroxide): k_forward_at against the dilute limit
+        let only_aqua = |sp: &str| if sp == "OH-" { 0.0 } else { none(sp) };
+        let k0 = fe.k_forward_at(298.15, &only_aqua, 0.0);
+        assert!((k0 / fe.terms[0].k_298 - 1.0).abs() < 1e-12);
+        for i in [0.01, 0.1, 1.0] {
+            assert!(fe.k_forward_at(298.15, &only_aqua, i) < k0, "attraction is screened at I = {i}");
+        }
+        // at I = 1 mol/kg the 3+ / 1- encounter loses 2 x 0.509 x 3 x f(1) = 0.61 log units (Davies f(1) = 0.2)
+        let a = crate::activity::debye_huckel_a_gamma(298.15);
+        let ratio = fe.k_forward_at(298.15, &only_aqua, 1.0) / k0;
+        assert!((ratio.log10() + 2.0 * a * 3.0 * 0.2).abs() < 1e-9, "{}", ratio.log10());
+        // a repulsion (two cations) is helped by the salt
+        let mut like = fe.clone();
+        like.terms[0].z_product = 6.0;
+        assert!(like.k_forward_at(298.15, &only_aqua, 0.1) > like.k_forward_at(298.15, &only_aqua, 0.0));
+    }
+
+    #[test]
+    fn mechanism_labels_follow_their_open_sources() {
+        for ion in ["Rh+3", "Ir+3"] {
+            let r = water_exchange_rate(ion).unwrap();
+            assert_eq!(r.mechanism, "Ia", "{ion}");
+            assert_eq!(r.verification.as_deref(), Some("verified_primary"));
+            assert!(r.mechanism_source.as_deref().unwrap_or("").contains("Chimia 50, 618"));
+        }
+        assert!((water_exchange_rate("Rh+3").unwrap().k_ex / 2.2e-9 - 1.0).abs() < 1e-9);
+        assert!((water_exchange_rate("Ir+3").unwrap().k_ex / 1.1e-10 - 1.0).abs() < 1e-9);
+        for ion in ["Cr+3", "V+2", "Fe+3"] {
+            assert_eq!(water_exchange_rate(ion).unwrap().mechanism, "Ia", "{ion}");
+        }
+        assert_eq!(water_exchange_rate("Zn+2").unwrap().mechanism, "Id");
     }
 
     #[test]

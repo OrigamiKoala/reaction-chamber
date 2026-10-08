@@ -10,6 +10,16 @@
           "role": "ester",
           "any_of": [
             "[CX3;A](=[OX1])[OX2;H0][#6]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[NX3]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](-[OX2])-[OX2]"
+            }
           ]
         },
         {
@@ -182,6 +192,16 @@
           "role": "ester",
           "any_of": [
             "[CX3;A](=[OX1])[OX2;H0][#6]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3]-[NX3]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](-[OX2])-[OX2]"
+            }
           ]
         },
         {
@@ -633,20 +653,14 @@
       ]
     },
     {
-      "id": "sn1_solvolysis",
-      "name": "SN1 solvolysis (carbocation)",
+      "id": "sn1_ionisation",
+      "name": "SN1 ionisation (rate-limiting step of solvolysis: alkyl halide -> carbocation + halide)",
       "category": "substitution",
       "reactants": [
         {
           "role": "substrate",
           "any_of": [
             "[CX4;!H3][Cl,Br,I]"
-          ]
-        },
-        {
-          "role": "water",
-          "any_of": [
-            "[OX2H2]"
           ]
         }
       ],
@@ -663,16 +677,12 @@
           ]
         },
         {
-          "op": "bond",
-          "a": [
+          "op": "charge",
+          "atom": [
             0,
             0
           ],
-          "b": [
-            1,
-            0
-          ],
-          "order": 1
+          "value": 1
         },
         {
           "op": "charge",
@@ -682,9 +692,6 @@
           ],
           "value": -1
         }
-      ],
-      "extra_products": [
-        "[H+]"
       ],
       "rules": [
         {
@@ -782,38 +789,28 @@
           "a_factor": 1e-12,
           "source": "no stabilisation of the ion pair (estimate)"
         }
-      ]
+      ],
+      "_comment": "The measured first-order rate of solvolysis is the rate of this step: the carbocation is trapped by the solvent (carbocation_trapping_by_solvent) or returns with the halide (carbocation_trapping) much faster than it forms, so the products (alcohol or ether, proton, halide) are decided by the trapping steps, not here."
     },
     {
-      "id": "e1_elimination",
-      "name": "E1 elimination (carbocation)",
+      "id": "e1_deprotonation",
+      "name": "E1 deprotonation of a carbocation by the solvent",
       "category": "elimination",
       "reactants": [
         {
-          "role": "substrate",
+          "role": "carbocation",
           "any_of": [
-            "[CX4;!H3]([Cl,Br,I])[CX4;!H0]"
+            "[CX3+;A][CX4;!H0]"
           ]
         },
         {
-          "role": "water",
+          "role": "solvent base",
           "any_of": [
             "[OX2H2]"
           ]
         }
       ],
       "edits": [
-        {
-          "op": "break",
-          "a": [
-            0,
-            0
-          ],
-          "b": [
-            0,
-            1
-          ]
-        },
         {
           "op": "set_bond",
           "a": [
@@ -822,7 +819,7 @@
           ],
           "b": [
             0,
-            2
+            1
           ],
           "order": 2
         },
@@ -830,9 +827,17 @@
           "op": "charge",
           "atom": [
             0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            0,
             1
           ],
-          "value": -1
+          "delta": -1
         }
       ],
       "extra_products": [
@@ -841,102 +846,20 @@
       "degeneracy": {
         "h_of": [
           0,
-          2
+          1
         ]
       },
       "rules": [
         {
-          "id": "tertiary halide in water, per beta hydrogen",
-          "when": [
-            {
-              "reactant": 0,
-              "center": 0,
-              "smarts": "[CX4;H0]"
-            }
-          ],
-          "a": 180000000000.0,
-          "ea_kj": 81.6,
-          "source": "E1 accompanies SN1 of tert-butyl chloride in water at about 8 % (three beta hydrogens) (uncited tier Speculative fallback)",
-          "tier": "speculative"
-        },
-        {
-          "id": "secondary halide in water, per beta hydrogen",
-          "when": [
-            {
-              "reactant": 0,
-              "center": 0,
-              "smarts": "[CX4;H1]"
-            }
-          ],
-          "a": 180000.0,
-          "ea_kj": 81.6,
-          "source": "same ratio to the SN1 rate as for the tertiary halide (uncited tier Speculative fallback)",
+          "id": "carbocation, per beta hydrogen",
+          "when": [],
+          "a": 9660000.0,
+          "ea_kj": 10.0,
+          "source": "the alkene share of tert-butyl chloride solvolysis in water is about 8 % (recalled, uncited): with trapping by water at 1.77e7 M-1 s-1 (carbocation_trapping_by_solvent, 1e9 s-1 in 55 M water) and nine beta hydrogens (three methyl groups) this is 1.7e5 M-1 s-1 per hydrogen (uncited tier Speculative fallback)",
           "tier": "speculative"
         }
       ],
-      "modifiers": [
-        {
-          "id": "bromide leaving group",
-          "when": [
-            {
-              "reactant": 0,
-              "center": 1,
-              "smarts": "[Br]"
-            }
-          ],
-          "a_factor": 39.0,
-          "source": "see sn1_solvolysis"
-        },
-        {
-          "id": "iodide leaving group",
-          "when": [
-            {
-              "reactant": 0,
-              "center": 1,
-              "smarts": "[I]"
-            }
-          ],
-          "a_factor": 99.0,
-          "source": "see sn1_solvolysis"
-        },
-        {
-          "id": "alcohol solvent",
-          "when": [
-            {
-              "solvent": [
-                "alcohol"
-              ]
-            }
-          ],
-          "a_factor": 3e-06,
-          "source": "see sn1_solvolysis"
-        },
-        {
-          "id": "other polar aprotic solvent",
-          "when": [
-            {
-              "solvent": [
-                "other"
-              ]
-            }
-          ],
-          "a_factor": 1e-07,
-          "source": "see sn1_solvolysis"
-        },
-        {
-          "id": "non-polar solvent",
-          "when": [
-            {
-              "solvent": [
-                "alkane",
-                "aromatic"
-              ]
-            }
-          ],
-          "a_factor": 1e-12,
-          "source": "see sn1_solvolysis"
-        }
-      ]
+      "_comment": "Second step of E1: the carbocation made by sn1_ionisation loses a beta proton to the solvent. It replaces the one-step e1_elimination, which counted the ionisation twice (the substrate was consumed by SN1 and by E1 at the same time)."
     },
     {
       "id": "alkene_hydration",
@@ -1130,6 +1053,14 @@
             {
               "center": 0,
               "smarts": "[CX3]-[O,N,S,F,Cl,Br]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](=[OX1])[CX3]=[PX4]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](=[OX1])[CX3-][PX4+]"
             }
           ]
         }
@@ -1210,6 +1141,16 @@
           "role": "amide",
           "any_of": [
             "[CX3;A](=[OX1])[NX3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3](-[NX3])-[NX3]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](-[NX3])-[OX2]"
+            }
           ]
         },
         {
@@ -1259,13 +1200,13 @@
         {
           "id": "amide + water, H+",
           "when": [],
-          "a": 2000150000.0,
-          "ea_kj": 84.11,
-          "source": "Fit to 12 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.39 log10, held-out rms 0.54 (3 rows); activation energy = mean of the tabulated ones",
-          "n_points": 12,
-          "rms_log10": 0.39,
-          "held_out_rms_log10": 0.544,
-          "n_held_out": 3,
+          "a": 2156170000.0,
+          "ea_kj": 85.08,
+          "source": "Fit to 14 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.43 log10, held-out rms 0.51 (4 rows); activation energy = mean of the tabulated ones",
+          "n_points": 14,
+          "rms_log10": 0.43,
+          "held_out_rms_log10": 0.506,
+          "n_held_out": 4,
           "tier": "estimated"
         }
       ],
@@ -1279,9 +1220,271 @@
               "smarts": "[CX3][NX3][CX4]"
             }
           ],
-          "a_factor": 0.1979,
+          "a_factor": 0.1808,
           "per_match": true,
-          "source": "least-squares factor on 12 verified Mabey & Mill (1978) rows of amide_hydrolysis (amide + water, H+); 3 of them show the feature"
+          "source": "least-squares factor on 14 verified Mabey & Mill (1978) rows of amide_hydrolysis (amide + water, H+); 5 of them show the feature"
+        }
+      ]
+    },
+    {
+      "id": "amide_base_hydrolysis",
+      "name": "Base-catalysed amide hydrolysis (BAc2)",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "amide",
+          "any_of": [
+            "[CX3;A](=[OX1])[NX3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3](-[NX3])-[NX3]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](-[NX3])-[OX2]"
+            }
+          ]
+        },
+        {
+          "role": "hydroxide",
+          "any_of": [
+            "[OX1H1-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "amide + hydroxide",
+          "when": [],
+          "a": 9047350.0,
+          "ea_kj": 68.3,
+          "source": "Fit to 15 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.46 log10, held-out rms 0.54 (4 rows); activation energy = mean of the tabulated ones",
+          "tier": "estimated",
+          "n_points": 15,
+          "rms_log10": 0.463,
+          "held_out_rms_log10": 0.544,
+          "n_held_out": 4
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: N-alkyl substituent, per substituent",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][NX3][CX4]"
+            }
+          ],
+          "a_factor": 0.3741,
+          "per_match": true,
+          "source": "least-squares factor on 15 verified Mabey & Mill (1978) rows of amide_base_hydrolysis (amide + hydroxide); 6 of them show the feature"
+        },
+        {
+          "id": "fit: alpha halogen on the acyl carbon, per halogen",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX4][F,Cl,Br]"
+            }
+          ],
+          "a_factor": 36.54,
+          "per_match": true,
+          "source": "least-squares factor on 15 verified Mabey & Mill (1978) rows of amide_base_hydrolysis (amide + hydroxide); 2 of them show the feature"
+        }
+      ]
+    },
+    {
+      "id": "carbamate_base_hydrolysis",
+      "name": "Base hydrolysis of a carbamate (BAc2, or E1cB through the isocyanate for N-H carbamates)",
+      "category": "acyl substitution",
+      "reactants": [
+        {
+          "role": "carbamate",
+          "any_of": [
+            "[CX3;A](=[OX1])([OX2;H0][#6])[NX3]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[CX3](-[OX2])(-[NX3])-[NX3]"
+            }
+          ]
+        },
+        {
+          "role": "hydroxide",
+          "any_of": [
+            "[OX1H1-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "N-aryl carbamate, alkyl-O + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]([NX3;H1]c)[OX2][CX4]"
+            }
+          ],
+          "a": 28224900.0,
+          "ea_kj": 70.0,
+          "source": "Fit to 6 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.63 log10, held-out rms 0.57 (2 rows); activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 6,
+          "rms_log10": 0.631,
+          "held_out_rms_log10": 0.574,
+          "n_held_out": 2
+        },
+        {
+          "id": "N-aryl carbamate, aryl-O + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]([NX3;H1]c)[OX2]c"
+            }
+          ],
+          "a": 2868840000000000.0,
+          "ea_kj": 70.0,
+          "source": "Fit to 3 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.53 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 3,
+          "rms_log10": 0.534
+        },
+        {
+          "id": "N-alkyl carbamate, aryl-O + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]([NX3;H1][CX4])[OX2]c"
+            }
+          ],
+          "a": 1228980000000.0,
+          "ea_kj": 70.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
+        },
+        {
+          "id": "N,N-disubstituted carbamate + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][NX3;H0]"
+            }
+          ],
+          "a": 4384870.0,
+          "ea_kj": 61.21,
+          "source": "Fit to 4 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.84 log10, no held-out rows; activation energy = mean of the tabulated ones",
+          "tier": "estimated",
+          "n_points": 4,
+          "rms_log10": 0.84
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: halogen on the alkoxy carbon, per halogen",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][OX2][CX4][CX4][F,Cl,Br]"
+            }
+          ],
+          "a_factor": 24.28,
+          "per_match": true,
+          "source": "least-squares factor on 6 verified Mabey & Mill (1978) rows of carbamate_base_hydrolysis (N-aryl carbamate, alkyl-O + hydroxide); 3 of them show the feature"
+        },
+        {
+          "id": "fit: Hammett-Brown relation of the leaving-group ring",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]([NX3;H1]c)[OX2]c"
+            }
+          ],
+          "hammett": {
+            "rho": 2.142,
+            "reactant": 0,
+            "center": 3,
+            "ortho_steric": false
+          },
+          "source": "rho from least squares on 3 verified Mabey & Mill (1978) rows of carbamate_base_hydrolysis (N-aryl carbamate, aryl-O + hydroxide); substituent constants of engine/data/hammett_plus.json (recalled, tier Estimated)"
         }
       ]
     },
@@ -2380,6 +2583,22 @@
           "ea_kj": 45,
           "source": "hydrolysis of acetyl chloride in water, k of the order 0.5 s-1 at 298 K (Bunton, recalled); water at 55 M inside k (uncited tier Speculative fallback)",
           "tier": "speculative"
+        },
+        {
+          "id": "chloroformate, water",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][OX2]"
+            }
+          ],
+          "a": 43161.0,
+          "ea_kj": 45.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
         }
       ],
       "modifiers": [
@@ -3424,9 +3643,9 @@
               "smarts": "[CX3;H0]"
             }
           ],
-          "a": 270000000.0,
+          "a": 540000.0,
           "ea_kj": 25,
-          "source": "ketones are about two orders slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+          "source": "ratio to the aldehyde rule from Mayr's database: log10(k_ketone / k_aldehyde) = sN x (E_ketone - E_benzaldehyde), mean E of the 10 ketone electrophiles of the database -18.98 against benzaldehyde -12.90 (DMSO), mean sN of the 7 phosphonium ylides 0.77: factor 2.0e-5 (checked against the data file by tests/wittig_network.rs); the aldehyde rule itself stays an uncited speculative estimate (Mayr has no non-stabilised ylide)",
           "tier": "speculative"
         }
       ],
@@ -3827,13 +4046,13 @@
               "smarts": "[CX4;H2,H3]"
             }
           ],
-          "a": 3211700000000.0,
+          "a": 3277360000000.0,
           "ea_kj": 110.16,
-          "source": "Fit to 10 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.66 log10, held-out rms 0.29 (2 rows); activation energy = mean of the tabulated ones",
+          "source": "Fit to 13 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.73 log10, held-out rms 0.29 (2 rows); activation energy = mean of the tabulated ones",
           "tier": "estimated",
-          "n_points": 10,
-          "rms_log10": 0.661,
-          "held_out_rms_log10": 0.286,
+          "n_points": 13,
+          "rms_log10": 0.726,
+          "held_out_rms_log10": 0.287,
           "n_held_out": 2
         }
       ],
@@ -3847,9 +4066,22 @@
               "smarts": "[CX4]c"
             }
           ],
-          "a_factor": 2131.0,
+          "a_factor": 2089.0,
           "per_match": false,
-          "source": "least-squares factor on 10 verified Mabey & Mill (1978) rows of halide_neutral_hydrolysis (primary or methyl halide neutral hydrolysis); 4 of them show the feature"
+          "source": "least-squares factor on 13 verified Mabey & Mill (1978) rows of halide_neutral_hydrolysis (primary or methyl halide neutral hydrolysis); 4 of them show the feature"
+        },
+        {
+          "id": "fit: allylic carbon (vinyl on the halide carbon)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4][CX3]=[CX3]"
+            }
+          ],
+          "a_factor": 11.57,
+          "per_match": false,
+          "source": "least-squares factor on 13 verified Mabey & Mill (1978) rows of halide_neutral_hydrolysis (primary or methyl halide neutral hydrolysis); 3 of them show the feature"
         }
       ]
     },

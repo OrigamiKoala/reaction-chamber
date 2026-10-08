@@ -5,16 +5,22 @@ Plan: `docs/plans/rates-from-data-plan.md` (sections 3.2, 6, 13.5). Re-run after
 
 ## 1. Measured organic rows and the rules they fit
 
-74 rows are used by the engine (read from their source), 9 are held out (never loaded). Rows of the earlier table that were written from memory are not compiled (`pipeline/data/rates_unverified.csv`).
+109 rows are used by the engine (read from their source), 16 are held out (never loaded). Rows of the earlier table that were written from memory are not compiled (`pipeline/data/rates_unverified.csv`).
 
 | Template / rule | used rows | held-out rows | held-out rms (log10) | gate (rms <= 0.7) |
 |---|---|---|---|---|
 | acid_ester_hydrolysis / ester + water, H+ | 13 | 0 | n/a | no held-out row |
-| amide_hydrolysis / amide + water, H+ | 12 | 3 | 0.54 | met |
+| acyl_halide_substitution / chloroformate, water | 1 | 0 | n/a | no held-out row |
+| amide_base_hydrolysis / amide + hydroxide | 15 | 4 | 0.54 | met |
+| amide_hydrolysis / amide + water, H+ | 14 | 4 | 0.51 | met |
 | base_ester_hydrolysis / ester + hydroxide | 32 | 4 | 0.56 | met |
-| halide_neutral_hydrolysis / primary or methyl halide neutral hydrolysis | 10 | 2 | 0.29 | met |
-| sn1_solvolysis / secondary halide in water | 3 | 0 | n/a | no held-out row |
-| sn1_solvolysis / tertiary halide in water | 1 | 0 | n/a | no held-out row |
+| carbamate_base_hydrolysis / N,N-disubstituted carbamate + hydroxide | 4 | 0 | n/a | no held-out row |
+| carbamate_base_hydrolysis / N-alkyl carbamate, aryl-O + hydroxide | 1 | 0 | n/a | no held-out row |
+| carbamate_base_hydrolysis / N-aryl carbamate, alkyl-O + hydroxide | 6 | 2 | 0.57 | met |
+| carbamate_base_hydrolysis / N-aryl carbamate, aryl-O + hydroxide | 3 | 0 | n/a | no held-out row |
+| halide_neutral_hydrolysis / primary or methyl halide neutral hydrolysis | 13 | 2 | 0.29 | met |
+| sn1_ionisation / secondary halide in water | 3 | 0 | n/a | no held-out row |
+| sn1_ionisation / tertiary halide in water | 1 | 0 | n/a | no held-out row |
 | sn2_substitution / primary substrate + hydroxide | 3 | 0 | n/a | no held-out row |
 
 Rows that do not connect to a generated reaction: 0.
@@ -31,8 +37,8 @@ Caveat: structural features of the rules were added while looking at the held-ou
 | Amide acid hydrolysis: acetamide | CH3COOH + H3N | 8.42e-6 | 1 | measured, read from its source |
 | SN2: bromomethane + OH- | Br- + CH3OH | 1.41e-4 | 1 | measured, read from its source |
 | SN2: 1-bromobutane + OH- | Br- + C4H10O | 1.28e-6 | 3 | rule fitted to verified rows |
-| SN1: tert-butyl chloride in water | C4H10O#9EC2EA68 + Cl- + H+ | 3.02e-2 | 1 | measured, read from its source |
-| SN1: 2-bromopropane in water | Br- + C3H8O#318DC57E + H+ | 3.86e-6 | 1 | measured, read from its source |
+| SN1: tert-butyl chloride in water | C4H9+ + Cl- | 3.02e-2 | 1 | measured, read from its source |
+| SN1: 2-bromopropane in water | Br- + C3H7+ | 3.86e-6 | 1 | measured, read from its source |
 | Neutral hydrolysis: bromomethane | Br- + CH3OH + H+ | 4.09e-7 | 1 | measured, read from its source |
 | Neutral hydrolysis: benzyl chloride | C7H8O + Cl- + H+ | 1.28e-5 | 1 | measured, read from its source |
 | Menshutkin: bromomethane + trimethylamine | Br- + C4H12N+ | 4.45e-3 | 3 | UNCITED rule (speculative) |
@@ -53,9 +59,9 @@ Caveat: structural features of the rules were added while looking at the held-ou
 | Aldol addition: acetaldehyde + acetaldehyde | C12H24O6#BD86236D | 1.00e-1 | 3 | UNCITED rule (speculative) |
 | Aldol addition: acetaldehyde + acetaldehyde | C10H20O5#B8B138FE | 1.00e-1 | 3 | UNCITED rule (speculative) |
 | Aldol addition: acetaldehyde + acetaldehyde | C12H24O6#0F28819B | 1.00e-1 | 3 | UNCITED rule (speculative) |
-| Carbonyl hydration: acetaldehyde | C2H6O2 | 5.00e2 | 3 | UNCITED rule (speculative) |
-| Carbonyl hydration: acetaldehyde | C2H6O2 | 5.00e3 | 3 | UNCITED rule (speculative) |
-| Carbonyl hydration: acetaldehyde | C2H6O2 | 1.00e-2 | 3 | UNCITED rule (speculative) |
+| Carbonyl hydration: acetaldehyde | C2H6O2#2D8DBF32 | 5.00e2 | 3 | UNCITED rule (speculative) |
+| Carbonyl hydration: acetaldehyde | C2H6O2#2D8DBF32 | 5.00e3 | 3 | UNCITED rule (speculative) |
+| Carbonyl hydration: acetaldehyde | C2H6O2#2D8DBF32 | 1.00e-2 | 3 | UNCITED rule (speculative) |
 | Carbonyl hydration: acetaldehyde | C4H10O3 | 5.00e2 | 3 | UNCITED rule (speculative) |
 | Carbonyl hydration: acetaldehyde | C6H14O4 | 5.00e2 | 3 | UNCITED rule (speculative) |
 | Carbonyl hydration: acetaldehyde | C8H18O5 | 5.00e2 | 3 | UNCITED rule (speculative) |
@@ -78,10 +84,10 @@ Organic rate evaluations in the list: 44; at precedence 1-2: 11 (25 %); on an un
 
 **Self-exchange constants** (`redox_couples.json`): 23 couples labelled outer-sphere, 0 of them checked against a source (the Marcus cross relation is therefore run on recalled constants).
 
-**Water-exchange rates** (`water_exchange.json`, Eigen-Wilkins): 30 ions, 10 with k_ex matching a published copy of the Helm & Merbach table, 20 recalled. Activation enthalpies and mechanism labels are recalled for all.
+**Water-exchange rates** (`water_exchange.json`, Eigen-Wilkins): 30 ions, 12 with k_ex matching a published copy of the Helm & Merbach table, 18 recalled. Activation enthalpies and mechanism labels are recalled for all.
 
 Complexation rows of the default equilibria that are rate-limited by water exchange: 1
-- `iron_thiocyanate`: slow (Eigen-Wilkins k_f = K_os k_ex, K_os = 4.137e1 M^-1: k_ex = 1.60e2 s^-1 (Id, Helm & Merbach, Chem. Rev. 105, 1923 (2005)); hydroxo path FeOH+2 k_ex = 1.20e5 s^-1)
+- `iron_thiocyanate`: slow (Eigen-Wilkins k_f = K_os k_ex, K_os = 4.137e1 M^-1: k_ex = 1.60e2 s^-1 (Ia, Helm & Merbach, Chem. Rev. 105, 1923 (2005)); hydroxo path FeOH+2 k_ex = 1.20e5 s^-1; associative ion: depends on the entering ligand, estimate)
 - `copper_tetraammine`: instantaneous (labile ion)
 - `co_cl_1`: instantaneous (labile ion)
 

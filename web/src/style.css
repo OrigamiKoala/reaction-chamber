@@ -2906,3 +2906,11 @@ dialog.modal::backdrop {
 .legend b { font-weight: inherit; }
 .d-sec .table-wrap + .table-wrap,
 .d-sec .table-wrap + .kv { margin-top: 10px; }
+
+/* Database search rows (merged PubChem / NIST / CAS hits) */
+.db-row { align-items: flex-start; }
+.db-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.db-name { font-weight: 600; overflow-wrap: anywhere; }
+.db-meta { font-size: 11.5px; color: var(--mute); overflow-wrap: anywhere; }
+.db-badges { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; max-width: 40%; }
+.db-badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line, rgba(0,0,0,0.15)); color: var(--mute); }

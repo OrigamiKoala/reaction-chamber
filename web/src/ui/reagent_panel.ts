@@ -1,4 +1,4 @@
-// Left panel: tabs 'Reagents | Glassware'. Reagents = search-first browser (catalog + PubChem in one box) with the inline Add
+// Left panel: tabs 'Reagents | Glassware'. Reagents = search-first browser (catalog + PubChem / NIST / CAS in one box) with the inline Add
 // card; Glassware = the catalog menu (ui/glassware_panel.ts).
 import {
   ReagentLibrary,
@@ -12,7 +12,9 @@ import {
 } from '../app/reagent_library';
 import type { VesselType } from '../app/lab';
 import type { VesselState } from '../types';
-import { searchPubChemAutocomplete } from '../pubchem/api';
+import type { ImportRequest } from '../pubchem/api';
+import { DatabaseSearch, type SearchSnapshot } from '../data/search/search_all';
+import type { MergedHit, SourceId } from '../data/search/merge_hits';
 import { h, prettyFormula, setText } from './dom';
 import { icon } from './icons';
 import { swatchHTML } from './reagent_swatch';
@@ -26,7 +28,7 @@ export type LibraryTab = 'reagents' | 'glassware';
 export class ReagentPanel {
   public readonly el: HTMLElement;
   public onSelect?: (item: ReagentItem) => void;
-  public onImportPubChem?: (name: string) => Promise<void>;
+  public onImportHit?: (req: ImportRequest) => Promise<void>;
   public onSpawnGlassware?: (type: VesselType) => void;
   public onSelectGlassware?: (id: string) => void;
   public onRemoveGlassware?: (id: string) => void;
@@ -46,10 +48,9 @@ export class ReagentPanel {
   private selectedKey: string | null = null;
   private renderQueued = false;
   private pcTimer = 0;
-  private pcSeq = 0;
   private importing = false;
-  private pcNames: string[] = [];
-  private pcState: 'idle' | 'loading' | 'done' = 'idle';
+  private dbSearch = new DatabaseSearch();
+  private dbSnap: SearchSnapshot | null = null;
 
   constructor(private lib: ReagentLibrary, public readonly addCard: AddCard) {
     this.el = h('aside', { class: 'panel panel-left', id: 'reagent-panel', 'aria-label': 'Reagents and glassware' });
@@ -229,7 +230,7 @@ export class ReagentPanel {
   private onQueryChanged() {
     this.clearBtn.hidden = this.search.value.length === 0;
     this.renderResults();
-    this.schedulePubChem();
+    this.scheduleDatabases();
   }
 
   private renderResults() {
@@ -255,13 +256,13 @@ export class ReagentPanel {
       const msg = this.lib.size === 0
         ? 'Loading reagents…'
         : this.filter === 'imported' && !q
-          ? 'Nothing imported yet. Search PubChem above to import any compound.'
+          ? 'Nothing imported yet. Search above to import any compound from PubChem, NIST or CAS.'
           : q
             ? `No reagent matches “${q}”.`
             : 'Nothing here.';
       this.results.append(h('p', { class: 'empty-hint', text: msg }));
     }
-    this.renderPubChem(this.pcNames, this.pcState);
+    this.renderDatabases();
   }
 
   private section(title: string, items: ReagentItem[]): HTMLElement {
@@ -295,66 +296,87 @@ export class ReagentPanel {
     return b;
   }
 
-  // ------------------------------------------------------------------ PubChem (same search box)
-  private schedulePubChem() {
+  // ------------------------------------------------------------------ databases (same search box)
+  private scheduleDatabases() {
     window.clearTimeout(this.pcTimer);
     const q = this.search.value.trim();
     if (q.length < 2) {
-      this.renderPubChem([], 'idle');
+      this.dbSearch.cancel();
+      this.dbSnap = null;
+      this.renderDatabases();
       return;
     }
-    this.renderPubChem([], q.length >= 3 ? 'loading' : 'idle');
-    if (q.length < 3) return;
-    const seq = ++this.pcSeq;
-    this.pcTimer = window.setTimeout(async () => {
-      let names: string[] = [];
-      try {
-        names = await searchPubChemAutocomplete(q);
-      } catch {
-        names = [];
-      }
-      if (seq !== this.pcSeq || this.search.value.trim() !== q) return;
-      this.renderPubChem(names.slice(0, 6), 'done');
+    this.pcTimer = window.setTimeout(() => {
+      this.dbSearch.run(q, (snap) => {
+        if (this.search.value.trim() !== snap.query) return;
+        this.dbSnap = snap;
+        this.renderDatabases();
+      });
     }, 320);
   }
 
-  private renderPubChem(names: string[], state: 'idle' | 'loading' | 'done') {
-    this.pcNames = names;
-    this.pcState = state;
+  private renderDatabases() {
     const q = this.search.value.trim();
     this.pubchemSection.innerHTML = '';
     if (q.length < 2) return;
-    this.pubchemSection.append(h('div', { class: 'eyebrow', text: 'PubChem' }));
-    const main = h('button', { class: 'pc-row pc-primary', type: 'button', disabled: this.importing });
-    main.innerHTML = icon('cloud', 16);
-    main.append(h('span', { text: this.importing ? 'Importing…' : `Import “${q}” from PubChem` }));
-    main.addEventListener('click', () => this.importName(q));
-    this.pubchemSection.append(main);
-    if (state === 'loading') {
-      this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Looking up suggestions…' }));
+    this.pubchemSection.append(h('div', { class: 'eyebrow', text: 'Chemical databases' }));
+    const snap = this.dbSnap && this.dbSnap.query === q ? this.dbSnap : null;
+    if (!snap) {
+      this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Searching PubChem, NIST WebBook and CAS Common Chemistry…' }));
+      return;
     }
-    const lowerQ = q.toLowerCase();
-    for (const n of names.filter((x) => x.toLowerCase() !== lowerQ)) {
-      const b = h('button', { class: 'pc-row', type: 'button', disabled: this.importing });
-      b.innerHTML = icon('plus', 14);
-      b.append(h('span', { text: n }));
-      b.addEventListener('click', () => this.importName(n));
-      this.pubchemSection.append(b);
+    for (const m of snap.hits.slice(0, 12)) this.pubchemSection.append(this.dbRow(m));
+    if (snap.hits.length === 0 && snap.done) {
+      this.pubchemSection.append(h('p', { class: 'pc-status', text: `No database knows “${q}”. Try a different spelling, the formula, or the CAS number.` }));
     }
+    this.pubchemSection.append(h('p', { class: 'pc-status', text: this.statusLine(snap) }));
     this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Imported compounds react when the engine can derive their ions from the formula (salts, acids, bases).' }));
   }
 
-  private async importName(name: string) {
-    if (this.importing || !this.onImportPubChem) return;
+  private statusLine(snap: SearchSnapshot): string {
+    const names: Record<SourceId, string> = { pubchem: 'PubChem', nist: 'NIST', cas: 'CAS' };
+    const parts: string[] = [];
+    for (const id of ['pubchem', 'nist', 'cas'] as SourceId[]) {
+      const st = snap.sources[id];
+      if (st === 'running') parts.push(`${names[id]}: searching…`);
+      else if (st.status === 'ok') parts.push(`${names[id]}: found`);
+      else if (st.status === 'none') parts.push(`${names[id]}: no match`);
+      else parts.push(`${names[id]}: ${st.message ?? st.status}`);
+    }
+    return parts.join(' · ');
+  }
+
+  private dbRow(m: MergedHit): HTMLElement {
+    const b = h('button', { class: 'pc-row db-row', type: 'button', disabled: this.importing });
+    b.innerHTML = icon('plus', 14);
+    const text = h('span', { class: 'db-text' });
+    text.append(h('span', { class: 'db-name', text: m.name }));
+    const meta: string[] = [];
+    if (m.formula) meta.push(prettyFormula(m.formula));
+    if (m.kind === 'element') meta.push('element');
+    if (m.kind === 'ion') meta.push('ion');
+    if (m.cas) meta.push(`CAS ${m.cas}`);
+    text.append(h('span', { class: 'db-meta', text: meta.join(' · ') }));
+    b.append(text);
+    const badges = h('span', { class: 'db-badges' });
+    for (const s of m.sources) badges.append(h('span', { class: `db-badge db-${s}`, text: s === 'pubchem' ? 'PubChem' : s === 'nist' ? 'NIST' : 'CAS' }));
+    b.append(badges);
+    b.addEventListener('click', () => this.importHit({ name: m.name, cid: m.cid, inchikey: m.inchikey, cas: m.cas, formula: m.formula, smiles: m.smiles }));
+    return b;
+  }
+
+  private async importHit(req: ImportRequest) {
+    if (this.importing || !this.onImportHit) return;
     this.importing = true;
-    this.renderPubChem(this.pcNames, 'idle');
+    this.renderDatabases();
     try {
-      await this.onImportPubChem(name);
+      await this.onImportHit(req);
       this.search.value = '';
+      this.dbSnap = null;
       this.onQueryChanged();
     } finally {
       this.importing = false;
-      this.renderPubChem([], 'idle');
+      this.renderDatabases();
     }
   }
 
@@ -372,7 +394,10 @@ export class ReagentPanel {
       const first = this.results.querySelector<HTMLElement>('.r-row');
       const q = this.search.value.trim();
       const { total } = this.lib.search(q, this.filter, 1);
-      if (q && total === 0) this.importName(q);
+      if (q && total === 0) {
+        const top = this.dbSnap && this.dbSnap.query === q ? this.dbSnap.hits[0] : undefined;
+        this.importHit(top ? { name: top.name, cid: top.cid, inchikey: top.inchikey, cas: top.cas, formula: top.formula, smiles: top.smiles } : { name: q });
+      }
       else first?.click();
     } else if (e.key === 'Escape' && this.search.value) {
       e.preventDefault();

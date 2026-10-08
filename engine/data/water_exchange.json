@@ -1,14 +1,15 @@
 {
-  "_comment": "Water-exchange rate constants k_ex (s^-1) at 298.15 K of aqua metal ions, source Helm & Merbach, Chem. Rev. 105, 1923 (2005). Status per row (`verification`): verified_secondary = the k_ex matches a published copy of the review's table (10 rows, checked 2026-10-08, the review itself was not opened); recalled = written from memory and NOT checked. The activation enthalpies and the mechanism labels (Id / Ia / D) of every row are recalled. Used by engine/src/substitution.rs for the Eigen-Wilkins relation k_f = K_os k_ex.",
+  "_comment": "Water-exchange rate constants k_ex (s^-1) at 298.15 K of aqua metal ions, source Helm & Merbach, Chem. Rev. 105, 1923 (2005). Status per row (`verification`): verified_secondary = the k_ex matches a published copy of the review's table (10 rows, checked 2026-10-08, the review itself was not opened); recalled = written from memory and NOT checked. The activation enthalpies and the mechanism labels (Id / Ia / D) are recalled except where a row names `mechanism_source`: Rh3+ and Ir3+ (k_ex, activation enthalpy and the Ia label read from the open table of Cusanelli et al., Chimia 50, 618 (1996), `verified_primary`) and the mechanism labels of Cr3+, V2+, Zn2+ and Fe3+ (open Chimia 51, 97 (1997): a computed assignment that agrees with the experimental trend, not a measurement). Used by engine/src/substitution.rs for the Eigen-Wilkins relation k_f = K_os k_ex.",
   "ions": [
     {
       "ion": "Cr+3",
       "k_ex": 2.4e-06,
       "delta_h_kj": 109.0,
-      "mechanism": "Id",
+      "mechanism": "Ia",
       "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
       "verification": "verified_secondary",
-      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked.",
+      "mechanism_source": "Rotzinger, Chimia 51, 97 (1997), text and Fig. 4 (computed mechanism assignment, open access): the text names V(II) and Cr(III) as reacting 'via the Ia mechanism' (was Id, recalled)"
     },
     {
       "ion": "CrOH+2",
@@ -22,17 +23,19 @@
       "ion": "Rh+3",
       "k_ex": 2.2e-09,
       "delta_h_kj": 131.0,
-      "mechanism": "Id",
-      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
-      "verification": "recalled"
+      "mechanism": "Ia",
+      "source": "Cusanelli, Nicula-Dadci, Frey, Merbach, Chimia 50, 618 (1996), Table (open access)",
+      "verification": "verified_primary",
+      "mechanism_source": "Cusanelli, Nicula-Dadci, Frey, Merbach, Chimia 50, 618 (1996), Table (open access)"
     },
     {
       "ion": "Ir+3",
       "k_ex": 1.1e-10,
-      "delta_h_kj": 130.0,
-      "mechanism": "Id",
-      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
-      "verification": "recalled"
+      "delta_h_kj": 130.5,
+      "mechanism": "Ia",
+      "source": "Cusanelli, Nicula-Dadci, Frey, Merbach, Chimia 50, 618 (1996), Table (open access)",
+      "verification": "verified_primary",
+      "mechanism_source": "Cusanelli, Nicula-Dadci, Frey, Merbach, Chimia 50, 618 (1996), Table (open access)"
     },
     {
       "ion": "Ru+3",
@@ -86,10 +89,11 @@
       "ion": "Fe+3",
       "k_ex": 160.0,
       "delta_h_kj": 64.0,
-      "mechanism": "Id",
+      "mechanism": "Ia",
       "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
       "verification": "verified_secondary",
-      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked.",
+      "mechanism_source": "Rotzinger, Chimia 51, 97 (1997), text and Fig. 4 (computed mechanism assignment, open access): Fig. 4: associative (A) and Ia pathways are feasible for Fe(III), the dissociative one is not the assigned mechanism (was Id, recalled)"
     },
     {
       "ion": "FeOH+2",
@@ -103,10 +107,11 @@
       "ion": "V+2",
       "k_ex": 87.0,
       "delta_h_kj": 62.0,
-      "mechanism": "Id",
+      "mechanism": "Ia",
       "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
       "verification": "verified_secondary",
-      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked.",
+      "mechanism_source": "Rotzinger, Chimia 51, 97 (1997), text and Fig. 4 (computed mechanism assignment, open access): same sentence as Cr(III) (was Id, recalled)"
     },
     {
       "ion": "V+3",
@@ -183,9 +188,10 @@
       "ion": "Zn+2",
       "k_ex": 20000000.0,
       "delta_h_kj": 25.0,
-      "mechanism": "Ia",
+      "mechanism": "Id",
       "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
-      "verification": "recalled"
+      "verification": "recalled",
+      "mechanism_source": "Rotzinger, Chimia 51, 97 (1997), text and Fig. 4 (computed mechanism assignment, open access): the abstract: Ni(II), Cu(II) and Zn(II) react 'via the D (or Id) mechanism' (was Ia, recalled)"
     },
     {
       "ion": "Cd+2",

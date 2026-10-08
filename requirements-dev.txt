@@ -1,0 +1,10 @@
+# Python packages of the local server (python3 run.py) and the test suite: pip install -r requirements-dev.txt
+# Versions are the ones the code was developed and tested with (2026-10); newer minor versions should work.
+-r requirements.txt
+uvicorn>=0.29
+numpy>=1.26
+scipy>=1.12
+rdkit>=2024.3
+# tests
+httpx>=0.27
+pytest>=8

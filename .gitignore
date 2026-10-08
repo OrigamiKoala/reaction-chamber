@@ -21,3 +21,9 @@ web/src/wasm/
 
 # raw downloads of external databases (see docs/plans/data-acquisition-plan.md)
 pipeline/raw/
+
+# Vercel CLI link and build output
+.vercel/
+
+# secrets (API keys): copy .env.example to .env
+.env

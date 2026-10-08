@@ -64,6 +64,14 @@ export const LICENCE_REGISTRY: Record<string, SourceLicence> = {
     commercial_allowed: true,
     redistribution_allowed: true,
   },
+  'cas-common-chemistry': {
+    id: 'cas-common-chemistry',
+    name: 'CAS Common Chemistry',
+    licence: 'CC BY-NC 4.0 (non-commercial; attribution required; API key from CAS)',
+    url: 'https://commonchemistry.cas.org',
+    commercial_allowed: false,
+    redistribution_allowed: false,
+  },
   'nist-webbook': {
     id: 'nist-webbook',
     name: 'NIST Chemistry WebBook (SRD 69)',

@@ -635,16 +635,41 @@ that has a better source.
 | 18 | `redox_couples.json` labelled 23 recalled outer-sphere self-exchange constants `Tabulated`; `core_reactions.json` labelled the catalysis rows (page numbers and BET areas included) `tabulated`; `water_exchange.json` had no status. | Relabelled `recalled` / `Estimated` / `speculative`. 10 of 30 `k_ex` values were confirmed against a published copy of the Helm & Merbach table (`verified_secondary`: the Wikipedia article *Metal aquo complex*, which cites the review); the other 20, every activation enthalpy and every mechanism label are recalled. |
 | 19 | The Marcus and Eigen-Wilkins "gates" compared the engine with numbers written from memory in the test, and the Marcus one with a row that is also in the engine table (circular). | Renamed `..._sanity_only`; they guard against order-of-magnitude errors, not against inaccuracy; the plan's factor-10 gates of 4.2.1 / 4.5 cannot be asserted until verified cross rates / formation rates exist. |
 
-### 14.2 Still open (needs data from sources that are not open here, or a design decision)
+### 14.2 Still open (updated 2026-10-08, after the third session; each needs data from sources that are not open here, or a design decision)
 
-1. **Extraction volume** (4.1): 83 verified organic rows against the 250 targeted. Missing: the EPA ester / lactone set (dataset not fetched), Swain & Scott and later nucleophilicity data for SN2 with other nucleophiles, acyl halides / anhydrides, epoxides, amide base hydrolysis (the template has no base variant), Menshutkin and Michael rows (their rules fit only recalled rows, now `speculative`).
-2. **Inorganic laws** (4.2) and **self-exchange constants** (4.2.1): the 6 redox laws and 23 outer-sphere constants are recalled; none is verified. The gate "cross reactions predicted within a factor 10" cannot be run.
-3. **Eigen-Wilkins data** (4.5): 20 of 30 `k_ex`, all enthalpies and mechanism labels are recalled; Fe3+ and Cr3+ are labelled Id although the literature calls them associative (Ia), and Fe3+ + SCN- comes out ~100x faster than the recalled measurement because the hydroxo path (FeOH2+, Id) is estimated with an uncorrected K_os (no ionic-strength correction). There are no measured formation rates (the `kind: law` rows of the CSV schema are not implemented; rate laws of fixed products belong to `core_reactions.json`) and so no precedence-1 override for complex formation.
-4. **Rules without a verified row** (13.1): aldol, carbonyl hydration, hemiacetal, imine, keto-enol, alkene hydration, EAS, Diels-Alder, Friedel-Crafts, Grignard, acyl halide, anhydride, E1, E2, SN2 other than hydroxide + methyl halides, Michael / carbocation fallbacks, azo coupling: 32 of the 44 bench evaluations run on these (`rates-coverage.md`, labelled uncited, speculative).
-5. **SN1 split** (5.4): `sn1_solvolysis` is still one rate-limiting step; the ionisation / trapping split and the product-ratio gate are not implemented (the trapping templates exist and use Mayr for stabilised cations).
-6. **Solid decomposition** (13.2) and **heterogeneous catalysis** (13.3) data are recalled and inconsistent (8 of 9 onsets); not replaced.
-7. **Wittig and Mayr**: Mayr rows exist for the benzaldehyde / ylide pair of the test, but the ketone rule still sets k = 0.95 M^-1 s^-1 for non-stabilised ylides, 100x above the Mayr aldehyde value; the `keto_enol` isomer of a stabilised ylide (generated, k 1e-8) is treated as a non-stabilised ylide by the rule matcher.
-8. **4.6** electrode kinetics citations, interfacial energies and radical rate constants: not started.
+1. **Extraction volume** (4.1): 109 verified organic rows in use against the 250 targeted. What is missing and where it would come from:
+   the EPA ester / lactone set (dataset not fetched); Swain-Scott and later nucleophilicity data for SN2 with nucleophiles other than
+   hydroxide, Menshutkin and Michael rate constants (no open table found; Michael is covered through Mayr); anhydride, epoxide and
+   further acyl halide rows (only methyl chloroformate is in an open table). Rows that are readable in the open reprint but have no
+   template to attach to: phosphoric / phosphonic esters (Tables 4.12-4.17), dimethyl sulfate, beta-propiolactone, 1,3-propane sultone,
+   atrazine (Table 4.18): a template for each class is the work, the data are there. Carbamate rules rest on few rows (N-aryl aryl-O: 3, fitted
+   with a Hammett relation; N-alkyl aryl-O: 1; N,N-disubstituted: 4): none of the three has a held-out row, so the factor-five gate
+   does not test them.
+2. **Inorganic laws** (4.2) and **self-exchange constants** (4.2.1): the 6 redox laws and 23 outer-sphere constants are recalled; none is
+   verified. The NDRL/NIST Solution Kinetics database has no record for the six reactions; Marcus & Sutin, Stanbury & Sutin, Sykes and
+   Walling are paywalled. The gate "cross reactions predicted within a factor 10" cannot be run.
+3. **Eigen-Wilkins data** (4.5): 18 of 30 `k_ex`, every activation enthalpy except Rh3+ / Ir3+, and the mechanism labels not named in
+   `mechanism_source` are recalled. The rate of an Ia ion (Fe3+, Cr3+, V3+, Ti3+, Rh3+, Ir3+) is the Id relation `K_os k_ex` and is labelled an
+   estimate; Fe3+ + SCN- is still about 100x above the recalled measurement (hydroxo path with an estimated K_os). There are no measured
+   formation rates, so the `kind: law` rows of the CSV schema are not implemented (a complexation law with fixed products belongs to
+   `core_reactions.json`) and complex formation has no precedence-1 override.
+4. **Rules without a verified row** (13.1): aldol, carbonyl hydration, hemiacetal, imine, keto-enol, alkene hydration, EAS, Diels-Alder,
+   Friedel-Crafts, Grignard, acyl halide (except chloroformates), anhydride, E2, SN2 other than hydroxide + methyl halides, Menshutkin,
+   Michael / carbocation fallbacks, azo coupling: 32 of the 44 bench evaluations run on these (`rates-coverage.md`, labelled uncited, speculative).
+5. **SN1** (5.4): ionisation and trapping are split, but the plan's product-ratio gate against *measured* selectivities has no data (the
+   Mayr-relation test stands in for stabilised cations only). The alkene share of tert-butyl chloride (8 %) is a recalled number; the
+   ionisation rules cover tertiary and secondary halides only (no rows for stabilised cations such as benzhydryl chloride, which therefore
+   takes the secondary-halide rate; Mayr nucleofugality data are not imported); there is no ion-pair return separate from free-ion trapping.
+6. **Solid decomposition** (13.2) and **heterogeneous catalysis** (13.3) data are recalled and inconsistent (8 of 9 onsets; Galwey & Brown
+   and the catalyst tables are paywalled); not replaced.
+7. **Wittig** (5.x): the aldehyde rule for non-stabilised ylides (k = 1.1e6 M^-1 s^-1) is an uncited estimate, Mayr has no row for such ylides; only the
+   ketone / aldehyde ratio is data-derived.
+8. **4.6**: exchange current densities (Trasatti), interfacial energies (Nielsen & Sohnel) and radical rate constants are paywalled; the engine
+   has no radical species to attach the latter to.
+9. **Found in the third session, not fixed**: `pka_structure::group_at` classifies a quaternary ammonium substituent (N+ without H, e.g. trimethylammonio)
+   as `NR2` (sigma+ para -1.7) instead of an electron-withdrawing group, so a `hammett` modifier would misjudge such a ring (the carbamate row
+   with a 3-trimethylammoniophenyl leaving group is therefore not in the Hammett fit); the table of `hammett_plus.json` has sigma+ only, no sigma-
+   for phenoxide leaving groups.
 
 ### 14.3 Follow-up fixes (2026-10-08, second session)
 
@@ -654,3 +679,14 @@ that has a better source.
 | 21 | Busy-mixture step time: 28 ms native (70 ms in WASM) against a 10 ms budget, `audit_invariants` 235-290 s against ~70 s. Profiling (macOS `sample`): the data session's tables (616 complex rows against 35, 367 minerals and 63 equilibria in the busy vessel) turned linear scans into the hot path. | `PitzerActivity::get_params` and `ion_pairing::strongly_associated` use one-time hash indexes (they scanned thousands of rows per call inside the Newton loop); `solve_saturation_core` uses a safeguarded regula falsi instead of 50 bisection steps; the equilibrium bracket starts from the known value at xi = 0; minerals without a solid join an equilibrium only if their ion activity product can reach Ksp inside the extent bracket (exact bound); `class_self_exchange_k` memoises oxidised forms per species and resolved structures per store generation. Native busy mixture 13 ms, WASM 25 ms; `audit_invariants` 130 s. Engine suite unchanged: 548 passed. |
 | 22 | The 10 ms WASM gate was an absolute budget that depended on the machine and on the data volume. | `wasm_e2e.mjs` times a calibration kernel in the same process (58.4 +- 0.3 ms here) and asserts busy mixture / kernel < 0.65 (today's ratio 0.44). The budget history is in the test. The engine is still ~2.5x slower than at the seventh pass because the data grew 17x; a cheaper equilibrium solver (fewer evaluations per row, a sparse coupled solve) is the way back down. |
 | 23 | Dissolving NaHCO3 announced "Complex formed: NaCO3-" and started the reaction timer (`reaction_clock.mjs`): the new 1:1 ion-pair rows of `complexes.json` (NaCO3-, NaSO4-, CaSO4, MgSO4 ...) were treated as complexes. | 1:1 associations of two ions from the `cplx_` rows are speciation, like the generated `pair_` rows (`vessel_ext.rs`); multi-ligand, neutral-ligand and curated coloured complexes (Fe(SCN)2+) are still events. |
+
+### 14.4 Third session (2026-10-08): what was closed from 14.2
+
+| Former 14.2 item | What was done |
+|---|---|
+| 1 Extraction volume (partly) | Organic rows in use 74 -> 109 from the rest of the open Mabey & Mill reprint: Table 4.10 base column (19 amide `kB` rows, new template `amide_base_hydrolysis`) and 3 acid rows the first pass skipped, Table 4.11 (16 carbamate `kB` rows, new template `carbamate_base_hydrolysis`, Hammett-Brown relation on the aryloxy ring, rho 2.1), Table 5.3 (allyl chloride / bromide / iodide), Table 4.18 (methyl chloroformate, a `chloroformate, water` rule). Rows read but not used because the table contradicts itself: carbaryl and its N,N-dimethyl analogue (Arrhenius line and tabulated value disagree), phenyl N-phenylcarbamate (value contradicts its own footnote), 4-nitrophenyl N-methylcarbamate (eight orders from its neighbours), the "dimethyl / t-butyl / diethyl acetamide" rows (substituted carbon not stated). Esters and amides no longer match carbamates, ureas and carbonates (they used to take the ester rule). |
+| 3 Eigen-Wilkins (partly) | `k_ex` and the mechanism of Rh3+ and Ir3+ read from the open table of Cusanelli et al. (Chimia 50, 618): 2.2e-9 / 1.1e-10 s^-1, **Ia** (the engine had Id); mechanism labels of Cr3+, V2+ (Ia), Fe3+ (Ia) and Zn2+ (Id) corrected from Rotzinger (Chimia 51, 97, a computed assignment, `mechanism_source`). The outer-sphere constant now carries the Debye-Hueckel ionic-strength factor (`RateTerm.z_product`, `EquilibriumRate::k_forward_at`, called with the vessel's ionic strength): at I = 1 mol/kg a 3+ / 1- encounter is 0.61 log units slower. |
+| 5 SN1 split (code done) | `sn1_solvolysis` is gone: `sn1_ionisation` (substrate -> carbocation + halide, rate-limiting; the four measured solvolysis rates are its rows) plus the existing trapping templates (`carbocation_trapping_by_solvent`, `carbocation_trapping` for the common-ion return, `_by_amine`). The one-step `e1_elimination` (it consumed the substrate a second time next to SN1) became `e1_deprotonation` of the cation. `engine/tests/sn1_split.rs`: the substrate is consumed by the ionisation only; trapping by water is 1e4 faster than ionisation, so the cation never accumulates (checked in a vessel); alkene share 0.05-0.12; chlorine and tert-butanol balance. |
+| 7 Wittig, keto-enol | The ketone rule is the aldehyde rule times 10^(sN (E_ketone - E_benzaldehyde)) = 2.0e-5, recomputed from `data/mayr_parameters.json` by `tests/wittig_network.rs` (non-stabilised ylide + acetone: 1.1e4 -> 23 M^-1 s^-1). The keto-enol template forbids the carbonyl of a carbonyl-stabilised ylide (it made an enol that the Wittig matcher took for a non-stabilised ylide). |
+
+Held-out error after the additions (engine harness): base ester 0.56, amide acid 0.51, amide base 0.54, carbamate N-aryl alkyl-O 0.57, primary halide 0.29 (all <= 0.7). The rms of the carbamate aryl-O rule (0.53) is on 3 training rows with 2 parameters: a fit, not a test. Verification: `cargo rtest` 554 tests, 25 node suites against the rebuilt WASM, 82 pytest, `tsc`, `npm run build`.

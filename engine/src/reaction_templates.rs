@@ -802,9 +802,11 @@ mod tests {
         let enol = run("keto_enol_tautomerism", &["CC(C)=O"]);
         assert_eq!(enol.len(), 1);
         assert_eq!(mol(&enol[0]).formula(), "C3H6O");
-        // SN1 releases a proton and a halide
-        let sn1 = run("sn1_solvolysis", &["CC(C)(C)Cl", "O"]);
-        assert!(sn1.len() == 3 && has(&sn1, "[H+]") && has(&sn1, "[Cl-]") && has(&sn1, "CC(C)(C)O"), "{:?}", sn1);
+        // SN1 ionisation: a carbocation and a halide; the solvent traps the cation in a step of its own
+        let sn1 = run("sn1_ionisation", &["CC(C)(C)Cl"]);
+        assert!(sn1.len() == 2 && has(&sn1, "C[C+](C)C") && has(&sn1, "[Cl-]"), "{:?}", sn1);
+        let trap = run("carbocation_trapping_by_solvent", &["C[C+](C)C", "O"]);
+        assert!(trap.len() == 2 && has(&trap, "[H+]") && has(&trap, "CC(C)(C)O"), "{:?}", trap);
     }
 
     #[test]
@@ -929,8 +931,8 @@ mod tests {
         // aprotic solvent
         assert!((rate_of("sn2_substitution", &["CCBr", "[OH-]"], "other")[0].a / pri - 1000.0).abs() < 1e-6);
         // the most specific rule wins: a tertiary halide in water has its own SN1 rule, a primary one has none
-        assert!(rate_of("sn1_solvolysis", &["CCBr", "O"], "water").is_empty());
-        assert!(!rate_of("sn1_solvolysis", &["CC(C)(C)Br", "O"], "water").is_empty());
+        assert!(rate_of("sn1_ionisation", &["CCBr"], "water").is_empty());
+        assert!(!rate_of("sn1_ionisation", &["CC(C)(C)Br"], "water").is_empty());
         // hydration by carbocation class (OH on the carbon that is tertiary / secondary): Markovnikov
         let t = find("alkene_hydration");
         let m = mol("CC(C)=C");

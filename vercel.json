@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "bash scripts/vercel_build.sh",
+  "outputDirectory": "web/dist",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }],
+  "functions": { "api/index.py": { "maxDuration": 30, "excludeFiles": "{web,engine,docs,tests,pipeline/raw,pipeline/cache,**/node_modules}/**" } }
+}

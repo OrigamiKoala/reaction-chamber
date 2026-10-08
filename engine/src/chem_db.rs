@@ -147,16 +147,31 @@ pub struct RateTerm {
     pub k_298: f64,
     /// Arrhenius activation energy, J/mol.
     pub ea_j_mol: f64,
+    /// Product of the charges of the two partners of the outer-sphere encounter that sets `k_298` (z_metal x z_ligand, negative
+    /// for an attraction); 0 = no ionic-strength dependence. The association constant K_os and so the rate scale with
+    /// gamma_M gamma_L / gamma_pair, `log10 = 2 A z_M z_L f(I)` (`EquilibriumRate::k_forward_at`).
+    #[serde(default)]
+    pub z_product: f64,
 }
 
 impl EquilibriumRate {
-    /// Forward first-order rate coefficient (s^-1) at `t_k` given the molar concentration of a species.
+    /// Forward first-order rate coefficient (s^-1) at `t_k` given the molar concentration of a species, at infinite dilution.
     pub fn k_forward(&self, t_k: f64, conc_m: &dyn Fn(&str) -> f64) -> f64 {
+        self.k_forward_at(t_k, conc_m, 0.0)
+    }
+
+    /// Same at ionic strength `ionic_strength` (mol/kg): a term with a charge product `z_product` is multiplied by
+    /// `10^(2 A z f(I))`, `f(I) = sqrt(I) / (1 + sqrt(I)) - 0.3 I` (Davies), the change of the outer-sphere association constant
+    /// of two ions (an attraction, z < 0, is screened; a repulsion is helped).
+    pub fn k_forward_at(&self, t_k: f64, conc_m: &dyn Fn(&str) -> f64, ionic_strength: f64) -> f64 {
         let inv = 1.0 / t_k.max(1.0) - 1.0 / 298.15;
+        let i = ionic_strength.max(0.0);
+        let f = i.sqrt() / (1.0 + i.sqrt()) - 0.3 * i;
+        let a = crate::activity::debye_huckel_a_gamma(t_k);
         self.terms
             .iter()
             .map(|term| {
-                let k = term.k_298 * (-term.ea_j_mol / crate::physics::R_GAS * inv).exp();
+                let k = term.k_298 * (-term.ea_j_mol / crate::physics::R_GAS * inv).exp() * 10f64.powf(2.0 * a * term.z_product * f);
                 k * term.catalyst.as_deref().map_or(1.0, conc_m)
             })
             .sum()

@@ -2,7 +2,7 @@
 """Transcribes measured rate constants from W. Mabey and T. Mill, J. Phys. Chem. Ref. Data 7, 383 (1978)
 (doi 10.1063/1.555572; open reprint https://srd.nist.gov/jpcrdreprint/1.555572.pdf) into pipeline/data/rates_measured.csv.
 
-Every value below was read from the page images of that reprint (Tables 4.1, 4.2, 4.6, 4.8, 4.10; printed pages 390-401) and
+Every value below was read from the page images of that reprint (Tables 4.1, 4.2, 4.6, 4.8, 4.10, 4.11, 5.1-5.3, 5.6; printed pages 390-411) and
 re-read at 200 dpi against the table cells. A value that is not in those tables is not in this file. Rows of the earlier
 CSV that came from memory (other sources, other tables, page numbers that do not exist) are kept, flagged `recalled`, in
 pipeline/data/rates_unverified.csv by `split_old_csv()` and are NOT compiled into the engine.
@@ -64,6 +64,27 @@ def amide_products(amide):
     ps = rxn.RunReactants((Chem.MolFromSmiles(amide),))[0]
     out = []
     for p in ps:
+        Chem.SanitizeMol(p)
+        out.append(smi(p))
+    return out
+
+
+def amide_products_base(amide):
+    """Carboxylate and amine of an amide hydrolysed by hydroxide."""
+    rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[N:3]>>[C:1](=[O:2])[O-].[N:3]")
+    out = []
+    for p in rxn.RunReactants((Chem.MolFromSmiles(amide),))[0]:
+        Chem.SanitizeMol(p)
+        out.append(smi(p))
+    return out
+
+
+def carbamate_products(carbamate):
+    """Carbamate anion and alcohol / phenol of a carbamate attacked by hydroxide at the carbonyl carbon (the carbamate anion
+    then loses CO2; the template stops at the anion, as the ester template stops at the carboxylate)."""
+    rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])([O:3][#6:4])[N:5]>>[C:1](=[O:2])([O-])[N:5].[#6:4][O:3]")
+    out = []
+    for p in rxn.RunReactants((Chem.MolFromSmiles(carbamate),))[0]:
         Chem.SanitizeMol(p)
         out.append(smi(p))
     return out
@@ -181,10 +202,10 @@ HAL = [
     ("bromoethane", "CCBr", "halide_neutral_hydrolysis", 2.64e-7, (371.8, 1.395e-3, 101.5, -29.7, 209)),
     ("iodoethane", "CCI", "halide_neutral_hydrolysis", 1.62e-7, (371.8, 8.78e-4, 107.1, -15.1, 209)),
     ("1-bromopropane", "CCCBr", "halide_neutral_hydrolysis", 3.04e-7, (353.2, 1.614e-4, 97.4, -42.3, 209)),
-    ("2-chloropropane", "CC(C)Cl", "sn1_solvolysis", 2.12e-7, (371.8, 1.00e-3, 104.4, -22.0, 161)),
-    ("2-bromopropane", "CC(C)Br", "sn1_solvolysis", 3.86e-6, (323.2, 1.129e-4, 101.9, -5.98, 236)),
-    ("2-iodopropane", "CC(C)I", "sn1_solvolysis", 2.77e-6, (353.2, 2.75e-3, 106.8, 7.78, 247)),
-    ("tert-butyl chloride", "CC(C)(C)Cl", "sn1_solvolysis", 3.02e-2, (287.2, 6.36e-3, 91.8, 34.8, 188)),
+    ("2-chloropropane", "CC(C)Cl", "sn1_ionisation", 2.12e-7, (371.8, 1.00e-3, 104.4, -22.0, 161)),
+    ("2-bromopropane", "CC(C)Br", "sn1_ionisation", 3.86e-6, (323.2, 1.129e-4, 101.9, -5.98, 236)),
+    ("2-iodopropane", "CC(C)I", "sn1_ionisation", 2.77e-6, (353.2, 2.75e-3, 106.8, 7.78, 247)),
+    ("tert-butyl chloride", "CC(C)(C)Cl", "sn1_ionisation", 3.02e-2, (287.2, 6.36e-3, 91.8, 34.8, 188)),
     ("benzyl chloride", "ClCc1ccccc1", "halide_neutral_hydrolysis", 1.28e-5, None),
 ]
 
@@ -211,6 +232,12 @@ for name, s_, tpl, k298, ey in HAL:
     m = Chem.MolFromSmiles(s_)
     hyd = Chem.MolToSmiles(AllChem.ReactionFromSmarts("[C:1][Cl,Br,I:2]>>[C:1]O").RunReactants((m,))[0][0])
     sym = [a for a in m.GetAtoms() if a.GetSymbol() in ("Cl", "Br", "I")][0].GetSymbol()
+    if tpl == "sn1_ionisation":
+        # the measured first-order solvolysis rate is the ionisation rate: the carbocation is trapped much faster than it forms
+        cation = Chem.MolToSmiles(AllChem.ReactionFromSmarts("[C:1][Cl,Br,I:2]>>[C+:1]").RunReactants((m,))[0][0])
+        add(tpl, [s_], [cation, f"[{sym}-]"], k298, "s^-1", 298.15, ea, ea_src, "Table 5.2, p. 408", note + " (solvolysis rate taken as the ionisation rate)",
+            value_basis="evaluated at 298 K by the review from its tabulated temperature coefficients; the overall solvolysis rate is the ionisation rate when trapping is fast")
+        continue
     add(tpl, [s_, "O"], [hyd, "[H+]", f"[{sym}-]"], k298, "s^-1", 298.15, ea, ea_src, "Table 5.2, p. 408" if name != "benzyl chloride" else "Table 5.1, p. 408",
         note, value_basis="evaluated at 298 K by the review from its tabulated temperature coefficients")
 
@@ -238,6 +265,86 @@ add("base_ester_hydrolysis", ["ClCC(=O)OC", "[OH-]"], ester_products("ClCC(=O)OC
 add("acid_ester_hydrolysis_acid", ["ClCC(=O)OC", "O"], ester_products("ClCC(=O)OC", True), 8.5e-12 / 1e-7, "M^-1 s^-1", 298.15, None, "", "Table 5.6, p. 411",
     "methyl chloroacetate, kA[H+] = 8.5e-12 s-1 at pH 7 divided by 1e-7 M", value_basis="evaluated at 298 K by the review")
 
+
+# ------------------------------------------------------------------------------------------ Table 4.10: amides, base (kB), 348 K
+# Same page as the acid rows: 10^4 kB / M-1 s-1 and the activation enthalpy dH_B (kJ/mol); Ea = dH_B + RT. Rows named
+# "dimethylacetamide", "t-butylacetamide" and "diethylacetamide" in the C-substituted block are left out: the table does not
+# say which carbon carries the substituents. chloro-, dichloro- and trichloroacetamide have a kB only.
+AMIDES_B = [  # (name, SMILES, 1e4 kB at 348 K, dH_B kJ/mol or None)
+    ("acetamide", "CC(N)=O", 13.6, 55.31),
+    ("propionamide", "CCC(N)=O", 13.1, 61.7),
+    ("valeramide", "CCCCC(N)=O", 5.52, 60.58),
+    ("isovaleramide", "CC(C)CC(N)=O", 1.97, 72.68),
+    ("phenylacetamide", "NC(=O)Cc1ccccc1", 17.7, 49.25),
+    ("cyclohexylacetamide", "NC(=O)CC1CCCCC1", 1.77, 68.87),
+    ("trimethylacetamide (pivalamide)", "CC(C)(C)C(N)=O", 2.57, 71.1),
+    ("methoxyacetamide", "COCC(N)=O", 8.56, 56.2),
+    ("chloroacetamide", "ClCC(N)=O", 1400.0, None),
+    ("dichloroacetamide", "ClC(Cl)C(N)=O", 18400.0, None),
+    ("trichloroacetamide", "ClC(Cl)(Cl)C(N)=O", 135000.0, None),
+    ("cyclohexanecarboxamide", "NC(=O)C1CCCCC1", 4.24, 53.6),
+    ("2-methylbutanamide", "CCC(C)C(N)=O", 1.65, 64.2),
+    ("N-methylacetamide", "CC(=O)NC", 3.58, 69.4),
+    ("N-ethylacetamide", "CC(=O)NCC", 1.80, 67.4),
+    ("N-isopropylacetamide", "CC(=O)NC(C)C", 0.367, 73.2),
+    ("N,N-dimethylacetamide", "CC(=O)N(C)C", 5.18, 63.2),
+    ("N,N-diethylacetamide", "CC(=O)N(CC)CC", 0.1167, 75.3),
+    ("N-ethyl-N-methylacetamide", "CC(=O)N(C)CC", 0.983, 67.8),
+]
+for name, a, k4, dh in AMIDES_B:
+    add("amide_base_hydrolysis", [a, "[OH-]"], amide_products_base(a), k4 * 1e-4, "M^-1 s^-1", 348.0, None if dh is None else dh + R * 348.0,
+        "" if dh is None else "dH_B + RT", P401, f"{name}, kB at 348 K (rate = kB [OH-] [amide])")
+# acid rows of the same table that the first pass skipped (names unambiguous): cyclohexylacetamide, pivalamide, N-isopropylacetamide
+for name, a, k4, dh in [("cyclohexylacetamide", "NC(=O)CC1CCCCC1", 1.24, 87.03), ("trimethylacetamide (pivalamide)", "CC(C)(C)C(N)=O", 2.26, 83.3),
+                        ("N-isopropylacetamide", "CC(=O)NC(C)C", 0.090, None)]:
+    add("amide_hydrolysis_acid", [a, "O"], amide_products(a), k4 * 1e-4, "M^-1 s^-1", 348.0, None if dh is None else dh + R * 348.0,
+        "" if dh is None else "dH_A + RT", P401, f"{name}, kA at 348 K (rate = kA [H+] [amide])")
+
+# ------------------------------------------------------------------------------------------ Table 4.11: carbamates, kB at 298 K
+# Skipped: phenyl N-phenylcarbamate (the table value 4.7(-1) contradicts its own footnote f, 5.2(1) from the temperature
+# coefficients, and the other workers' 5.42(1)); 1-naphthyl N-methylcarbamate (carbaryl: 3.4 is stated at 296 K and the
+# tabulated Arrhenius line gives 0.46 at 298 K) and its N,N-dimethyl analogue (4.55(-5) against 1.4e-7 from its line);
+# 4-nitrophenyl N-methylcarbamate (kB 3.0(-3), eight orders below the N-phenyl analogue although both eliminate through the
+# isocyanate: the row cannot be reconciled with its neighbours, reference 3 only).
+P403 = "Table 4.11, p. 403"
+CARB = [  # (SMILES, kB M-1 s-1 at 298 K, dH_B kJ/mol or None, note)
+    ("COC(=O)Nc1ccccc1", 5.5e-5, None, "methyl N-phenylcarbamate"),
+    ("CCOC(=O)Nc1ccccc1", 3.3e-5, 66.5, "ethyl N-phenylcarbamate"),
+    ("CCOC(=O)N(C)c1ccccc1", 5.0e-6, 54.0, "ethyl N-methyl-N-phenylcarbamate"),
+    ("O=C(N(C)c1ccccc1)Oc1ccccc1", 4.2e-5, 62.8, "phenyl N-methyl-N-phenylcarbamate"),
+    ("COc1ccc(OC(=O)Nc2ccccc2)cc1", 25.2, None, "4-methoxyphenyl N-phenylcarbamate"),
+    ("O=C(Nc1ccccc1)Oc1cccc(Cl)c1", 1830.0, None, "3-chlorophenyl N-phenylcarbamate"),
+    ("O=C(Nc1ccccc1)Oc1ccc([N+](=O)[O-])cc1", 2.71e5, None, "4-nitrophenyl N-phenylcarbamate (measured at pH 6.5)"),
+    ("CN(C(=O)Oc1ccc([N+](=O)[O-])cc1)c1ccccc1", 7.98e-4, None, "4-nitrophenyl N-methyl-N-phenylcarbamate"),
+    ("CCN(CC)CCOC(=O)Nc1ccccc1", 2.6e-5, 73.2, "2-(diethylamino)ethyl N-phenylcarbamate"),
+    ("CCN(CC)CCOC(=O)Nc1c(C)cc(C)cc1C", 9.2e-7, 103.3, "2-(diethylamino)ethyl N-mesitylcarbamate"),
+    ("C[N+](C)(C)c1cccc(OC(=O)NC)c1", 0.67, 76.6, "3-(trimethylammonio)phenyl N-methylcarbamate"),
+    ("C[N+](C)(C)c1cccc(OC(=O)N(C)C)c1", 2.8e-4, 59.4, "3-(trimethylammonio)phenyl N,N-dimethylcarbamate"),
+    ("ClCCOC(=O)Nc1ccccc1", 1.59e-3, None, "2-chloroethyl N-phenylcarbamate"),
+    ("ClC(Cl)COC(=O)Nc1ccccc1", 5.00e-2, None, "2,2-dichloroethyl N-phenylcarbamate"),
+    ("ClC(Cl)(Cl)COC(=O)Nc1ccccc1", 0.316, None, "2,2,2-trichloroethyl N-phenylcarbamate"),
+    ("FC(F)(F)COC(=O)Nc1ccccc1", 0.100, None, "2,2,2-trifluoroethyl N-phenylcarbamate"),
+]
+for sm, kb, dh, note in CARB:
+    add("carbamate_base_hydrolysis", [sm, "[OH-]"], carbamate_products(sm), kb, "M^-1 s^-1", 298.15, None if dh is None else dh + R * 298.15,
+        "" if dh is None else "dH_B + RT", P403, f"{note}, kB at 298 K")
+
+# ------------------------------------------------------------------------------------------ Table 5.3: allyl halides (kh = kN at 298 K, pH 7)
+# The benzylic rows of the same table are derived by the review from the 293-303 K data of Table 4.6 (footnote b), which are
+# already in this file, and are not repeated.
+for name, s_, k298 in [("allyl chloride", "C=CCCl", 1.157e-7), ("allyl bromide", "C=CCBr", 1.674e-5), ("allyl iodide", "C=CCI", 4.01e-6)]:
+    m = Chem.MolFromSmiles(s_)
+    hyd = Chem.MolToSmiles(AllChem.ReactionFromSmarts("[C:1][Cl,Br,I:2]>>[C:1]O").RunReactants((m,))[0][0])
+    sym = [a for a in m.GetAtoms() if a.GetSymbol() in ("Cl", "Br", "I")][0].GetSymbol()
+    add("halide_neutral_hydrolysis", [s_, "O"], [hyd, "[H+]", f"[{sym}-]"], k298, "s^-1", 298.15, None, "", "Table 5.3, p. 409",
+        f"{name}, kh = kN at 298 K and pH 7 (the review assumes no base catalysis)")
+
+# ------------------------------------------------------------------------------------------ Table 4.18 (p. 407): methyl chloroformate
+# The only acyl halide of the table with a clean kN in water at 298 K (benzoyl chloride is in 70:30 water-acetone, dimethylcarbamoyl
+# chloride is a lower bound). The product is the monomethyl carbonate (which then loses CO2).
+add("acyl_halide_substitution", ["COC(=O)Cl", "O"], ["COC(=O)O", "[H+]", "[Cl-]"], 5.642e-4, "s^-1", 298.15, None, "", "Table 4.18, p. 407",
+    "methyl chloroformate, kN at 298 K (5.642 +- 0.002e-4)")
+
 # ------------------------------------------------------------------------------------------ held out: every 4th row of a rule class, by hash
 ESTER_SIGNATURE = [Chem.MolFromSmarts(x) for x in ("[CX3;H1](=O)O", "[CX3]([CX4][F,Cl,Br])", "[CX3][OX2]c", "[CX3][OX2][CX4;H1]", "[CX3][OX2][CX4;H0]", "[CX3][CX3]=[CX3]", "[CX3][CX4][CX4]", "[CX3][CX4][SX3,SX4]=O")]
 
@@ -248,10 +355,18 @@ def rule_class(r):
     >= 4 rows, so a feature that the fit needs is never held out entirely (the held-out error then measures interpolation within the
     classes seen in training, which is what a rule can be asked for)."""
     t = r["template"]
-    if t in ("sn1_solvolysis", "halide_neutral_hydrolysis", "sn2_substitution"):
+    if t in ("sn1_ionisation", "halide_neutral_hydrolysis", "sn2_substitution"):
         m = Chem.MolFromSmiles(r["reactants"].split(";")[0])
         c = [a for a in m.GetAtoms() if a.GetSymbol() in ("Cl", "Br", "I")][0].GetNeighbors()[0]
-        return f"{t}/{c.GetTotalNumHs()}H/{'benzylic' if any(n.GetIsAromatic() for n in c.GetNeighbors()) else 'alkyl'}"
+        kind = "benzylic" if any(n.GetIsAromatic() for n in c.GetNeighbors()) else "allylic" if any(any(b.GetBondTypeAsDouble() == 2 for b in n.GetBonds()) for n in c.GetNeighbors()) else "alkyl"
+        return f"{t}/{c.GetTotalNumHs()}H/{kind}"
+    if t == "carbamate_base_hydrolysis":
+        m = Chem.MolFromSmiles(r["reactants"].split(";")[0])
+        # N,N-disubstituted (4 rows) and N-H aryl esters (4 rows spanning six orders of magnitude, an interpolation set in the
+        # leaving-group acidity) are too small to hold a row out of: each row is its own class, so none is held out
+        if not m.HasSubstructMatch(Chem.MolFromSmarts("[NX3;H1]C(=O)O")) or m.HasSubstructMatch(Chem.MolFromSmarts("C(=O)([NX3;H1])Oc")):
+            return t + "/" + r["reactants"]
+        return t + "/NH-alkyl-O"
     if t in ("base_ester_hydrolysis", "acid_ester_hydrolysis_acid"):
         m = Chem.MolFromSmiles(r["reactants"].split(";")[0])
         return t + "/" + "".join("1" if m.HasSubstructMatch(p) else "0" for p in ESTER_SIGNATURE)
@@ -261,7 +376,7 @@ def rule_class(r):
 # Textbook reactions of the bench are never held out: they must run on their measured values, not on the rule's estimate.
 PINNED = {("base_ester_hydrolysis", "CC(=O)OCC"), ("base_ester_hydrolysis", "CC(=O)OC"),
           ("acid_ester_hydrolysis_acid", "CC(=O)OC"), ("acid_ester_hydrolysis_acid", "CC(=O)OCC"),
-          ("sn1_solvolysis", "CC(C)(C)Cl"), ("sn2_substitution", "CBr")}
+          ("sn1_ionisation", "CC(C)(C)Cl"), ("sn2_substitution", "CBr")}
 by_t = {}
 for r in rows:
     r["held_out"] = "False"

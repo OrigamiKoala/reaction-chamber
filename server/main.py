@@ -3,12 +3,17 @@ import sys
 import argparse
 import webbrowser
 from pathlib import Path
+from .env import load_env_file
+
+load_env_file()  # .env of the repository root (CAS_API_KEY, ...): before the modules that read the environment
+
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from .data_routes import data_capabilities
 from .security import (
     CURRENT_SESSION_TOKEN,
     verify_token,
@@ -44,67 +49,15 @@ def health(request: Request):
         "version": "0.2.0",
         "token_active": True,
         # what the local build adds to the static one (the frontend reads this to pick its providers)
-        "capabilities": {"nist": True},
+        "capabilities": data_capabilities(),
     }
 
 @app.get("/api/session-token")
 def session_token():
     return {"token": get_session_token()}
 
-# --- Intrinsic Thermodynamic Data & NIST WebBook Proxy Endpoints ---
-from .data_proxy import NistWebBookClient, UnifiedPropertyResolver
-
-class ResolveCompoundRequest(BaseModel):
-    name: str = ""
-    formula: str = ""
-    smiles: str = ""
-    inchikey: str = ""
-    cas: str = ""
-
-@app.get("/api/data/nist-webbook")
-def get_nist_webbook(
-    identifier: str = "",
-    cas: str = "",
-    inchikey: str = "",
-    formula: str = "",
-    name: str = "",
-    _token: str = Depends(verify_token),
-):
-    query_val = cas or inchikey or formula or name or identifier
-    by = "cas" if cas else ("inchikey" if inchikey else ("formula" if formula else "name"))
-    if not query_val:
-        raise HTTPException(status_code=400, detail="Missing identifier for NIST lookup")
-    res = NistWebBookClient.lookup(query_val, by=by)
-    if not res:
-        raise HTTPException(status_code=404, detail="Compound not found in NIST Chemistry WebBook")
-    return res
-
-@app.get("/api/data/properties")
-def get_properties(
-    name: str = "",
-    formula: str = "",
-    smiles: str = "",
-    inchikey: str = "",
-    cas: str = "",
-    _token: str = Depends(verify_token),
-):
-    return UnifiedPropertyResolver.resolve_compound(
-        name=name,
-        formula=formula,
-        smiles=smiles,
-        inchikey=inchikey,
-        cas=cas
-    )
-
-@app.post("/api/data/resolve-compound")
-def resolve_compound(req: ResolveCompoundRequest, _token: str = Depends(verify_token)):
-    return UnifiedPropertyResolver.resolve_compound(
-        name=req.name,
-        formula=req.formula,
-        smiles=req.smiles,
-        inchikey=req.inchikey,
-        cas=req.cas
-    )
+from .data_routes import router as data_router
+app.include_router(data_router)
 
 # Static frontend serving
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"

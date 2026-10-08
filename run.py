@@ -21,7 +21,7 @@ def check_python_packages() -> None:
                if importlib.util.find_spec(m) is None]
     if missing:
         print(f"This Python ({sys.executable}) is missing: {', '.join(missing)}.\n"
-              f"Install them with:  {sys.executable} -m pip install -r {root_dir / 'requirements.txt'}\n"
+              f"Install them with:  {sys.executable} -m pip install -r {root_dir / 'requirements-dev.txt'}\n"
               "or run run.py with the Python environment that has them.")
         sys.exit(1)
 

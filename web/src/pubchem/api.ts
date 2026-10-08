@@ -207,6 +207,12 @@ export async function enrichWithLocalDataProxy(rec: SpeciesRecord): Promise<Spec
         }
       }
       if (typeof data.tc_k === 'number' && data.tc_k > 0) phys.tc_k = data.tc_k;
+      // a measured density (CAS Common Chemistry) fills a density PubChem did not give
+      if (typeof data.density_g_ml === 'number' && data.density_g_ml > 0 && rec.known && !rec.known.density) {
+        rec.density = data.density_g_ml;
+        rec.known.density = true;
+      }
+      if (!rec.smiles && typeof data.smiles === 'string' && data.smiles) rec.smiles = data.smiles;
       if (Array.isArray(data.antoine) && data.antoine.length > 0) {
         // keep the blocks with their ranges, and sample them only inside those ranges
         phys.antoine = data.antoine
@@ -279,39 +285,95 @@ export async function importCompound(nameOrTerm: string): Promise<SpeciesRecord>
       return foundInBundle;
     }
 
-    // Fallback: try local database proxy directly
+    // Fallback: the databases behind the server (NIST WebBook, CAS Common Chemistry) directly, by name
     try {
-      const res = await fetch(`/api/data/properties?name=${encodeURIComponent(term)}`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.formula || data.mw || data.t_boil_k) {
-          const fallbackRec: SpeciesRecord = {
-            inchi_key: data.inchikey || `local-${term}`,
-            name: data.name || term,
-            formula: data.formula || term,
-            smiles: data.smiles || '',
-            charge: 0,
-            mw: data.mw || 0,
-            mp_c: data.t_fus_k ? data.t_fus_k - 273.15 : 20.0,
-            bp_c: data.t_boil_k ? data.t_boil_k - 273.15 : 100.0,
-            density: 1.0,
-            solubility: 'soluble',
-            ghs: [],
-            tier: data.tier || 'imported',
-            source: data.provenance?.formula || 'Local Data Proxy',
-            known: { mp_c: !!data.t_fus_k, bp_c: !!data.t_boil_k, density: false },
-          };
-          const enriched = await enrichWithLocalDataProxy(fallbackRec);
-          await cacheQuietly(enriched);
-          return enriched;
-        }
-      }
+      const rec = await importFromDatabases({ name: term });
+      if (rec) return rec;
     } catch {
       // ignore
     }
 
     throw new Error(`Could not find or import "${term}".`);
   }
+}
+
+/** A search hit to import: whatever identity the databases gave. */
+export interface ImportRequest {
+  name: string;
+  cid?: number;
+  inchikey?: string;
+  cas?: string;
+  formula?: string;
+  smiles?: string;
+}
+
+/** Record built from the server's merged NIST / CAS answer, for compounds PubChem does not have (or did not answer for). */
+export async function importFromDatabases(req: ImportRequest): Promise<SpeciesRecord | null> {
+  const params = new URLSearchParams();
+  if (req.cas) params.set('cas', req.cas);
+  if (req.inchikey) params.set('inchikey', req.inchikey);
+  if (req.name) params.set('name', req.name);
+  if (req.formula) params.set('formula', req.formula);
+  if (req.smiles) params.set('smiles', req.smiles);
+  const res = await fetch(`/api/data/properties?${params.toString()}`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const formula = data.formula || req.formula;
+  if (!formula) return null;
+  const known = { mp_c: !!data.t_fus_k, bp_c: !!data.t_boil_k, density: typeof data.density_g_ml === 'number' };
+  const estimated = proxyEstimated(data);
+  if (estimated.has('t_fus_k')) known.mp_c = false;
+  if (estimated.has('t_boil_k')) known.bp_c = false;
+  const sources = Array.from(new Set(Object.values(data.provenance ?? {}).map(String))).filter(Boolean);
+  const rec: SpeciesRecord = {
+    inchi_key: data.inchikey || req.inchikey || `local-${req.cas || req.name}`,
+    name: req.name || data.name || formula,
+    formula,
+    smiles: data.smiles || req.smiles || '',
+    charge: 0,
+    mw: data.mw || 0,
+    mp_c: data.t_fus_k ? data.t_fus_k - 273.15 : 20.0,
+    bp_c: data.t_boil_k ? data.t_boil_k - 273.15 : 100.0,
+    density: known.density ? data.density_g_ml : 1.0,
+    solubility: 'soluble',
+    ghs: [],
+    tier: data.tier || 'imported',
+    source: sources.length ? sources.join(' + ') : 'Local Data Proxy',
+    known,
+  };
+  const enriched = await enrichWithLocalDataProxy(rec);
+  await cacheQuietly(enriched);
+  return enriched;
+}
+
+/**
+ * Imports a search hit: PubChem by CID, else by InChIKey, CAS number or name; when PubChem has nothing (or does not
+ * answer), the record is built from the NIST / CAS data the server returns. The NIST / CAS values are merged into
+ * PubChem records too (`enrichWithLocalDataProxy`).
+ */
+export async function importFromHit(req: ImportRequest): Promise<SpeciesRecord> {
+  const attempts: Array<() => Promise<SpeciesRecord>> = [];
+  if (req.cid) attempts.push(() => importCompoundByCid(req.cid as number));
+  if (req.inchikey) {
+    attempts.push(() => importFromPropertyUrl(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/${encodeURIComponent(req.inchikey as string)}/property/${PUG_PROPERTIES}/JSON`, req.name, undefined, {}));
+  }
+  if (req.cas) {
+    attempts.push(() => importFromPropertyUrl(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(req.cas as string)}/property/${PUG_PROPERTIES}/JSON`, req.name, undefined, {}));
+  }
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch {
+      // next identifier
+    }
+  }
+  try {
+    const fromDb = await importFromDatabases(req);
+    if (fromDb) return fromDb;
+  } catch {
+    // fall through to the name import
+  }
+  return importCompound(req.name);
 }
 
 /** Same record `importCompound` would build, for a known PubChem CID (e.g. a product the engine formed). */

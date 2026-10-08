@@ -258,6 +258,7 @@ impl Vessel {
             if let Some((tr, _)) = tracer {
                 let dist = e_species.get(tr).copied().unwrap_or(0.0) - m0_species.get(tr).copied().unwrap_or(0.0);
                 let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / solv_kg;
+                let ionic_strength = self.ionic_strength_molal();
                 let mut rate_into_tracer = 0.0;
                 let mut any_general = false;
                 // relaxation rates of the ligand-substitution rows (the first bond limits them: no concentration power)
@@ -265,7 +266,7 @@ impl Vessel {
                 for &i in &active {
                     let eq = &self.equilibria[i];
                     let rate = eq.rate.as_ref().unwrap();
-                    let k_f = rate.k_forward(t_k, &conc);
+                    let k_f = rate.k_forward_at(t_k, &conc, ionic_strength);
                     let k_eq = (eq.log_k_at(t_k) * std::f64::consts::LN_10).exp().max(1e-300);
                     if let Some(fs) = &rate.first_step {
                         let k_step = k_eq.powf(1.0 / fs.n.max(1.0)).max(1e-300);

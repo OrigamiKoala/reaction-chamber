@@ -1,12 +1,5 @@
-# Python packages of the local server (python3 run.py) and the test suite: pip install -r requirements.txt
-# Versions are the ones the code was developed and tested with (2026-10); newer minor versions should work.
+# Python packages the deployed API needs (Vercel installs exactly this file; keep it small): fastapi, pydantic, platformdirs.
+# The local full version and the test suite need more: pip install -r requirements-dev.txt
 fastapi>=0.110
-uvicorn>=0.29
 pydantic>=2.6
-numpy>=1.26
-scipy>=1.12
-rdkit>=2024.3
 platformdirs>=4
-# tests
-httpx>=0.27
-pytest>=8

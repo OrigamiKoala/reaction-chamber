@@ -33,8 +33,13 @@ except Exception:  # pragma: no cover
 
 def _cache_dir() -> Path:
     override = os.environ.get("RC_CACHE_DIR")
+    if not override and os.environ.get("VERCEL"):
+        override = "/tmp/reaction-chamber-cache"  # the deployment's filesystem is read-only except /tmp (per instance)
     path = Path(override) if override else Path(user_cache_dir("reaction-chamber"))
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:  # unwritable location: the cache degrades to a no-op (every read / write is already guarded)
+        pass
     return path
 
 
@@ -52,7 +57,10 @@ MAX_ANTOINE_PA = 1.0e8
 
 
 def init_cache_db():
-    conn = sqlite3.connect(CACHE_DB_PATH)
+    try:
+        conn = sqlite3.connect(CACHE_DB_PATH)
+    except sqlite3.Error:
+        return
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS nist_cache (
@@ -271,6 +279,12 @@ class NistWebBookClient:
         formula_m = re.search(r'Formula(?:</a>)?:</strong>(.*?)</li>', html, re.I | re.S)
         if formula_m:
             data["formula"] = re.sub(r'<[^>]+>', '', formula_m.group(1)).replace(" ", "").strip()
+        mw_m = re.search(r'Molecular weight(?:</a>)?:</strong>\s*([\d.]+)', html, re.I)
+        if mw_m:
+            data["mw"] = float(mw_m.group(1))
+        inchi_m = re.search(r'class="inchi-text">(InChI=[^<]+)<', html)
+        if inchi_m:
+            data["inchi"] = inchi_m.group(1).strip()
         ik_m = (re.search(r'InChIKey:</strong>.{0,400}?([A-Z]{14}-[A-Z]{10}-[A-Z])', html, re.S)
                 or re.search(r'"inChIKey"\s*:\s*"([A-Z]{14}-[A-Z]{10}-[A-Z])"', html))
         if ik_m:
@@ -485,7 +499,7 @@ class NistWebBookClient:
 
         parsed = cls.parse_nist_html(html)
         # a parsed page must carry real data, not just a title
-        has_data = any(k for k in parsed if k not in ("source", "tier", "name", "cas", "formula", "inchikey"))
+        has_data = any(k for k in parsed if k not in ("source", "tier", "name", "cas", "formula", "inchikey", "inchi"))
         if has_data:
             _set_cached(cache_key, "nist_webbook", parsed)
             return parsed
@@ -674,6 +688,42 @@ class UnifiedPropertyResolver:
                     merged[key] = val
                     merged["provenance"][key] = "NIST Chemistry WebBook"
             merged["tier"] = "imported"
+
+        # 2b. CAS Common Chemistry (needs CAS_API_KEY): identity (SMILES, InChIKey) and measured mp / bp / density fill
+        # what NIST did not give. Looked up by CAS number (from the request or the NIST page), else by the exact name.
+        try:
+            from . import cas_common
+            if cas_common.enabled():
+                rn = cas or str(merged.get("cas") or "")
+                d = cas_common.detail(rn) if rn else None
+                if d is None and name and not rn:
+                    exact = [h for h in cas_common.search(name, 3) if h["name"].lower() == name.strip().lower()]
+                    d = cas_common.detail(exact[0]["cas"]) if exact else None
+                if d:
+                    props = cas_common.properties_from_detail(d)
+                    ik_c, ik_r = str(props.get("inchikey", "")).upper(), (inchikey or str(merged.get("inchikey") or "")).upper()
+                    if not (ik_c and ik_r and ik_c.split("-")[0] != ik_r.split("-")[0]):  # a contradicting identity is dropped
+                        measured = False
+                        for key in ("smiles", "inchikey", "formula", "cas", "mw", "t_fus_k", "t_boil_k", "density_g_ml", "density_t_k"):
+                            if key in props and not merged.get(key):
+                                merged[key] = props[key]
+                                merged["provenance"][key] = cas_common.SOURCE
+                                measured = measured or key in ("t_fus_k", "t_boil_k", "density_g_ml")
+                        if measured:  # identity alone (a SMILES) does not make the record's data measured
+                            merged.setdefault("tier", "imported")
+        except Exception:
+            pass
+
+        # 2c. SMILES from the InChI of a NIST page when nothing gave one (RDKit, local server only)
+        if not merged.get("smiles") and nist_res and nist_res.get("inchi"):
+            try:
+                from rdkit import Chem
+                mol = Chem.MolFromInchi(nist_res["inchi"])
+                if mol is not None:
+                    merged["smiles"] = Chem.MolToSmiles(mol)
+                    merged["provenance"]["smiles"] = "NIST InChI via RDKit"
+            except Exception:
+                pass
 
         # 3. Joback group contribution for organic molecules with SMILES (None when a heavy atom is uncovered)
         if smiles:

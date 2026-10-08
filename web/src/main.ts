@@ -7,7 +7,7 @@ import { BottleState, SpeciesRecord } from './types';
 import { effectiveThermo, vaporPressurePoints } from './pubchem/parser';
 import { parseWaterSolubilityGPerL, srgbHexToLinear } from './pubchem/solubility_parser';
 import { OpticsTables, ReagentCatalogEntry, VesselSnapshot } from './types/sim';
-import { initDataBundle, importCompound } from './pubchem/api';
+import { initDataBundle, importFromHit } from './pubchem/api';
 import { Lab } from './app/lab';
 import { setSessionToken } from './pubchem/session';
 import { knownReagentColor, probeReagentColor, setOpticsDataVersion } from './app/reagent_colors';
@@ -344,15 +344,16 @@ async function initApp() {
     return { item, model };
   };
 
-  reagentPanel.onImportPubChem = async (name) => {
+  reagentPanel.onImportHit = async (req) => {
     try {
-      const rec = await importCompound(name);
+      const rec = await importFromHit(req);
       const { item, model } = await addImportedRecord(rec);
       openReagent(item);
-      if (model?.modelable) toast(`Imported ${rec.name} from PubChem. ${model.phase_model === 'inert' ? describeModel(model) : model.reason}.`, 'success');
-      else toast(`Imported ${rec.name} from PubChem. It's visual only — ${model?.reason ?? 'no reaction model available'}.`, 'info');
+      const from = rec.source ? ` (${rec.source})` : '';
+      if (model?.modelable) toast(`Imported ${rec.name}${from}. ${model.phase_model === 'inert' ? describeModel(model) : model.reason}.`, 'success');
+      else toast(`Imported ${rec.name}${from}. It's visual only — ${model?.reason ?? 'no reaction model available'}.`, 'info');
     } catch (err) {
-      toast(`Couldn't import “${name}” from PubChem: ${errMsg(err)}`, 'error');
+      toast(`Couldn't import “${req.name}”: ${errMsg(err)}`, 'error');
     }
   };
 
