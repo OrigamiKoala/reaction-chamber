@@ -22,8 +22,16 @@ static DATA: OnceLock<SolubilityData> = OnceLock::new();
 
 fn data() -> &'static SolubilityData {
     DATA.get_or_init(|| {
-        serde_json::from_str(include_str!("../data/solubility.json"))
-            .expect("engine/data/solubility.json is valid (regenerate with pipeline/build_solubility_table.py)")
+        let mut d: SolubilityData = serde_json::from_str(include_str!("../data/solubility.json"))
+            .expect("engine/data/solubility.json is valid (regenerate with pipeline/build_solubility_table.py)");
+        // a row without a density (0) gets the one the ion sizes give at a typical packing fraction (`crystal.rs`)
+        for m in d.minerals.iter_mut().filter(|m| m.density_g_ml <= 0.0) {
+            let ions: Vec<(String, f64)> = m.dissolved_products.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            m.density_g_ml = ions::species_mass(&m.formula)
+                .and_then(|mass| crate::crystal::estimate_density_g_ml(&ions, mass))
+                .map_or(2.5, |x| x.clamp(1.0, 12.0));
+        }
+        d
     })
 }
 

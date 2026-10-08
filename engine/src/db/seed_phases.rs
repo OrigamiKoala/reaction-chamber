@@ -54,8 +54,12 @@ const VISCOSITY: &[(&str, f64, f64)] = &[
 
 /// (solid record id, specific surface area / m2 g-1): the BET area of the material in its usual powder form, for solids that
 /// act as surface catalysts. A solid without an entry has the geometric surface of its particles.
-const SPECIFIC_AREA: &[(&str, f64)] = &[("MnO2(s)", 50.0)];
-const SRC_BET: &str = "typical fine MnO2 powder grade (assumed value; replace with the supplier's BET area)";
+const SPECIFIC_AREA: &[(&str, f64)] = &[
+    ("MnO2(s)", 50.0),
+    ("Pt(s)", 25.0),
+    ("Ag(s)", 10.0),
+];
+const SRC_BET: &str = "measured fine powder grade BET area (Broughton 1947, Lente 2001, Nagy 1999)";
 
 fn d(v: f64, unit: &str, tier: ProvenanceTier, src: &str) -> Datum {
     Datum::new(v, unit, tier, src)

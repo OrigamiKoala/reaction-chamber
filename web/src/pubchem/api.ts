@@ -11,7 +11,7 @@ let localBundleSpecies: Record<string, SpeciesRecord> | null = null;
 export async function initDataBundle(): Promise<Record<string, SpeciesRecord>> {
   if (localBundleSpecies) return localBundleSpecies;
   try {
-    const res = await fetch('/data/bundle.json');
+    const res = await fetch('data/bundle.json');
     if (res.ok) {
       const data = await res.json();
       localBundleSpecies = data.species || {};

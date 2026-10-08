@@ -2,6 +2,7 @@
 
 pub mod gc;
 pub mod graph;
+pub mod hose;
 pub mod isotopes;
 pub mod ms;
 pub mod ms_ei;

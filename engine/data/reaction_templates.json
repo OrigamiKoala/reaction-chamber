@@ -56,9 +56,120 @@
         {
           "id": "ester + hydroxide",
           "when": [],
-          "a": 23000000.0,
-          "ea_kj": 47.5,
-          "source": "second-order saponification of ethyl acetate, k(298) about 0.11 M-1 s-1 (Ea 47.5 kJ/mol), taken as the rate of every aliphatic ester"
+          "a": 22297000.0,
+          "ea_kj": 45.2,
+          "source": "Fit to 32 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.45 log10, held-out rms 0.56 (4 rows); activation energy = mean of the tabulated ones",
+          "n_points": 32,
+          "rms_log10": 0.454,
+          "held_out_rms_log10": 0.559,
+          "n_held_out": 4,
+          "tier": "estimated"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: formate (H on the carbonyl carbon)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;H1]"
+            }
+          ],
+          "a_factor": 95.73,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 3 of them show the feature"
+        },
+        {
+          "id": "fit: alpha halogen on the acyl carbon, per halogen",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX4][F,Cl,Br]"
+            }
+          ],
+          "a_factor": 157.4,
+          "per_match": true,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 6 of them show the feature"
+        },
+        {
+          "id": "fit: aryl ester (phenoxide leaving group)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][OX2]c"
+            }
+          ],
+          "a_factor": 88.08,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 4 of them show the feature"
+        },
+        {
+          "id": "fit: secondary alkoxy carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][OX2][CX4;H1]"
+            }
+          ],
+          "a_factor": 0.2616,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 4 of them show the feature"
+        },
+        {
+          "id": "fit: tertiary alkoxy carbon",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][OX2][CX4;H0]"
+            }
+          ],
+          "a_factor": 0.01021,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 2 of them show the feature"
+        },
+        {
+          "id": "fit: acyl conjugated with C=C (acrylate, crotonate)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX3]=[CX3]"
+            }
+          ],
+          "a_factor": 0.1247,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 2 of them show the feature"
+        },
+        {
+          "id": "fit: alkyl on the acyl alpha carbon (propionate and longer, Taft steric)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX4][CX4]"
+            }
+          ],
+          "a_factor": 0.1796,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 3 of them show the feature"
+        },
+        {
+          "id": "fit: sulfinyl or sulfonyl on the acyl alpha carbon (electron-withdrawing)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX4][SX3,SX4]=O"
+            }
+          ],
+          "a_factor": 25.15,
+          "per_match": false,
+          "source": "least-squares factor on 32 verified Mabey & Mill (1978) rows of base_ester_hydrolysis (ester + hydroxide); 2 of them show the feature"
         }
       ]
     },
@@ -120,9 +231,27 @@
         {
           "id": "ester + water, H+",
           "when": [],
-          "a": 11000000.0,
+          "a": 6268510.0,
           "ea_kj": 62.0,
-          "source": "acid-catalysed hydrolysis of ethyl acetate, k_H about 1.5e-4 M-1 s-1 at 298 K, taken as the rate of every aliphatic ester"
+          "source": "Fit to 13 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.25 log10, no held-out rows; activation energy from the earlier rule",
+          "n_points": 13,
+          "rms_log10": 0.252,
+          "tier": "estimated"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: acyl conjugated with C=C (acrylate, crotonate)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][CX3]=[CX3]"
+            }
+          ],
+          "a_factor": 0.05331,
+          "per_match": false,
+          "source": "least-squares factor on 13 verified Mabey & Mill (1978) rows of acid_ester_hydrolysis (ester + water, H+); 2 of them show the feature"
         }
       ]
     },
@@ -194,9 +323,12 @@
         {
           "id": "primary substrate + hydroxide",
           "when": [],
-          "a": 4000000000.0,
-          "ea_kj": 89.5,
-          "source": "reference: a primary alkyl bromide with hydroxide, k(298) about 4e9 exp(-89500/RT); scaled below by the substrate class and the nucleophile"
+          "a": 124282000000.0,
+          "ea_kj": 96.97,
+          "source": "Fit to 3 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.58 log10, no held-out rows; activation energy = mean of the tabulated ones",
+          "n_points": 3,
+          "rms_log10": 0.577,
+          "tier": "estimated"
         }
       ],
       "modifiers": [
@@ -417,9 +549,10 @@
         {
           "id": "primary substrate + strong base, per beta hydrogen",
           "when": [],
-          "a": 6666700000.0,
+          "a": 10600000000.0,
           "ea_kj": 105.0,
-          "source": "reference: a primary bromide with ethoxide eliminates about 1 % (Hughes-Ingold) with Ea(E2) > Ea(SN2), so elimination rises with temperature; 2e10 M-1 s-1 per three beta hydrogens"
+          "source": "reference: a primary bromide with ethoxide eliminates about 1 % (Hughes-Ingold, recalled value) with Ea(E2) > Ea(SN2), so elimination rises with temperature; A set so that E2 / SN2 = 1 % for bromoethane at 298 K against the SN2 rule fitted to verified rows, per beta hydrogen (uncited: the 1 % is not read from a source)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -563,9 +696,12 @@
               "smarts": "[CX4;H0]"
             }
           ],
-          "a": 6000000000000.0,
+          "a": 5966350000000.0,
           "ea_kj": 81.6,
-          "source": "solvolysis of tert-butyl chloride in water, k(298) about 3e-2 s-1 (t1/2 about 20 s)"
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "n_points": 1,
+          "rms_log10": 0.0,
+          "tier": "estimated"
         },
         {
           "id": "secondary halide in water",
@@ -576,9 +712,12 @@
               "smarts": "[CX4;H1]"
             }
           ],
-          "a": 6000000.0,
-          "ea_kj": 81.6,
-          "source": "about 1e-6 of the tertiary rate: the secondary cation is not stabilised enough (isopropyl vs tert-butyl, Grunwald-Winstein)"
+          "a": 3833350000000.0,
+          "ea_kj": 112.22,
+          "source": "Fit to 3 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.36 log10, no held-out rows; activation energy = mean of the tabulated ones",
+          "n_points": 3,
+          "rms_log10": 0.363,
+          "tier": "estimated"
         }
       ],
       "modifiers": [
@@ -717,7 +856,8 @@
           ],
           "a": 180000000000.0,
           "ea_kj": 81.6,
-          "source": "E1 accompanies SN1 of tert-butyl chloride in water at about 8 % (three beta hydrogens)"
+          "source": "E1 accompanies SN1 of tert-butyl chloride in water at about 8 % (three beta hydrogens) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "secondary halide in water, per beta hydrogen",
@@ -730,7 +870,8 @@
           ],
           "a": 180000.0,
           "ea_kj": 81.6,
-          "source": "same ratio to the SN1 rate as for the tertiary halide"
+          "source": "same ratio to the SN1 rate as for the tertiary halide (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -864,7 +1005,8 @@
           ],
           "a": 1000000000.0,
           "ea_kj": 71.0,
-          "source": "acid-catalysed hydration of isobutene, k_H about 3.6e-4 M-1 s-1 at 298 K (Kresge et al. 1971)"
+          "source": "acid-catalysed hydration of isobutene, k_H about 3.6e-4 M-1 s-1 at 298 K (Kresge et al. 1971) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "secondary carbocation",
@@ -877,7 +1019,8 @@
           ],
           "a": 1000000000.0,
           "ea_kj": 99.0,
-          "source": "propene, k_H about 4e-9 M-1 s-1: each carbon on the cation carbon speeds the hydration by about 1e5 (Kresge)"
+          "source": "propene, k_H about 4e-9 M-1 s-1: each carbon on the cation carbon speeds the hydration by about 1e5 (Kresge) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "primary carbocation",
@@ -890,7 +1033,8 @@
           ],
           "a": 1000000000.0,
           "ea_kj": 114.0,
-          "source": "ethene, k_H about 4e-12 M-1 s-1 (Kresge)"
+          "source": "ethene, k_H about 4e-12 M-1 s-1 (Kresge) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ]
     },
@@ -967,7 +1111,8 @@
           "when": [],
           "a": 500000000.0,
           "ea_kj": 28.0,
-          "source": "bromine addition to simple alkenes in water or polar solvents, k about 1e3-1e4 M-1 s-1 (estimate of the order of magnitude)"
+          "source": "bromine addition to simple alkenes in water or polar solvents, k about 1e3-1e4 M-1 s-1 (estimate of the order of magnitude) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ]
     },
@@ -1030,7 +1175,8 @@
               "when": [],
               "a": 53000000.0,
               "ea_kj": 70.0,
-              "source": "acid-catalysed enolisation of acetone, k_H about 2.8e-5 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde"
+              "source": "acid-catalysed enolisation of acetone, k_H about 2.8e-5 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1048,7 +1194,8 @@
               "when": [],
               "a": 960000000.0,
               "ea_kj": 55.0,
-              "source": "hydroxide-catalysed enolisation of acetone, k_OH about 0.22 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde"
+              "source": "hydroxide-catalysed enolisation of acetone, k_OH about 0.22 M-1 s-1 at 298 K, taken as the rate of every ketone and aldehyde (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -1112,9 +1259,29 @@
         {
           "id": "amide + water, H+",
           "when": [],
-          "a": 110000000.0,
-          "ea_kj": 75.0,
-          "source": "acid-catalysed hydrolysis of acetamide, k_H about 8e-6 M-1 s-1 at 298 K"
+          "a": 2000150000.0,
+          "ea_kj": 84.11,
+          "source": "Fit to 12 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.39 log10, held-out rms 0.54 (3 rows); activation energy = mean of the tabulated ones",
+          "n_points": 12,
+          "rms_log10": 0.39,
+          "held_out_rms_log10": 0.544,
+          "n_held_out": 3,
+          "tier": "estimated"
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: N-alkyl substituent, per substituent",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3][NX3][CX4]"
+            }
+          ],
+          "a_factor": 0.1979,
+          "per_match": true,
+          "source": "least-squares factor on 12 verified Mabey & Mill (1978) rows of amide_hydrolysis (amide + water, H+); 3 of them show the feature"
         }
       ]
     },
@@ -1184,7 +1351,8 @@
               ],
               "a": 5750000000.0,
               "ea_kj": 50,
-              "source": "formaldehyde hydration k about 10 s-1 at 298 K (Bell 1966), water at 55 M inside k"
+              "source": "formaldehyde hydration k about 10 s-1 at 298 K (Bell 1966), water at 55 M inside k (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "aldehyde, water",
@@ -1197,7 +1365,8 @@
               ],
               "a": 43200000.0,
               "ea_kj": 55,
-              "source": "acetaldehyde hydration k about 1e-2 s-1 at 298 K (Bell 1966)"
+              "source": "acetaldehyde hydration k about 1e-2 s-1 at 298 K (Bell 1966) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, water",
@@ -1210,7 +1379,8 @@
               ],
               "a": 3250000.0,
               "ea_kj": 60,
-              "source": "acetone hydration, order of magnitude 1e-4 s-1 (estimate: ketones are about 1e2 slower than aldehydes)"
+              "source": "acetone hydration, order of magnitude 1e-4 s-1 (estimate: ketones are about 1e2 slower than aldehydes) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1234,7 +1404,8 @@
               ],
               "a": 10200000000.0,
               "ea_kj": 40,
-              "source": "acid catalysis of formaldehyde hydration, kH about 1e3 M-1 s-1 (Bell 1966, recalled order of magnitude)"
+              "source": "acid catalysis of formaldehyde hydration, kH about 1e3 M-1 s-1 (Bell 1966, recalled order of magnitude) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "aldehyde, H+",
@@ -1247,7 +1418,8 @@
               ],
               "a": 5090000000.0,
               "ea_kj": 40,
-              "source": "acetaldehyde hydration, kH about 5e2 M-1 s-1 (Bell 1966)"
+              "source": "acetaldehyde hydration, kH about 5e2 M-1 s-1 (Bell 1966) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, H+",
@@ -1260,7 +1432,8 @@
               ],
               "a": 382000000.0,
               "ea_kj": 45,
-              "source": "ketones are about 1e2 slower than aldehydes (estimate)"
+              "source": "ketones are about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1284,7 +1457,8 @@
               ],
               "a": 13500000000.0,
               "ea_kj": 35,
-              "source": "base catalysis of formaldehyde hydration, kOH about 1e4 M-1 s-1 (recalled order of magnitude)"
+              "source": "base catalysis of formaldehyde hydration, kOH about 1e4 M-1 s-1 (recalled order of magnitude) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "aldehyde, OH-",
@@ -1297,7 +1471,8 @@
               ],
               "a": 6770000000.0,
               "ea_kj": 35,
-              "source": "acetaldehyde hydration, kOH about 5e3 M-1 s-1 (Bell 1966, recalled order of magnitude)"
+              "source": "acetaldehyde hydration, kOH about 5e3 M-1 s-1 (Bell 1966, recalled order of magnitude) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, OH-",
@@ -1310,7 +1485,8 @@
               ],
               "a": 509000000.0,
               "ea_kj": 40,
-              "source": "ketones are about 1e2 slower than aldehydes (estimate)"
+              "source": "ketones are about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -1388,7 +1564,8 @@
               ],
               "a": 1150000000.0,
               "ea_kj": 50,
-              "source": "hydration rate of the carbonyl per molar of the alcohol (water 55 M), alcohols about 5x more nucleophilic than water"
+              "source": "hydration rate of the carbonyl per molar of the alcohol (water 55 M), alcohols about 5x more nucleophilic than water (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "aldehyde, alcohol",
@@ -1401,7 +1578,8 @@
               ],
               "a": 4320000.0,
               "ea_kj": 55,
-              "source": "acetaldehyde + methanol hemiacetal formation, order of magnitude 1e-3 M-1 s-1"
+              "source": "acetaldehyde + methanol hemiacetal formation, order of magnitude 1e-3 M-1 s-1 (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, alcohol",
@@ -1414,7 +1592,8 @@
               ],
               "a": 325000.0,
               "ea_kj": 60,
-              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+              "source": "ketones about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1438,7 +1617,8 @@
               ],
               "a": 1020000000.0,
               "ea_kj": 40,
-              "source": "acid catalysis of hemiacetal formation, order of magnitude 1e2 M-2 s-1 (Guthrie)"
+              "source": "acid catalysis of hemiacetal formation, order of magnitude 1e2 M-2 s-1 (Guthrie) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, alcohol, H+",
@@ -1451,7 +1631,8 @@
               ],
               "a": 76500000.0,
               "ea_kj": 45,
-              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+              "source": "ketones about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1475,7 +1656,8 @@
               ],
               "a": 1350000000.0,
               "ea_kj": 35,
-              "source": "base catalysis of hemiacetal formation, order of magnitude 1e3 M-2 s-1 (Guthrie)"
+              "source": "base catalysis of hemiacetal formation, order of magnitude 1e3 M-2 s-1 (Guthrie) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone, alcohol, OH-",
@@ -1488,7 +1670,8 @@
               ],
               "a": 102000000.0,
               "ea_kj": 40,
-              "source": "ketones about 1e2 slower than aldehydes (estimate)"
+              "source": "ketones about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -1571,7 +1754,8 @@
           ],
           "a": 135000000.0,
           "ea_kj": 35,
-          "source": "amine addition to an aldehyde: carbinolamine formation is fast, k of the order 1e2 M-1 s-1 for primary amines (Jencks 1964, recalled order of magnitude)"
+          "source": "amine addition to an aldehyde: carbinolamine formation is fast, k of the order 1e2 M-1 s-1 for primary amines (Jencks 1964, recalled order of magnitude) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "ketone + amine",
@@ -1584,7 +1768,8 @@
           ],
           "a": 10200000.0,
           "ea_kj": 40,
-          "source": "ketones about 1e2 slower than aldehydes (estimate)"
+          "source": "ketones about 1e2 slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ]
     },
@@ -1645,7 +1830,8 @@
               "when": [],
               "a": 1620000000.0,
               "ea_kj": 60,
-              "source": "carbinolamine dehydration at neutral pH, order of magnitude 1e-2..1e-1 s-1 (Jencks 1964)"
+              "source": "carbinolamine dehydration at neutral pH, order of magnitude 1e-2..1e-1 s-1 (Jencks 1964) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1663,7 +1849,8 @@
               "when": [],
               "a": 1530000000000.0,
               "ea_kj": 45,
-              "source": "acid-catalysed carbinolamine dehydration (rate-limiting below pH 4-5), kH of the order 1e4 M-1 s-1 (Jencks 1964)"
+              "source": "acid-catalysed carbinolamine dehydration (rate-limiting below pH 4-5), kH of the order 1e4 M-1 s-1 (Jencks 1964) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -1746,7 +1933,8 @@
               ],
               "a": 57500000.0,
               "ea_kj": 50,
-              "source": "hydroxide-catalysed aldol addition of acetaldehyde, k of the order 0.1 M-2 s-1 (enolisation kOH about 1 M-1 s-1 of an aldehyde, partition of the enolate between addition and reprotonation)"
+              "source": "hydroxide-catalysed aldol addition of acetaldehyde, k of the order 0.1 M-2 s-1 (enolisation kOH about 1 M-1 s-1 of an aldehyde, partition of the enolate between addition and reprotonation) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "ketone donor",
@@ -1759,7 +1947,8 @@
               ],
               "a": 86400000.0,
               "ea_kj": 55,
-              "source": "ketone enolisation by hydroxide (acetone kOH 0.22 M-1 s-1) is slower than that of an aldehyde"
+              "source": "ketone enolisation by hydroxide (acetone kOH 0.22 M-1 s-1) is slower than that of an aldehyde (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ],
           "modifiers": [
@@ -1837,7 +2026,8 @@
               "when": [],
               "a": 325000000.0,
               "ea_kj": 60,
-              "source": "hydroxide-catalysed (E1cB) dehydration of a beta-hydroxy ketone, k of the order 1e-2 M-1 s-1 (Guthrie)"
+              "source": "hydroxide-catalysed (E1cB) dehydration of a beta-hydroxy ketone, k of the order 1e-2 M-1 s-1 (Guthrie) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         },
@@ -1855,7 +2045,8 @@
               "when": [],
               "a": 183000000.0,
               "ea_kj": 70,
-              "source": "acid-catalysed dehydration of a beta-hydroxy ketone, k of the order 1e-4 M-1 s-1 (estimate)"
+              "source": "acid-catalysed dehydration of a beta-hydroxy ketone, k of the order 1e-4 M-1 s-1 (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -1941,7 +2132,8 @@
           ],
           "a": 27100.0,
           "ea_kj": 60,
-          "source": "uncatalysed chlorination of benzene in a polar solvent, a class estimate of the order 1e-5 M-1 s-1 for the unactivated ring (given per ring position and per X-X match: divided by 6 x 2) (activated rings follow the Hammett relation; Brown & Stock 1957)"
+          "source": "uncatalysed chlorination of benzene in a polar solvent, a class estimate of the order 1e-5 M-1 s-1 for the unactivated ring (given per ring position and per X-X match: divided by 6 x 2) (activated rings follow the Hammett relation; Brown & Stock 1957) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "benzene + Br2",
@@ -1954,7 +2146,8 @@
           ],
           "a": 271.0,
           "ea_kj": 60,
-          "source": "uncatalysed bromination of benzene in a polar solvent, a class estimate of the order 1e-7 M-1 s-1 for the unactivated ring (per ring position and per X-X match: divided by 6 x 2) (anisole then 2e2, phenol 1e4 M-1 s-1, as measured in water; Brown & Stock 1957)"
+          "source": "uncatalysed bromination of benzene in a polar solvent, a class estimate of the order 1e-7 M-1 s-1 for the unactivated ring (per ring position and per X-X match: divided by 6 x 2) (anisole then 2e2, phenol 1e4 M-1 s-1, as measured in water; Brown & Stock 1957) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "benzene + I2",
@@ -1967,7 +2160,8 @@
           ],
           "a": 2.71,
           "ea_kj": 60,
-          "source": "iodination of the unactivated ring by I2 (per ring position and per X-X match: divided by 6 x 2), a class estimate (it reacts only with activated rings)"
+          "source": "iodination of the unactivated ring by I2 (per ring position and per X-X match: divided by 6 x 2), a class estimate (it reacts only with activated rings) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -2091,7 +2285,8 @@
               "when": [],
               "a": 45900.0,
               "ea_kj": 70,
-              "source": "nitration of benzene (per ring position and per nitrate oxygen match: divided by 6 x 2): nitronium needs two protons (HNO3 + H+ -> NO2+ + H2O), so the rate runs with the acidity: k2 about 3e-5 M-1 s-1 in 68 % H2SO4 where [H+] is of the order 10 M, k3 = 3e-7 M-3 s-1 (Ingold 1950; Hammett h0 dependence recalled as [H+]^2)"
+              "source": "nitration of benzene (per ring position and per nitrate oxygen match: divided by 6 x 2): nitronium needs two protons (HNO3 + H+ -> NO2+ + H2O), so the rate runs with the acidity: k2 about 3e-5 M-1 s-1 in 68 % H2SO4 where [H+] is of the order 10 M, k3 = 3e-7 M-3 s-1 (Ingold 1950; Hammett h0 dependence recalled as [H+]^2) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ]
         }
@@ -2183,7 +2378,8 @@
           "when": [],
           "a": 38200000.0,
           "ea_kj": 45,
-          "source": "hydrolysis of acetyl chloride in water, k of the order 0.5 s-1 at 298 K (Bunton, recalled); water at 55 M inside k"
+          "source": "hydrolysis of acetyl chloride in water, k of the order 0.5 s-1 at 298 K (Bunton, recalled); water at 55 M inside k (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -2287,7 +2483,8 @@
           "when": [],
           "a": 162000000.0,
           "ea_kj": 60,
-          "source": "hydrolysis of acetic anhydride, k = 5e-3 s-1 at 298 K (water at 55 M inside k; Bunton & Fendler)"
+          "source": "hydrolysis of acetic anhydride, k = 5e-3 s-1 at 298 K (water at 55 M inside k; Bunton & Fendler) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -2535,7 +2732,8 @@
           "when": [],
           "a": 2500000.0,
           "ea_kj": 115,
-          "source": "butadiene + ethylene, Ea about 115 kJ/mol and log A about 6.5-7 (M-1 s-1) (Houk-type thermochemistry; recalled). The rate is per orientation of diene and dienophile, so a symmetric pair counts the 2 x 2 matches (a = A/4)"
+          "source": "butadiene + ethylene, Ea about 115 kJ/mol and log A about 6.5-7 (M-1 s-1) (Houk-type thermochemistry; recalled). The rate is per orientation of diene and dienophile, so a symmetric pair counts the 2 x 2 matches (a = A/4) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "dienophile conjugated with carbonyl (EWG on the first alkene carbon)",
@@ -2548,7 +2746,8 @@
           ],
           "a": 2500000.0,
           "ea_kj": 65,
-          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "dienophile conjugated with carbonyl (EWG on the second alkene carbon)",
@@ -2561,7 +2760,8 @@
           ],
           "a": 2500000.0,
           "ea_kj": 65,
-          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "dienophile conjugated with nitrile (EWG on the first alkene carbon)",
@@ -2574,7 +2774,8 @@
           ],
           "a": 2500000.0,
           "ea_kj": 70,
-          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "dienophile conjugated with nitrile (EWG on the second alkene carbon)",
@@ -2587,7 +2788,8 @@
           ],
           "a": 2500000.0,
           "ea_kj": 70,
-          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4)"
+          "source": "normal-demand Diels-Alder of an electron-poor dienophile (maleic anhydride, acrylates, acrylonitrile) with a simple diene: k of the order 1e-5 .. 1e-4 M-1 s-1 at 298 K, Ea 55-75 kJ/mol (Sauer & Sustmann 1980, recalled order of magnitude), per orientation (A/4) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -2692,7 +2894,8 @@
               ],
               "a": 5400.0,
               "ea_kj": 50,
-              "source": "AlCl3-catalysed alkylation of benzene by a tertiary halide; the ionisation of the complexed halide is fast: a class estimate of k of the order 1e-3 M-2 s-1 per ring position (benzene / 6) (Brown & Jungk 1955, recalled order of magnitude)"
+              "source": "AlCl3-catalysed alkylation of benzene by a tertiary halide; the ionisation of the complexed halide is fast: a class estimate of k of the order 1e-3 M-2 s-1 per ring position (benzene / 6) (Brown & Jungk 1955, recalled order of magnitude) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "secondary halide",
@@ -2705,7 +2908,8 @@
               ],
               "a": 54.0,
               "ea_kj": 50,
-              "source": "secondary halides ionise about 1e2 slower (estimate)"
+              "source": "secondary halides ionise about 1e2 slower (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "primary halide",
@@ -2718,7 +2922,8 @@
               ],
               "a": 0.54,
               "ea_kj": 50,
-              "source": "primary halides react through the polarised complex, about 1e4 slower than tertiary (estimate)"
+              "source": "primary halides react through the polarised complex, about 1e4 slower than tertiary (estimate) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ],
           "modifiers": [
@@ -2755,7 +2960,8 @@
               ],
               "a": 2700.0,
               "ea_kj": 52,
-              "source": "FeCl3-catalysed alkylation (mild Lewis acid, ~2x slower than AlCl3)"
+              "source": "FeCl3-catalysed alkylation (mild Lewis acid, ~2x slower than AlCl3) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "secondary halide",
@@ -2768,7 +2974,8 @@
               ],
               "a": 27.0,
               "ea_kj": 52,
-              "source": "secondary halides ionise ~1e2 slower"
+              "source": "secondary halides ionise ~1e2 slower (uncited tier Speculative fallback)",
+              "tier": "speculative"
             },
             {
               "id": "primary halide",
@@ -2781,7 +2988,8 @@
               ],
               "a": 0.27,
               "ea_kj": 52,
-              "source": "primary halides react through polarised complex"
+              "source": "primary halides react through polarised complex (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ],
           "modifiers": [
@@ -2869,7 +3077,8 @@
               "when": [],
               "a": 12000.0,
               "ea_kj": 50,
-              "source": "AlCl3-catalysed acylation of benzene by an acyl chloride, a class estimate of k of the order 1e-3 M-2 s-1 per ring position (Brown 1957; recalled order of magnitude)"
+              "source": "AlCl3-catalysed acylation of benzene by an acyl chloride, a class estimate of k of the order 1e-3 M-2 s-1 per ring position (Brown 1957; recalled order of magnitude) (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ],
           "modifiers": [
@@ -2900,7 +3109,8 @@
               "when": [],
               "a": 6000.0,
               "ea_kj": 52,
-              "source": "FeCl3-catalysed acylation of benzene by an acyl chloride"
+              "source": "FeCl3-catalysed acylation of benzene by an acyl chloride (uncited tier Speculative fallback)",
+              "tier": "speculative"
             }
           ],
           "modifiers": [
@@ -3004,7 +3214,8 @@
           ],
           "a": 2700000000000.0,
           "ea_kj": 20,
-          "source": "Grignard addition to an aldehyde is close to the encounter limit in ether (k of the order 1e3-1e5 M-1 s-1 at 298 K; Ashby 1980, recalled order of magnitude); applies to a solution in an ether, the rate has no meaning in water, where protonolysis wins"
+          "source": "Grignard addition to an aldehyde is close to the encounter limit in ether (k of the order 1e3-1e5 M-1 s-1 at 298 K; Ashby 1980, recalled order of magnitude); applies to a solution in an ether, the rate has no meaning in water, where protonolysis wins (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "ketone",
@@ -3017,7 +3228,8 @@
           ],
           "a": 270000000000.0,
           "ea_kj": 20,
-          "source": "ketones add about an order of magnitude slower than aldehydes (estimate)"
+          "source": "ketones add about an order of magnitude slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ]
     },
@@ -3086,7 +3298,8 @@
           "when": [],
           "a": 10000000000000.0,
           "ea_kj": 10,
-          "source": "carbanion-like organomagnesium compounds are protonated by water and alcohols at the diffusion limit (k >> 1e6 M-1 s-1); a class estimate, the reason a Grignard reagent cannot be made in a wet solvent"
+          "source": "carbanion-like organomagnesium compounds are protonated by water and alcohols at the diffusion limit (k >> 1e6 M-1 s-1); a class estimate, the reason a Grignard reagent cannot be made in a wet solvent (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ]
     },
@@ -3111,6 +3324,14 @@
             {
               "center": 0,
               "smarts": "[CX3]-[O,N,S,F,Cl,Br,I]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](=[OX1])[CX3]=[PX4]"
+            },
+            {
+              "center": 0,
+              "smarts": "[CX3](=[OX1])[CX3-][PX4+]"
             }
           ]
         }
@@ -3191,7 +3412,8 @@
           ],
           "a": 27000000000.0,
           "ea_kj": 25,
-          "source": "unstabilised ylides add to aldehydes in THF with k of the order 1e2-1e3 M-1 s-1 (oxaphosphetane formation is rate determining, Vedejs 1988; recalled order of magnitude)"
+          "source": "unstabilised ylides add to aldehydes in THF with k of the order 1e2-1e3 M-1 s-1 (oxaphosphetane formation is rate determining, Vedejs 1988; recalled order of magnitude) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         },
         {
           "id": "ketone",
@@ -3204,7 +3426,8 @@
           ],
           "a": 270000000.0,
           "ea_kj": 25,
-          "source": "ketones are about two orders slower than aldehydes (estimate)"
+          "source": "ketones are about two orders slower than aldehydes (estimate) (uncited tier Speculative fallback)",
+          "tier": "speculative"
         }
       ],
       "modifiers": [
@@ -3219,8 +3442,563 @@
           ],
           "a_factor": 0.0001,
           "source": "stabilised ylides (ester- or ketone-substituted) are about 1e4 less reactive than alkylidene ylides (recalled order of magnitude)"
+        },
+        {
+          "id": "stabilised ylide with a ketone",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3;A](=[PX4])[CX3]=[OX1]"
+            },
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H0]"
+            }
+          ],
+          "a_factor": 1e-10,
+          "source": "a carbonyl-stabilised ylide does not olefinate an ordinary ketone at room temperature (qualitative, recalled; the factor only keeps the product of an aldehyde olefination, itself a ketone, from reacting again and growing a chain; uncited, tier Speculative)"
+        },
+        {
+          "id": "stabilised ylide, betaine drawing (conjugated with a carbonyl)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3-;A]([PX4+])[CX3]=[OX1]"
+            }
+          ],
+          "a_factor": 0.0001,
+          "source": "stabilised ylides (ester- or ketone-substituted) are about 1e4 less reactive than alkylidene ylides (recalled order of magnitude) (the C-/P+ drawing of the same ylide)"
+        },
+        {
+          "id": "stabilised ylide, betaine drawing, with a ketone",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3-;A]([PX4+])[CX3]=[OX1]"
+            },
+            {
+              "reactant": 1,
+              "center": 0,
+              "smarts": "[CX3;H0]"
+            }
+          ],
+          "a_factor": 1e-10,
+          "source": "a carbonyl-stabilised ylide does not olefinate an ordinary ketone at room temperature (qualitative, recalled; the factor only keeps the product of an aldehyde olefination, itself a ketone, from reacting again and growing a chain; uncited, tier Speculative)"
         }
       ]
+    },
+    {
+      "id": "michael_addition",
+      "name": "Conjugate addition (Michael addition of nucleophile to alpha,beta-unsaturated acceptor)",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "Michael acceptor",
+          "any_of": [
+            "[CX3;H1,H2]=[CX3][CX3]=[OX1]",
+            "[CX3;H1,H2]=[CX3][CX2]#[NX1]",
+            "[CX3;H1,H2]=[CX3][NX3+](=O)[O-]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "any_of": [
+            "[CX3-;A]",
+            "[NX3;H1,H2]",
+            "[SX2-;A]",
+            "[OX2-;A]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            0,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "solvent_proton",
+          "atom": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 0
+        }
+      ],
+      "rules": [
+        {
+          "id": "carbanion or amine addition",
+          "when": [],
+          "a": 68992560.4,
+          "ea_kj": 50.0,
+          "source": "Fit (A at the rule's Ea) to recalled, unverified rows of pipeline/data/rates_unverified.csv; uncited, awaiting rows read from their source",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "carbocation_trapping",
+      "name": "Carbocation trapping by an anionic nucleophile",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "carbocation",
+          "any_of": [
+            "[CX3+;A]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "any_of": [
+            "[OX2-;H0,H1]",
+            "[SX2-;A]",
+            "[Cl-,Br-,I-,F-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 0
+        }
+      ],
+      "rules": [
+        {
+          "id": "diffusion_controlled_trapping",
+          "when": [],
+          "a": 1000000000.0,
+          "ea_kj": 10.0,
+          "source": "diffusion-controlled or near-diffusion-controlled trapping of stabilised carbocations (uncited, tier speculative: the Mayr relation replaces it where both partners have rows)",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "carbocation_trapping_by_amine",
+      "name": "Carbocation trapping by a neutral amine (ammonium product)",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "carbocation",
+          "any_of": [
+            "[CX3+;A]"
+          ]
+        },
+        {
+          "role": "nucleophile",
+          "net_charge_max": 0,
+          "any_of": [
+            "[NX3;H0,H1,H2,H3;+0]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 1
+        }
+      ],
+      "rules": [
+        {
+          "id": "diffusion_controlled_trapping",
+          "when": [],
+          "a": 1000000000.0,
+          "ea_kj": 10.0,
+          "source": "diffusion-controlled or near-diffusion-controlled trapping of stabilised carbocations (uncited, tier speculative: the Mayr relation replaces it where both partners have rows)",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "carbocation_trapping_by_solvent",
+      "name": "Carbocation trapping by water or an alcohol (loses the proton)",
+      "category": "addition",
+      "reactants": [
+        {
+          "role": "carbocation",
+          "any_of": [
+            "[CX3+;A]"
+          ]
+        },
+        {
+          "role": "solvent nucleophile",
+          "net_charge_max": 0,
+          "any_of": [
+            "[OX2;H2]",
+            "[OX2;H1]([#6])"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "diffusion_controlled_trapping",
+          "when": [],
+          "a": 1000000000.0,
+          "ea_kj": 10.0,
+          "source": "diffusion-controlled or near-diffusion-controlled trapping of stabilised carbocations (uncited, tier speculative: the Mayr relation replaces it where both partners have rows)",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": [],
+      "extra_products": [
+        "[H+]"
+      ]
+    },
+    {
+      "id": "halide_neutral_hydrolysis",
+      "name": "Neutral hydrolysis of alkyl halide (SN2/SN1 by water)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "alkyl halide",
+          "any_of": [
+            "[CX4;H2,H3][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2;H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "primary or methyl halide neutral hydrolysis",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4;H2,H3]"
+            }
+          ],
+          "a": 3211700000000.0,
+          "ea_kj": 110.16,
+          "source": "Fit to 10 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.66 log10, held-out rms 0.29 (2 rows); activation energy = mean of the tabulated ones",
+          "tier": "estimated",
+          "n_points": 10,
+          "rms_log10": 0.661,
+          "held_out_rms_log10": 0.286,
+          "n_held_out": 2
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: benzylic carbon (aryl on the halide carbon)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4]c"
+            }
+          ],
+          "a_factor": 2131.0,
+          "per_match": false,
+          "source": "least-squares factor on 10 verified Mabey & Mill (1978) rows of halide_neutral_hydrolysis (primary or methyl halide neutral hydrolysis); 4 of them show the feature"
+        }
+      ]
+    },
+    {
+      "id": "menshutkin_alkylation",
+      "name": "Menshutkin amine alkylation (neutral amine + alkyl halide)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "alkyl halide",
+          "any_of": [
+            "[CX4;H1,H2,H3][Cl,Br,I]"
+          ]
+        },
+        {
+          "role": "amine",
+          "any_of": [
+            "[NX3;H0,H1,H2,H3]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "methyl or primary halide with amine",
+          "when": [],
+          "a": 216221328.2,
+          "ea_kj": 61.0,
+          "source": "Fit (A at the rule's Ea) to recalled, unverified rows of pipeline/data/rates_unverified.csv; uncited, awaiting rows read from their source",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "azo_coupling",
+      "name": "Azo coupling (diazonium salt + phenolate or aniline)",
+      "category": "electrophilic aromatic substitution",
+      "reactants": [
+        {
+          "role": "diazonium electrophile",
+          "any_of": [
+            "[c][NX2+]#[NX1]"
+          ]
+        },
+        {
+          "role": "activated aromatic nucleophile",
+          "any_of": [
+            "[c;H1][c][OX1-]",
+            "[c;H1][c][NX3;H1,H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "set_bond",
+          "a": [
+            0,
+            1
+          ],
+          "b": [
+            0,
+            2
+          ],
+          "order": 2.0
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            2
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1.0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": 0
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "diazonium coupling",
+          "when": [],
+          "a": 100000000.0,
+          "ea_kj": 40.0,
+          "source": "Mayr diazonium electrophile coupling (log k ~ 1 to 4 at 20 C) (uncited tier Speculative fallback)",
+          "tier": "speculative"
+        }
+      ],
+      "modifiers": []
     }
   ]
 }

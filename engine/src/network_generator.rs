@@ -55,6 +55,35 @@ pub struct GeneratedReaction {
     /// lack formation data (`k_eq_from_data` false): the reaction is then irreversible, not given an invented K.
     pub k_eq_298: f64,
     pub k_eq_from_data: bool,
+    /// Structural key of the reaction (`rate_store::reaction_key`): its stored rate, if any, replaces the rule.
+    #[serde(default)]
+    pub rate_key: String,
+    /// The key of the same reaction under any template (measured rates may be filed under it).
+    #[serde(default)]
+    pub rate_any_key: String,
+    /// Tag of the template variant ("" for the plain variant).
+    #[serde(default)]
+    pub variant: String,
+    /// Number of pathways (template matches) added into this reaction; `arrhenius_a` is their sum.
+    #[serde(default = "one_pathway")]
+    pub pathways: u32,
+    /// The template rule's estimate for one pathway (A, Ea J/mol, source), whether or not a stored rate replaced it.
+    #[serde(default)]
+    pub template_a: f64,
+    #[serde(default)]
+    pub template_ea_j_mol: f64,
+    #[serde(default)]
+    pub template_source: String,
+    /// True when `arrhenius_a` / `arrhenius_ea` come from the rate store.
+    #[serde(default)]
+    pub rate_from_store: bool,
+    /// The stored rate is that of the whole reaction (a measured constant): pathways are not added.
+    #[serde(default)]
+    pub rate_per_reaction: bool,
+}
+
+fn one_pathway() -> u32 {
+    1
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -74,7 +103,6 @@ pub struct NetworkGeneratorConfig {
     pub max_reactions: usize,
     pub flux_threshold_abs: f64,
     pub viscosity_pa_s: f64,
-    pub precomputed_barriers: HashMap<String, f64>, // template id -> Delta G_ddagger (kcal/mol)
 }
 
 impl Default for NetworkGeneratorConfig {
@@ -84,7 +112,6 @@ impl Default for NetworkGeneratorConfig {
             max_reactions: DEFAULT_MAX_REACTIONS,
             flux_threshold_abs: DEFAULT_FLUX_THRESHOLD_ABS,
             viscosity_pa_s: 8.9e-4,
-            precomputed_barriers: HashMap::new(),
         }
     }
 }
@@ -307,6 +334,8 @@ impl NetworkGenerator {
         }
         let thermo = reaction_k_298(&reactants, &products);
         let centre = tpl.centre_key(&inst);
+        let reactant_refs: Vec<&Molecule> = mols.iter().collect();
+        let product_refs: Vec<&Molecule> = product_mols.iter().collect();
         let reactant_ids = species.join("+");
         for rate in rates {
             let variant = &tpl.variants[rate.variant];
@@ -317,6 +346,8 @@ impl NetworkGenerator {
                 _ => continue,
             };
             let tag = if variant.tag.is_empty() { String::new() } else { format!("_{}", variant.tag) };
+            let rate_key = crate::rate_store::reaction_key(&format!("{}{}", tpl.id, tag), &reactant_refs, &product_refs);
+            let any_key = crate::rate_store::reaction_key("*", &reactant_refs, &product_refs);
             out.push(self.build(
                 format!("{}{}_{}_{}", tpl.id, tag, reactant_ids, centre),
                 format!("{} ({})", tpl.name, reactant_ids),
@@ -331,12 +362,13 @@ impl NetworkGenerator {
                 medium,
                 concs,
                 &format!("Reaction template {} / rule '{}': {}", tpl.id, rate.rule, rate.source),
+                StoreRef { rate_key, any_key, solvent_class: solvent_class.to_string(), variant: variant.tag.clone(), per_reaction: rate.per_reaction },
             ));
         }
     }
 
-    /// Builds one generated reaction: Arrhenius rate of the matching rule (overridden by a precomputed barrier when the
-    /// flywheel has one), diffusion ceiling for bimolecular steps, dissolved-catalyst concentrations folded into `k_fwd` at
+    /// Builds one generated reaction: Arrhenius rate of the matching rule (replaced by the rate store's entry for the
+    /// reaction's structural key when there is one), diffusion ceiling for bimolecular steps, dissolved-catalyst concentrations folded into `k_fwd` at
     /// the generation conditions (the vessel re-evaluates them every tick through `orders`), and K from the species'
     /// formation data when all of them have it (else the reaction is irreversible).
     #[allow(clippy::too_many_arguments)]
@@ -355,10 +387,36 @@ impl NetworkGenerator {
         medium: Medium,
         concs: &HashMap<String, f64>,
         source: &str,
+        store: StoreRef,
     ) -> GeneratedReaction {
-        if let Some(&dg_kcal) = self.config.precomputed_barriers.get(family_id) {
-            arr_ea = dg_kcal * 4184.0;
-            arr_a = 1.0e11;
+        let (template_a, template_ea) = (arr_a, arr_ea);
+        let stored = crate::rate_store::lookup_for(&store.rate_key, &store.any_key, &store.solvent_class);
+        let mut multi_term_k_fwd = None;
+        if let Some(e) = &stored {
+            if !e.terms.is_empty() {
+                let mut sum_k = 0.0;
+                for t in &e.terms {
+                    let k_val = match t.ea_kj_mol {
+                        Some(ea) => t.k * (-ea * 1000.0 / (R_IDEAL * temp_k)).exp() / (-ea * 1000.0 / (R_IDEAL * t.t_k)).exp(),
+                        None => t.k * (-template_ea / (R_IDEAL * temp_k)).exp() / (-template_ea / (R_IDEAL * t.t_k)).exp(),
+                    };
+                    let mut term_cat_factor = 1.0;
+                    for (sp, ord) in &t.orders {
+                        if !reactants.contains_key(sp) {
+                            let c = match sp.as_str() {
+                                crate::db::seed::PROTON => medium.h_conc,
+                                crate::db::seed::HYDROXIDE => medium.oh_conc,
+                                other => concs.get(other).copied().unwrap_or(0.0),
+                            };
+                            term_cat_factor *= c.max(0.0).powf(*ord);
+                        }
+                    }
+                    sum_k += k_val * term_cat_factor;
+                }
+                multi_term_k_fwd = Some(sum_k);
+            } else {
+                (arr_a, arr_ea) = e.arrhenius(template_ea);
+            }
         }
         let k_arr = arr_a * (-arr_ea / (R_IDEAL * temp_k)).clamp(-700.0, 700.0).exp();
         let mut orders: HashMap<String, f64> = HashMap::new();
@@ -378,7 +436,7 @@ impl NetworkGenerator {
         // the encounter limit bounds a bimolecular step; an empirical law of other order has a constant in other units
         let total_order: f64 = orders.values().sum();
         let k_cap = if (1.8..=2.2).contains(&total_order) { apply_diffusion_cap(k_arr, temp_k, self.config.viscosity_pa_s) } else { k_arr };
-        let k_fwd = k_cap * cat_factor;
+        let k_fwd = if let Some(mk) = multi_term_k_fwd { mk } else { k_cap * cat_factor };
 
         let (k_eq_298, dh_kj, from_data) = match thermo {
             Some((k, dh)) => (k, dh, true),
@@ -415,14 +473,41 @@ impl NetworkGenerator {
             delta_h_kj: dh_kj,
             delta_g_kj,
             k_eq,
-            tier: ProvenanceTier::Estimated,
-            source: format!("{}; K from {}", source, if from_data { "species formation data" } else { "nothing (species lack formation data): irreversible" }),
+            tier: stored.as_ref().map(|e| e.tier.clone()).unwrap_or(ProvenanceTier::Estimated),
+            source: format!(
+                "{}; K from {}",
+                match &stored {
+                    Some(e) => format!("{} (the template rule gives A {:.3e}, Ea {:.1} kJ/mol: {})", e.source, template_a, template_ea / 1000.0, source),
+                    None => source.to_string(),
+                },
+                if from_data { "species formation data" } else { "nothing (species lack formation data): irreversible" }
+            ),
             formation_flux: 0.0,
             orders,
             k_eq_298,
             k_eq_from_data: from_data,
+            rate_key: store.rate_key,
+            rate_any_key: store.any_key,
+            variant: store.variant,
+            pathways: 1,
+            template_a,
+            template_ea_j_mol: template_ea,
+            template_source: source.to_string(),
+            rate_from_store: stored.is_some(),
+            rate_per_reaction: stored.as_ref().map_or(false, |e| e.per_reaction) || store.per_reaction,
         }
     }
+}
+
+/// What the rate store needs to know of a candidate: its structural key and the template variant.
+struct StoreRef {
+    rate_key: String,
+    /// the key of the same reaction under any template (`*`), which measured rates may use
+    any_key: String,
+    solvent_class: String,
+    variant: String,
+    /// the rule's rate is that of the whole reaction (Mayr relation), whatever the template's pathway count
+    per_reaction: bool,
 }
 
 /// Adds the pathways of one reaction (same template variant, reactants, products and activation energy): the rate is the
@@ -442,8 +527,12 @@ fn merge_pathways(candidates: Vec<GeneratedReaction>) -> Vec<GeneratedReaction> 
         };
         match out.iter_mut().find(|o| key(o) == key(&c)) {
             Some(o) => {
-                o.k_fwd += c.k_fwd;
-                o.arrhenius_a += c.arrhenius_a;
+                // a measured rate already counts every pathway; another pathway of it adds nothing
+                if !o.rate_per_reaction {
+                    o.k_fwd += c.k_fwd;
+                    o.arrhenius_a += c.arrhenius_a;
+                }
+                o.pathways += c.pathways;
                 if c.id < o.id {
                     o.id = c.id;
                 }
@@ -605,9 +694,47 @@ pub fn class_self_exchange_k(a: &str, b: &str) -> Option<f64> {
     if let Some(v) = memo.lock().ok().and_then(|m| m.get(&key).copied()) {
         return v;
     }
-    let (ma, mb) = (resolve_molecule(a)?, resolve_molecule(b)?);
-    let by = |x: &Molecule, y: &Molecule| reaction_templates::oxidised_forms(x).into_iter().find(|f| f.product.is_isomorphic(y)).map(|f| f.k_self);
-    let found = by(&ma, &mb).or_else(|| by(&mb, &ma));
+    // resolving an id that is not a SMILES scans the species store by name and clones the reagent catalog; with thousands of species
+    // the pairs of the redox discovery asked for the same few ids over and over, so the answer (also "no structure") is kept until
+    // the store changes
+    static RESOLVED: std::sync::OnceLock<Mutex<(u64, HashMap<String, Option<Molecule>>)>> = std::sync::OnceLock::new();
+    let resolve_cached = |id: &str| -> Option<Molecule> {
+        let cell = RESOLVED.get_or_init(|| Mutex::new((u64::MAX, HashMap::new())));
+        let generation = crate::db::SpeciesStore::generation();
+        if let Ok(mut g) = cell.lock() {
+            if g.0 != generation {
+                *g = (generation, HashMap::new());
+            }
+            if let Some(m) = g.1.get(id) {
+                return m.clone();
+            }
+        }
+        let m = resolve_molecule(id);
+        if let Ok(mut g) = cell.lock() {
+            if g.0 == generation {
+                g.1.insert(id.to_string(), m.clone());
+            }
+        }
+        m
+    };
+    let (ma, mb) = (resolve_cached(a)?, resolve_cached(b)?);
+    // the oxidised forms of a species do not depend on its partner: computed once per species (with thousands of species in the
+    // store the pairs are quadratic, the forms are not, and `oxidised_forms` runs every oxidation template over the molecule)
+    type Forms = std::sync::Arc<Vec<(Molecule, f64)>>;
+    static FORMS: std::sync::OnceLock<Mutex<HashMap<String, Forms>>> = std::sync::OnceLock::new();
+    let forms_of = |id: &str, m: &Molecule| -> Forms {
+        let cache = FORMS.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Some(f) = cache.lock().ok().and_then(|c| c.get(id).cloned()) {
+            return f;
+        }
+        let f: Forms = std::sync::Arc::new(reaction_templates::oxidised_forms(m).into_iter().map(|f| (f.product, f.k_self)).collect());
+        if let Ok(mut c) = cache.lock() {
+            c.insert(id.to_string(), f.clone());
+        }
+        f
+    };
+    let by = |id: &str, x: &Molecule, y: &Molecule| forms_of(id, x).iter().find(|(p, _)| p.is_isomorphic(y)).map(|(_, k)| *k);
+    let found = by(a, &ma, &mb).or_else(|| by(b, &mb, &ma));
     if let Ok(mut m) = memo.lock() {
         m.insert(key, found);
     }

@@ -1,0 +1,25 @@
+{
+"_comment": "Hand-typed (recalled) excess-volume rows of the earlier engine/data/excess_volume.json, kept by pipeline/db/build_excess_volume.py only for pairs the ThermoML data do not cover.",
+"pairs": [
+{
+"a": "XLYOFNOQVPJJNP-UHFFFAOYSA-N",
+"b": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+"A_cm3_mol": [
+-4.25,
+-1.1
+],
+"T_K": 298.15,
+"note": "water + ethanol"
+},
+{
+"a": "XLYOFNOQVPJJNP-UHFFFAOYSA-N",
+"b": "CSCPPACGZOOCGX-UHFFFAOYSA-N",
+"A_cm3_mol": [
+-4.5,
+-1.2
+],
+"T_K": 298.15,
+"note": "water + acetone"
+}
+]
+}

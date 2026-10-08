@@ -25,6 +25,7 @@ import { CustomReactionModal } from './ui/custom_reaction_modal';
 import { BottleCard } from './ui/bottle_card';
 import { toast } from './ui/toast';
 import { MineralResolver } from './app/mineral_resolver';
+
 import { anyModalOpen } from './ui/modal';
 import { runSelfTest } from './ui/self_test';
 import { h, isTypingTarget } from './ui/dom';
@@ -46,6 +47,7 @@ const simWorker = new Worker(new URL('./workers/simulation.worker.ts', import.me
 
 let sessionToken = new URLSearchParams(window.location.search).get('token') || '';
 setSessionToken(sessionToken);
+/** The local server (`python3 run.py`), when the app is served by it; the static build has none. */
 
 const SHELF_SEED = 8;
 const NOTABLE_EVENTS = new Set(['stopper_pop', 'ignition', 'flame_out', 'boil_over', 'dry_out', 'splatter']);
@@ -98,7 +100,7 @@ async function initApp() {
   const topBar = new TopBar([
     { label: 'Import from PubChem', hint: 'Search box', icon: 'cloud', action: () => { reagentPanel.showTab('reagents'); reagentPanel.focusSearch(); } },
     { label: 'Custom chemistry…', icon: 'plus', action: () => customModal.show() },
-    { label: 'Run self-test', icon: 'test', action: () => runSelfTest(simWorker, sim, sessionToken) },
+    { label: 'Run self-test', icon: 'test', action: () => runSelfTest(simWorker, sim) },
   ]);
   topBar.onToggleDetails = () => advanced.toggle();
   advanced.onVisibilityChange = (open) => topBar.setDetailsOpen(open);
@@ -713,7 +715,11 @@ async function initApp() {
   simWorker.postMessage({ type: 'WASM_ROUNDTRIP', payload: { message: 'Reaction Chamber heartbeat' }, requestId: 'init-ping' });
 
   fetch('/api/health')
-    .then((r) => topBar.setServerStatus(r.ok ? 'ok' : 'warn', r.ok ? 'Online' : 'Not running (optional)'))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((h) => {
+      if (!h) topBar.setServerStatus('warn', 'Not running (optional)');
+      else topBar.setServerStatus('ok', 'Online');
+    })
     .catch(() => topBar.setServerStatus('warn', 'Not running (optional)'));
   if (!sessionToken) {
     fetch('/api/session-token')

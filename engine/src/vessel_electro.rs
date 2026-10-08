@@ -216,7 +216,7 @@ impl Vessel {
         if let Some(spec) = &self.electro.spec {
             for e in [&spec.anode, &spec.cathode] {
                 let el = material_element(&e.material);
-                if is_metal_element(&el) {
+                if is_metal_element(&el) && !electrode_material_data().inert.contains(&el) {
                     extra.push(el);
                 }
             }
@@ -314,7 +314,7 @@ impl Vessel {
         let p_pa = self.pressure_atm * 101_325.0;
         let mk = |e: &ElectrodeSpec| -> Electrode {
             let el = material_element(&e.material);
-            let active = if is_metal_element(&el) && crate::db::SpeciesStore::global().read().map_or(false, |s| s.get(&format!("{}(s)", el)).is_some()) {
+            let active = if is_metal_element(&el) && !electrode_material_data().inert.contains(&el) && crate::db::SpeciesStore::global().read().map_or(false, |s| s.get(&format!("{}(s)", el)).is_some()) {
                 Some(format!("{}(s)", el))
             } else {
                 None
@@ -464,7 +464,7 @@ impl Vessel {
         let p_pa = self.pressure_atm * 101_325.0;
         let mk = |e: &ElectrodeSpec| -> Electrode {
             let el = material_element(&e.material);
-            let active = if is_metal_element(&el) && crate::db::SpeciesStore::global().read().map_or(false, |s| s.get(&format!("{}(s)", el)).is_some()) {
+            let active = if is_metal_element(&el) && !electrode_material_data().inert.contains(&el) && crate::db::SpeciesStore::global().read().map_or(false, |s| s.get(&format!("{}(s)", el)).is_some()) {
                 Some(format!("{}(s)", el))
             } else {
                 None
@@ -843,6 +843,9 @@ fn electrode_appearance(symbol: &str) -> (Option<[f64; 3]>, Option<f64>) {
 struct ElectrodeMaterialData {
     inert: Vec<String>,
     water_reactive_e0_v: f64,
+    /// metals the store holds that the console does not offer, by reason
+    #[serde(default)]
+    excluded: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 fn electrode_material_data() -> &'static ElectrodeMaterialData {
@@ -888,7 +891,8 @@ pub fn electrode_materials() -> Vec<ElectrodeMaterialInfo> {
     metals.sort();
     metals.dedup();
     let data = electrode_material_data();
-    metals.retain(|m| !data.inert.contains(m) && e0.get(m).map_or(true, |e| *e > data.water_reactive_e0_v));
+    let excluded: std::collections::BTreeSet<&String> = data.excluded.values().flatten().collect();
+    metals.retain(|m| !data.inert.contains(m) && !excluded.contains(m) && e0.get(m).map_or(true, |e| *e > data.water_reactive_e0_v));
     // nobler first; metals with no potential after those that have one
     metals.sort_by(|a, b| match (e0.get(a), e0.get(b)) {
         (Some(x), Some(y)) => y.partial_cmp(x).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)),

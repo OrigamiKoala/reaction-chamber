@@ -104,9 +104,56 @@ def interfacial_energies(known_formulas):
     return out
 
 
+def ion_dictionary():
+    return json.loads((ROOT.parent / "engine" / "data" / "ion_dictionary.json").read_text())
+
+
+def default_colour(ions):
+    """hue of a solid whose row has no colour: the strongly coloured anion, else the cation (the engine's own fallback rule)"""
+    d = ion_dictionary()
+    for ion in ions:
+        if ion in d["anion_solid_tint"]:
+            c = d["anion_solid_tint"][ion]
+            return "#%02x%02x%02x" % tuple(round(255 * x ** (1 / 2.2)) for x in c)
+    for ion in ions:
+        if split_charge(ion)[1] > 0:
+            c = d["cation_solid_hue"].get(ion, d["cation_solid_hue_default"])
+            return "#%02x%02x%02x" % tuple(round(255 * x ** (1 / 2.2)) for x in c)
+    return "#ebebeb"
+
+
+def default_kind(ions):
+    rules = json.loads((ROOT.parent / "engine" / "data" / "solubility_rules.json").read_text())
+    for ion in ions:
+        if split_charge(ion)[1] < 0 and ion in rules["appearance_kind_by_anion"]:
+            return rules["appearance_kind_by_anion"][ion]
+    return rules["appearance_kind_default"]
+
+
+def all_solubility_rows():
+    """primary (CRC) rows, then the rows read from the PHREEQC databases for formulas the primary table does not hold"""
+    out = [dict(r, source="CRC Handbook Ksp table", tier="Tabulated") for r in rows(DATA / "solubility_products.csv")]
+    have = {r["formula"] for r in out}
+    extra = DATA / "solubility_products_phreeqc.csv"
+    if extra.exists():
+        for r in rows(extra):
+            if r["formula"] in have:
+                continue
+            ions = parse_stoich(r["ions"])
+            r = dict(r)
+            if not r["colour"].strip():
+                r["colour"] = default_colour(ions)
+            if not r["kind"].strip():
+                r["kind"] = default_kind(ions)
+            if not r["density"].strip():
+                r["density"] = "0"  # unknown: the engine estimates it from the ion sizes when it loads the table
+            out.append(r)
+    return out
+
+
 def build():
     minerals = []
-    for r in rows(DATA / "solubility_products.csv"):
+    for r in all_solubility_rows():
         ions = parse_stoich(r["ions"])
         # validation: solid formula = sum of ion elements, and charge balance
         solid = parse_formula(r["formula"])
@@ -135,8 +182,8 @@ def build():
             "density_g_ml": float(r["density"]),
             "default_particle_um": {"curds": 2.0, "gel": 5.0, "crystal": 40.0}.get(r["kind"], 8.0),
             "kind": r["kind"],
-            "tier": "Tabulated",
-            "source": "CRC Handbook solubility table (solubility limit)" if soluble else "CRC Handbook Ksp table",
+            "tier": r["tier"],
+            "source": "CRC Handbook solubility table (solubility limit)" if soluble and r["source"].startswith("CRC") else r["source"],
         })
 
     gammas = interfacial_energies({m["formula"] for m in minerals})

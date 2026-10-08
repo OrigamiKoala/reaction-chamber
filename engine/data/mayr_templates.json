@@ -1,0 +1,25 @@
+{
+  "_comment": "Configuration for templates that can use the Mayr relation (engine/src/mayr.rs). Specifies the nucleophile and electrophile slots.",
+  "templates": {
+    "wittig_olefination": {
+      "nucleophile_slot": 0,
+      "electrophile_slot": 1
+    },
+    "michael_addition": {
+      "nucleophile_slot": 1,
+      "electrophile_slot": 0
+    },
+    "carbocation_trapping": {
+      "nucleophile_slot": 1,
+      "electrophile_slot": 0
+    },
+    "carbocation_trapping_by_amine": {
+      "nucleophile_slot": 1,
+      "electrophile_slot": 0
+    },
+    "carbocation_trapping_by_solvent": {
+      "nucleophile_slot": 1,
+      "electrophile_slot": 0
+    }
+  }
+}

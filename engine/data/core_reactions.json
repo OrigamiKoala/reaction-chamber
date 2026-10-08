@@ -257,8 +257,8 @@
    "reactants": {
     "H2O2": 2.0
    },
-   "source": "NIST Chemical Kinetics",
-   "tier": "tabulated"
+   "source": "recalled, not checked against the reference (the page / table / BET area quoted earlier were not opened): NIST Chemical Kinetics",
+   "tier": "speculative"
   },
   {
    "arrhenius_a": 8.0,
@@ -282,8 +282,58 @@
    "reactants": {
     "H2O2": 2.0
    },
-   "source": "NIST Chemical Kinetics",
-   "tier": "tabulated"
+   "source": "recalled, not checked against the reference (the page / table / BET area quoted earlier were not opened): Broughton et al., J. Phys. Chem. 51 (1947) 1241; BET area 50 m2/g",
+   "tier": "speculative"
+  },
+  {
+   "arrhenius_a": 25.0,
+   "arrhenius_ea": 35000.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": "Pt(s)",
+   "delta_h_kj": -98.0,
+   "equation": "2 H2O2 -> 2 H2O + O2(g)",
+   "gas_products": {
+    "O2(g)": 1.0
+   },
+   "id": "h2o2_decomposition_pt",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "H2O2": 1.0
+   },
+   "products": {
+    "H2O": 2.0
+   },
+   "reactants": {
+    "H2O2": 2.0
+   },
+   "source": "recalled, not checked against the reference (the page / table / BET area quoted earlier were not opened): Lente & Fabry, J. Mol. Catal. A: Chem. 175 (2001) 121; BET 25 m2/g",
+   "tier": "speculative"
+  },
+  {
+   "arrhenius_a": 15.0,
+   "arrhenius_ea": 40000.0,
+   "arrhenius_n": 0.0,
+   "catalyst_species": "Ag(s)",
+   "delta_h_kj": -98.0,
+   "equation": "2 H2O2 -> 2 H2O + O2(g)",
+   "gas_products": {
+    "O2(g)": 1.0
+   },
+   "id": "h2o2_decomposition_ag",
+   "is_reversible": false,
+   "k_eq_298": null,
+   "orders": {
+    "H2O2": 1.0
+   },
+   "products": {
+    "H2O": 2.0
+   },
+   "reactants": {
+    "H2O2": 2.0
+   },
+   "source": "recalled, not checked against the reference (the page / table / BET area quoted earlier were not opened): Nagy et al., J. Catal. 182 (1999) 417; BET 10 m2/g",
+   "tier": "speculative"
   },
   {
    "arrhenius_a": 37300000.0,
@@ -308,8 +358,8 @@
     "I-": 2.0,
     "S2O8-2": 1.0
    },
-   "source": "Indelli & Prue 1958 / J. Chem. Educ.",
-   "tier": "tabulated"
+   "source": "recalled, not checked against the reference: Indelli & Prue 1958 / J. Chem. Educ.",
+   "tier": "estimated"
   },
   {
    "arrhenius_a": 5000000.0,
@@ -334,7 +384,7 @@
     "I2(aq)": 1.0,
     "S2O3-2": 2.0
    },
-   "source": "near-diffusion-controlled iodine reduction (rate constant order of magnitude)",
+   "source": "recalled, not checked against the reference: near-diffusion-controlled iodine reduction (rate constant order of magnitude)",
    "tier": "estimated"
   }
  ],

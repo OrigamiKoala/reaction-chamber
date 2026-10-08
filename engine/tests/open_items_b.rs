@@ -142,11 +142,43 @@ const HYDRATION_SET: &[(&str, &str, f64)] = &[
     ("acetone hydrate", "CC(C)(O)O", -7.41), ("acetaldehyde hydrate", "CC(O)O", -8.20), ("formaldehyde hydrate", "OC(O)", -9.00),
 ];
 
+/// Experimental hydration free energies of FreeSolv (v0.52, `pipeline/data/hydration_dg_experimental.csv`, written by
+/// `pipeline/db/parse_freesolv.py`) that the group scheme covers, plus the recalled `HYDRATION_SET` for those not in FreeSolv.
+/// (name, SMILES, kcal/mol, from FreeSolv)
+fn hydration_data() -> Vec<(String, String, f64, bool)> {
+    use reaction_chamber_engine::hydration::group_counts;
+    let mut out: Vec<(String, String, f64, bool)> = Vec::new();
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../pipeline/data/hydration_dg_experimental.csv");
+    if let Ok(text) = std::fs::read_to_string(path) {
+        for line in text.lines().filter(|l| !l.starts_with('#')).skip(1) {
+            // id,smiles,name,dg,unc,doi  (the name may be quoted and hold commas: take the fields from both ends)
+            let f: Vec<&str> = line.split(',').collect();
+            if f.len() < 6 {
+                continue;
+            }
+            let (smiles, dg) = (f[1], f[f.len() - 3]);
+            let name = f[2..f.len() - 3].join(",");
+            let Ok(dg) = dg.parse::<f64>() else { continue };
+            if parse(smiles).and_then(|m| group_counts(&m)).is_some() {
+                out.push((name, smiles.to_string(), dg, true));
+            }
+        }
+    }
+    let have: Vec<String> = out.iter().map(|r| r.1.clone()).collect();
+    for &(name, smi, dg) in HYDRATION_SET {
+        if !have.iter().any(|s| s == smi) {
+            out.push((name.to_string(), smi.to_string(), dg, false));
+        }
+    }
+    out
+}
+
 fn hydration_design() -> (Vec<String>, Vec<Vec<f64>>, Vec<f64>) {
     use reaction_chamber_engine::hydration::group_counts;
+    let data = hydration_data();
     let mut keys: Vec<String> = Vec::new();
     let mut rows = Vec::new();
-    for &(name, smi, _) in HYDRATION_SET {
+    for (name, smi, _, _) in &data {
         let c = group_counts(&parse(smi).unwrap()).unwrap_or_else(|| panic!("{} not covered", name));
         for k in c.keys() {
             if !keys.contains(k) {
@@ -157,8 +189,18 @@ fn hydration_design() -> (Vec<String>, Vec<Vec<f64>>, Vec<f64>) {
     }
     keys.sort();
     let x: Vec<Vec<f64>> = rows.iter().map(|c| keys.iter().map(|k| c.get(k).copied().unwrap_or(0.0)).collect()).collect();
-    let y: Vec<f64> = HYDRATION_SET.iter().map(|r| r.2 * 4.184).collect();
+    let y: Vec<f64> = data.iter().map(|r| r.2 * 4.184).collect();
     (keys, x, y)
+}
+
+/// rms (kcal/mol) on every fifth compound of a fit to the other four fifths (the held-out check of the plan).
+fn hydration_heldout() -> (f64, usize) {
+    let (_, x, y) = hydration_design();
+    let train: Vec<usize> = (0..y.len()).filter(|i| i % 5 != 0).collect();
+    let test: Vec<usize> = (0..y.len()).filter(|i| i % 5 == 0).collect();
+    let b = ridge(&x, &y, &train, HYDRATION_RIDGE);
+    let se: f64 = test.iter().map(|&r| (x[r].iter().zip(&b).map(|(a, c)| a * c).sum::<f64>() - y[r]).powi(2)).sum();
+    ((se / test.len() as f64).sqrt() / 4.184, test.len())
 }
 
 /// Ridge regression (normal equations, Gaussian elimination) with the rows in `use_rows`.
@@ -225,8 +267,10 @@ fn fit_hydration_groups() {
     let beta = ridge(&x, &y, &all, HYDRATION_RIDGE);
     let fit_rms = (all.iter().map(|&r| (x[r].iter().zip(&beta).map(|(a, b)| a * b).sum::<f64>() - y[r]).powi(2)).sum::<f64>() / y.len() as f64).sqrt() / 4.184;
     let (loo_rms, loo_common, n_common) = hydration_loo();
-    println!("{{\n  \"_comment\": \"Hydration free energy contributions, kJ/mol (1 M gas -> 1 M solution, 298.15 K), ridge regression (lambda {}) on {} experimental values recalled from Cabani et al. (1981) / Abraham / Mobley FreeSolv; fit rms {:.2} kcal/mol, leave-one-out rms {:.2} kcal/mol over all compounds and {:.2} over the {} whose groups each occur in at least 3 compounds (a group seen once cannot be predicted). Regenerate with the ignored test fit_hydration_groups in tests/open_items_b.rs. Tier Estimated.\",", HYDRATION_RIDGE, y.len(), fit_rms, loo_rms, loo_common, n_common);
-    println!("  \"fit_rms_kcal\": {:.3},\n  \"loo_rms_kcal\": {:.3},\n  \"loo_common_rms_kcal\": {:.3},\n  \"groups\": {{", fit_rms, loo_rms, loo_common);
+    let (held, n_held) = hydration_heldout();
+    let n_fs = hydration_data().iter().filter(|r| r.3).count();
+    println!("{{\n  \"_comment\": \"Hydration free energy contributions, kJ/mol (1 M gas -> 1 M solution, 298.15 K), ridge regression (lambda {}) on {} experimental values: {} of FreeSolv v0.52 (Mobley & Guthrie 2014) that the groups cover and {} recalled from Cabani et al. (1981) / Abraham; fit rms {:.2} kcal/mol, leave-one-out rms {:.2} kcal/mol over all compounds and {:.2} over the {} whose groups each occur in at least 3 compounds (a group seen once cannot be predicted), held-out rms {:.2} kcal/mol on every fifth compound of a fit to the rest ({} compounds). Regenerate with the ignored test fit_hydration_groups in tests/open_items_b.rs. Tier Estimated.\",", HYDRATION_RIDGE, y.len(), n_fs, y.len() - n_fs, fit_rms, loo_rms, loo_common, n_common, held, n_held);
+    println!("  \"fit_rms_kcal\": {:.3},\n  \"loo_rms_kcal\": {:.3},\n  \"loo_common_rms_kcal\": {:.3},\n  \"heldout_rms_kcal\": {:.3},\n  \"groups\": {{", fit_rms, loo_rms, loo_common, held);
     for (i, k) in keys.iter().enumerate() {
         println!("    \"{}\": {:.3}{}", k, beta[i], if i + 1 < keys.len() { "," } else { "" });
     }
@@ -244,12 +288,18 @@ fn t4_hydration_free_energies_follow_experiment() {
     }
     let rms = (sq / HYDRATION_SET.len() as f64).sqrt();
     println!("hydration fit rms {:.2} kcal/mol", rms);
-    assert!(rms < 0.60, "fit rms {}", rms);
+    // the parameters are now fitted on ~600 compounds of FreeSolv (hard cases included: nitro, sulfur, aryl halides, polyfunctional
+    // pesticides) and the 93 recalled values, not on the 93 alone: those 93 are reproduced to 1 kcal/mol, not 0.6
+    assert!(rms < 1.0, "fit rms {}", rms);
     // predictive power: leave one out, over the compounds whose groups are each seen at least three times
     let (all, common, n) = hydration_loo();
     println!("leave-one-out rms {:.2} kcal/mol over all, {:.2} over {} common-group compounds", all, common, n);
-    assert!(common < 0.9, "{}", common);
-    assert!(all < 1.4, "{}", all);
+    // (was 0.9 / 1.4 on the 93 recalled compounds; FreeSolv's 600 are harder: leave-one-out 1.15 kcal/mol, held out 1.24)
+    assert!(common < 1.3, "{}", common);
+    assert!(all < 1.3, "{}", all);
+    let (held, n_held) = hydration_heldout();
+    println!("held-out rms {:.2} kcal/mol on {} compounds", held, n_held);
+    assert!(held < 1.4, "held-out rms {}", held);
     // the qualitative ordering a chemist expects: alkanes are hydrophobic (positive), alcohols / acids / amides hydrophilic
     let g = |s: &str| hydration_gibbs_kj(&parse(s).unwrap()).unwrap();
     assert!(g("CCCCCC") > 0.0 && g("CCO") < -15.0 && g("CC(=O)O") < g("CC(C)=O") && g("CC(N)=O") < g("CC(=O)O"));

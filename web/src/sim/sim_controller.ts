@@ -11,6 +11,7 @@ import {
   MineralLookup,
   MineralData,
   MineralResolution,
+  RateEntry,
   UvVisScan,
   NmrSpectrumData,
   MsSpectrumData,
@@ -239,6 +240,11 @@ export class SimController {
   /** Feeds looked-up (PubChem) solubility / appearance data for a solid back to the engine. */
   public async resolveMineral(data: MineralData): Promise<MineralResolution> {
     return this.sendRequest<MineralResolution>('RESOLVE_MINERAL', data);
+  }
+
+  /** Registers per-reaction rates (the table of measured rates the build ships); vessels pick them up. */
+  public async registerRates(entries: RateEntry[]): Promise<{ changed: number; size: number }> {
+    return this.sendRequest<{ changed: number; size: number }>('REGISTER_RATES', entries);
   }
 
   public async registerCustomReaction(rxn: any): Promise<any> {

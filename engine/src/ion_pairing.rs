@@ -48,6 +48,13 @@ struct ComplexRow {
     n: f64,
     product: String,
     log_beta: f64,
+    /// reaction enthalpy (kJ/mol); absent = not tabulated (van 't Hoff dH = 0)
+    #[serde(default)]
+    delta_h_kj: Option<f64>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    tier: Option<ProvenanceTier>,
 }
 
 #[derive(Deserialize)]
@@ -146,6 +153,23 @@ pub fn fuoss_pair_equilibrium(cation: &str, anion: &str, t_k: f64) -> Option<Gen
     })
 }
 
+/// True when the data table holds a 1:1 association of this cation and anion strong enough (log beta >= 1) that the electrolyte's
+/// activity coefficient must not already contain it: a Pitzer parameter set of such a salt (MgSO4, CaSO4, ZnSO4 ...) describes the
+/// ion association implicitly through its beta2 / beta1 terms, so using it together with the explicit pair would count the
+/// association twice.
+pub fn strongly_associated(cation: &str, anion: &str) -> bool {
+    // indexed once: this is asked for every ion pair at every evaluation of the activity model, and the table has hundreds of rows
+    static INDEX: OnceLock<HashMap<String, std::collections::HashSet<String>>> = OnceLock::new();
+    let index = INDEX.get_or_init(|| {
+        let mut m: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
+        for r in rows().iter().filter(|r| r.n == 1.0 && r.log_beta >= 1.0) {
+            m.entry(r.metal.clone()).or_default().insert(r.ligand.clone());
+        }
+        m
+    });
+    index.get(cation).map_or(false, |set| set.contains(anion))
+}
+
 /// Complexation rows whose metal and ligand are both in `present`.
 pub fn complex_equilibria(present: &dyn Fn(&str) -> bool) -> Vec<GeneralEquilibrium> {
     rows()
@@ -164,11 +188,12 @@ pub fn complex_equilibria(present: &dyn Fn(&str) -> bool) -> Vec<GeneralEquilibr
                 reactants,
                 products,
                 log_k_298: r.log_beta,
-                delta_h_kj: 0.0,
+                delta_h_kj: r.delta_h_kj.unwrap_or(0.0),
                 log_k_analytic: None,
+                // ligand-substitution kinetics are attached where the row enters a vessel (`substitution::attach_rate`)
                 rate: None,
-                tier: ProvenanceTier::Estimated,
-                source: "Stability constant recalled from the Smith-Martell / CRC compilations (log beta, 25 C, I = 0)".to_string(),
+                tier: r.tier.clone().unwrap_or(ProvenanceTier::Estimated),
+                source: r.source.clone().unwrap_or_else(|| "Stability constant recalled from the Smith-Martell / CRC compilations (log beta, 25 C, I = 0)".to_string()),
             }
         })
         .collect()
@@ -184,12 +209,23 @@ mod tests {
     }
 
     #[test]
-    fn sulfate_pairs_match_the_measured_constants() {
-        // log K: MgSO4 2.2, CaSO4 2.3, NaSO4- 0.7 (Smith-Martell)
-        for (c, exp) in [("Mg+2", 2.2), ("Ca+2", 2.3)] {
-            let eq = fuoss_pair_equilibrium(c, "SO4-2", 298.15).unwrap();
-            assert!((eq.log_k_298 - exp).abs() < 0.5, "{} {} vs {}", c, eq.log_k_298, exp);
+    fn sulfate_pairs_are_measured_rows_and_the_fuoss_equation_agrees_with_them() {
+        // log K: MgSO4 2.2, CaSO4 2.3, NaSO4- 0.7 (Smith-Martell); the rows of the PHREEQC-format databases carry them with their enthalpies
+        let rows = complex_equilibria(&|_| true);
+        for (c, product, exp, dh_lo, dh_hi) in [("Mg+2", "MgSO4", 2.2, 3.0, 10.0), ("Ca+2", "CaSO4", 2.3, 3.0, 12.0), ("Na+", "NaSO4-", 0.7, -1.0, 6.0)] {
+            let row = rows.iter().find(|r| r.products.contains_key(product) && r.reactants.contains_key(c)).unwrap_or_else(|| panic!("{product} row"));
+            assert!((row.log_k_298 - exp).abs() < 0.3, "{} {} vs {}", product, row.log_k_298, exp);
+            assert!(row.delta_h_kj > dh_lo && row.delta_h_kj < dh_hi, "{} dH {}", product, row.delta_h_kj);
+            assert_eq!(row.tier, ProvenanceTier::Tabulated);
         }
+        // the Fuoss equation itself (the estimate for pairs without a row) stays within 0.5 log units of the measured 2:2 sulfates
+        for (c, exp) in [("Mg+2", 2.2), ("Ca+2", 2.3)] {
+            let a = crate::crystal::ionic_radius_angstrom(c).unwrap() + crate::crystal::ionic_radius_angstrom("SO4-2").unwrap() + CONTACT_OFFSET_A;
+            let k = fuoss_k(2, -2, a, 298.15).log10();
+            assert!((k - exp).abs() < 0.6, "{} Fuoss {} vs {}", c, k, exp);
+        }
+        // a pair a data row covers is not generated; pairs that are too weak or too strong are not either
+        assert!(fuoss_pair_equilibrium("Mg+2", "SO4-2", 298.15).is_none(), "the measured row replaces the estimate");
         assert!(fuoss_pair_equilibrium("Na+", "Cl-", 298.15).is_none());
         assert!(fuoss_pair_equilibrium("Na+", "CO3-2", 298.15).is_none(), "2:1 pairs are not generated");
         assert!(fuoss_pair_equilibrium("Fe+3", "Fe(CN)6-4", 298.15).is_none(), "too strong for an outer-sphere pair");
@@ -198,12 +234,17 @@ mod tests {
 
     #[test]
     fn pairs_are_endothermic_like_the_measured_sulfates() {
-        // measured: MgSO4 +5.5 kJ/mol, CaSO4 +6.5 (association of two hydrated ions releases water: entropy driven; the
-        // Fuoss equation gets the sign and size from the permittivity of water alone)
+        // measured: MgSO4 +5.5 kJ/mol, CaSO4 +6.5 (association of two hydrated ions releases water: entropy driven). The Fuoss
+        // equation gets the sign and size from the permittivity of water alone: dH = R T^2 d ln K / dT of the equation itself.
         for c in ["Mg+2", "Ca+2"] {
-            let eq = fuoss_pair_equilibrium(c, "SO4-2", 330.0).unwrap();
-            assert!((eq.log_k_298 - fuoss_pair_equilibrium(c, "SO4-2", 298.15).unwrap().log_k_298).abs() < 1e-12, "stated at 25 C whatever T it was asked at");
-            assert!(eq.delta_h_kj > 3.0 && eq.delta_h_kj < 10.0, "{} dH {}", c, eq.delta_h_kj);
+            let a = crate::crystal::ionic_radius_angstrom(c).unwrap() + crate::crystal::ionic_radius_angstrom("SO4-2").unwrap() + CONTACT_OFFSET_A;
+            let dh = crate::physics::R_GAS * 298.15 * 298.15 * ((fuoss_k(2, -2, a, 299.15) / fuoss_k(2, -2, a, 297.15)).ln() / 2.0) / 1000.0;
+            assert!(dh > 3.0 && dh < 10.0, "{} dH {}", c, dh);
+        }
+        // and the data rows say the same
+        for product in ["MgSO4", "CaSO4"] {
+            let row = complex_equilibria(&|_| true).into_iter().find(|r| r.products.contains_key(product)).unwrap();
+            assert!(row.delta_h_kj > 3.0 && row.delta_h_kj < 12.0, "{} {}", product, row.delta_h_kj);
         }
     }
 

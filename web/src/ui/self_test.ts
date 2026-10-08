@@ -7,7 +7,7 @@ import { h } from './dom';
 let modal: Modal | null = null;
 let running = false;
 
-export async function runSelfTest(simWorker: Worker, simController: SimController, sessionToken: string): Promise<void> {
+export async function runSelfTest(simWorker: Worker, simController: SimController): Promise<void> {
   if (!modal) modal = new Modal('Self-test · M0–M5 validation gates', { wide: true, className: 'modal-test' });
   modal.open();
   if (running) return;
@@ -45,21 +45,13 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
       append(`Fail — WASM roundtrip: ${(err as Error).message}`, 'fail');
     }
 
-    // M0: local server xTB job
-    append('[M0] Local server GFN2-xTB job');
+    // Local server (optional: the static build runs without it)
+    append('[M0] Local server (optional)');
     try {
-      const xtbRes = await fetch('/api/xtb/trivial-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: sessionToken ? `Bearer ${sessionToken}` : '' },
-      });
-      if (xtbRes.ok) {
-        const d = await xtbRes.json();
-        append(`Pass — ${d.species} energy = ${Number(d.energy_hartree).toFixed(6)} Eh (${d.method}, ${d.runtime_sec}s)`, 'pass');
-      } else {
-        append(`Fail — xTB request returned status ${xtbRes.status} (is the local server running?)`, 'fail');
-      }
-    } catch (err) {
-      append(`Fail — xTB server call: ${(err as Error).message}`, 'fail');
+      const r = await fetch('/api/health');
+      append(r.ok ? 'Pass — local server online (NIST data for imports)' : 'Info — no local server (static build)', r.ok ? 'pass' : 'info');
+    } catch {
+      append('Info — no local server (static build)', 'info');
     }
 
     // M1: data bundle import
@@ -74,7 +66,7 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
     // M2: conflict report
     append('[M2] Data bundle v1 & conflict report');
     try {
-      const r = await fetch('/data/conflict_report.json');
+      const r = await fetch('data/conflict_report.json');
       if (r.ok) {
         const c = await r.json();
         append(`Pass — ${c.conflicts_resolved}/${c.spot_checked_conflicts_analyzed} conflicts resolved`, 'pass');

@@ -1,0 +1,59 @@
+# Static build of Reaction Chamber on GitHub Pages: the same WASM engine and web app as `python3 run.py`, without the
+# local server. Measured rates reach it through the engine data files (`engine/data/rates_measured.json`, compiled into the WASM;
+# there is no separate rates.json). Enable once in the repository settings: Pages -> Source: GitHub Actions.
+name: Deploy static site (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: wasm-bindgen CLI (must equal the wasm-bindgen version in engine/Cargo.lock)
+        run: cargo install wasm-bindgen-cli --version 0.2.100 --locked
+      - name: Build the engine (WASM)
+        working-directory: engine
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          wasm-bindgen target/wasm32-unknown-unknown/release/reaction_chamber_engine.wasm --out-dir ../web/src/wasm/engine --target web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

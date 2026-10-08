@@ -51,24 +51,57 @@ fn solve_saturation_core(
     }
     let y_lo = y_lo.min(y_hi);
     let ln_iap = |y: f64| -> f64 { (0..n).map(|k| mu(k) * ln_c((ion(k) + mu(k) * y).max(0.0), solv_kg)).sum() };
-    if ln_iap(y_hi) <= ln_ksp {
+    let f_top = ln_iap(y_hi) - ln_ksp;
+    if f_top <= 0.0 {
         return Some(y_hi);
     }
     // already saturated (a settled solid in contact with its solution): nothing to dissolve or precipitate
     if y_lo <= 0.0 && y_hi >= 0.0 && solid_mol > tol && (ln_iap(0.0) - ln_ksp).abs() < 1e-13 {
         return Some(0.0);
     }
+    // ln IAP rises with the amount of solid dissolved, so f(y) = ln IAP - ln Ksp has one root in [y_lo, y_hi] (f(y_hi) > 0 here).
+    // Safeguarded Illinois (regula falsi that halves the weight of an end kept twice; a bisection step whenever the secant point is
+    // outside the bracket or the bracket has not halved in three steps): the same bracket tolerance as plain bisection in a fifth of
+    // the evaluations, each of which costs a logarithm per ion (this runs inside every evaluation of every equilibrium).
     let (mut lo, mut hi) = (y_lo, y_hi);
-    for _ in 0..50 {
-        let mid = 0.5 * (lo + hi);
-        if ln_iap(mid) > ln_ksp {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
-        // converged to double precision relative to the amounts involved
+    let mut f_lo: Option<f64> = None;
+    let mut f_hi: Option<f64> = Some(f_top);
+    let mut last_kept = 0i8;
+    let mut width_before = (hi - lo).abs();
+    for it in 0..100 {
         if (hi - lo).abs() <= 1e-15 * lo.abs().max(hi.abs()).max(tol) {
             break;
+        }
+        let bisect = it % 3 == 2 && (hi - lo).abs() > 0.5 * width_before;
+        if it % 3 == 0 {
+            width_before = (hi - lo).abs();
+        }
+        let x = match (f_lo, f_hi) {
+            (Some(fl), Some(fh)) if !bisect && fh > fl => {
+                let x = hi - fh * (hi - lo) / (fh - fl);
+                if x > lo && x < hi { x } else { 0.5 * (lo + hi) }
+            }
+            _ => 0.5 * (lo + hi),
+        };
+        let f = ln_iap(x) - ln_ksp;
+        if f > 0.0 {
+            hi = x;
+            f_hi = Some(f);
+            if last_kept == 1 {
+                if let Some(fl) = f_lo.as_mut() {
+                    *fl *= 0.5;
+                }
+            }
+            last_kept = 1;
+        } else {
+            lo = x;
+            f_lo = Some(f);
+            if last_kept == -1 {
+                if let Some(fh) = f_hi.as_mut() {
+                    *fh *= 0.5;
+                }
+            }
+            last_kept = -1;
         }
     }
     Some(0.5 * (lo + hi))
@@ -224,13 +257,22 @@ impl Vessel {
             let mut frac = 1.0;
             if let Some((tr, _)) = tracer {
                 let dist = e_species.get(tr).copied().unwrap_or(0.0) - m0_species.get(tr).copied().unwrap_or(0.0);
+                let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / solv_kg;
                 let mut rate_into_tracer = 0.0;
+                let mut any_general = false;
+                // relaxation rates of the ligand-substitution rows (the first bond limits them: no concentration power)
+                let mut lambdas: Vec<f64> = Vec::new();
                 for &i in &active {
                     let eq = &self.equilibria[i];
                     let rate = eq.rate.as_ref().unwrap();
-                    let conc = |sp: &str| m0_species.get(sp).copied().unwrap_or(0.0).max(0.0) / solv_kg;
                     let k_f = rate.k_forward(t_k, &conc);
                     let k_eq = (eq.log_k_at(t_k) * std::f64::consts::LN_10).exp().max(1e-300);
+                    if let Some(fs) = &rate.first_step {
+                        let k_step = k_eq.powf(1.0 / fs.n.max(1.0)).max(1e-300);
+                        lambdas.push(k_f * (conc(&fs.metal) + conc(&fs.ligand)) + k_f / k_step);
+                        continue;
+                    }
+                    any_general = true;
                     let (mut fwd, mut rev) = (1.0, 1.0);
                     for (sp, c) in &eq.reactants {
                         if sp != AQUEOUS_SOLVENT {
@@ -247,7 +289,11 @@ impl Vessel {
                     rate_into_tracer += nu * r0;
                 }
                 if dist.abs() > 1e-18 {
-                    let lambda = (rate_into_tracer / dist).abs();
+                    if any_general {
+                        lambdas.push((rate_into_tracer / dist).abs());
+                    }
+                    // the slowest relaxation limits how far the vessel gets in this pass
+                    let lambda = lambdas.iter().copied().fold(f64::INFINITY, f64::min);
                     frac = if lambda.is_finite() { 1.0 - (-lambda * kin_dt).exp() } else { 1.0 };
                 } else {
                     frac = 0.0;
@@ -523,6 +569,7 @@ impl Vessel {
 
         // Solids sharing ions with this equilibrium (present, or with all ions available to form one)
         let mut minerals: Vec<MineralLocal> = Vec::new();
+        let mut pending: Vec<(usize, f64, f64)> = Vec::new();
         {
             let eq_species: Vec<&String> = eq.reactants.keys().chain(eq.products.keys()).collect();
             for &idx in active_minerals {
@@ -535,16 +582,21 @@ impl Vessel {
                 if solid0 <= eps_mol && !all_present {
                     continue;
                 }
-                let mut ions = Vec::new();
-                for (ion, &c) in &m.dissolved_products {
-                    ions.push((index_of(ion, &mut names), c));
-                }
                 let (ln_ksp, mdh) = Self::mineral_ln_ksp(m, t_k);
                 let mut ln_act_min = 0.0;
                 for (ion, &c) in &m.dissolved_products {
                     ln_act_min += c * gamma_cache.get(ion).copied().unwrap_or(0.0);
                 }
                 let ln_ksp_eff = ln_ksp - ln_act_min;
+                if solid0 <= 0.0 {
+                    // a mineral without a solid: kept only if it can saturate within the extent bracket (decided below)
+                    pending.push((idx, ln_ksp_eff, mdh));
+                    continue;
+                }
+                let mut ions = Vec::new();
+                for (ion, &c) in &m.dissolved_products {
+                    ions.push((index_of(ion, &mut names), c));
+                }
                 minerals.push(MineralLocal { idx, ions, ln_ksp: ln_ksp_eff, dh_j: mdh, solid0 });
             }
         }
@@ -560,7 +612,7 @@ impl Vessel {
         for (i, c) in &solvent_nu {
             nu[*i] += c;
         }
-        let sys = EqSystem { names, a0, nu, reac, prod, minerals, solv_kg };
+        let mut sys = EqSystem { names, a0, nu, reac, prod, minerals, solv_kg };
 
         // Available supply of each species including solids that can dissolve into it
         let supply = |i: usize| -> f64 {
@@ -590,6 +642,53 @@ impl Vessel {
             return 0.0;
         }
 
+        // Minerals without a solid join the system only if they can saturate somewhere in the bracket [xi_lo, xi_hi]. The amount of
+        // each ion is linear in the extent, so its largest value there is at an end of the bracket (plus whatever the solids that
+        // are present could still dissolve into it); a mineral whose ion activity product stays below Ksp at those largest
+        // amounts is undersaturated for every extent the solver can visit, so it contributes nothing (the busy mixtures hold
+        // hundreds of such minerals, and carrying them through every evaluation made the step several times slower).
+        if !pending.is_empty() {
+            let mut upper: HashMap<String, f64> = HashMap::new();
+            let mut bound = |sys: &EqSystem, species: &str, upper: &mut HashMap<String, f64>, this: &Self| -> f64 {
+                if let Some(&u) = upper.get(species) {
+                    return u;
+                }
+                let base = match sys.names.iter().position(|n| n == species) {
+                    Some(i) => (sys.a0[i] + sys.nu[i] * xi_lo).max(sys.a0[i] + sys.nu[i] * xi_hi),
+                    None => this.species_mol.get(species).copied().unwrap_or(0.0).max(0.0),
+                };
+                let from_solids: f64 = sys
+                    .minerals
+                    .iter()
+                    .map(|m| m.ions.iter().filter(|(j, _)| sys.names[*j] == species).map(|(_, c)| c * m.solid0).sum::<f64>())
+                    .sum();
+                let u = base.max(0.0) + from_solids;
+                upper.insert(species.to_string(), u);
+                u
+            };
+            for (idx, ln_ksp_eff, mdh) in std::mem::take(&mut pending) {
+                let m = &self.minerals[idx];
+                let ln_iap_max: f64 = m.dissolved_products.iter().map(|(ion, &c)| c * ln_c(bound(&sys, ion, &mut upper, self), solv_kg)).sum();
+                if ln_iap_max <= ln_ksp_eff {
+                    continue;
+                }
+                let mut ions = Vec::new();
+                for (ion, &c) in &m.dissolved_products {
+                    let j = match sys.names.iter().position(|n| n == ion) {
+                        Some(j) => j,
+                        None => {
+                            sys.names.push(ion.clone());
+                            sys.a0.push(self.species_mol.get(ion).copied().unwrap_or(0.0).max(0.0));
+                            sys.nu.push(0.0);
+                            sys.names.len() - 1
+                        }
+                    };
+                    ions.push((j, c));
+                }
+                sys.minerals.push(MineralLocal { idx, ions, ln_ksp: ln_ksp_eff, dh_j: mdh, solid0: 0.0 });
+            }
+        }
+
         let start = sys.eval(0.0);
         let log_q_over_k = start.as_ref().map(|s| (s.ln_q - ln_k) / LN10);
         // Already at equilibrium, or the needed direction is blocked because a species is absent (the common case
@@ -613,6 +712,17 @@ impl Vessel {
         // halved: the same bracket and tolerance as plain bisection, in a fraction of the evaluations.
         let (mut lo, mut hi) = (xi_lo, xi_hi);
         let (mut f_lo, mut f_hi): (Option<f64>, Option<f64>) = (None, None); // None: infeasible or not yet evaluated
+        // the evaluation at xi = 0 is already known and f increases with xi: it is one end of the bracket, with its value
+        if let Some(s) = &start {
+            let f0 = s.ln_q - ln_k;
+            if f0 > 0.0 {
+                hi = 0.0f64.min(xi_hi).max(xi_lo);
+                f_hi = Some(f0);
+            } else if f0 < 0.0 {
+                lo = 0.0f64.max(xi_lo).min(xi_hi);
+                f_lo = Some(f0);
+            }
+        }
         let mut last_kept = 0i8;
         let mut width_before = (hi - lo).abs();
         for it in 0..80 {

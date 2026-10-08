@@ -81,8 +81,8 @@ fn covered_by_rows(rows: &[RowFamilies], rxn: &DiscoveredReaction, cache: &mut s
         }
         out
     };
-    let (lhs, rhs) = (side(false), side(true));
-    rows.iter().any(|k| (k.lhs == lhs && k.rhs == rhs) || (k.reversible && k.lhs == rhs && k.rhs == lhs))
+    let lhs = side(false);
+    rows.iter().any(|k| k.lhs == lhs || (k.reversible && k.rhs == lhs))
 }
 
 impl Vessel {
@@ -258,7 +258,44 @@ impl Vessel {
         // always the partner of the limiting reactant: 2 I- per H2O2 makes iodide the limiting one at equal amounts)
         let coeff = |i: usize| rxn.nu.iter().find(|&&(j, _)| j == i).map_or(1.0, |&(_, c)| c.abs().max(1e-9));
         let (e_d, e_a) = (c_d / coeff(p.donor), c_a / coeff(p.acceptor));
-        et.k12 * if e_d <= e_a { c_a } else { c_d }
+        let donor_limits = e_d <= e_a;
+        // a measured rate law of this electron transfer (`data/rates_measured.json`) replaces the Marcus estimate:
+        // -d[X]/dt = k [donor][acceptor][H+]^n, so the limiting reactant L decays at k (nu_L / nu_X) [other]
+        if let Some(m) = crate::rate_data::redox_rate(name(p.donor), name(p.donor_product), name(p.acceptor), name(p.acceptor_product)) {
+            let x = if m.rate_of == name(p.donor) { Some(p.donor) } else if m.rate_of == name(p.acceptor) { Some(p.acceptor) } else { None };
+            if let Some(x) = x {
+                let lim = if donor_limits { p.donor } else { p.acceptor };
+                let other = if donor_limits { p.acceptor } else { p.donor };
+                let mut sum_rate = 0.0;
+                for term in m.all_terms() {
+                    let k_term = term.k_at(self.temperature_k);
+                    let mut factor = 1.0;
+                    for (sp, &ord) in &term.orders {
+                        if sp == name(lim) {
+                            if ord != 1.0 {
+                                factor *= conc(sp).max(0.0).powf(ord - 1.0);
+                            }
+                        } else if sp == name(other) {
+                            if ord != 1.0 {
+                                factor *= conc(sp).max(0.0).powf(ord - 1.0);
+                            }
+                        } else {
+                            let c = if sp == crate::db::seed::PROTON {
+                                self.species_mol.get(crate::db::seed::PROTON).copied().unwrap_or(0.0).max(0.0) / ctx.vol_l
+                            } else if sp == crate::db::seed::HYDROXIDE {
+                                self.species_mol.get(crate::db::seed::HYDROXIDE).copied().unwrap_or(0.0).max(0.0) / ctx.vol_l
+                            } else {
+                                conc(sp)
+                            };
+                            factor *= c.max(0.0).powf(ord);
+                        }
+                    }
+                    sum_rate += k_term * factor * coeff(lim) / coeff(x) * if donor_limits { c_a } else { c_d };
+                }
+                return sum_rate;
+            }
+        }
+        et.k12 * if donor_limits { c_a } else { c_d }
     }
 
     /// Thermal decomposition of the solids present (solid -> solid + gas, solid -> gases), found by
@@ -277,7 +314,11 @@ impl Vessel {
             .into_iter()
             .filter(|r| !covered_by_rows(&rows, r, &mut family_cache))
             .map(|r| {
-                let lam = crate::gem::rates::decomposition_rate(r.delta_h0_j, t_k);
+                let solid_reac = r.nu.iter().find(|&&(i, c)| c < 0.0 && r.species_names[i].ends_with("(s)"))
+                    .map(|&(i, _)| r.species_names[i].as_str());
+                let lam = crate::gem::rates::decomposition_rate_for(solid_reac, r.delta_h0_j, t_k, |cat| {
+                    self.solid_mol.get(cat).copied().unwrap_or(0.0) > 0.0
+                });
                 (r, lam)
             })
             .collect();
@@ -342,8 +383,32 @@ impl Vessel {
         }
         let ionic_strength = self.calc_ionic_strength();
         let keep: std::collections::BTreeSet<usize> = best.values().map(|&(_, i)| i).collect();
-        for (i, (rxn, _)) in candidates.into_iter().enumerate() {
+        // a measured rate law that names no products governs the whole donor / acceptor pair: only the most favourable
+        // pathway of the pair runs (at the measured rate), the others would count the same loss again
+        let mut pair_best: HashMap<(String, String), (f64, usize)> = HashMap::new();
+        for (i, (rxn, score)) in candidates.iter().enumerate() {
             if !keep.contains(&i) {
+                continue;
+            }
+            if let (Some(p), DiscoveredRxnKind::Redox { .. }) = (&rxn.partners, &rxn.kind) {
+                let n = |j: usize| rxn.species_names[j].as_str();
+                if let Some(m) = crate::rate_data::redox_rate(n(p.donor), n(p.donor_product), n(p.acceptor), n(p.acceptor_product)) {
+                    if !m.product_specific() {
+                        let slot = pair_best.entry((m.donor.clone(), m.acceptor.clone())).or_insert((-1.0, usize::MAX));
+                        if *score > slot.0 {
+                            *slot = (*score, i);
+                        }
+                    }
+                }
+            }
+        }
+        let pair_runner = |rxn: &DiscoveredReaction, i: usize| -> bool {
+            let Some(p) = &rxn.partners else { return true };
+            let key = (rxn.species_names[p.donor].clone(), rxn.species_names[p.acceptor].clone());
+            pair_best.get(&key).map_or(true, |&(_, j)| j == i)
+        };
+        for (i, (rxn, _)) in candidates.into_iter().enumerate() {
+            if !keep.contains(&i) || !pair_runner(&rxn, i) {
                 continue;
             }
             // the electron transfer itself (Marcus encounter rate of the two couples) limits every reaction; one with a

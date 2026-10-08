@@ -298,12 +298,9 @@ fn test_g5_iodine_clock_gate() {
         let mut switch_time = 0.0;
         for i in 1..=120 {
             v.step(dt).unwrap();
-            let s2o3 = *v.species_mol.get("S2O3-2").unwrap_or(&0.0);
+            let _s2o3 = *v.species_mol.get("S2O3-2").unwrap_or(&0.0);
             let complex = *v.species_mol.get("starch_I3").unwrap_or(&0.0);
             let i2 = *v.species_mol.get("I2(aq)").unwrap_or(&0.0);
-            if i <= 5 {
-                println!("step {}: s2o3={:.6}, i2={:.8}, complex={:.8}", i, s2o3, i2, complex);
-            }
             if (complex > 1e-6 || i2 > 1e-6) && switch_time == 0.0 {
                 switch_time = (i as f64) * dt;
                 break;

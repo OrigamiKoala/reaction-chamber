@@ -1,0 +1,235 @@
+# Solubility products read from the PHREEQC-format databases by pipeline/db/build_solubility_phreeqc.py (do not edit).
+# Same columns as solubility_products.csv plus source and tier; blank colour / kind / density fall back to the model
+# (ion hue rules, anion appearance kind, crystal density from ion sizes).
+formula,name,ions,log_ksp,dh_kj,colour,kind,density,source,tier
+(NH4)2(UO2)2(PO4)2,Uramphite,NH4+:2|PO4-3:2|UO2+2:2,-51.7490,40.58,,,,PHREEQC wateq4f.dat (phase Uramphite),Tabulated
+(NH4)2CrO4,(NH4)2CrO4,CrO4-2:1|NH4+:2,0.4046,9.16,,,,PHREEQC minteq.v4.dat (phase (NH4)2CrO4),Tabulated
+(NH4)2SeO4,(NH4)2SeO4,NH4+:2|SeO4-2:1,0.4500,-0.00,,,,PHREEQC minteq.v4.dat (phase (NH4)2SeO4),Tabulated
+(UO2)3(PO4)2,(UO2)3(PO4)2,PO4-3:2|UO2+2:3,-49.4000,397.06,,,,PHREEQC minteq.v4.dat (phase (UO2)3(PO4)2),Tabulated
+(VO)3(PO4)2,(VO)3(PO4)2,PO4-3:2|VO+2:3,-25.1000,-0.00,,,,PHREEQC minteq.v4.dat (phase (VO)3(PO4)2),Tabulated
+Ag2MoO4,Ag2MoO4,Ag+:2|MoO4-2:1,-11.5500,52.70,,,,PHREEQC minteq.v4.dat (phase Ag2MoO4),Tabulated
+Ag2SeO4,Ag2SeO4,Ag+:2|SeO4-2:1,-8.9100,-43.50,,,,PHREEQC minteq.v4.dat (phase Ag2SeO4),Tabulated
+AgFe3(SO4)2(OH)6,Jarosite(Ag),Ag+:1|Fe+3:3|OH-:6|SO4-2:2,-95.5890,0.00,,,,Thermoddem V1.10 (BRGM) (phase Jarosite(Ag)),Tabulated
+Al2(MoO4)3,Al2(MoO4)3,Al+3:2|MoO4-2:3,2.3675,-260.80,,,,PHREEQC minteq.v4.dat (phase Al2(MoO4)3),Tabulated
+Al4(OH)10SO4,Basaluminite,Al+3:4|OH-:10|SO4-2:1,-117.3000,0.00,,,,PHREEQC wateq4f.dat (phase Basaluminite),Tabulated
+AlF3,AlF3,Al+3:1|F-:3,-17.2089,-34.04,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase AlF3)",Tabulated
+AlOHSO4,Jurbanite,Al+3:1|OH-:1|SO4-2:1,-17.2300,0.00,,,,PHREEQC wateq4f.dat (phase Jurbanite),Tabulated
+Ba(NO3)2,Nitrobarite,Ba+2:1|NO3-:2,-2.4523,40.82,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Nitrobarite)",Tabulated
+Ba(UO2)2(PO4)2,Uranocircite,Ba+2:1|PO4-3:2|UO2+2:2,-44.6310,-42.26,,,,PHREEQC wateq4f.dat (phase Uranocircite),Tabulated
+Ba3(AsO4)2,Ba3(AsO4)2,AsO4-3:2|Ba+2:3,-50.1100,39.75,,,,PHREEQC wateq4f.dat (phase Ba3(AsO4)2),Tabulated
+BaHPO4,BaHPO4,Ba+2:1|HPO4-2:1,-7.4000,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase BaHPO4)",Tabulated
+BaMoO4,BaMoO4,Ba+2:1|MoO4-2:1,-6.9603,10.96,,,,PHREEQC minteq.v4.dat (phase BaMoO4),Tabulated
+BaSeO3,BaSeO3,Ba+2:1|SeO3-2:1,-6.3900,0.00,,,,PHREEQC wateq4f.dat (phase BaSeO3),Tabulated
+BaSeO4,BaSeO4,Ba+2:1|SeO4-2:1,-7.4600,22.00,,,,PHREEQC minteq.v4.dat (phase BaSeO4),Tabulated
+Be(OH)2,Be(OH)2(beta),Be+2:1|OH-:2,-21.5000,111.62,,,,PHREEQC minteq.v4.dat (phase Be(OH)2(beta)),Tabulated
+BeMoO4,BeMoO4,Be+2:1|MoO4-2:1,-1.7817,-56.40,,,,PHREEQC minteq.v4.dat (phase BeMoO4),Tabulated
+Ca(UO2)2(PO4)2,Autunite,Ca+2:1|PO4-3:2|UO2+2:2,-43.9270,-60.00,,,,PHREEQC wateq4f.dat (phase Autunite),Tabulated
+Ca(UO2)2(VO4)2,Tyuyamunite,Ca+2:1|UO2+2:2|VO4-3:2,-53.3757,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tyuyamunite)",Tabulated
+Ca3Al2(OH)12,C3AH6,Al+3:2|Ca+2:3|OH-:12,-87.6920,85.52,,,,Thermoddem V1.10 (BRGM) (phase C3AH6),Tabulated
+Ca3Al2H12O12,Katoite,Al+3:2|Ca+2:3|OH-:12,-88.9975,669.78,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Katoite)",Tabulated
+Ca3Fe2(OH)12,C3FH6,Ca+2:3|Fe+3:2|OH-:12,-95.6420,160.41,,,,Thermoddem V1.10 (BRGM) (phase C3FH6),Tabulated
+Ca3V2O8,Ca3V2O8,Ca+2:3|VO4-3:2,-18.3234,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ca3V2O8)",Tabulated
+Ca5(PO4)3F,Fluorapatite,Ca+2:5|F-:1|PO4-3:3,-54.6380,-39.66,,,,PHREEQC wateq4f.dat (phase Fluorapatite),Tabulated
+Ca5(PO4)3OH,Hydroxyapatite,Ca+2:5|OH-:1|PO4-3:3,-54.4590,-51.06,,,,PHREEQC wateq4f.dat (phase Hydroxyapatite),Tabulated
+CaCrO4,CaCrO4,Ca+2:1|CrO4-2:1,-2.2657,-26.95,,,,PHREEQC minteq.v4.dat (phase CaCrO4),Tabulated
+CaMg(CO3)2,Dolomite,CO3-2:2|Ca+2:1|Mg+2:1,-17.0900,-39.48,,,2.865,PHREEQC wateq4f.dat (phase Dolomite),Tabulated
+CaMg3(CO3)4,Huntite,CO3-2:4|Ca+2:1|Mg+2:3,-29.9680,-107.78,,,2.873,PHREEQC wateq4f.dat (phase Huntite),Tabulated
+CaMoO4,CaMoO4,Ca+2:1|MoO4-2:1,-7.9500,-2.00,,,,PHREEQC minteq.v4.dat (phase CaMoO4),Tabulated
+CaOHCl,Hydroxichloride(Ca),Ca+2:1|Cl-:1|OH-:1,-0.8070,-26.27,,,,Thermoddem V1.10 (BRGM) (phase Hydroxichloride(Ca)),Tabulated
+CaSeO3,CaSeO3,Ca+2:1|SeO3-2:1,-5.6000,0.00,,,,PHREEQC wateq4f.dat (phase CaSeO3),Tabulated
+CaSeO4,CaSeO4,Ca+2:1|SeO4-2:1,-3.0900,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CaSeO4)",Tabulated
+Cd(IO3)2,Cd(IO3)2,Cd+2:1|IO3-:2,-7.5848,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd(IO3)2)",Tabulated
+Cd(OH)Cl,Cd(OH)Cl,Cd+2:1|Cl-:1|OH-:1,-10.4516,25.43,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd(OH)Cl)",Tabulated
+Cd3(OH)2(SO4)2,Cd3(OH)2(SO4)2,Cd+2:3|OH-:2|SO4-2:2,-21.2900,0.00,,,,PHREEQC wateq4f.dat (phase Cd3(OH)2(SO4)2),Tabulated
+Cd3(OH)4SO4,Cd3(OH)4SO4,Cd+2:3|OH-:4|SO4-2:1,-33.4400,0.00,,,,PHREEQC wateq4f.dat (phase Cd3(OH)4SO4),Tabulated
+Cd3(PO4)2,Cd3(PO4)2,Cd+2:3|PO4-3:2,-32.6000,0.00,,,,PHREEQC wateq4f.dat (phase Cd3(PO4)2),Tabulated
+Cd3(SO4)(OH)4,Cd3(SO4)(OH)4,Cd+2:3|OH-:4|SO4-2:1,-33.4069,223.26,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd3(SO4)(OH)4)",Tabulated
+Cd3(SO4)2(OH)2,Cd3(SO4)2(OH)2,Cd+2:3|OH-:2|SO4-2:2,-21.2722,111.63,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd3(SO4)2(OH)2)",Tabulated
+Cd4(OH)6SO4,Cd4(OH)6SO4,Cd+2:4|OH-:6|SO4-2:1,-55.6000,0.00,,,,PHREEQC wateq4f.dat (phase Cd4(OH)6SO4),Tabulated
+CdBr2,CdBr2,Br-:2|Cd+2:1,-1.8470,-2.68,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdBr2)",Tabulated
+CdCl2,CdCl2,Cd+2:1|Cl-:2,-0.6800,-18.70,,,,PHREEQC wateq4f.dat (phase CdCl2),Tabulated
+CdF2,CdF2,Cd+2:1|F-:2,-2.9800,-40.67,,,,PHREEQC wateq4f.dat (phase CdF2),Tabulated
+CdI2,CdI2,Cd+2:1|I-:2,-3.6100,17.07,,,,PHREEQC wateq4f.dat (phase CdI2),Tabulated
+CdMoO4,CdMoO4,Cd+2:1|MoO4-2:1,-14.1497,19.48,,,,PHREEQC minteq.v4.dat (phase CdMoO4),Tabulated
+CdOHCl,CdOHCl,Cd+2:1|Cl-:1|OH-:1,-10.4800,24.92,,,,PHREEQC wateq4f.dat (phase CdOHCl),Tabulated
+CdSO4,CdSO4,Cd+2:1|SO4-2:1,-0.1000,-61.67,,,4.691,PHREEQC wateq4f.dat (phase CdSO4),Tabulated
+CdSeO3,CdSeO3,Cd+2:1|SeO3-2:1,-8.8086,-9.92,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdSeO3)",Tabulated
+CdSeO4,CdSeO4,Cd+2:1|SeO4-2:1,-2.2132,-41.98,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdSeO4)",Tabulated
+Ce(OH)3,Ce(OH)3,Ce+3:1|OH-:3,-22.1001,167.44,,,4.609,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ce(OH)3)",Tabulated
+Co(OH)3,Co(OH)3,Co+3:1|OH-:3,-44.3000,75.00,,,,PHREEQC minteq.v4.dat (phase Co(OH)3),Tabulated
+Co3(PO4)2,Co3(PO4)2,Co+2:3|PO4-3:2,-34.6877,-0.00,,,,PHREEQC minteq.v4.dat (phase Co3(PO4)2),Tabulated
+CoF2,CoF2,Co+2:1|F-:2,-1.5969,-57.37,,,,PHREEQC minteq.v4.dat (phase CoF2),Tabulated
+CoF3,CoF3,Co+3:1|F-:3,-1.4581,-123.69,,,,PHREEQC minteq.v4.dat (phase CoF3),Tabulated
+CoHPO4,CoHPO4,Co+2:1|HPO4-2:1,-6.7223,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoHPO4)",Tabulated
+CoMoO4,CoMoO4,Co+2:1|MoO4-2:1,-7.7609,-23.40,,,,PHREEQC minteq.v4.dat (phase CoMoO4),Tabulated
+CoSO4,CoSO4,Co+2:1|SO4-2:1,2.8024,-79.28,,,0.430,PHREEQC minteq.v4.dat (phase CoSO4),Tabulated
+CoSO4(Co(OH)2)3,CoSO4.3Co(OH)2,Co+2:4|OH-:6|SO4-2:1,-50.7513,-44.52,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoSO4.3Co(OH)2)",Tabulated
+CoSeO3,CoSeO3,Co+2:1|SeO3-2:1,-7.0800,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoSeO3)",Tabulated
+CoWO4,CoWO4,Co+2:1|WO4-2:1,-12.2779,13.62,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoWO4)",Tabulated
+CrF3,CrF3,Cr+3:1|F-:3,-8.5713,-85.53,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CrF3)",Tabulated
+Cu(OH)2,Cu(OH)2,Cu+2:1|OH-:2,-19.3600,48.01,,,,PHREEQC wateq4f.dat (phase Cu(OH)2),Tabulated
+Cu(UO2)2(PO4)2,Torbernite,Cu+2:1|PO4-3:2|UO2+2:2,-45.2790,-66.53,,,,PHREEQC wateq4f.dat (phase Torbernite),Tabulated
+Cu2(OH)2CO3,Malachite,CO3-2:1|Cu+2:2|OH-:2,-33.1790,44.04,,,,PHREEQC wateq4f.dat (phase Malachite),Tabulated
+Cu2(OH)3Br,Cu2(OH)3Br,Br-:1|Cu+2:2|OH-:3,-34.0825,74.00,,,,PHREEQC minteq.v4.dat (phase Cu2(OH)3Br),Tabulated
+Cu2(OH)3Cl,Atacamite,Cl-:1|Cu+2:2|OH-:3,-34.6600,89.52,,,,PHREEQC wateq4f.dat (phase Atacamite),Tabulated
+Cu2(OH)3NO3,Cu2(OH)3NO3,Cu+2:2|NO3-:1|OH-:3,-32.7600,95.13,,,,PHREEQC wateq4f.dat (phase Cu2(OH)3NO3),Tabulated
+Cu2SO4,Cu2SO4,Cu+:2|SO4-2:1,-1.9500,-19.08,,,,PHREEQC wateq4f.dat (phase Cu2SO4),Tabulated
+Cu3(OH)2(CO3)2,Azurite,CO3-2:2|Cu+2:3|OH-:2,-44.9080,12.45,,,3.787,PHREEQC wateq4f.dat (phase Azurite),Tabulated
+Cu3(OH)4SO4,Antlerite,Cu+2:3|OH-:4|SO4-2:1,-47.7100,0.00,,,,PHREEQC wateq4f.dat (phase Antlerite),Tabulated
+Cu3(SO4)(OH)4,Antlerite,Cu+2:3|OH-:4|SO4-2:1,-47.2502,223.26,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Antlerite)",Tabulated
+Cu3SO4(OH)4,Antlerite,Cu+2:3|OH-:4|SO4-2:1,-47.0960,95.10,,,,Thermoddem V1.10 (BRGM) (phase Antlerite),Tabulated
+Cu4(NO3)2(OH)6,Cu4(NO3)2(OH)6,Cu+2:4|NO3-:2|OH-:6,-69.5060,230.09,,,,Thermoddem V1.10 (BRGM) (phase Cu4(NO3)2(OH)6),Tabulated
+Cu4(OH)6SO4,Brochantite,Cu+2:4|OH-:6|SO4-2:1,-68.6600,0.00,,,,PHREEQC wateq4f.dat (phase Brochantite),Tabulated
+Cu4(SO4)(OH)6,Brochantite,Cu+2:4|OH-:6|SO4-2:1,-68.5343,171.73,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Brochantite)",Tabulated
+Cu4Cl2(OH)6,Atacamite,Cl-:2|Cu+2:4|OH-:6,-69.6870,202.89,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Atacamite)",Tabulated
+Cu4SO4(OH)6,Brochantite,Cu+2:4|OH-:6|SO4-2:1,-68.4690,159.81,,,,Thermoddem V1.10 (BRGM) (phase Brochantite),Tabulated
+CuCrO4,CuCrO4,CrO4-2:1|Cu+2:1,-5.4400,-0.00,,,,PHREEQC minteq.v4.dat (phase CuCrO4),Tabulated
+CuF,CuF,Cu+:1|F-:1,-4.9056,16.65,,,,PHREEQC minteq.v4.dat (phase CuF),Tabulated
+CuF2,CuF2,Cu+2:1|F-:2,-0.6200,-55.73,,,,PHREEQC wateq4f.dat (phase CuF2),Tabulated
+CuMoO4,CuMoO4,Cu+2:1|MoO4-2:1,-13.0762,12.20,,,,PHREEQC minteq.v4.dat (phase CuMoO4),Tabulated
+CuSeO3,CuSeO3,Cu+2:1|SeO3-2:1,-7.6767,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CuSeO3)",Tabulated
+Dy(OH)3,Dy(OH)3,Dy+3:1|OH-:3,-26.1001,167.44,,,5.622,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Dy(OH)3)",Tabulated
+Er(OH)3,Er(OH)3,Er+3:1|OH-:3,-27.0001,167.44,,,6.194,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Er(OH)3)",Tabulated
+Eu(OH)2Cl,Eu(OH)2Cl,Cl-:1|Eu+3:1|OH-:2,-19.1928,111.63,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Eu(OH)2Cl)",Tabulated
+Eu(OH)3,Eu(OH)3,Eu+3:1|OH-:3,-26.6371,40.55,,,5.369,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Eu(OH)3)",Tabulated
+EuSO4,EuSO4,Eu+2:1|SO4-2:1,-8.8449,33.87,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase EuSO4)",Tabulated
+Fe(UO2)2(PO4)2,Bassetite,Fe+2:1|PO4-3:2|UO2+2:2,-44.4850,-83.26,,,,PHREEQC wateq4f.dat (phase Bassetite),Tabulated
+Fe2(SO4)3,Fe2(SO4)3,Fe+3:2|SO4-2:3,-3.7343,-242.03,,,,PHREEQC minteq.v4.dat (phase Fe2(SO4)3),Tabulated
+Fe2(SeO3)3,Fe2(SeO3)3,Fe+3:2|SeO3-2:3,-35.4300,0.00,,,,PHREEQC wateq4f.dat (phase Fe2(SeO3)3),Tabulated
+Fe3(OH)8,Fe3(OH)8,Fe+2:1|Fe+3:2|OH-:8,-91.7780,0.00,,,,PHREEQC wateq4f.dat (phase Fe3(OH)8),Tabulated
+Fe4(OH)8Cl,Greenrust(Cl),Cl-:1|Fe+2:3|Fe+3:1|OH-:8,-79.6920,0.00,,,,Thermoddem V1.10 (BRGM) (phase Greenrust(Cl)),Tabulated
+FeF2,FeF2,F-:2|Fe+2:1,-2.3817,-51.69,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeF2)",Tabulated
+FeF3,FeF3,F-:3|Fe+3:1,-19.2388,-13.81,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeF3)",Tabulated
+FeMoO4,FeMoO4,Fe+2:1|MoO4-2:1,-10.0910,-11.10,,,,PHREEQC minteq.v4.dat (phase FeMoO4),Tabulated
+FeSO4,FeSO4,Fe+2:1|SO4-2:1,2.6565,-73.09,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeSO4)",Tabulated
+Gd(OH)3,Gd(OH)3,Gd+3:1|OH-:3,-26.4001,167.44,,,5.575,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Gd(OH)3)",Tabulated
+H2(UO2)2(PO4)2,Autunite-H,HPO4-2:2|UO2+2:2,-25.3372,-31.86,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Autunite-H)",Tabulated
+HfF4,HfF4,F-:4|Hf+4:1,-19.2307,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase HfF4)",Tabulated
+Hg2(OH)2,Hg2(OH)2,Hg2+2:1|OH-:2,-22.7337,111.62,,,,PHREEQC minteq.v4.dat (phase Hg2(OH)2),Tabulated
+Hg2CO3,Hg2CO3,CO3-2:1|Hg2+2:1,-16.0500,45.14,,,,PHREEQC minteq.v4.dat (phase Hg2CO3),Tabulated
+Hg2CrO4,Hg2CrO4,CrO4-2:1|Hg2+2:1,-8.7000,-0.00,,,,PHREEQC minteq.v4.dat (phase Hg2CrO4),Tabulated
+Hg2F2,Hg2F2,F-:2|Hg2+2:1,-10.3623,-18.49,,,,PHREEQC minteq.v4.dat (phase Hg2F2),Tabulated
+Hg2SeO3,Hg2SeO3,Hg2+2:1|SeO3-2:1,-14.2132,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Hg2SeO3)",Tabulated
+HgSeO3,HgSeO3,Hg+2:1|SeO3-2:1,-13.8957,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase HgSeO3)",Tabulated
+Ho(OH)3,Ho(OH)3,Ho+3:1|OH-:3,-26.6001,167.44,,,6.025,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ho(OH)3)",Tabulated
+K2(SO4),Arcanite,K+:2|SO4-2:1,-1.8490,24.08,,,,Thermoddem V1.10 (BRGM) (phase Arcanite),Tabulated
+K2(UO2)2(PO4)2,K-Autunite,K+:2|PO4-3:2|UO2+2:2,-48.2440,24.52,,,,PHREEQC wateq4f.dat (phase K-Autunite),Tabulated
+K2(UO2)2(VO4)2,Carnotite,K+:2|UO2+2:2|VO4-3:2,-56.3811,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Carnotite)",Tabulated
+K2CrO4,K2CrO4,CrO4-2:1|K+:2,-0.5134,18.27,,,,PHREEQC minteq.v4.dat (phase K2CrO4),Tabulated
+K2SeO4,K2SeO4,K+:2|SeO4-2:1,-0.7300,-0.00,,,,PHREEQC minteq.v4.dat (phase K2SeO4),Tabulated
+KAl3(OH)6(SO4)2,Alunite,Al+3:3|K+:1|OH-:6|SO4-2:2,-84.3185,103.03,,,1.411,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Alunite)",Tabulated
+KAl3(SO4)2(OH)6,Alunite,Al+3:3|K+:1|OH-:6|SO4-2:2,-85.4000,125.19,,,,PHREEQC wateq4f.dat (phase Alunite),Tabulated
+KFe(SO4)2,Yavapaiite,Fe+3:1|K+:1|SO4-2:2,-5.5690,-77.02,,,,Thermoddem V1.10 (BRGM) (phase Yavapaiite),Tabulated
+KFe3(CrO4)2(OH)6,Jarosite(Cr),CrO4-2:2|Fe+3:3|K+:1|OH-:6,-101.9570,225.27,,,,Thermoddem V1.10 (BRGM) (phase Jarosite(Cr)),Tabulated
+KFe3(SO4)2(OH)6,Jarosite-K,Fe+3:3|K+:1|OH-:6|SO4-2:2,-93.2100,204.56,,,,PHREEQC wateq4f.dat (phase Jarosite-K),Tabulated
+KH2PO4,KH2PO4,H2PO4-:1|K+:1,0.2780,15.96,,,,Thermoddem V1.10 (BRGM) (phase KH2PO4),Tabulated
+KHCO3,Kalicinite,HCO3-:1|K+:1,0.2837,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Kalicinite)",Tabulated
+La(OH)3,La(OH)3,La+3:1|OH-:3,-21.7001,167.44,,,4.439,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase La(OH)3)",Tabulated
+Li2MoO4,Li2MoO4,Li+:2|MoO4-2:1,2.4416,-33.94,,,,PHREEQC minteq.v4.dat (phase Li2MoO4),Tabulated
+Lu(OH)3,Lu(OH)3,Lu+3:1|OH-:3,-27.5001,167.44,,,6.660,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Lu(OH)3)",Tabulated
+Mg(UO2)2(PO4)2,Saleeite,Mg+2:1|PO4-3:2|UO2+2:2,-43.6460,-84.43,,,,PHREEQC wateq4f.dat (phase Saleeite),Tabulated
+MgMoO4,MgMoO4,Mg+2:1|MoO4-2:1,-1.8500,-0.00,,,,PHREEQC minteq.v4.dat (phase MgMoO4),Tabulated
+MgOHCl,MgOHCl,Cl-:1|Mg+2:1|OH-:1,1.9187,-63.08,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MgOHCl)",Tabulated
+MgSeO3,MgSeO3,Mg+2:1|SeO3-2:1,1.7191,-74.96,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MgSeO3)",Tabulated
+Mn3(PO4)2,Mn3(PO4)2,Mn+2:3|PO4-3:2,-23.8270,8.87,,,,PHREEQC wateq4f.dat (phase Mn3(PO4)2),Tabulated
+MnHPO4,MnHPO4,HPO4-2:1|Mn+2:1,-12.9470,0.00,,,,PHREEQC wateq4f.dat (phase MnHPO4),Tabulated
+MnSO4,MnSO4,Mn+2:1|SO4-2:1,2.6690,-64.77,,,,PHREEQC wateq4f.dat (phase MnSO4),Tabulated
+MnSeO3,MnSeO3,Mn+2:1|SeO3-2:1,-7.2700,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MnSeO3)",Tabulated
+Na2(UO2)2(PO4)2,Na-Autunite,Na+:2|PO4-3:2|UO2+2:2,-47.4090,-1.92,,,,PHREEQC wateq4f.dat (phase Na-Autunite),Tabulated
+Na2Ca(SO4)2,Glauberite,Ca+2:1|Na+:2|SO4-2:2,-5.4690,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Glauberite)",Tabulated
+Na2CrO4,Na2CrO4,CrO4-2:1|Na+:2,2.9302,-19.63,,,,PHREEQC minteq.v4.dat (phase Na2CrO4),Tabulated
+Na2K6(SO4)4,Glaserite,K+:6|Na+:2|SO4-2:4,-7.6100,78.36,,,,Thermoddem V1.10 (BRGM) (phase Glaserite),Tabulated
+Na2MoO4,Na2MoO4,MoO4-2:1|Na+:2,1.4901,-9.98,,,,PHREEQC minteq.v4.dat (phase Na2MoO4),Tabulated
+Na2SeO4,Na2SeO4,Na+:2|SeO4-2:1,1.2800,-0.00,,,,PHREEQC minteq.v4.dat (phase Na2SeO4),Tabulated
+Na3AlF6,Cryolite,Al+3:1|F-:6|Na+:3,-33.8400,38.00,,,,PHREEQC minteq.v4.dat (phase Cryolite),Tabulated
+Na4UO2(CO3)3,Na4UO2(CO3)3,CO3-2:3|Na+:4|UO2+2:1,-16.2900,0.00,,,,PHREEQC wateq4f.dat (phase Na4UO2(CO3)3),Tabulated
+NaAl3(SO4)2(OH)6,Alunite(Na),Al+3:3|Na+:1|OH-:6|SO4-2:2,-81.6720,77.13,,,,Thermoddem V1.10 (BRGM) (phase Alunite(Na)),Tabulated
+NaFe3(SO4)2(OH)6,Jarosite-Na,Fe+3:3|Na+:1|OH-:6|SO4-2:2,-89.2800,184.06,,,,PHREEQC wateq4f.dat (phase Jarosite-Na),Tabulated
+NaH2PO4,NaH2PO4,H2PO4-:1|Na+:1,2.3010,-6.14,,,,Thermoddem V1.10 (BRGM) (phase NaH2PO4),Tabulated
+NaHCO3,Nahcolite,HCO3-:1|Na+:1,-0.5480,15.56,,,,PHREEQC wateq4f.dat (phase Nahcolite),Tabulated
+NaK3(SO4)2,Aphthitalite,K+:3|Na+:1|SO4-2:2,-3.8878,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Aphthitalite)",Tabulated
+Nd(OH)3,Nd(OH)3(c),Nd+3:1|OH-:3,-26.2001,167.44,,,4.951,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Nd(OH)3(c))",Tabulated
+Ni3(PO4)2,Ni3(PO4)2,Ni+2:3|PO4-3:2,-31.3000,0.00,,,,PHREEQC wateq4f.dat (phase Ni3(PO4)2),Tabulated
+Ni4(OH)6SO4,Ni4(OH)6SO4,Ni+2:4|OH-:6|SO4-2:1,-52.0000,0.00,,,,PHREEQC wateq4f.dat (phase Ni4(OH)6SO4),Tabulated
+NiF2,NiF2,F-:2|Ni+2:1,0.8772,-73.14,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase NiF2)",Tabulated
+NiMoO4,NiMoO4,MoO4-2:1|Ni+2:1,-11.1421,1.30,,,,PHREEQC minteq.v4.dat (phase NiMoO4),Tabulated
+Pb(H2PO4)2,Pb(H2PO4)2,H2PO4-:2|Pb+2:1,-9.8400,0.00,,,,Thermoddem V1.10 (BRGM) (phase Pb(H2PO4)2),Tabulated
+Pb(UO2)2(PO4)2,Przhevalskite,PO4-3:2|Pb+2:1|UO2+2:2,-44.3650,-46.02,,,,PHREEQC wateq4f.dat (phase Przhevalskite),Tabulated
+Pb2(OH)3Cl,Pb2(OH)3Cl,Cl-:1|OH-:3|Pb+2:2,-33.2070,0.00,,,,PHREEQC wateq4f.dat (phase Pb2(OH)3Cl),Tabulated
+Pb3(AsO4)2,Pb3(AsO4)2,AsO4-3:2|Pb+2:3,-35.4030,0.00,,,,PHREEQC wateq4f.dat (phase Pb3(AsO4)2),Tabulated
+Pb3(OH)2(CO3)2,Hydrocerussite,CO3-2:2|OH-:2|Pb+2:3,-46.7645,111.62,,,,PHREEQC minteq.v4.dat (phase Hydrocerussite),Tabulated
+Pb4(OH)6SO4,Pb4(OH)6SO4,OH-:6|Pb+2:4|SO4-2:1,-62.9000,0.00,,,,PHREEQC wateq4f.dat (phase Pb4(OH)6SO4),Tabulated
+Pb4Cl2(OH)6,Pb4Cl2(OH)6,Cl-:2|OH-:6|Pb+2:4,-66.6913,334.89,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pb4Cl2(OH)6)",Tabulated
+Pb5(PO4)3Cl,Clpyromorphite,Cl-:1|PO4-3:3|Pb+2:5,-84.4300,0.00,,,,PHREEQC wateq4f.dat (phase Clpyromorphite),Tabulated
+Pb5(PO4)3OH,Hxypyromorphite,OH-:1|PO4-3:3|Pb+2:5,-76.7900,0.00,,,,PHREEQC wateq4f.dat (phase Hxypyromorphite),Tabulated
+PbAl3PO4SO4(OH)6,Hinsdalite,Al+3:3|OH-:6|PO4-3:1|Pb+2:1|SO4-2:1,-86.5000,0.00,,,,PHREEQC wateq4f.dat (phase Hinsdalite),Tabulated
+PbBrF,PbBrF,Br-:1|F-:1|Pb+2:1,-8.4900,0.00,,,,PHREEQC wateq4f.dat (phase PbBrF),Tabulated
+PbClF,Matlockite,Cl-:1|F-:1|Pb+2:1,-9.4300,33.26,,,,PHREEQC wateq4f.dat (phase Matlockite),Tabulated
+PbClOH,Paralaurionite,Cl-:1|OH-:1|Pb+2:1,-13.7916,64.23,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Paralaurionite)",Tabulated
+PbFCl,Matlockite,Cl-:1|F-:1|Pb+2:1,-9.4300,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Matlockite)",Tabulated
+PbHPO4,PbHPO4,HPO4-2:1|Pb+2:1,-11.4600,29.46,,,,PHREEQC wateq4f.dat (phase PbHPO4),Tabulated
+PbMoO4,PbMoO4,MoO4-2:1|Pb+2:1,-15.6200,53.93,,,,PHREEQC minteq.v4.dat (phase PbMoO4),Tabulated
+PbOHCl,Laurionite,Cl-:1|OH-:1|Pb+2:1,-13.3770,0.00,,,,PHREEQC wateq4f.dat (phase Laurionite),Tabulated
+PbSeO4,PbSeO4,Pb+2:1|SeO4-2:1,-6.8400,15.00,,,,PHREEQC minteq.v4.dat (phase PbSeO4),Tabulated
+Pd(OH)2,Pd(OH)2(s),OH-:2|Pd+2:1,-28.6210,103.48,,,4.948,Thermoddem V1.10 (BRGM) (phase Pd(OH)2(s)),Tabulated
+Pm(OH)3,Pm(OH)3,OH-:3|Pm+3:1,-24.5001,167.44,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pm(OH)3)",Tabulated
+Pr(OH)3,Pr(OH)3,OH-:3|Pr+3:1,-22.4001,167.44,,,4.723,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pr(OH)3)",Tabulated
+Ra(NO3)2,Ra(NO3)2,NO3-:2|Ra+2:1,-2.2419,50.48,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ra(NO3)2)",Tabulated
+RaSO4,RaSO4,Ra+2:1|SO4-2:1,-10.4499,40.31,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase RaSO4)",Tabulated
+RuI3,RuI3,I-:3|Ru+3:1,-12.4614,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase RuI3)",Tabulated
+Sm(OH)3,Sm(OH)3,OH-:3|Sm+3:1,-25.5001,167.44,,,5.247,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sm(OH)3)",Tabulated
+Sm2(SO4)3,Sm2(SO4)3,SO4-2:3|Sm+3:2,-9.8000,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sm2(SO4)3)",Tabulated
+SnBr2,SnBr2,Br-:2|Sn+2:1,-1.4369,8.24,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnBr2)",Tabulated
+SnCl2,SnCl2,Cl-:2|Sn+2:1,0.3225,-11.99,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnCl2)",Tabulated
+SnSO4,SnSO4,SO4-2:1|Sn+2:1,-23.9293,96.23,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnSO4)",Tabulated
+Sr(NO3)2,Sr(NO3)2,NO3-:2|Sr+2:1,1.1493,13.78,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sr(NO3)2)",Tabulated
+Sr(OH)2,Sr(OH)2,OH-:2|Sr+2:1,-0.4673,-42.06,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sr(OH)2)",Tabulated
+Sr(UO2)2(PO4)2,Sr-Autunite,PO4-3:2|Sr+2:1|UO2+2:2,-44.4570,-54.60,,,,PHREEQC wateq4f.dat (phase Sr-Autunite),Tabulated
+SrHPO4,SrHPO4,HPO4-2:1|Sr+2:1,-6.2416,-19.79,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SrHPO4)",Tabulated
+SrSeO4,SrSeO4,SeO4-2:1|Sr+2:1,-4.4000,0.40,,,,PHREEQC minteq.v4.dat (phase SrSeO4),Tabulated
+Tb(OH)3,Tb(OH)3,OH-:3|Tb+3:1,-26.3001,167.44,,,5.753,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tb(OH)3)",Tabulated
+Th(OH)4,Th(OH)4,OH-:4|Th+4:1,-46.3261,82.92,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Th(OH)4)",Tabulated
+Th(SO4)2,Th(SO4)2,SO4-2:2|Th+4:1,-20.3006,-46.11,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Th(SO4)2)",Tabulated
+ThF4,ThF4,F-:4|Th+4:1,-29.9946,-12.67,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase ThF4)",Tabulated
+Tl(OH)3,Tl(OH)3,OH-:3|Tl+3:1,-43.8230,0.00,,,,Thermoddem V1.10 (BRGM) (phase Tl(OH)3),Tabulated
+Tl2CO3,Tl2CO3,CO3-2:1|Tl+:2,-3.8367,35.49,,,,PHREEQC minteq.v4.dat (phase Tl2CO3),Tabulated
+Tl2CrO4,Tl2CrO4,CrO4-2:1|Tl+:2,-12.0100,74.27,,,,PHREEQC minteq.v4.dat (phase Tl2CrO4),Tabulated
+Tl2MoO4,Tl2MoO4,MoO4-2:1|Tl+:2,-7.9887,-0.00,,,,PHREEQC minteq.v4.dat (phase Tl2MoO4),Tabulated
+Tl2SO4,Tl2SO4,SO4-2:1|Tl+:2,-3.7868,33.18,,,,PHREEQC minteq.v4.dat (phase Tl2SO4),Tabulated
+Tl2SeO4,Tl2SeO4,SeO4-2:1|Tl+:2,-4.1000,43.00,,,,PHREEQC minteq.v4.dat (phase Tl2SeO4),Tabulated
+TlBr,TlBr,Br-:1|Tl+:1,-5.4400,54.00,,,,PHREEQC minteq.v4.dat (phase TlBr),Tabulated
+TlFe3(SO4)2(OH)6,Doralcharite,Fe+3:3|OH-:6|SO4-2:2|Tl+:1,-86.2330,103.98,,,,Thermoddem V1.10 (BRGM) (phase Doralcharite),Tabulated
+TlI,TlI,I-:1|Tl+:1,-7.2300,75.00,,,,PHREEQC minteq.v4.dat (phase TlI),Tabulated
+TlNO3,TlNO3,NO3-:1|Tl+:1,-1.6127,42.44,,,,PHREEQC minteq.v4.dat (phase TlNO3),Tabulated
+TlOH,TlOH,OH-:1|Tl+:1,-1.0784,14.24,,,,PHREEQC minteq.v4.dat (phase TlOH),Tabulated
+Tm(OH)3,Tm(OH)3,OH-:3|Tm+3:1,-27.0001,167.44,,,6.321,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tm(OH)3)",Tabulated
+U(OH)2SO4,U(OH)2SO4,OH-:2|SO4-2:1|U+4:1,-31.2000,0.00,,,,PHREEQC wateq4f.dat (phase U(OH)2SO4),Tabulated
+U(SO3)2,U(SO3)2,SO3-2:2|U+4:1,-36.7499,20.70,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase U(SO3)2)",Tabulated
+U(SO4)2,U(SO4)2,SO4-2:2|U+4:1,-11.5178,-100.80,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase U(SO4)2)",Tabulated
+UCl2F2,UCl2F2,Cl-:2|F-:2|U+4:1,-3.5085,-130.06,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UCl2F2)",Tabulated
+UClF3,UClF3,Cl-:1|F-:3|U+4:1,-17.5122,-74.32,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UClF3)",Tabulated
+UF3,UF3,F-:3|U+3:1,-19.4125,6.26,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UF3)",Tabulated
+UF4,UF4(c),F-:4|U+4:1,-18.6060,-79.08,,,,PHREEQC wateq4f.dat (phase UF4(c)),Tabulated
+UO2(IO3)2,UO2(IO3)2,IO3-:2|UO2+2:1,-7.2871,-0.39,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2(IO3)2)",Tabulated
+UO2(OH)2,B-UO2(OH)2,OH-:2|UO2+2:1,-22.4560,54.37,,,5.814,PHREEQC wateq4f.dat (phase B-UO2(OH)2),Tabulated
+UO2CO3,Rutherfordine,CO3-2:1|UO2+2:1,-14.4500,-6.02,,,5.721,PHREEQC wateq4f.dat (phase Rutherfordine),Tabulated
+UO2Cl,UO2Cl,Cl-:1|UO2+:1,-0.5154,-21.11,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2Cl)",Tabulated
+UO2F2,UO2F2,F-:2|UO2+2:1,-7.2302,-36.20,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2F2)",Tabulated
+UO2FOH,UO2FOH,F-:1|OH-:1|UO2+2:1,-15.8377,14.10,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2FOH)",Tabulated
+UO2HPO4,UO2HPO4,HPO4-2:1|UO2+2:1,-12.6782,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2HPO4)",Tabulated
+UO2SO3,UO2SO3,SO3-2:1|UO2+2:1,-15.9812,6.45,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2SO3)",Tabulated
+UO2SO4,UO2SO4,SO4-2:1|UO2+2:1,1.9681,-83.46,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2SO4)",Tabulated
+V(OH)3,V(OH)3,OH-:3|V+3:1,-34.4000,167.43,,,,PHREEQC minteq.v4.dat (phase V(OH)3),Tabulated
+VO(OH)2,VO(OH)2,OH-:2|VO+2:1,-22.8434,111.62,,,,PHREEQC minteq.v4.dat (phase VO(OH)2),Tabulated
+VO2Cl,VO2Cl,Cl-:1|VO2+:1,2.8413,-40.28,,,,PHREEQC minteq.v4.dat (phase VO2Cl),Tabulated
+Yb(OH)3,Yb(OH)3,OH-:3|Yb+3:1,-27.3001,167.44,,,6.521,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Yb(OH)3)",Tabulated
+Zn(IO3)2,Zn(IO3)2,IO3-:2|Zn+2:1,-5.3193,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn(IO3)2)",Tabulated
+Zn2(OH)2SO4,Zn2(OH)2SO4,OH-:2|SO4-2:1|Zn+2:2,-20.5000,0.00,,,,PHREEQC wateq4f.dat (phase Zn2(OH)2SO4),Tabulated
+Zn2(OH)3Cl,Zn2(OH)3Cl,Cl-:1|OH-:3|Zn+2:2,-26.8000,0.00,,,,PHREEQC wateq4f.dat (phase Zn2(OH)3Cl),Tabulated
+Zn2SO4(OH)2,Zn2SO4(OH)2,OH-:2|SO4-2:1|Zn+2:2,-20.4086,111.63,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn2SO4(OH)2)",Tabulated
+Zn4(OH)6SO4,Zn4(OH)6SO4,OH-:6|SO4-2:1|Zn+2:4,-55.6000,0.00,,,,PHREEQC wateq4f.dat (phase Zn4(OH)6SO4),Tabulated
+Zn5(NO3)2(OH)8,Zn5(NO3)2(OH)8,NO3-:2|OH-:8|Zn+2:5,-69.2934,446.52,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn5(NO3)2(OH)8)",Tabulated
+Zn5(OH)8Cl2,Zn5(OH)8Cl2,Cl-:2|OH-:8|Zn+2:5,-73.5000,0.00,,,,PHREEQC wateq4f.dat (phase Zn5(OH)8Cl2),Tabulated
+ZnF2,ZnF2,F-:2|Zn+2:1,-1.5200,-54.73,,,,PHREEQC wateq4f.dat (phase ZnF2),Tabulated
+ZnMoO4,ZnMoO4,MoO4-2:1|Zn+2:1,-10.1254,-10.69,,,,PHREEQC minteq.v4.dat (phase ZnMoO4),Tabulated
+ZrF4,ZrF4(beta),F-:4|Zr+4:1,-27.7564,0.00,,,,"PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase ZrF4(beta))",Tabulated

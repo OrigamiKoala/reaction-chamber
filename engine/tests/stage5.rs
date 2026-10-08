@@ -317,14 +317,10 @@ fn s5_5_hexane_on_water_forms_two_layers_with_tiny_mutual_solubility() {
     let wt_pct = 100.0 * w_in_hex / hex_mass;
     let hex_in_water_mg_l = grams_in_phases(&v, "C6H14", 86.18)[0] * 1000.0 / (snap.layers[0].volume_ml / 1000.0);
     println!("[s5_5] water in hexane {:.4} wt% (measured 0.011), hexane in water {:.1} mg/L (measured 9.5)", wt_pct, hex_in_water_mg_l);
-    // predictive UNIFAC tier: within a factor 2 of the measured values (the plan's < 0.01 wt% needs UNIFAC to be better
-    // than it is for water in alkanes: it gives 0.015 wt%)
-    assert!(wt_pct < 0.022 && wt_pct > 0.0055, "water in hexane {} wt%", wt_pct);
-    // KNOWN GAP: the original (VLE-fitted) UNIFAC set underestimates the hydrophobicity of alkanes (gamma_inf of hexane in
-    // water 1.1e4 against the measured 4e5), so hexane in water comes out ~45x too high. The Magnussen LLE set published
-    // with `thermo` was tried and makes hexane and water miscible, so it is not used. The bound only checks the order of
-    // magnitude of the layer composition, not the measured value.
-    assert!(hex_in_water_mg_l < 1000.0 && hex_in_water_mg_l > 0.5, "hexane in water {} mg/L", hex_in_water_mg_l);
+    // The mutual solubility of water and hexane is a measured activity point (data/solubility_points.json, ThermoML: hexane in
+    // water x = 2.9e-6, water in hexane x = 4.9e-4); before it, UNIFAC alone gave 0.015 wt% and 45 times too much hexane.
+    assert!(wt_pct < 0.016 && wt_pct > 0.007, "water in hexane {} wt%", wt_pct);
+    assert!(hex_in_water_mg_l < 30.0 && hex_in_water_mg_l > 3.0, "hexane in water {} mg/L", hex_in_water_mg_l);
 }
 
 #[test]

@@ -72,6 +72,9 @@ pub enum PsatModel {
     LeeKesler { tc_k: f64, pc_pa: f64, omega_fit: f64 },
     /// `ln P = a - b / (T + c)` through measured points (no critical data).
     Curve(VaporCurve),
+    /// Antoine fitted to measured vapour pressures (`data/vapor_pressure_measured.json`), valid between `t_lo` and `t_hi`; outside
+    /// that range the curve is continued with the Clausius-Clapeyron slope it has at the end (a straight line in ln P against 1/T).
+    Measured { a: f64, b: f64, c: f64, t_lo: f64, t_hi: f64 },
 }
 
 impl PsatModel {
@@ -96,6 +99,17 @@ impl PsatModel {
                 pc_pa * (lk_f0(tr) + omega_fit * lk_f1(tr)).exp()
             }
             PsatModel::Curve(c) => c.p_pa(t_k),
+            PsatModel::Measured { a, b, c, t_lo, t_hi } => {
+                let (lo, hi) = (*t_lo - 5.0, *t_hi + 5.0);
+                let t = t_k.clamp(lo, hi);
+                let p = 10f64.powf(a - b / (t + c));
+                if (t_k - t).abs() < 1e-12 {
+                    return p;
+                }
+                // d ln P / d(1/T) at the end of the range: ln10 * (-b T^2/(T+c)^2) ... = -ln10 * b * (T/(T+c))^2
+                let slope = -std::f64::consts::LN_10 * b * (t / (t + c)).powi(2);
+                p * (slope * (1.0 / t_k - 1.0 / t)).exp()
+            }
         }
     }
 
@@ -250,6 +264,32 @@ pub fn critical_of(rec: &SpeciesRecord) -> Option<(f64, f64, Option<f64>)> {
     }
 }
 
+/// An Antoine fit to measured vapour pressures of one compound (`data/vapor_pressure_measured.json`).
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct MeasuredVapor {
+    pub a: f64,
+    pub b: f64,
+    pub c: f64,
+    pub t_min: f64,
+    pub t_max: f64,
+    pub n: u32,
+    pub n_papers: u32,
+    pub rms_log10: f64,
+}
+
+/// The measured Antoine fit of the compound with this InChIKey, if the archive had enough data for it.
+pub fn measured_vapor_pressure(inchikey: &str) -> Option<&'static MeasuredVapor> {
+    static T: std::sync::OnceLock<HashMap<String, MeasuredVapor>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        #[derive(serde::Deserialize)]
+        struct File {
+            compounds: HashMap<String, MeasuredVapor>,
+        }
+        serde_json::from_str::<File>(include_str!("../data/vapor_pressure_measured.json")).expect("data/vapor_pressure_measured.json").compounds
+    })
+    .get(inchikey)
+}
+
 /// Labelled saturation points `(T, P)` of a record (kinds "psat" and "tb").
 pub fn psat_points_of(rec: &SpeciesRecord) -> Vec<[f64; 2]> {
     rec.points
@@ -292,6 +332,18 @@ pub fn psat_model_from_records(liq: &SpeciesRecord, gas: Option<&SpeciesRecord>)
             };
             if let Some(m) = model {
                 return Some((m, spec.tier.clone(), spec.source.clone()));
+            }
+        }
+    }
+    // 1b. an Antoine fit to measured vapour pressures of this compound (ThermoML), by InChIKey
+    for r in &recs {
+        if let Some(ik) = r.identity.inchikey.as_deref() {
+            if let Some(m) = measured_vapor_pressure(ik) {
+                return Some((
+                    PsatModel::Measured { a: m.a, b: m.b, c: m.c, t_lo: m.t_min, t_hi: m.t_max },
+                    ProvenanceTier::Tabulated,
+                    format!("Antoine fit to {} measured vapour pressures {:.0}-{:.0} K ({} papers, rms {:.3} in log10; NIST/TRC ThermoML)", m.n, m.t_min, m.t_max, m.n_papers, m.rms_log10),
+                ));
             }
         }
     }

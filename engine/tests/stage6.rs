@@ -338,8 +338,8 @@ fn s6_11_cuso4_nh3_complexation() {
     v.species_mol.insert("NH3".to_string(), 0.004);
     step_for(&mut v, 2.0, 0.5);
 
-    let cu_oh2 = v.solid_mol.get("Cu(OH)2(s)").copied().unwrap_or(0.0);
-    assert!(cu_oh2 > 0.0, "Cu(OH)2 precipitate must form with stoichiometric base: got {}", cu_oh2);
+    let cu_ppt: f64 = v.solid_mol.iter().filter(|(k, _)| k.starts_with("Cu")).map(|(_, v)| *v).sum();
+    assert!(cu_ppt > 0.0, "copper precipitate must form with stoichiometric base: got {:?}", v.solid_mol);
 
     // 2. Excess NH3: Cu(NH3)4+2 forms
     *v.species_mol.entry("NH3".to_string()).or_default() += 0.05;

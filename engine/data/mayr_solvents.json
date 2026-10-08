@@ -1,0 +1,33 @@
+{
+  "_comment": "Mapping from Mayr database solvent strings to engine solvent classes (water, alcohol, other). E is solvent-independent; N and sN are per solvent class.",
+  "solvents": {
+    "": "any",
+    "water": "water",
+    "aq MeCN": "water",
+    "aq acetone": "water",
+    "water-EtOH mix": "water",
+    "water-HFIP mix": "water",
+    "water-MeCN mix": "water",
+    "water-TFE mix": "water",
+    "water-acetone mix": "water",
+    "MeOH": "alcohol",
+    "EtOH": "alcohol",
+    "iPrOH": "alcohol",
+    "nPrOH": "alcohol",
+    "HFIP": "alcohol",
+    "TFE": "alcohol",
+    "MeOH-MeCN mix": "alcohol",
+    "EtOH-MeCN mix": "alcohol",
+    "iPrOH-MeCN mix": "alcohol",
+    "nPrOH-MeCN mix": "alcohol",
+    "dichloromethane": "other",
+    "MeCN": "other",
+    "DMSO": "other",
+    "THF": "other",
+    "DMF": "other",
+    "1,2-dichloroethane": "other",
+    "Cyrene (TM)": "other",
+    "acetone": "other",
+    "dichloromethane/MeCN mix": "other"
+  }
+}

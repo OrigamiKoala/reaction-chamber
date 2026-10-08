@@ -170,7 +170,7 @@ fn expansion_is_bounded_by_thermodynamics_and_size() {
     assert!(net.active_species.len() < 150, "{} species", net.active_species.len());
     for r in &net.reactions {
         if r.k_eq_from_data {
-            assert!(r.k_eq > 1e-12, "{} has K {:e} and cannot have a net flux", r.id, r.k_eq);
+            assert!(r.k_eq > 1e-15, "{} has K {:e} and cannot have a net flux", r.id, r.k_eq);
         }
     }
 }

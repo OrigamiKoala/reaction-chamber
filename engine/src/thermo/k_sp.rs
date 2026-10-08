@@ -15,9 +15,11 @@ pub fn mineral_log_ksp(mineral: &str, t_k: f64, p_pa: f64) -> f64 {
 
     // 1. Query SpeciesStore for analytic parameters or solid record
     if let Ok(store) = crate::db::SpeciesStore::global().read() {
-        let rec = store.get(mineral)
-            .or_else(|| store.get(norm_name))
-            .or_else(|| store.get(&format!("{}(s)", norm_name)));
+        // the first candidate id that is a solid (a bare formula such as "CaCO3" may also be the id of the aqueous ion pair)
+        let rec = [mineral.to_string(), norm_name.to_string(), format!("{}(s)", norm_name)]
+            .iter()
+            .filter_map(|id| store.get(id))
+            .find(|r| r.phases.contains_key("s"));
         if let Some(r) = rec {
             if let Some(p_data) = r.phases.get("s") {
                 if let Some(thermo) = &p_data.thermo {

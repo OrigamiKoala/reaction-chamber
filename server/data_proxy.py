@@ -260,16 +260,19 @@ class NistWebBookClient:
         """
         data: Dict[str, Any] = {"source": "NIST Chemistry WebBook (SRD 69)", "tier": "imported"}
 
-        title_m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.I | re.S)
+        # the compound's heading is `<h1 id="Top">`; the first <h1> of the page is the site banner ("NIST Chemistry WebBook")
+        title_m = re.search(r'<h1[^>]*\bid="Top"[^>]*>(.*?)</h1>', html, re.I | re.S)
         if title_m:
             data["name"] = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
         cas_m = re.search(r'CAS Registry Number:</strong>\s*([\d\-]+)', html, re.I)
         if cas_m:
             data["cas"] = cas_m.group(1).strip()
-        formula_m = re.search(r'Formula:</strong>(.*?)</li>', html, re.I | re.S)
+        # "Formula" is a link to the IUPAC definition: `Formula</a>:</strong> C<sub>8</sub>...`
+        formula_m = re.search(r'Formula(?:</a>)?:</strong>(.*?)</li>', html, re.I | re.S)
         if formula_m:
             data["formula"] = re.sub(r'<[^>]+>', '', formula_m.group(1)).replace(" ", "").strip()
-        ik_m = re.search(r'InChIKey:</strong>\s*([A-Z]{14}-[A-Z]{10}-[A-Z])', html)
+        ik_m = (re.search(r'InChIKey:</strong>.{0,400}?([A-Z]{14}-[A-Z]{10}-[A-Z])', html, re.S)
+                or re.search(r'"inChIKey"\s*:\s*"([A-Z]{14}-[A-Z]{10}-[A-Z])"', html))
         if ik_m:
             data["inchikey"] = ik_m.group(1)
 

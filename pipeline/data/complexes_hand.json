@@ -1,0 +1,250 @@
+{
+ "_comment": "The hand-typed complexation rows of the earlier engine/data/complexes.json (recalled Smith-Martell / CRC values, tier Estimated): kept by pipeline/db/build_complexes.py only where no database row covers the same metal / ligand / n.",
+ "complexes": [
+  {
+   "metal": "Cd+2",
+   "ligand": "Cl-",
+   "n": 1,
+   "product": "CdCl+",
+   "log_beta": 1.98
+  },
+  {
+   "metal": "Cd+2",
+   "ligand": "Cl-",
+   "n": 2,
+   "product": "CdCl2",
+   "log_beta": 2.6
+  },
+  {
+   "metal": "Hg+2",
+   "ligand": "Cl-",
+   "n": 1,
+   "product": "HgCl+",
+   "log_beta": 7.3
+  },
+  {
+   "metal": "Hg+2",
+   "ligand": "Cl-",
+   "n": 2,
+   "product": "HgCl2",
+   "log_beta": 14.0
+  },
+  {
+   "metal": "Hg+2",
+   "ligand": "Cl-",
+   "n": 3,
+   "product": "HgCl3-",
+   "log_beta": 15.0
+  },
+  {
+   "metal": "Hg+2",
+   "ligand": "Cl-",
+   "n": 4,
+   "product": "HgCl4-2",
+   "log_beta": 15.4
+  },
+  {
+   "metal": "Pb+2",
+   "ligand": "Cl-",
+   "n": 1,
+   "product": "PbCl+",
+   "log_beta": 1.6
+  },
+  {
+   "metal": "Pb+2",
+   "ligand": "Cl-",
+   "n": 2,
+   "product": "PbCl2",
+   "log_beta": 1.8
+  },
+  {
+   "metal": "Ag+",
+   "ligand": "Cl-",
+   "n": 1,
+   "product": "AgCl",
+   "log_beta": 3.3
+  },
+  {
+   "metal": "Ag+",
+   "ligand": "Cl-",
+   "n": 2,
+   "product": "AgCl2-",
+   "log_beta": 5.25
+  },
+  {
+   "metal": "Cu+",
+   "ligand": "Cl-",
+   "n": 2,
+   "product": "CuCl2-",
+   "log_beta": 5.5
+  },
+  {
+   "metal": "Fe+3",
+   "ligand": "Cl-",
+   "n": 1,
+   "product": "FeCl+2",
+   "log_beta": 1.5
+  },
+  {
+   "metal": "Fe+3",
+   "ligand": "F-",
+   "n": 1,
+   "product": "FeF+2",
+   "log_beta": 6.0
+  },
+  {
+   "metal": "Fe+3",
+   "ligand": "F-",
+   "n": 2,
+   "product": "FeF2+",
+   "log_beta": 10.8
+  },
+  {
+   "metal": "Al+3",
+   "ligand": "F-",
+   "n": 1,
+   "product": "AlF+2",
+   "log_beta": 7.0
+  },
+  {
+   "metal": "Al+3",
+   "ligand": "F-",
+   "n": 2,
+   "product": "AlF2+",
+   "log_beta": 12.6
+  },
+  {
+   "metal": "Al+3",
+   "ligand": "F-",
+   "n": 3,
+   "product": "AlF3",
+   "log_beta": 16.7
+  },
+  {
+   "metal": "Zn+2",
+   "ligand": "NH3",
+   "n": 4,
+   "product": "Zn(NH3)4+2",
+   "log_beta": 9.46
+  },
+  {
+   "metal": "Cd+2",
+   "ligand": "NH3",
+   "n": 4,
+   "product": "Cd(NH3)4+2",
+   "log_beta": 7.1
+  },
+  {
+   "metal": "Ni+2",
+   "ligand": "NH3",
+   "n": 4,
+   "product": "Ni(NH3)4+2",
+   "log_beta": 7.9
+  },
+  {
+   "metal": "Ag+",
+   "ligand": "CN-",
+   "n": 2,
+   "product": "Ag(CN)2-",
+   "log_beta": 20.5
+  },
+  {
+   "metal": "Zn+2",
+   "ligand": "CN-",
+   "n": 4,
+   "product": "Zn(CN)4-2",
+   "log_beta": 19.6
+  },
+  {
+   "metal": "Cd+2",
+   "ligand": "CN-",
+   "n": 4,
+   "product": "Cd(CN)4-2",
+   "log_beta": 18.9
+  },
+  {
+   "metal": "Ag+",
+   "ligand": "S2O3-2",
+   "n": 2,
+   "product": "Ag(S2O3)2-3",
+   "log_beta": 13.5
+  },
+  {
+   "metal": "Zn+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "ZnOH+",
+   "log_beta": 5.0
+  },
+  {
+   "metal": "Cd+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "CdOH+",
+   "log_beta": 3.9
+  },
+  {
+   "metal": "Pb+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "PbOH+",
+   "log_beta": 6.3
+  },
+  {
+   "metal": "Cu+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "CuOH+",
+   "log_beta": 6.3
+  },
+  {
+   "metal": "Ni+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "NiOH+",
+   "log_beta": 4.1
+  },
+  {
+   "metal": "Co+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "CoOH+",
+   "log_beta": 4.3
+  },
+  {
+   "metal": "Mn+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "MnOH+",
+   "log_beta": 3.4
+  },
+  {
+   "metal": "Fe+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "FeOH+",
+   "log_beta": 4.5
+  },
+  {
+   "metal": "Mg+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "MgOH+",
+   "log_beta": 2.6
+  },
+  {
+   "metal": "Ca+2",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "CaOH+",
+   "log_beta": 1.2
+  },
+  {
+   "metal": "Cr+3",
+   "ligand": "OH-",
+   "n": 1,
+   "product": "CrOH+2",
+   "log_beta": 10.0
+  }
+ ]
+}

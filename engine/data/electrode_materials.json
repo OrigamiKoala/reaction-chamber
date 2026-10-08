@@ -1,6 +1,67 @@
 {
-  "_comment": "Electrode materials of the cell. `inert` electrodes carry current and take part in no reaction themselves (platinum, graphite: no stable aqueous cation under the cell's conditions). Every other element that is a metal with an aqueous cation or a solid record in the species store is an active electrode, listed by decreasing standard potential (nobler first); metals whose couple lies below `water_reactive_e0_v` reduce water violently and are not offered.",
-  "inert": ["Pt", "C"],
-  "water_reactive_e0_v": -2.5,
-  "source": "Standard electrode potentials, CRC Handbook of Chemistry and Physics; the cutoff is below Mg (-2.37 V) and above Ca (-2.87 V)"
+ "_comment": "Electrode materials of the cell. `inert` electrodes carry current and take part in no reaction themselves (platinum, graphite: no stable aqueous cation under the cell's conditions). Every other element that is a metal with an aqueous cation or a solid record in the species store is an active electrode, listed by decreasing standard potential (nobler first); metals whose couple lies below `water_reactive_e0_v` reduce water violently and are not offered.",
+ "inert": [
+  "Pt",
+  "C"
+ ],
+ "water_reactive_e0_v": -2.5,
+ "source": "Standard electrode potentials, CRC Handbook of Chemistry and Physics; the cutoff is below Mg (-2.37 V) and above Ca (-2.87 V)",
+ "excluded": {
+  "radioactive": [
+   "U",
+   "Th",
+   "Pm",
+   "Am",
+   "Cm",
+   "Np",
+   "Pu",
+   "Ra",
+   "Fr"
+  ],
+  "rare earths and scandium / yttrium": [
+   "Sc",
+   "Y",
+   "La",
+   "Ce",
+   "Pr",
+   "Nd",
+   "Sm",
+   "Eu",
+   "Gd",
+   "Tb",
+   "Dy",
+   "Ho",
+   "Er",
+   "Tm",
+   "Yb",
+   "Lu"
+  ],
+  "toxic, scarce or liquid and not a teaching-bench electrode": [
+   "Hg",
+   "Tl",
+   "Be",
+   "Ga",
+   "In",
+   "Hf",
+   "Zr",
+   "Ru",
+   "Rh",
+   "V",
+   "Os",
+   "Ir",
+   "Nb",
+   "Ta",
+   "Mo",
+   "W",
+   "Ge",
+   "Sb",
+   "Te",
+   "Se",
+   "As"
+  ],
+  "passivates (insoluble hydroxide): no anodic dissolution in a neutral electrolyte, so the cell shows nothing": [
+   "Bi"
+  ]
+ },
+ "excluded_note": "Metals the species store now holds (OBIGT) that the console does not offer as electrodes: radioactive elements, rare earths, and toxic, scarce or liquid metals that no teaching bench carries. Everything else with an aqueous cation or solid record is offered."
 }

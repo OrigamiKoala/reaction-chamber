@@ -247,6 +247,17 @@ pub struct SpeciesRow {
     pub tier: ProvenanceTier,
 }
 
+/// What a vessel keeps of a generated kinetic row to find its stored rate later (`Vessel::apply_stored_rates`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GeneratedRateRef {
+    pub key: String,
+    pub any_key: String,
+    pub solvent_class: String,
+    pub pathways: u32,
+    /// The template rule's Ea, which a stored rate constant without its own Ea takes.
+    pub rule_ea_j_mol: f64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReactionRow {
     pub id: String,
@@ -500,6 +511,11 @@ pub struct Vessel {
     /// generation conditions, so a path that was too slow then (acid hydrolysis at pH 7) is looked for again when the
     /// solution turns acidic or hot
     pub last_network_env: (i32, i32),
+    /// Generated kinetic rows (by row id) -> what the rate store needs to find their rate, so a rate that arrives in the
+    /// store later replaces the template rule of a row already in the vessel.
+    pub generated_rate_keys: HashMap<String, GeneratedRateRef>,
+    /// `rate_store::generation()` when the stored rates were last applied.
+    pub last_rate_generation: u64,
     pub network_cap_reached: bool,
     /// Candidate reactions of the generated network that were below the flux threshold (the edge), re-evaluated periodically.
     pub network_edge: Vec<crate::network_generator::GeneratedReaction>,
@@ -582,6 +598,8 @@ impl Vessel {
             particle_populations: HashMap::new(),
             last_smiles_species: HashSet::new(),
             last_network_env: (i32::MIN, i32::MIN),
+            generated_rate_keys: HashMap::new(),
+            last_rate_generation: 0,
             network_cap_reached: false,
             network_edge: Vec::new(),
             flame_visual: None,
@@ -608,6 +626,7 @@ impl Vessel {
     /// Registers an equilibrium. An unbalanced or unverifiable one is demoted to the Speculative tier and a warning is
     /// logged; the warning text is returned.
     pub fn register_equilibrium(&mut self, mut eq: GeneralEquilibrium) -> Option<String> {
+        crate::substitution::attach_rate(&mut eq);
         let warning = chem_db::audit_equilibrium(&mut eq);
         self.equilibria.retain(|e| e.id != eq.id);
         self.equilibria.push(eq);
@@ -657,6 +676,13 @@ impl Vessel {
                 if self.kinetic_reactions.iter().any(|r| r.id == id) {
                     continue;
                 }
+                self.generated_rate_keys.insert(id.clone(), GeneratedRateRef {
+                    key: rxn.rate_key.clone(),
+                    any_key: rxn.rate_any_key.clone(),
+                    solvent_class: class.to_string(),
+                    pathways: rxn.pathways,
+                    rule_ea_j_mol: rxn.template_ea_j_mol,
+                });
                 // the rate law carries its own orders (solvent zero order, dissolved catalysts such as H+ first order) and
                 // K(298) with the reaction enthalpy, so the vessel re-evaluates catalysis, temperature and detailed balance
                 // every tick instead of freezing the conditions of the moment the network was generated
@@ -686,6 +712,27 @@ impl Vessel {
         // oxidised forms of the organic species present become candidates of the redox discovery
         let present: Vec<String> = (0..(1 + self.extra_liquids.len())).flat_map(|p| self.liquid_phase_map(p).iter().filter(|(_, &n)| n > 1e-12).map(|(k, _)| k.clone()).collect::<Vec<_>>()).collect();
         crate::network_generator::register_redox_partners(&present);
+    }
+
+    /// Replaces the rate of every generated row whose structural key has an entry in the rate store (A per pathway times
+    /// the row's pathways).
+    pub fn apply_stored_rates(&mut self) {
+        let keys = &self.generated_rate_keys;
+        for r in self.kinetic_reactions.iter_mut() {
+            let Some(g) = keys.get(&r.id) else { continue };
+            let Some(e) = crate::rate_store::lookup_for(&g.key, &g.any_key, &g.solvent_class) else { continue };
+            // a multi-term rate law has no single Arrhenius pair: its terms are evaluated when the network is generated
+            if !e.terms.is_empty() {
+                continue;
+            }
+            let (a, ea) = e.arrhenius(g.rule_ea_j_mol);
+            r.arrhenius_a = if e.per_reaction { a } else { a * g.pathways.max(1) as f64 };
+            r.arrhenius_ea = ea;
+            r.tier = e.tier.clone();
+            if !r.source.starts_with(&e.source) {
+                r.source = format!("{} (replaced the template rule: {})", e.source, r.source);
+            }
+        }
     }
 
     /// The molecular map of liquid phase `p` (0 = primary).
@@ -1211,6 +1258,14 @@ impl Vessel {
         if !cur_smiles_species.is_empty() {
             let ph = self.current_ph();
             let env = (if ph.is_finite() { ph.floor() as i32 } else { i32::MAX }, (self.temperature_k / 10.0).floor() as i32);
+            let rate_gen = crate::rate_store::generation();
+            if rate_gen != self.last_rate_generation {
+                // new stored rates: rows already in the vessel take them now, and the network is generated again because
+                // the edge was filtered with the old rates
+                self.last_rate_generation = rate_gen;
+                self.apply_stored_rates();
+                self.last_network_env = (i32::MIN, i32::MIN);
+            }
             if cur_smiles_species != self.last_smiles_species || env != self.last_network_env {
                 self.last_smiles_species = cur_smiles_species;
                 self.last_network_env = env;

@@ -2818,6 +2818,5183 @@
    "source": "CRC Handbook solubility table (solubility limit)"
   },
   {
+   "id": "(NH4)2(UO2)2(PO4)2_tbl",
+   "mineral": "Uramphite",
+   "formula": "(NH4)2(UO2)2(PO4)2",
+   "solid_species": "(NH4)2(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "NH4+": 2.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -51.749,
+   "delta_h_kj": 40.58,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Uramphite)"
+  },
+  {
+   "id": "(NH4)2CrO4_tbl",
+   "mineral": "(NH4)2CrO4",
+   "formula": "(NH4)2CrO4",
+   "solid_species": "(NH4)2CrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "NH4+": 2.0
+   },
+   "log_ksp_298": 0.4046,
+   "delta_h_kj": 9.16,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase (NH4)2CrO4)"
+  },
+  {
+   "id": "(NH4)2SeO4_tbl",
+   "mineral": "(NH4)2SeO4",
+   "formula": "(NH4)2SeO4",
+   "solid_species": "(NH4)2SeO4(s)",
+   "dissolved_products": {
+    "NH4+": 2.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": 0.45,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase (NH4)2SeO4)"
+  },
+  {
+   "id": "(UO2)3(PO4)2_tbl",
+   "mineral": "(UO2)3(PO4)2",
+   "formula": "(UO2)3(PO4)2",
+   "solid_species": "(UO2)3(PO4)2(s)",
+   "dissolved_products": {
+    "PO4-3": 2.0,
+    "UO2+2": 3.0
+   },
+   "log_ksp_298": -49.4,
+   "delta_h_kj": 397.06,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase (UO2)3(PO4)2)"
+  },
+  {
+   "id": "(VO)3(PO4)2_tbl",
+   "mineral": "(VO)3(PO4)2",
+   "formula": "(VO)3(PO4)2",
+   "solid_species": "(VO)3(PO4)2(s)",
+   "dissolved_products": {
+    "PO4-3": 2.0,
+    "VO+2": 3.0
+   },
+   "log_ksp_298": -25.1,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase (VO)3(PO4)2)"
+  },
+  {
+   "id": "Ag2MoO4_tbl",
+   "mineral": "Ag2MoO4",
+   "formula": "Ag2MoO4",
+   "solid_species": "Ag2MoO4(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -11.55,
+   "delta_h_kj": 52.7,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Ag2MoO4)"
+  },
+  {
+   "id": "Ag2SeO4_tbl",
+   "mineral": "Ag2SeO4",
+   "formula": "Ag2SeO4",
+   "solid_species": "Ag2SeO4(s)",
+   "dissolved_products": {
+    "Ag+": 2.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -8.91,
+   "delta_h_kj": -43.5,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Ag2SeO4)"
+  },
+  {
+   "id": "AgFe3(SO4)2(OH)6_tbl",
+   "mineral": "Jarosite(Ag)",
+   "formula": "AgFe3(SO4)2(OH)6",
+   "solid_species": "AgFe3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Ag+": 1.0,
+    "Fe+3": 3.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -95.589,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Jarosite(Ag))"
+  },
+  {
+   "id": "Al2(MoO4)3_tbl",
+   "mineral": "Al2(MoO4)3",
+   "formula": "Al2(MoO4)3",
+   "solid_species": "Al2(MoO4)3(s)",
+   "dissolved_products": {
+    "Al+3": 2.0,
+    "MoO4-2": 3.0
+   },
+   "log_ksp_298": 2.3675,
+   "delta_h_kj": -260.8,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Al2(MoO4)3)"
+  },
+  {
+   "id": "Al4(OH)10SO4_tbl",
+   "mineral": "Basaluminite",
+   "formula": "Al4(OH)10SO4",
+   "solid_species": "Al4(OH)10SO4(s)",
+   "dissolved_products": {
+    "Al+3": 4.0,
+    "OH-": 10.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -117.3,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Basaluminite)"
+  },
+  {
+   "id": "AlF3_tbl",
+   "mineral": "AlF3",
+   "formula": "AlF3",
+   "solid_species": "AlF3(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "F-": 3.0
+   },
+   "log_ksp_298": -17.2089,
+   "delta_h_kj": -34.04,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase AlF3)"
+  },
+  {
+   "id": "AlOHSO4_tbl",
+   "mineral": "Jurbanite",
+   "formula": "AlOHSO4",
+   "solid_species": "AlOHSO4(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "OH-": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -17.23,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Jurbanite)"
+  },
+  {
+   "id": "Ba(NO3)2_tbl",
+   "mineral": "Nitrobarite",
+   "formula": "Ba(NO3)2",
+   "solid_species": "Ba(NO3)2(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "NO3-": 2.0
+   },
+   "log_ksp_298": -2.4523,
+   "delta_h_kj": 40.82,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Nitrobarite)"
+  },
+  {
+   "id": "Ba(UO2)2(PO4)2_tbl",
+   "mineral": "Uranocircite",
+   "formula": "Ba(UO2)2(PO4)2",
+   "solid_species": "Ba(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -44.631,
+   "delta_h_kj": -42.26,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Uranocircite)"
+  },
+  {
+   "id": "Ba3(AsO4)2_tbl",
+   "mineral": "Ba3(AsO4)2",
+   "formula": "Ba3(AsO4)2",
+   "solid_species": "Ba3(AsO4)2(s)",
+   "dissolved_products": {
+    "AsO4-3": 2.0,
+    "Ba+2": 3.0
+   },
+   "log_ksp_298": -50.11,
+   "delta_h_kj": 39.75,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Ba3(AsO4)2)"
+  },
+  {
+   "id": "BaHPO4_tbl",
+   "mineral": "BaHPO4",
+   "formula": "BaHPO4",
+   "solid_species": "BaHPO4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "HPO4-2": 1.0
+   },
+   "log_ksp_298": -7.4,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase BaHPO4)"
+  },
+  {
+   "id": "BaMoO4_tbl",
+   "mineral": "BaMoO4",
+   "formula": "BaMoO4",
+   "solid_species": "BaMoO4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -6.9603,
+   "delta_h_kj": 10.96,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase BaMoO4)"
+  },
+  {
+   "id": "BaSeO3_tbl",
+   "mineral": "BaSeO3",
+   "formula": "BaSeO3",
+   "solid_species": "BaSeO3(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -6.39,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase BaSeO3)"
+  },
+  {
+   "id": "BaSeO4_tbl",
+   "mineral": "BaSeO4",
+   "formula": "BaSeO4",
+   "solid_species": "BaSeO4(s)",
+   "dissolved_products": {
+    "Ba+2": 1.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -7.46,
+   "delta_h_kj": 22.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase BaSeO4)"
+  },
+  {
+   "id": "Be(OH)2_tbl",
+   "mineral": "Be(OH)2(beta)",
+   "formula": "Be(OH)2",
+   "solid_species": "Be(OH)2(s)",
+   "dissolved_products": {
+    "Be+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -21.5,
+   "delta_h_kj": 111.62,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Be(OH)2(beta))"
+  },
+  {
+   "id": "BeMoO4_tbl",
+   "mineral": "BeMoO4",
+   "formula": "BeMoO4",
+   "solid_species": "BeMoO4(s)",
+   "dissolved_products": {
+    "Be+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -1.7817,
+   "delta_h_kj": -56.4,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase BeMoO4)"
+  },
+  {
+   "id": "Ca(UO2)2(PO4)2_tbl",
+   "mineral": "Autunite",
+   "formula": "Ca(UO2)2(PO4)2",
+   "solid_species": "Ca(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -43.927,
+   "delta_h_kj": -60.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Autunite)"
+  },
+  {
+   "id": "Ca(UO2)2(VO4)2_tbl",
+   "mineral": "Tyuyamunite",
+   "formula": "Ca(UO2)2(VO4)2",
+   "solid_species": "Ca(UO2)2(VO4)2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "UO2+2": 2.0,
+    "VO4-3": 2.0
+   },
+   "log_ksp_298": -53.3757,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tyuyamunite)"
+  },
+  {
+   "id": "Ca3Al2(OH)12_tbl",
+   "mineral": "C3AH6",
+   "formula": "Ca3Al2(OH)12",
+   "solid_species": "Ca3Al2(OH)12(s)",
+   "dissolved_products": {
+    "Al+3": 2.0,
+    "Ca+2": 3.0,
+    "OH-": 12.0
+   },
+   "log_ksp_298": -87.692,
+   "delta_h_kj": 85.52,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase C3AH6)"
+  },
+  {
+   "id": "Ca3Al2H12O12_tbl",
+   "mineral": "Katoite",
+   "formula": "Ca3Al2H12O12",
+   "solid_species": "Ca3Al2H12O12(s)",
+   "dissolved_products": {
+    "Al+3": 2.0,
+    "Ca+2": 3.0,
+    "OH-": 12.0
+   },
+   "log_ksp_298": -88.9975,
+   "delta_h_kj": 669.78,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Katoite)"
+  },
+  {
+   "id": "Ca3Fe2(OH)12_tbl",
+   "mineral": "C3FH6",
+   "formula": "Ca3Fe2(OH)12",
+   "solid_species": "Ca3Fe2(OH)12(s)",
+   "dissolved_products": {
+    "Ca+2": 3.0,
+    "Fe+3": 2.0,
+    "OH-": 12.0
+   },
+   "log_ksp_298": -95.642,
+   "delta_h_kj": 160.41,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase C3FH6)"
+  },
+  {
+   "id": "Ca3V2O8_tbl",
+   "mineral": "Ca3V2O8",
+   "formula": "Ca3V2O8",
+   "solid_species": "Ca3V2O8(s)",
+   "dissolved_products": {
+    "Ca+2": 3.0,
+    "VO4-3": 2.0
+   },
+   "log_ksp_298": -18.3234,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ca3V2O8)"
+  },
+  {
+   "id": "Ca5(PO4)3F_tbl",
+   "mineral": "Fluorapatite",
+   "formula": "Ca5(PO4)3F",
+   "solid_species": "Ca5(PO4)3F(s)",
+   "dissolved_products": {
+    "Ca+2": 5.0,
+    "F-": 1.0,
+    "PO4-3": 3.0
+   },
+   "log_ksp_298": -54.638,
+   "delta_h_kj": -39.66,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Fluorapatite)"
+  },
+  {
+   "id": "Ca5(PO4)3OH_tbl",
+   "mineral": "Hydroxyapatite",
+   "formula": "Ca5(PO4)3OH",
+   "solid_species": "Ca5(PO4)3OH(s)",
+   "dissolved_products": {
+    "Ca+2": 5.0,
+    "OH-": 1.0,
+    "PO4-3": 3.0
+   },
+   "log_ksp_298": -54.459,
+   "delta_h_kj": -51.06,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Hydroxyapatite)"
+  },
+  {
+   "id": "CaCrO4_tbl",
+   "mineral": "CaCrO4",
+   "formula": "CaCrO4",
+   "solid_species": "CaCrO4(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "CrO4-2": 1.0
+   },
+   "log_ksp_298": -2.2657,
+   "delta_h_kj": -26.95,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CaCrO4)"
+  },
+  {
+   "id": "CaMg(CO3)2_tbl",
+   "mineral": "Dolomite",
+   "formula": "CaMg(CO3)2",
+   "solid_species": "CaMg(CO3)2(s)",
+   "dissolved_products": {
+    "CO3-2": 2.0,
+    "Ca+2": 1.0,
+    "Mg+2": 1.0
+   },
+   "log_ksp_298": -17.09,
+   "delta_h_kj": -39.48,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 2.865,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Dolomite)"
+  },
+  {
+   "id": "CaMg3(CO3)4_tbl",
+   "mineral": "Huntite",
+   "formula": "CaMg3(CO3)4",
+   "solid_species": "CaMg3(CO3)4(s)",
+   "dissolved_products": {
+    "CO3-2": 4.0,
+    "Ca+2": 1.0,
+    "Mg+2": 3.0
+   },
+   "log_ksp_298": -29.968,
+   "delta_h_kj": -107.78,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 2.873,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Huntite)"
+  },
+  {
+   "id": "CaMoO4_tbl",
+   "mineral": "CaMoO4",
+   "formula": "CaMoO4",
+   "solid_species": "CaMoO4(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -7.95,
+   "delta_h_kj": -2.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CaMoO4)"
+  },
+  {
+   "id": "CaOHCl_tbl",
+   "mineral": "Hydroxichloride(Ca)",
+   "formula": "CaOHCl",
+   "solid_species": "CaOHCl(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "Cl-": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": -0.807,
+   "delta_h_kj": -26.27,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Hydroxichloride(Ca))"
+  },
+  {
+   "id": "CaSeO3_tbl",
+   "mineral": "CaSeO3",
+   "formula": "CaSeO3",
+   "solid_species": "CaSeO3(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -5.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CaSeO3)"
+  },
+  {
+   "id": "CaSeO4_tbl",
+   "mineral": "CaSeO4",
+   "formula": "CaSeO4",
+   "solid_species": "CaSeO4(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -3.09,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CaSeO4)"
+  },
+  {
+   "id": "Cd(IO3)2_tbl",
+   "mineral": "Cd(IO3)2",
+   "formula": "Cd(IO3)2",
+   "solid_species": "Cd(IO3)2(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "IO3-": 2.0
+   },
+   "log_ksp_298": -7.5848,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd(IO3)2)"
+  },
+  {
+   "id": "Cd(OH)Cl_tbl",
+   "mineral": "Cd(OH)Cl",
+   "formula": "Cd(OH)Cl",
+   "solid_species": "Cd(OH)Cl(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "Cl-": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": -10.4516,
+   "delta_h_kj": 25.43,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd(OH)Cl)"
+  },
+  {
+   "id": "Cd3(OH)2(SO4)2_tbl",
+   "mineral": "Cd3(OH)2(SO4)2",
+   "formula": "Cd3(OH)2(SO4)2",
+   "solid_species": "Cd3(OH)2(SO4)2(s)",
+   "dissolved_products": {
+    "Cd+2": 3.0,
+    "OH-": 2.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -21.29,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cd3(OH)2(SO4)2)"
+  },
+  {
+   "id": "Cd3(OH)4SO4_tbl",
+   "mineral": "Cd3(OH)4SO4",
+   "formula": "Cd3(OH)4SO4",
+   "solid_species": "Cd3(OH)4SO4(s)",
+   "dissolved_products": {
+    "Cd+2": 3.0,
+    "OH-": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -33.44,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cd3(OH)4SO4)"
+  },
+  {
+   "id": "Cd3(PO4)2_tbl",
+   "mineral": "Cd3(PO4)2",
+   "formula": "Cd3(PO4)2",
+   "solid_species": "Cd3(PO4)2(s)",
+   "dissolved_products": {
+    "Cd+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -32.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cd3(PO4)2)"
+  },
+  {
+   "id": "Cd3(SO4)(OH)4_tbl",
+   "mineral": "Cd3(SO4)(OH)4",
+   "formula": "Cd3(SO4)(OH)4",
+   "solid_species": "Cd3(SO4)(OH)4(s)",
+   "dissolved_products": {
+    "Cd+2": 3.0,
+    "OH-": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -33.4069,
+   "delta_h_kj": 223.26,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd3(SO4)(OH)4)"
+  },
+  {
+   "id": "Cd3(SO4)2(OH)2_tbl",
+   "mineral": "Cd3(SO4)2(OH)2",
+   "formula": "Cd3(SO4)2(OH)2",
+   "solid_species": "Cd3(SO4)2(OH)2(s)",
+   "dissolved_products": {
+    "Cd+2": 3.0,
+    "OH-": 2.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -21.2722,
+   "delta_h_kj": 111.63,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Cd3(SO4)2(OH)2)"
+  },
+  {
+   "id": "Cd4(OH)6SO4_tbl",
+   "mineral": "Cd4(OH)6SO4",
+   "formula": "Cd4(OH)6SO4",
+   "solid_species": "Cd4(OH)6SO4(s)",
+   "dissolved_products": {
+    "Cd+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -55.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cd4(OH)6SO4)"
+  },
+  {
+   "id": "CdBr2_tbl",
+   "mineral": "CdBr2",
+   "formula": "CdBr2",
+   "solid_species": "CdBr2(s)",
+   "dissolved_products": {
+    "Br-": 2.0,
+    "Cd+2": 1.0
+   },
+   "log_ksp_298": -1.847,
+   "delta_h_kj": -2.68,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdBr2)"
+  },
+  {
+   "id": "CdCl2_tbl",
+   "mineral": "CdCl2",
+   "formula": "CdCl2",
+   "solid_species": "CdCl2(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "Cl-": 2.0
+   },
+   "log_ksp_298": -0.68,
+   "delta_h_kj": -18.7,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CdCl2)"
+  },
+  {
+   "id": "CdF2_tbl",
+   "mineral": "CdF2",
+   "formula": "CdF2",
+   "solid_species": "CdF2(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -2.98,
+   "delta_h_kj": -40.67,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CdF2)"
+  },
+  {
+   "id": "CdI2_tbl",
+   "mineral": "CdI2",
+   "formula": "CdI2",
+   "solid_species": "CdI2(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "I-": 2.0
+   },
+   "log_ksp_298": -3.61,
+   "delta_h_kj": 17.07,
+   "solid_color": [
+    0.8963,
+    0.7913,
+    0.2961
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CdI2)"
+  },
+  {
+   "id": "CdMoO4_tbl",
+   "mineral": "CdMoO4",
+   "formula": "CdMoO4",
+   "solid_species": "CdMoO4(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -14.1497,
+   "delta_h_kj": 19.48,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CdMoO4)"
+  },
+  {
+   "id": "CdOHCl_tbl",
+   "mineral": "CdOHCl",
+   "formula": "CdOHCl",
+   "solid_species": "CdOHCl(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "Cl-": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": -10.48,
+   "delta_h_kj": 24.92,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CdOHCl)"
+  },
+  {
+   "id": "CdSO4_tbl",
+   "mineral": "CdSO4",
+   "formula": "CdSO4",
+   "solid_species": "CdSO4(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -0.1,
+   "delta_h_kj": -61.67,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 4.691,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CdSO4)"
+  },
+  {
+   "id": "CdSeO3_tbl",
+   "mineral": "CdSeO3",
+   "formula": "CdSeO3",
+   "solid_species": "CdSeO3(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -8.8086,
+   "delta_h_kj": -9.92,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdSeO3)"
+  },
+  {
+   "id": "CdSeO4_tbl",
+   "mineral": "CdSeO4",
+   "formula": "CdSeO4",
+   "solid_species": "CdSeO4(s)",
+   "dissolved_products": {
+    "Cd+2": 1.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -2.2132,
+   "delta_h_kj": -41.98,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CdSeO4)"
+  },
+  {
+   "id": "Ce(OH)3_tbl",
+   "mineral": "Ce(OH)3",
+   "formula": "Ce(OH)3",
+   "solid_species": "Ce(OH)3(s)",
+   "dissolved_products": {
+    "Ce+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -22.1001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 4.609,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ce(OH)3)"
+  },
+  {
+   "id": "Co(OH)3_tbl",
+   "mineral": "Co(OH)3",
+   "formula": "Co(OH)3",
+   "solid_species": "Co(OH)3(s)",
+   "dissolved_products": {
+    "Co+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -44.3,
+   "delta_h_kj": 75.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Co(OH)3)"
+  },
+  {
+   "id": "Co3(PO4)2_tbl",
+   "mineral": "Co3(PO4)2",
+   "formula": "Co3(PO4)2",
+   "solid_species": "Co3(PO4)2(s)",
+   "dissolved_products": {
+    "Co+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -34.6877,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Co3(PO4)2)"
+  },
+  {
+   "id": "CoF2_tbl",
+   "mineral": "CoF2",
+   "formula": "CoF2",
+   "solid_species": "CoF2(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -1.5969,
+   "delta_h_kj": -57.37,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CoF2)"
+  },
+  {
+   "id": "CoF3_tbl",
+   "mineral": "CoF3",
+   "formula": "CoF3",
+   "solid_species": "CoF3(s)",
+   "dissolved_products": {
+    "Co+3": 1.0,
+    "F-": 3.0
+   },
+   "log_ksp_298": -1.4581,
+   "delta_h_kj": -123.69,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CoF3)"
+  },
+  {
+   "id": "CoHPO4_tbl",
+   "mineral": "CoHPO4",
+   "formula": "CoHPO4",
+   "solid_species": "CoHPO4(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "HPO4-2": 1.0
+   },
+   "log_ksp_298": -6.7223,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoHPO4)"
+  },
+  {
+   "id": "CoMoO4_tbl",
+   "mineral": "CoMoO4",
+   "formula": "CoMoO4",
+   "solid_species": "CoMoO4(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -7.7609,
+   "delta_h_kj": -23.4,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CoMoO4)"
+  },
+  {
+   "id": "CoSO4_tbl",
+   "mineral": "CoSO4",
+   "formula": "CoSO4",
+   "solid_species": "CoSO4(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 2.8024,
+   "delta_h_kj": -79.28,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.43,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CoSO4)"
+  },
+  {
+   "id": "CoSO4(Co(OH)2)3_tbl",
+   "mineral": "CoSO4.3Co(OH)2",
+   "formula": "CoSO4(Co(OH)2)3",
+   "solid_species": "CoSO4(Co(OH)2)3(s)",
+   "dissolved_products": {
+    "Co+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -50.7513,
+   "delta_h_kj": -44.52,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoSO4.3Co(OH)2)"
+  },
+  {
+   "id": "CoSeO3_tbl",
+   "mineral": "CoSeO3",
+   "formula": "CoSeO3",
+   "solid_species": "CoSeO3(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -7.08,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoSeO3)"
+  },
+  {
+   "id": "CoWO4_tbl",
+   "mineral": "CoWO4",
+   "formula": "CoWO4",
+   "solid_species": "CoWO4(s)",
+   "dissolved_products": {
+    "Co+2": 1.0,
+    "WO4-2": 1.0
+   },
+   "log_ksp_298": -12.2779,
+   "delta_h_kj": 13.62,
+   "solid_color": [
+    0.7454,
+    0.2961,
+    0.5395
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CoWO4)"
+  },
+  {
+   "id": "CrF3_tbl",
+   "mineral": "CrF3",
+   "formula": "CrF3",
+   "solid_species": "CrF3(s)",
+   "dissolved_products": {
+    "Cr+3": 1.0,
+    "F-": 3.0
+   },
+   "log_ksp_298": -8.5713,
+   "delta_h_kj": -85.53,
+   "solid_color": [
+    0.2462,
+    0.5395,
+    0.2961
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CrF3)"
+  },
+  {
+   "id": "Cu(OH)2_tbl",
+   "mineral": "Cu(OH)2",
+   "formula": "Cu(OH)2",
+   "solid_species": "Cu(OH)2(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -19.36,
+   "delta_h_kj": 48.01,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cu(OH)2)"
+  },
+  {
+   "id": "Cu(UO2)2(PO4)2_tbl",
+   "mineral": "Torbernite",
+   "formula": "Cu(UO2)2(PO4)2",
+   "solid_species": "Cu(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -45.279,
+   "delta_h_kj": -66.53,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Torbernite)"
+  },
+  {
+   "id": "Cu2(OH)2CO3_tbl",
+   "mineral": "Malachite",
+   "formula": "Cu2(OH)2CO3",
+   "solid_species": "Cu2(OH)2CO3(s)",
+   "dissolved_products": {
+    "CO3-2": 1.0,
+    "Cu+2": 2.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -33.179,
+   "delta_h_kj": 44.04,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Malachite)"
+  },
+  {
+   "id": "Cu2(OH)3Br_tbl",
+   "mineral": "Cu2(OH)3Br",
+   "formula": "Cu2(OH)3Br",
+   "solid_species": "Cu2(OH)3Br(s)",
+   "dissolved_products": {
+    "Br-": 1.0,
+    "Cu+2": 2.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -34.0825,
+   "delta_h_kj": 74.0,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Cu2(OH)3Br)"
+  },
+  {
+   "id": "Cu2(OH)3Cl_tbl",
+   "mineral": "Atacamite",
+   "formula": "Cu2(OH)3Cl",
+   "solid_species": "Cu2(OH)3Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "Cu+2": 2.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -34.66,
+   "delta_h_kj": 89.52,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Atacamite)"
+  },
+  {
+   "id": "Cu2(OH)3NO3_tbl",
+   "mineral": "Cu2(OH)3NO3",
+   "formula": "Cu2(OH)3NO3",
+   "solid_species": "Cu2(OH)3NO3(s)",
+   "dissolved_products": {
+    "Cu+2": 2.0,
+    "NO3-": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -32.76,
+   "delta_h_kj": 95.13,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cu2(OH)3NO3)"
+  },
+  {
+   "id": "Cu2SO4_tbl",
+   "mineral": "Cu2SO4",
+   "formula": "Cu2SO4",
+   "solid_species": "Cu2SO4(s)",
+   "dissolved_products": {
+    "Cu+": 2.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -1.95,
+   "delta_h_kj": -19.08,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Cu2SO4)"
+  },
+  {
+   "id": "Cu3(OH)2(CO3)2_tbl",
+   "mineral": "Azurite",
+   "formula": "Cu3(OH)2(CO3)2",
+   "solid_species": "Cu3(OH)2(CO3)2(s)",
+   "dissolved_products": {
+    "CO3-2": 2.0,
+    "Cu+2": 3.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -44.908,
+   "delta_h_kj": 12.45,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 3.787,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Azurite)"
+  },
+  {
+   "id": "Cu3(OH)4SO4_tbl",
+   "mineral": "Antlerite",
+   "formula": "Cu3(OH)4SO4",
+   "solid_species": "Cu3(OH)4SO4(s)",
+   "dissolved_products": {
+    "Cu+2": 3.0,
+    "OH-": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -47.71,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Antlerite)"
+  },
+  {
+   "id": "Cu3(SO4)(OH)4_tbl",
+   "mineral": "Antlerite",
+   "formula": "Cu3(SO4)(OH)4",
+   "solid_species": "Cu3(SO4)(OH)4(s)",
+   "dissolved_products": {
+    "Cu+2": 3.0,
+    "OH-": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -47.2502,
+   "delta_h_kj": 223.26,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Antlerite)"
+  },
+  {
+   "id": "Cu3SO4(OH)4_tbl",
+   "mineral": "Antlerite",
+   "formula": "Cu3SO4(OH)4",
+   "solid_species": "Cu3SO4(OH)4(s)",
+   "dissolved_products": {
+    "Cu+2": 3.0,
+    "OH-": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -47.096,
+   "delta_h_kj": 95.1,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Antlerite)"
+  },
+  {
+   "id": "Cu4(NO3)2(OH)6_tbl",
+   "mineral": "Cu4(NO3)2(OH)6",
+   "formula": "Cu4(NO3)2(OH)6",
+   "solid_species": "Cu4(NO3)2(OH)6(s)",
+   "dissolved_products": {
+    "Cu+2": 4.0,
+    "NO3-": 2.0,
+    "OH-": 6.0
+   },
+   "log_ksp_298": -69.506,
+   "delta_h_kj": 230.09,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Cu4(NO3)2(OH)6)"
+  },
+  {
+   "id": "Cu4(OH)6SO4_tbl",
+   "mineral": "Brochantite",
+   "formula": "Cu4(OH)6SO4",
+   "solid_species": "Cu4(OH)6SO4(s)",
+   "dissolved_products": {
+    "Cu+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -68.66,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Brochantite)"
+  },
+  {
+   "id": "Cu4(SO4)(OH)6_tbl",
+   "mineral": "Brochantite",
+   "formula": "Cu4(SO4)(OH)6",
+   "solid_species": "Cu4(SO4)(OH)6(s)",
+   "dissolved_products": {
+    "Cu+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -68.5343,
+   "delta_h_kj": 171.73,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Brochantite)"
+  },
+  {
+   "id": "Cu4Cl2(OH)6_tbl",
+   "mineral": "Atacamite",
+   "formula": "Cu4Cl2(OH)6",
+   "solid_species": "Cu4Cl2(OH)6(s)",
+   "dissolved_products": {
+    "Cl-": 2.0,
+    "Cu+2": 4.0,
+    "OH-": 6.0
+   },
+   "log_ksp_298": -69.687,
+   "delta_h_kj": 202.89,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Atacamite)"
+  },
+  {
+   "id": "Cu4SO4(OH)6_tbl",
+   "mineral": "Brochantite",
+   "formula": "Cu4SO4(OH)6",
+   "solid_species": "Cu4SO4(OH)6(s)",
+   "dissolved_products": {
+    "Cu+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -68.469,
+   "delta_h_kj": 159.81,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Brochantite)"
+  },
+  {
+   "id": "CuCrO4_tbl",
+   "mineral": "CuCrO4",
+   "formula": "CuCrO4",
+   "solid_species": "CuCrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "Cu+2": 1.0
+   },
+   "log_ksp_298": -5.44,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CuCrO4)"
+  },
+  {
+   "id": "CuF_tbl",
+   "mineral": "CuF",
+   "formula": "CuF",
+   "solid_species": "CuF(s)",
+   "dissolved_products": {
+    "Cu+": 1.0,
+    "F-": 1.0
+   },
+   "log_ksp_298": -4.9056,
+   "delta_h_kj": 16.65,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CuF)"
+  },
+  {
+   "id": "CuF2_tbl",
+   "mineral": "CuF2",
+   "formula": "CuF2",
+   "solid_species": "CuF2(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "F-": 2.0
+   },
+   "log_ksp_298": -0.62,
+   "delta_h_kj": -55.73,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase CuF2)"
+  },
+  {
+   "id": "CuMoO4_tbl",
+   "mineral": "CuMoO4",
+   "formula": "CuMoO4",
+   "solid_species": "CuMoO4(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -13.0762,
+   "delta_h_kj": 12.2,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase CuMoO4)"
+  },
+  {
+   "id": "CuSeO3_tbl",
+   "mineral": "CuSeO3",
+   "formula": "CuSeO3",
+   "solid_species": "CuSeO3(s)",
+   "dissolved_products": {
+    "Cu+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -7.6767,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.1022,
+    0.3419,
+    0.7913
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase CuSeO3)"
+  },
+  {
+   "id": "Dy(OH)3_tbl",
+   "mineral": "Dy(OH)3",
+   "formula": "Dy(OH)3",
+   "solid_species": "Dy(OH)3(s)",
+   "dissolved_products": {
+    "Dy+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -26.1001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.622,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Dy(OH)3)"
+  },
+  {
+   "id": "Er(OH)3_tbl",
+   "mineral": "Er(OH)3",
+   "formula": "Er(OH)3",
+   "solid_species": "Er(OH)3(s)",
+   "dissolved_products": {
+    "Er+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -27.0001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 6.194,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Er(OH)3)"
+  },
+  {
+   "id": "Eu(OH)2Cl_tbl",
+   "mineral": "Eu(OH)2Cl",
+   "formula": "Eu(OH)2Cl",
+   "solid_species": "Eu(OH)2Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "Eu+3": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -19.1928,
+   "delta_h_kj": 111.63,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Eu(OH)2Cl)"
+  },
+  {
+   "id": "Eu(OH)3_tbl",
+   "mineral": "Eu(OH)3",
+   "formula": "Eu(OH)3",
+   "solid_species": "Eu(OH)3(s)",
+   "dissolved_products": {
+    "Eu+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -26.6371,
+   "delta_h_kj": 40.55,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.369,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Eu(OH)3)"
+  },
+  {
+   "id": "EuSO4_tbl",
+   "mineral": "EuSO4",
+   "formula": "EuSO4",
+   "solid_species": "EuSO4(s)",
+   "dissolved_products": {
+    "Eu+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -8.8449,
+   "delta_h_kj": 33.87,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase EuSO4)"
+  },
+  {
+   "id": "Fe(UO2)2(PO4)2_tbl",
+   "mineral": "Bassetite",
+   "formula": "Fe(UO2)2(PO4)2",
+   "solid_species": "Fe(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -44.485,
+   "delta_h_kj": -83.26,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Bassetite)"
+  },
+  {
+   "id": "Fe2(SO4)3_tbl",
+   "mineral": "Fe2(SO4)3",
+   "formula": "Fe2(SO4)3",
+   "solid_species": "Fe2(SO4)3(s)",
+   "dissolved_products": {
+    "Fe+3": 2.0,
+    "SO4-2": 3.0
+   },
+   "log_ksp_298": -3.7343,
+   "delta_h_kj": -242.03,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Fe2(SO4)3)"
+  },
+  {
+   "id": "Fe2(SeO3)3_tbl",
+   "mineral": "Fe2(SeO3)3",
+   "formula": "Fe2(SeO3)3",
+   "solid_species": "Fe2(SeO3)3(s)",
+   "dissolved_products": {
+    "Fe+3": 2.0,
+    "SeO3-2": 3.0
+   },
+   "log_ksp_298": -35.43,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Fe2(SeO3)3)"
+  },
+  {
+   "id": "Fe3(OH)8_tbl",
+   "mineral": "Fe3(OH)8",
+   "formula": "Fe3(OH)8",
+   "solid_species": "Fe3(OH)8(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "Fe+3": 2.0,
+    "OH-": 8.0
+   },
+   "log_ksp_298": -91.778,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Fe3(OH)8)"
+  },
+  {
+   "id": "Fe4(OH)8Cl_tbl",
+   "mineral": "Greenrust(Cl)",
+   "formula": "Fe4(OH)8Cl",
+   "solid_species": "Fe4(OH)8Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "Fe+2": 3.0,
+    "Fe+3": 1.0,
+    "OH-": 8.0
+   },
+   "log_ksp_298": -79.692,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Greenrust(Cl))"
+  },
+  {
+   "id": "FeF2_tbl",
+   "mineral": "FeF2",
+   "formula": "FeF2",
+   "solid_species": "FeF2(s)",
+   "dissolved_products": {
+    "F-": 2.0,
+    "Fe+2": 1.0
+   },
+   "log_ksp_298": -2.3817,
+   "delta_h_kj": -51.69,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeF2)"
+  },
+  {
+   "id": "FeF3_tbl",
+   "mineral": "FeF3",
+   "formula": "FeF3",
+   "solid_species": "FeF3(s)",
+   "dissolved_products": {
+    "F-": 3.0,
+    "Fe+3": 1.0
+   },
+   "log_ksp_298": -19.2388,
+   "delta_h_kj": -13.81,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeF3)"
+  },
+  {
+   "id": "FeMoO4_tbl",
+   "mineral": "FeMoO4",
+   "formula": "FeMoO4",
+   "solid_species": "FeMoO4(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -10.091,
+   "delta_h_kj": -11.1,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase FeMoO4)"
+  },
+  {
+   "id": "FeSO4_tbl",
+   "mineral": "FeSO4",
+   "formula": "FeSO4",
+   "solid_species": "FeSO4(s)",
+   "dissolved_products": {
+    "Fe+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 2.6565,
+   "delta_h_kj": -73.09,
+   "solid_color": [
+    0.4397,
+    0.5906,
+    0.3916
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase FeSO4)"
+  },
+  {
+   "id": "Gd(OH)3_tbl",
+   "mineral": "Gd(OH)3",
+   "formula": "Gd(OH)3",
+   "solid_species": "Gd(OH)3(s)",
+   "dissolved_products": {
+    "Gd+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -26.4001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.575,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Gd(OH)3)"
+  },
+  {
+   "id": "H2(UO2)2(PO4)2_tbl",
+   "mineral": "Autunite-H",
+   "formula": "H2(UO2)2(PO4)2",
+   "solid_species": "H2(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "HPO4-2": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -25.3372,
+   "delta_h_kj": -31.86,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Autunite-H)"
+  },
+  {
+   "id": "HfF4_tbl",
+   "mineral": "HfF4",
+   "formula": "HfF4",
+   "solid_species": "HfF4(s)",
+   "dissolved_products": {
+    "F-": 4.0,
+    "Hf+4": 1.0
+   },
+   "log_ksp_298": -19.2307,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase HfF4)"
+  },
+  {
+   "id": "Hg2(OH)2_tbl",
+   "mineral": "Hg2(OH)2",
+   "formula": "Hg2(OH)2",
+   "solid_species": "Hg2(OH)2(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "OH-": 2.0
+   },
+   "log_ksp_298": -22.7337,
+   "delta_h_kj": 111.62,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Hg2(OH)2)"
+  },
+  {
+   "id": "Hg2CO3_tbl",
+   "mineral": "Hg2CO3",
+   "formula": "Hg2CO3",
+   "solid_species": "Hg2CO3(s)",
+   "dissolved_products": {
+    "CO3-2": 1.0,
+    "Hg2+2": 1.0
+   },
+   "log_ksp_298": -16.05,
+   "delta_h_kj": 45.14,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Hg2CO3)"
+  },
+  {
+   "id": "Hg2CrO4_tbl",
+   "mineral": "Hg2CrO4",
+   "formula": "Hg2CrO4",
+   "solid_species": "Hg2CrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "Hg2+2": 1.0
+   },
+   "log_ksp_298": -8.7,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Hg2CrO4)"
+  },
+  {
+   "id": "Hg2F2_tbl",
+   "mineral": "Hg2F2",
+   "formula": "Hg2F2",
+   "solid_species": "Hg2F2(s)",
+   "dissolved_products": {
+    "F-": 2.0,
+    "Hg2+2": 1.0
+   },
+   "log_ksp_298": -10.3623,
+   "delta_h_kj": -18.49,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Hg2F2)"
+  },
+  {
+   "id": "Hg2SeO3_tbl",
+   "mineral": "Hg2SeO3",
+   "formula": "Hg2SeO3",
+   "solid_species": "Hg2SeO3(s)",
+   "dissolved_products": {
+    "Hg2+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -14.2132,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Hg2SeO3)"
+  },
+  {
+   "id": "HgSeO3_tbl",
+   "mineral": "HgSeO3",
+   "formula": "HgSeO3",
+   "solid_species": "HgSeO3(s)",
+   "dissolved_products": {
+    "Hg+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -13.8957,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase HgSeO3)"
+  },
+  {
+   "id": "Ho(OH)3_tbl",
+   "mineral": "Ho(OH)3",
+   "formula": "Ho(OH)3",
+   "solid_species": "Ho(OH)3(s)",
+   "dissolved_products": {
+    "Ho+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -26.6001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 6.025,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ho(OH)3)"
+  },
+  {
+   "id": "K2(SO4)_tbl",
+   "mineral": "Arcanite",
+   "formula": "K2(SO4)",
+   "solid_species": "K2(SO4)(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -1.849,
+   "delta_h_kj": 24.08,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Arcanite)"
+  },
+  {
+   "id": "K2(UO2)2(PO4)2_tbl",
+   "mineral": "K-Autunite",
+   "formula": "K2(UO2)2(PO4)2",
+   "solid_species": "K2(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -48.244,
+   "delta_h_kj": 24.52,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase K-Autunite)"
+  },
+  {
+   "id": "K2(UO2)2(VO4)2_tbl",
+   "mineral": "Carnotite",
+   "formula": "K2(UO2)2(VO4)2",
+   "solid_species": "K2(UO2)2(VO4)2(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "UO2+2": 2.0,
+    "VO4-3": 2.0
+   },
+   "log_ksp_298": -56.3811,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Carnotite)"
+  },
+  {
+   "id": "K2CrO4_tbl",
+   "mineral": "K2CrO4",
+   "formula": "K2CrO4",
+   "solid_species": "K2CrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "K+": 2.0
+   },
+   "log_ksp_298": -0.5134,
+   "delta_h_kj": 18.27,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase K2CrO4)"
+  },
+  {
+   "id": "K2SeO4_tbl",
+   "mineral": "K2SeO4",
+   "formula": "K2SeO4",
+   "solid_species": "K2SeO4(s)",
+   "dissolved_products": {
+    "K+": 2.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -0.73,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase K2SeO4)"
+  },
+  {
+   "id": "KAl3(OH)6(SO4)2_tbl",
+   "mineral": "Alunite",
+   "formula": "KAl3(OH)6(SO4)2",
+   "solid_species": "KAl3(OH)6(SO4)2(s)",
+   "dissolved_products": {
+    "Al+3": 3.0,
+    "K+": 1.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -84.3185,
+   "delta_h_kj": 103.03,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 1.411,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Alunite)"
+  },
+  {
+   "id": "KAl3(SO4)2(OH)6_tbl",
+   "mineral": "Alunite",
+   "formula": "KAl3(SO4)2(OH)6",
+   "solid_species": "KAl3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Al+3": 3.0,
+    "K+": 1.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -85.4,
+   "delta_h_kj": 125.19,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Alunite)"
+  },
+  {
+   "id": "KFe(SO4)2_tbl",
+   "mineral": "Yavapaiite",
+   "formula": "KFe(SO4)2",
+   "solid_species": "KFe(SO4)2(s)",
+   "dissolved_products": {
+    "Fe+3": 1.0,
+    "K+": 1.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -5.569,
+   "delta_h_kj": -77.02,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Yavapaiite)"
+  },
+  {
+   "id": "KFe3(CrO4)2(OH)6_tbl",
+   "mineral": "Jarosite(Cr)",
+   "formula": "KFe3(CrO4)2(OH)6",
+   "solid_species": "KFe3(CrO4)2(OH)6(s)",
+   "dissolved_products": {
+    "CrO4-2": 2.0,
+    "Fe+3": 3.0,
+    "K+": 1.0,
+    "OH-": 6.0
+   },
+   "log_ksp_298": -101.957,
+   "delta_h_kj": 225.27,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Jarosite(Cr))"
+  },
+  {
+   "id": "KFe3(SO4)2(OH)6_tbl",
+   "mineral": "Jarosite-K",
+   "formula": "KFe3(SO4)2(OH)6",
+   "solid_species": "KFe3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Fe+3": 3.0,
+    "K+": 1.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -93.21,
+   "delta_h_kj": 204.56,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Jarosite-K)"
+  },
+  {
+   "id": "KH2PO4_tbl",
+   "mineral": "KH2PO4",
+   "formula": "KH2PO4",
+   "solid_species": "KH2PO4(s)",
+   "dissolved_products": {
+    "H2PO4-": 1.0,
+    "K+": 1.0
+   },
+   "log_ksp_298": 0.278,
+   "delta_h_kj": 15.96,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase KH2PO4)"
+  },
+  {
+   "id": "KHCO3_tbl",
+   "mineral": "Kalicinite",
+   "formula": "KHCO3",
+   "solid_species": "KHCO3(s)",
+   "dissolved_products": {
+    "HCO3-": 1.0,
+    "K+": 1.0
+   },
+   "log_ksp_298": 0.2837,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Kalicinite)"
+  },
+  {
+   "id": "La(OH)3_tbl",
+   "mineral": "La(OH)3",
+   "formula": "La(OH)3",
+   "solid_species": "La(OH)3(s)",
+   "dissolved_products": {
+    "La+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -21.7001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 4.439,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase La(OH)3)"
+  },
+  {
+   "id": "Li2MoO4_tbl",
+   "mineral": "Li2MoO4",
+   "formula": "Li2MoO4",
+   "solid_species": "Li2MoO4(s)",
+   "dissolved_products": {
+    "Li+": 2.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": 2.4416,
+   "delta_h_kj": -33.94,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Li2MoO4)"
+  },
+  {
+   "id": "Lu(OH)3_tbl",
+   "mineral": "Lu(OH)3",
+   "formula": "Lu(OH)3",
+   "solid_species": "Lu(OH)3(s)",
+   "dissolved_products": {
+    "Lu+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -27.5001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 6.66,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Lu(OH)3)"
+  },
+  {
+   "id": "Mg(UO2)2(PO4)2_tbl",
+   "mineral": "Saleeite",
+   "formula": "Mg(UO2)2(PO4)2",
+   "solid_species": "Mg(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -43.646,
+   "delta_h_kj": -84.43,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Saleeite)"
+  },
+  {
+   "id": "MgMoO4_tbl",
+   "mineral": "MgMoO4",
+   "formula": "MgMoO4",
+   "solid_species": "MgMoO4(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "MoO4-2": 1.0
+   },
+   "log_ksp_298": -1.85,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase MgMoO4)"
+  },
+  {
+   "id": "MgOHCl_tbl",
+   "mineral": "MgOHCl",
+   "formula": "MgOHCl",
+   "solid_species": "MgOHCl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "Mg+2": 1.0,
+    "OH-": 1.0
+   },
+   "log_ksp_298": 1.9187,
+   "delta_h_kj": -63.08,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MgOHCl)"
+  },
+  {
+   "id": "MgSeO3_tbl",
+   "mineral": "MgSeO3",
+   "formula": "MgSeO3",
+   "solid_species": "MgSeO3(s)",
+   "dissolved_products": {
+    "Mg+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": 1.7191,
+   "delta_h_kj": -74.96,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MgSeO3)"
+  },
+  {
+   "id": "Mn3(PO4)2_tbl",
+   "mineral": "Mn3(PO4)2",
+   "formula": "Mn3(PO4)2",
+   "solid_species": "Mn3(PO4)2(s)",
+   "dissolved_products": {
+    "Mn+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -23.827,
+   "delta_h_kj": 8.87,
+   "solid_color": [
+    0.7913,
+    0.6445,
+    0.5906
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Mn3(PO4)2)"
+  },
+  {
+   "id": "MnHPO4_tbl",
+   "mineral": "MnHPO4",
+   "formula": "MnHPO4",
+   "solid_species": "MnHPO4(s)",
+   "dissolved_products": {
+    "HPO4-2": 1.0,
+    "Mn+2": 1.0
+   },
+   "log_ksp_298": -12.947,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7913,
+    0.6445,
+    0.5906
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase MnHPO4)"
+  },
+  {
+   "id": "MnSO4_tbl",
+   "mineral": "MnSO4",
+   "formula": "MnSO4",
+   "solid_species": "MnSO4(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": 2.669,
+   "delta_h_kj": -64.77,
+   "solid_color": [
+    0.7913,
+    0.6445,
+    0.5906
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase MnSO4)"
+  },
+  {
+   "id": "MnSeO3_tbl",
+   "mineral": "MnSeO3",
+   "formula": "MnSeO3",
+   "solid_species": "MnSeO3(s)",
+   "dissolved_products": {
+    "Mn+2": 1.0,
+    "SeO3-2": 1.0
+   },
+   "log_ksp_298": -7.27,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.7913,
+    0.6445,
+    0.5906
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase MnSeO3)"
+  },
+  {
+   "id": "Na2(UO2)2(PO4)2_tbl",
+   "mineral": "Na-Autunite",
+   "formula": "Na2(UO2)2(PO4)2",
+   "solid_species": "Na2(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "Na+": 2.0,
+    "PO4-3": 2.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -47.409,
+   "delta_h_kj": -1.92,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Na-Autunite)"
+  },
+  {
+   "id": "Na2Ca(SO4)2_tbl",
+   "mineral": "Glauberite",
+   "formula": "Na2Ca(SO4)2",
+   "solid_species": "Na2Ca(SO4)2(s)",
+   "dissolved_products": {
+    "Ca+2": 1.0,
+    "Na+": 2.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -5.469,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Glauberite)"
+  },
+  {
+   "id": "Na2CrO4_tbl",
+   "mineral": "Na2CrO4",
+   "formula": "Na2CrO4",
+   "solid_species": "Na2CrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "Na+": 2.0
+   },
+   "log_ksp_298": 2.9302,
+   "delta_h_kj": -19.63,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Na2CrO4)"
+  },
+  {
+   "id": "Na2K6(SO4)4_tbl",
+   "mineral": "Glaserite",
+   "formula": "Na2K6(SO4)4",
+   "solid_species": "Na2K6(SO4)4(s)",
+   "dissolved_products": {
+    "K+": 6.0,
+    "Na+": 2.0,
+    "SO4-2": 4.0
+   },
+   "log_ksp_298": -7.61,
+   "delta_h_kj": 78.36,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Glaserite)"
+  },
+  {
+   "id": "Na2MoO4_tbl",
+   "mineral": "Na2MoO4",
+   "formula": "Na2MoO4",
+   "solid_species": "Na2MoO4(s)",
+   "dissolved_products": {
+    "MoO4-2": 1.0,
+    "Na+": 2.0
+   },
+   "log_ksp_298": 1.4901,
+   "delta_h_kj": -9.98,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Na2MoO4)"
+  },
+  {
+   "id": "Na2SeO4_tbl",
+   "mineral": "Na2SeO4",
+   "formula": "Na2SeO4",
+   "solid_species": "Na2SeO4(s)",
+   "dissolved_products": {
+    "Na+": 2.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": 1.28,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Na2SeO4)"
+  },
+  {
+   "id": "Na3AlF6_tbl",
+   "mineral": "Cryolite",
+   "formula": "Na3AlF6",
+   "solid_species": "Na3AlF6(s)",
+   "dissolved_products": {
+    "Al+3": 1.0,
+    "F-": 6.0,
+    "Na+": 3.0
+   },
+   "log_ksp_298": -33.84,
+   "delta_h_kj": 38.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Cryolite)"
+  },
+  {
+   "id": "Na4UO2(CO3)3_tbl",
+   "mineral": "Na4UO2(CO3)3",
+   "formula": "Na4UO2(CO3)3",
+   "solid_species": "Na4UO2(CO3)3(s)",
+   "dissolved_products": {
+    "CO3-2": 3.0,
+    "Na+": 4.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -16.29,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Na4UO2(CO3)3)"
+  },
+  {
+   "id": "NaAl3(SO4)2(OH)6_tbl",
+   "mineral": "Alunite(Na)",
+   "formula": "NaAl3(SO4)2(OH)6",
+   "solid_species": "NaAl3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Al+3": 3.0,
+    "Na+": 1.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -81.672,
+   "delta_h_kj": 77.13,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Alunite(Na))"
+  },
+  {
+   "id": "NaFe3(SO4)2(OH)6_tbl",
+   "mineral": "Jarosite-Na",
+   "formula": "NaFe3(SO4)2(OH)6",
+   "solid_species": "NaFe3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Fe+3": 3.0,
+    "Na+": 1.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -89.28,
+   "delta_h_kj": 184.06,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Jarosite-Na)"
+  },
+  {
+   "id": "NaH2PO4_tbl",
+   "mineral": "NaH2PO4",
+   "formula": "NaH2PO4",
+   "solid_species": "NaH2PO4(s)",
+   "dissolved_products": {
+    "H2PO4-": 1.0,
+    "Na+": 1.0
+   },
+   "log_ksp_298": 2.301,
+   "delta_h_kj": -6.14,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase NaH2PO4)"
+  },
+  {
+   "id": "NaHCO3_tbl",
+   "mineral": "Nahcolite",
+   "formula": "NaHCO3",
+   "solid_species": "NaHCO3(s)",
+   "dissolved_products": {
+    "HCO3-": 1.0,
+    "Na+": 1.0
+   },
+   "log_ksp_298": -0.548,
+   "delta_h_kj": 15.56,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Nahcolite)"
+  },
+  {
+   "id": "NaK3(SO4)2_tbl",
+   "mineral": "Aphthitalite",
+   "formula": "NaK3(SO4)2",
+   "solid_species": "NaK3(SO4)2(s)",
+   "dissolved_products": {
+    "K+": 3.0,
+    "Na+": 1.0,
+    "SO4-2": 2.0
+   },
+   "log_ksp_298": -3.8878,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Aphthitalite)"
+  },
+  {
+   "id": "Nd(OH)3_tbl",
+   "mineral": "Nd(OH)3(c)",
+   "formula": "Nd(OH)3",
+   "solid_species": "Nd(OH)3(s)",
+   "dissolved_products": {
+    "Nd+3": 1.0,
+    "OH-": 3.0
+   },
+   "log_ksp_298": -26.2001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 4.951,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Nd(OH)3(c))"
+  },
+  {
+   "id": "Ni3(PO4)2_tbl",
+   "mineral": "Ni3(PO4)2",
+   "formula": "Ni3(PO4)2",
+   "solid_species": "Ni3(PO4)2(s)",
+   "dissolved_products": {
+    "Ni+2": 3.0,
+    "PO4-3": 2.0
+   },
+   "log_ksp_298": -31.3,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.2462,
+    0.6939,
+    0.3419
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Ni3(PO4)2)"
+  },
+  {
+   "id": "Ni4(OH)6SO4_tbl",
+   "mineral": "Ni4(OH)6SO4",
+   "formula": "Ni4(OH)6SO4",
+   "solid_species": "Ni4(OH)6SO4(s)",
+   "dissolved_products": {
+    "Ni+2": 4.0,
+    "OH-": 6.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -52.0,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.2462,
+    0.6939,
+    0.3419
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Ni4(OH)6SO4)"
+  },
+  {
+   "id": "NiF2_tbl",
+   "mineral": "NiF2",
+   "formula": "NiF2",
+   "solid_species": "NiF2(s)",
+   "dissolved_products": {
+    "F-": 2.0,
+    "Ni+2": 1.0
+   },
+   "log_ksp_298": 0.8772,
+   "delta_h_kj": -73.14,
+   "solid_color": [
+    0.2462,
+    0.6939,
+    0.3419
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase NiF2)"
+  },
+  {
+   "id": "NiMoO4_tbl",
+   "mineral": "NiMoO4",
+   "formula": "NiMoO4",
+   "solid_species": "NiMoO4(s)",
+   "dissolved_products": {
+    "MoO4-2": 1.0,
+    "Ni+2": 1.0
+   },
+   "log_ksp_298": -11.1421,
+   "delta_h_kj": 1.3,
+   "solid_color": [
+    0.2462,
+    0.6939,
+    0.3419
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase NiMoO4)"
+  },
+  {
+   "id": "Pb(H2PO4)2_tbl",
+   "mineral": "Pb(H2PO4)2",
+   "formula": "Pb(H2PO4)2",
+   "solid_species": "Pb(H2PO4)2(s)",
+   "dissolved_products": {
+    "H2PO4-": 2.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -9.84,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Pb(H2PO4)2)"
+  },
+  {
+   "id": "Pb(UO2)2(PO4)2_tbl",
+   "mineral": "Przhevalskite",
+   "formula": "Pb(UO2)2(PO4)2",
+   "solid_species": "Pb(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "PO4-3": 2.0,
+    "Pb+2": 1.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -44.365,
+   "delta_h_kj": -46.02,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Przhevalskite)"
+  },
+  {
+   "id": "Pb2(OH)3Cl_tbl",
+   "mineral": "Pb2(OH)3Cl",
+   "formula": "Pb2(OH)3Cl",
+   "solid_species": "Pb2(OH)3Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "OH-": 3.0,
+    "Pb+2": 2.0
+   },
+   "log_ksp_298": -33.207,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Pb2(OH)3Cl)"
+  },
+  {
+   "id": "Pb3(AsO4)2_tbl",
+   "mineral": "Pb3(AsO4)2",
+   "formula": "Pb3(AsO4)2",
+   "solid_species": "Pb3(AsO4)2(s)",
+   "dissolved_products": {
+    "AsO4-3": 2.0,
+    "Pb+2": 3.0
+   },
+   "log_ksp_298": -35.403,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Pb3(AsO4)2)"
+  },
+  {
+   "id": "Pb3(OH)2(CO3)2_tbl",
+   "mineral": "Hydrocerussite",
+   "formula": "Pb3(OH)2(CO3)2",
+   "solid_species": "Pb3(OH)2(CO3)2(s)",
+   "dissolved_products": {
+    "CO3-2": 2.0,
+    "OH-": 2.0,
+    "Pb+2": 3.0
+   },
+   "log_ksp_298": -46.7645,
+   "delta_h_kj": 111.62,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Hydrocerussite)"
+  },
+  {
+   "id": "Pb4(OH)6SO4_tbl",
+   "mineral": "Pb4(OH)6SO4",
+   "formula": "Pb4(OH)6SO4",
+   "solid_species": "Pb4(OH)6SO4(s)",
+   "dissolved_products": {
+    "OH-": 6.0,
+    "Pb+2": 4.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -62.9,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Pb4(OH)6SO4)"
+  },
+  {
+   "id": "Pb4Cl2(OH)6_tbl",
+   "mineral": "Pb4Cl2(OH)6",
+   "formula": "Pb4Cl2(OH)6",
+   "solid_species": "Pb4Cl2(OH)6(s)",
+   "dissolved_products": {
+    "Cl-": 2.0,
+    "OH-": 6.0,
+    "Pb+2": 4.0
+   },
+   "log_ksp_298": -66.6913,
+   "delta_h_kj": 334.89,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pb4Cl2(OH)6)"
+  },
+  {
+   "id": "Pb5(PO4)3Cl_tbl",
+   "mineral": "Clpyromorphite",
+   "formula": "Pb5(PO4)3Cl",
+   "solid_species": "Pb5(PO4)3Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "PO4-3": 3.0,
+    "Pb+2": 5.0
+   },
+   "log_ksp_298": -84.43,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Clpyromorphite)"
+  },
+  {
+   "id": "Pb5(PO4)3OH_tbl",
+   "mineral": "Hxypyromorphite",
+   "formula": "Pb5(PO4)3OH",
+   "solid_species": "Pb5(PO4)3OH(s)",
+   "dissolved_products": {
+    "OH-": 1.0,
+    "PO4-3": 3.0,
+    "Pb+2": 5.0
+   },
+   "log_ksp_298": -76.79,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Hxypyromorphite)"
+  },
+  {
+   "id": "PbAl3PO4SO4(OH)6_tbl",
+   "mineral": "Hinsdalite",
+   "formula": "PbAl3PO4SO4(OH)6",
+   "solid_species": "PbAl3PO4SO4(OH)6(s)",
+   "dissolved_products": {
+    "Al+3": 3.0,
+    "OH-": 6.0,
+    "PO4-3": 1.0,
+    "Pb+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -86.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Hinsdalite)"
+  },
+  {
+   "id": "PbBrF_tbl",
+   "mineral": "PbBrF",
+   "formula": "PbBrF",
+   "solid_species": "PbBrF(s)",
+   "dissolved_products": {
+    "Br-": 1.0,
+    "F-": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -8.49,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase PbBrF)"
+  },
+  {
+   "id": "PbClF_tbl",
+   "mineral": "Matlockite",
+   "formula": "PbClF",
+   "solid_species": "PbClF(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "F-": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -9.43,
+   "delta_h_kj": 33.26,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Matlockite)"
+  },
+  {
+   "id": "PbClOH_tbl",
+   "mineral": "Paralaurionite",
+   "formula": "PbClOH",
+   "solid_species": "PbClOH(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "OH-": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -13.7916,
+   "delta_h_kj": 64.23,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Paralaurionite)"
+  },
+  {
+   "id": "PbFCl_tbl",
+   "mineral": "Matlockite",
+   "formula": "PbFCl",
+   "solid_species": "PbFCl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "F-": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -9.43,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Matlockite)"
+  },
+  {
+   "id": "PbHPO4_tbl",
+   "mineral": "PbHPO4",
+   "formula": "PbHPO4",
+   "solid_species": "PbHPO4(s)",
+   "dissolved_products": {
+    "HPO4-2": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -11.46,
+   "delta_h_kj": 29.46,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase PbHPO4)"
+  },
+  {
+   "id": "PbMoO4_tbl",
+   "mineral": "PbMoO4",
+   "formula": "PbMoO4",
+   "solid_species": "PbMoO4(s)",
+   "dissolved_products": {
+    "MoO4-2": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -15.62,
+   "delta_h_kj": 53.93,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase PbMoO4)"
+  },
+  {
+   "id": "PbOHCl_tbl",
+   "mineral": "Laurionite",
+   "formula": "PbOHCl",
+   "solid_species": "PbOHCl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "OH-": 1.0,
+    "Pb+2": 1.0
+   },
+   "log_ksp_298": -13.377,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Laurionite)"
+  },
+  {
+   "id": "PbSeO4_tbl",
+   "mineral": "PbSeO4",
+   "formula": "PbSeO4",
+   "solid_species": "PbSeO4(s)",
+   "dissolved_products": {
+    "Pb+2": 1.0,
+    "SeO4-2": 1.0
+   },
+   "log_ksp_298": -6.84,
+   "delta_h_kj": 15.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase PbSeO4)"
+  },
+  {
+   "id": "Pd(OH)2_tbl",
+   "mineral": "Pd(OH)2(s)",
+   "formula": "Pd(OH)2",
+   "solid_species": "Pd(OH)2(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "Pd+2": 1.0
+   },
+   "log_ksp_298": -28.621,
+   "delta_h_kj": 103.48,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 4.948,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Pd(OH)2(s))"
+  },
+  {
+   "id": "Pm(OH)3_tbl",
+   "mineral": "Pm(OH)3",
+   "formula": "Pm(OH)3",
+   "solid_species": "Pm(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Pm+3": 1.0
+   },
+   "log_ksp_298": -24.5001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pm(OH)3)"
+  },
+  {
+   "id": "Pr(OH)3_tbl",
+   "mineral": "Pr(OH)3",
+   "formula": "Pr(OH)3",
+   "solid_species": "Pr(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Pr+3": 1.0
+   },
+   "log_ksp_298": -22.4001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 4.723,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Pr(OH)3)"
+  },
+  {
+   "id": "Ra(NO3)2_tbl",
+   "mineral": "Ra(NO3)2",
+   "formula": "Ra(NO3)2",
+   "solid_species": "Ra(NO3)2(s)",
+   "dissolved_products": {
+    "NO3-": 2.0,
+    "Ra+2": 1.0
+   },
+   "log_ksp_298": -2.2419,
+   "delta_h_kj": 50.48,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Ra(NO3)2)"
+  },
+  {
+   "id": "RaSO4_tbl",
+   "mineral": "RaSO4",
+   "formula": "RaSO4",
+   "solid_species": "RaSO4(s)",
+   "dissolved_products": {
+    "Ra+2": 1.0,
+    "SO4-2": 1.0
+   },
+   "log_ksp_298": -10.4499,
+   "delta_h_kj": 40.31,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase RaSO4)"
+  },
+  {
+   "id": "RuI3_tbl",
+   "mineral": "RuI3",
+   "formula": "RuI3",
+   "solid_species": "RuI3(s)",
+   "dissolved_products": {
+    "I-": 3.0,
+    "Ru+3": 1.0
+   },
+   "log_ksp_298": -12.4614,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.8963,
+    0.7913,
+    0.2961
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase RuI3)"
+  },
+  {
+   "id": "Sm(OH)3_tbl",
+   "mineral": "Sm(OH)3",
+   "formula": "Sm(OH)3",
+   "solid_species": "Sm(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Sm+3": 1.0
+   },
+   "log_ksp_298": -25.5001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.247,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sm(OH)3)"
+  },
+  {
+   "id": "Sm2(SO4)3_tbl",
+   "mineral": "Sm2(SO4)3",
+   "formula": "Sm2(SO4)3",
+   "solid_species": "Sm2(SO4)3(s)",
+   "dissolved_products": {
+    "SO4-2": 3.0,
+    "Sm+3": 2.0
+   },
+   "log_ksp_298": -9.8,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sm2(SO4)3)"
+  },
+  {
+   "id": "SnBr2_tbl",
+   "mineral": "SnBr2",
+   "formula": "SnBr2",
+   "solid_species": "SnBr2(s)",
+   "dissolved_products": {
+    "Br-": 2.0,
+    "Sn+2": 1.0
+   },
+   "log_ksp_298": -1.4369,
+   "delta_h_kj": 8.24,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnBr2)"
+  },
+  {
+   "id": "SnCl2_tbl",
+   "mineral": "SnCl2",
+   "formula": "SnCl2",
+   "solid_species": "SnCl2(s)",
+   "dissolved_products": {
+    "Cl-": 2.0,
+    "Sn+2": 1.0
+   },
+   "log_ksp_298": 0.3225,
+   "delta_h_kj": -11.99,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnCl2)"
+  },
+  {
+   "id": "SnSO4_tbl",
+   "mineral": "SnSO4",
+   "formula": "SnSO4",
+   "solid_species": "SnSO4(s)",
+   "dissolved_products": {
+    "SO4-2": 1.0,
+    "Sn+2": 1.0
+   },
+   "log_ksp_298": -23.9293,
+   "delta_h_kj": 96.23,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SnSO4)"
+  },
+  {
+   "id": "Sr(NO3)2_tbl",
+   "mineral": "Sr(NO3)2",
+   "formula": "Sr(NO3)2",
+   "solid_species": "Sr(NO3)2(s)",
+   "dissolved_products": {
+    "NO3-": 2.0,
+    "Sr+2": 1.0
+   },
+   "log_ksp_298": 1.1493,
+   "delta_h_kj": 13.78,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sr(NO3)2)"
+  },
+  {
+   "id": "Sr(OH)2_tbl",
+   "mineral": "Sr(OH)2",
+   "formula": "Sr(OH)2",
+   "solid_species": "Sr(OH)2(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "Sr+2": 1.0
+   },
+   "log_ksp_298": -0.4673,
+   "delta_h_kj": -42.06,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Sr(OH)2)"
+  },
+  {
+   "id": "Sr(UO2)2(PO4)2_tbl",
+   "mineral": "Sr-Autunite",
+   "formula": "Sr(UO2)2(PO4)2",
+   "solid_species": "Sr(UO2)2(PO4)2(s)",
+   "dissolved_products": {
+    "PO4-3": 2.0,
+    "Sr+2": 1.0,
+    "UO2+2": 2.0
+   },
+   "log_ksp_298": -44.457,
+   "delta_h_kj": -54.6,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Sr-Autunite)"
+  },
+  {
+   "id": "SrHPO4_tbl",
+   "mineral": "SrHPO4",
+   "formula": "SrHPO4",
+   "solid_species": "SrHPO4(s)",
+   "dissolved_products": {
+    "HPO4-2": 1.0,
+    "Sr+2": 1.0
+   },
+   "log_ksp_298": -6.2416,
+   "delta_h_kj": -19.79,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase SrHPO4)"
+  },
+  {
+   "id": "SrSeO4_tbl",
+   "mineral": "SrSeO4",
+   "formula": "SrSeO4",
+   "solid_species": "SrSeO4(s)",
+   "dissolved_products": {
+    "SeO4-2": 1.0,
+    "Sr+2": 1.0
+   },
+   "log_ksp_298": -4.4,
+   "delta_h_kj": 0.4,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase SrSeO4)"
+  },
+  {
+   "id": "Tb(OH)3_tbl",
+   "mineral": "Tb(OH)3",
+   "formula": "Tb(OH)3",
+   "solid_species": "Tb(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Tb+3": 1.0
+   },
+   "log_ksp_298": -26.3001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.753,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tb(OH)3)"
+  },
+  {
+   "id": "Th(OH)4_tbl",
+   "mineral": "Th(OH)4",
+   "formula": "Th(OH)4",
+   "solid_species": "Th(OH)4(s)",
+   "dissolved_products": {
+    "OH-": 4.0,
+    "Th+4": 1.0
+   },
+   "log_ksp_298": -46.3261,
+   "delta_h_kj": 82.92,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Th(OH)4)"
+  },
+  {
+   "id": "Th(SO4)2_tbl",
+   "mineral": "Th(SO4)2",
+   "formula": "Th(SO4)2",
+   "solid_species": "Th(SO4)2(s)",
+   "dissolved_products": {
+    "SO4-2": 2.0,
+    "Th+4": 1.0
+   },
+   "log_ksp_298": -20.3006,
+   "delta_h_kj": -46.11,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Th(SO4)2)"
+  },
+  {
+   "id": "ThF4_tbl",
+   "mineral": "ThF4",
+   "formula": "ThF4",
+   "solid_species": "ThF4(s)",
+   "dissolved_products": {
+    "F-": 4.0,
+    "Th+4": 1.0
+   },
+   "log_ksp_298": -29.9946,
+   "delta_h_kj": -12.67,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase ThF4)"
+  },
+  {
+   "id": "Tl(OH)3_tbl",
+   "mineral": "Tl(OH)3",
+   "formula": "Tl(OH)3",
+   "solid_species": "Tl(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Tl+3": 1.0
+   },
+   "log_ksp_298": -43.823,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Tl(OH)3)"
+  },
+  {
+   "id": "Tl2CO3_tbl",
+   "mineral": "Tl2CO3",
+   "formula": "Tl2CO3",
+   "solid_species": "Tl2CO3(s)",
+   "dissolved_products": {
+    "CO3-2": 1.0,
+    "Tl+": 2.0
+   },
+   "log_ksp_298": -3.8367,
+   "delta_h_kj": 35.49,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Tl2CO3)"
+  },
+  {
+   "id": "Tl2CrO4_tbl",
+   "mineral": "Tl2CrO4",
+   "formula": "Tl2CrO4",
+   "solid_species": "Tl2CrO4(s)",
+   "dissolved_products": {
+    "CrO4-2": 1.0,
+    "Tl+": 2.0
+   },
+   "log_ksp_298": -12.01,
+   "delta_h_kj": 74.27,
+   "solid_color": [
+    0.8963,
+    0.6939,
+    0.0529
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Tl2CrO4)"
+  },
+  {
+   "id": "Tl2MoO4_tbl",
+   "mineral": "Tl2MoO4",
+   "formula": "Tl2MoO4",
+   "solid_species": "Tl2MoO4(s)",
+   "dissolved_products": {
+    "MoO4-2": 1.0,
+    "Tl+": 2.0
+   },
+   "log_ksp_298": -7.9887,
+   "delta_h_kj": -0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Tl2MoO4)"
+  },
+  {
+   "id": "Tl2SO4_tbl",
+   "mineral": "Tl2SO4",
+   "formula": "Tl2SO4",
+   "solid_species": "Tl2SO4(s)",
+   "dissolved_products": {
+    "SO4-2": 1.0,
+    "Tl+": 2.0
+   },
+   "log_ksp_298": -3.7868,
+   "delta_h_kj": 33.18,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Tl2SO4)"
+  },
+  {
+   "id": "Tl2SeO4_tbl",
+   "mineral": "Tl2SeO4",
+   "formula": "Tl2SeO4",
+   "solid_species": "Tl2SeO4(s)",
+   "dissolved_products": {
+    "SeO4-2": 1.0,
+    "Tl+": 2.0
+   },
+   "log_ksp_298": -4.1,
+   "delta_h_kj": 43.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase Tl2SeO4)"
+  },
+  {
+   "id": "TlBr_tbl",
+   "mineral": "TlBr",
+   "formula": "TlBr",
+   "solid_species": "TlBr(s)",
+   "dissolved_products": {
+    "Br-": 1.0,
+    "Tl+": 1.0
+   },
+   "log_ksp_298": -5.44,
+   "delta_h_kj": 54.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase TlBr)"
+  },
+  {
+   "id": "TlFe3(SO4)2(OH)6_tbl",
+   "mineral": "Doralcharite",
+   "formula": "TlFe3(SO4)2(OH)6",
+   "solid_species": "TlFe3(SO4)2(OH)6(s)",
+   "dissolved_products": {
+    "Fe+3": 3.0,
+    "OH-": 6.0,
+    "SO4-2": 2.0,
+    "Tl+": 1.0
+   },
+   "log_ksp_298": -86.233,
+   "delta_h_kj": 103.98,
+   "solid_color": [
+    0.5906,
+    0.2159,
+    0.063
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "Thermoddem V1.10 (BRGM) (phase Doralcharite)"
+  },
+  {
+   "id": "TlI_tbl",
+   "mineral": "TlI",
+   "formula": "TlI",
+   "solid_species": "TlI(s)",
+   "dissolved_products": {
+    "I-": 1.0,
+    "Tl+": 1.0
+   },
+   "log_ksp_298": -7.23,
+   "delta_h_kj": 75.0,
+   "solid_color": [
+    0.8963,
+    0.7913,
+    0.2961
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase TlI)"
+  },
+  {
+   "id": "TlNO3_tbl",
+   "mineral": "TlNO3",
+   "formula": "TlNO3",
+   "solid_species": "TlNO3(s)",
+   "dissolved_products": {
+    "NO3-": 1.0,
+    "Tl+": 1.0
+   },
+   "log_ksp_298": -1.6127,
+   "delta_h_kj": 42.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase TlNO3)"
+  },
+  {
+   "id": "TlOH_tbl",
+   "mineral": "TlOH",
+   "formula": "TlOH",
+   "solid_species": "TlOH(s)",
+   "dissolved_products": {
+    "OH-": 1.0,
+    "Tl+": 1.0
+   },
+   "log_ksp_298": -1.0784,
+   "delta_h_kj": 14.24,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase TlOH)"
+  },
+  {
+   "id": "Tm(OH)3_tbl",
+   "mineral": "Tm(OH)3",
+   "formula": "Tm(OH)3",
+   "solid_species": "Tm(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Tm+3": 1.0
+   },
+   "log_ksp_298": -27.0001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 6.321,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Tm(OH)3)"
+  },
+  {
+   "id": "U(OH)2SO4_tbl",
+   "mineral": "U(OH)2SO4",
+   "formula": "U(OH)2SO4",
+   "solid_species": "U(OH)2SO4(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "SO4-2": 1.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -31.2,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase U(OH)2SO4)"
+  },
+  {
+   "id": "U(SO3)2_tbl",
+   "mineral": "U(SO3)2",
+   "formula": "U(SO3)2",
+   "solid_species": "U(SO3)2(s)",
+   "dissolved_products": {
+    "SO3-2": 2.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -36.7499,
+   "delta_h_kj": 20.7,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase U(SO3)2)"
+  },
+  {
+   "id": "U(SO4)2_tbl",
+   "mineral": "U(SO4)2",
+   "formula": "U(SO4)2",
+   "solid_species": "U(SO4)2(s)",
+   "dissolved_products": {
+    "SO4-2": 2.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -11.5178,
+   "delta_h_kj": -100.8,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase U(SO4)2)"
+  },
+  {
+   "id": "UCl2F2_tbl",
+   "mineral": "UCl2F2",
+   "formula": "UCl2F2",
+   "solid_species": "UCl2F2(s)",
+   "dissolved_products": {
+    "Cl-": 2.0,
+    "F-": 2.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -3.5085,
+   "delta_h_kj": -130.06,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UCl2F2)"
+  },
+  {
+   "id": "UClF3_tbl",
+   "mineral": "UClF3",
+   "formula": "UClF3",
+   "solid_species": "UClF3(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "F-": 3.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -17.5122,
+   "delta_h_kj": -74.32,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UClF3)"
+  },
+  {
+   "id": "UF3_tbl",
+   "mineral": "UF3",
+   "formula": "UF3",
+   "solid_species": "UF3(s)",
+   "dissolved_products": {
+    "F-": 3.0,
+    "U+3": 1.0
+   },
+   "log_ksp_298": -19.4125,
+   "delta_h_kj": 6.26,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UF3)"
+  },
+  {
+   "id": "UF4_tbl",
+   "mineral": "UF4(c)",
+   "formula": "UF4",
+   "solid_species": "UF4(s)",
+   "dissolved_products": {
+    "F-": 4.0,
+    "U+4": 1.0
+   },
+   "log_ksp_298": -18.606,
+   "delta_h_kj": -79.08,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase UF4(c))"
+  },
+  {
+   "id": "UO2(IO3)2_tbl",
+   "mineral": "UO2(IO3)2",
+   "formula": "UO2(IO3)2",
+   "solid_species": "UO2(IO3)2(s)",
+   "dissolved_products": {
+    "IO3-": 2.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -7.2871,
+   "delta_h_kj": -0.39,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2(IO3)2)"
+  },
+  {
+   "id": "UO2(OH)2_tbl",
+   "mineral": "B-UO2(OH)2",
+   "formula": "UO2(OH)2",
+   "solid_species": "UO2(OH)2(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -22.456,
+   "delta_h_kj": 54.37,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.814,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase B-UO2(OH)2)"
+  },
+  {
+   "id": "UO2CO3_tbl",
+   "mineral": "Rutherfordine",
+   "formula": "UO2CO3",
+   "solid_species": "UO2CO3(s)",
+   "dissolved_products": {
+    "CO3-2": 1.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -14.45,
+   "delta_h_kj": -6.02,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 5.721,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Rutherfordine)"
+  },
+  {
+   "id": "UO2Cl_tbl",
+   "mineral": "UO2Cl",
+   "formula": "UO2Cl",
+   "solid_species": "UO2Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "UO2+": 1.0
+   },
+   "log_ksp_298": -0.5154,
+   "delta_h_kj": -21.11,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2Cl)"
+  },
+  {
+   "id": "UO2F2_tbl",
+   "mineral": "UO2F2",
+   "formula": "UO2F2",
+   "solid_species": "UO2F2(s)",
+   "dissolved_products": {
+    "F-": 2.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -7.2302,
+   "delta_h_kj": -36.2,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2F2)"
+  },
+  {
+   "id": "UO2FOH_tbl",
+   "mineral": "UO2FOH",
+   "formula": "UO2FOH",
+   "solid_species": "UO2FOH(s)",
+   "dissolved_products": {
+    "F-": 1.0,
+    "OH-": 1.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -15.8377,
+   "delta_h_kj": 14.1,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2FOH)"
+  },
+  {
+   "id": "UO2HPO4_tbl",
+   "mineral": "UO2HPO4",
+   "formula": "UO2HPO4",
+   "solid_species": "UO2HPO4(s)",
+   "dissolved_products": {
+    "HPO4-2": 1.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -12.6782,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2HPO4)"
+  },
+  {
+   "id": "UO2SO3_tbl",
+   "mineral": "UO2SO3",
+   "formula": "UO2SO3",
+   "solid_species": "UO2SO3(s)",
+   "dissolved_products": {
+    "SO3-2": 1.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": -15.9812,
+   "delta_h_kj": 6.45,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2SO3)"
+  },
+  {
+   "id": "UO2SO4_tbl",
+   "mineral": "UO2SO4",
+   "formula": "UO2SO4",
+   "solid_species": "UO2SO4(s)",
+   "dissolved_products": {
+    "SO4-2": 1.0,
+    "UO2+2": 1.0
+   },
+   "log_ksp_298": 1.9681,
+   "delta_h_kj": -83.46,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase UO2SO4)"
+  },
+  {
+   "id": "V(OH)3_tbl",
+   "mineral": "V(OH)3",
+   "formula": "V(OH)3",
+   "solid_species": "V(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "V+3": 1.0
+   },
+   "log_ksp_298": -34.4,
+   "delta_h_kj": 167.43,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase V(OH)3)"
+  },
+  {
+   "id": "VO(OH)2_tbl",
+   "mineral": "VO(OH)2",
+   "formula": "VO(OH)2",
+   "solid_species": "VO(OH)2(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "VO+2": 1.0
+   },
+   "log_ksp_298": -22.8434,
+   "delta_h_kj": 111.62,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase VO(OH)2)"
+  },
+  {
+   "id": "VO2Cl_tbl",
+   "mineral": "VO2Cl",
+   "formula": "VO2Cl",
+   "solid_species": "VO2Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "VO2+": 1.0
+   },
+   "log_ksp_298": 2.8413,
+   "delta_h_kj": -40.28,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase VO2Cl)"
+  },
+  {
+   "id": "Yb(OH)3_tbl",
+   "mineral": "Yb(OH)3",
+   "formula": "Yb(OH)3",
+   "solid_species": "Yb(OH)3(s)",
+   "dissolved_products": {
+    "OH-": 3.0,
+    "Yb+3": 1.0
+   },
+   "log_ksp_298": -27.3001,
+   "delta_h_kj": 167.44,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 6.521,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Yb(OH)3)"
+  },
+  {
+   "id": "Zn(IO3)2_tbl",
+   "mineral": "Zn(IO3)2",
+   "formula": "Zn(IO3)2",
+   "solid_species": "Zn(IO3)2(s)",
+   "dissolved_products": {
+    "IO3-": 2.0,
+    "Zn+2": 1.0
+   },
+   "log_ksp_298": -5.3193,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn(IO3)2)"
+  },
+  {
+   "id": "Zn2(OH)2SO4_tbl",
+   "mineral": "Zn2(OH)2SO4",
+   "formula": "Zn2(OH)2SO4",
+   "solid_species": "Zn2(OH)2SO4(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "SO4-2": 1.0,
+    "Zn+2": 2.0
+   },
+   "log_ksp_298": -20.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Zn2(OH)2SO4)"
+  },
+  {
+   "id": "Zn2(OH)3Cl_tbl",
+   "mineral": "Zn2(OH)3Cl",
+   "formula": "Zn2(OH)3Cl",
+   "solid_species": "Zn2(OH)3Cl(s)",
+   "dissolved_products": {
+    "Cl-": 1.0,
+    "OH-": 3.0,
+    "Zn+2": 2.0
+   },
+   "log_ksp_298": -26.8,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Zn2(OH)3Cl)"
+  },
+  {
+   "id": "Zn2SO4(OH)2_tbl",
+   "mineral": "Zn2SO4(OH)2",
+   "formula": "Zn2SO4(OH)2",
+   "solid_species": "Zn2SO4(OH)2(s)",
+   "dissolved_products": {
+    "OH-": 2.0,
+    "SO4-2": 1.0,
+    "Zn+2": 2.0
+   },
+   "log_ksp_298": -20.4086,
+   "delta_h_kj": 111.63,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn2SO4(OH)2)"
+  },
+  {
+   "id": "Zn4(OH)6SO4_tbl",
+   "mineral": "Zn4(OH)6SO4",
+   "formula": "Zn4(OH)6SO4",
+   "solid_species": "Zn4(OH)6SO4(s)",
+   "dissolved_products": {
+    "OH-": 6.0,
+    "SO4-2": 1.0,
+    "Zn+2": 4.0
+   },
+   "log_ksp_298": -55.6,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Zn4(OH)6SO4)"
+  },
+  {
+   "id": "Zn5(NO3)2(OH)8_tbl",
+   "mineral": "Zn5(NO3)2(OH)8",
+   "formula": "Zn5(NO3)2(OH)8",
+   "solid_species": "Zn5(NO3)2(OH)8(s)",
+   "dissolved_products": {
+    "NO3-": 2.0,
+    "OH-": 8.0,
+    "Zn+2": 5.0
+   },
+   "log_ksp_298": -69.2934,
+   "delta_h_kj": 446.52,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 5.0,
+   "kind": "gel",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase Zn5(NO3)2(OH)8)"
+  },
+  {
+   "id": "Zn5(OH)8Cl2_tbl",
+   "mineral": "Zn5(OH)8Cl2",
+   "formula": "Zn5(OH)8Cl2",
+   "solid_species": "Zn5(OH)8Cl2(s)",
+   "dissolved_products": {
+    "Cl-": 2.0,
+    "OH-": 8.0,
+    "Zn+2": 5.0
+   },
+   "log_ksp_298": -73.5,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 2.0,
+   "kind": "curds",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase Zn5(OH)8Cl2)"
+  },
+  {
+   "id": "ZnF2_tbl",
+   "mineral": "ZnF2",
+   "formula": "ZnF2",
+   "solid_species": "ZnF2(s)",
+   "dissolved_products": {
+    "F-": 2.0,
+    "Zn+2": 1.0
+   },
+   "log_ksp_298": -1.52,
+   "delta_h_kj": -54.73,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC wateq4f.dat (phase ZnF2)"
+  },
+  {
+   "id": "ZnMoO4_tbl",
+   "mineral": "ZnMoO4",
+   "formula": "ZnMoO4",
+   "solid_species": "ZnMoO4(s)",
+   "dissolved_products": {
+    "MoO4-2": 1.0,
+    "Zn+2": 1.0
+   },
+   "log_ksp_298": -10.1254,
+   "delta_h_kj": -10.69,
+   "solid_color": [
+    0.9301,
+    0.9301,
+    0.9301
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC minteq.v4.dat (phase ZnMoO4)"
+  },
+  {
+   "id": "ZrF4_tbl",
+   "mineral": "ZrF4(beta)",
+   "formula": "ZrF4",
+   "solid_species": "ZrF4(s)",
+   "dissolved_products": {
+    "F-": 4.0,
+    "Zr+4": 1.0
+   },
+   "log_ksp_298": -27.7564,
+   "delta_h_kj": 0.0,
+   "solid_color": [
+    0.9216,
+    0.9216,
+    0.9216
+   ],
+   "density_g_ml": 0.0,
+   "default_particle_um": 8.0,
+   "kind": "powder",
+   "tier": "Tabulated",
+   "source": "PHREEQC llnl.dat (LLNL data0, SUPCRT92) (phase ZrF4(beta))"
+  },
+  {
    "id": "Na2S_sol",
    "mineral": "Sodium sulfide",
    "formula": "Na2S",

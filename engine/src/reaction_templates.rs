@@ -253,6 +253,7 @@ enum Edit {
     SetBond((usize, usize), (usize, usize), f64),
     Charge((usize, usize), i32),
     HDelta((usize, usize), i32),
+    SolventProton((usize, usize)),
 }
 
 /// The redox half-reaction a template stands for (see the module documentation).
@@ -295,6 +296,8 @@ pub struct Rate {
     pub ep: Option<(f64, f64)>,
     pub rule: String,
     pub source: String,
+    /// The rate constant is that of the whole reaction (a measured or Mayr rate), not of one pathway of the template match.
+    pub per_reaction: bool,
 }
 
 // ------------------------------------------------------------------------------------------------ loading
@@ -355,6 +358,7 @@ fn compile(raw: RawTemplate) -> Template {
                 "set_bond" => Edit::SetBond(pair(e.a), pair(e.b), e.order.unwrap_or(1.0)),
                 "charge" => Edit::Charge(pair(e.atom), e.value.unwrap_or(0)),
                 "h_delta" => Edit::HDelta(pair(e.atom), e.delta.unwrap_or(0)),
+                "solvent_proton" => Edit::SolventProton(pair(e.atom)),
                 other => panic!("template {}: unknown edit {}", id, other),
             }
         })
@@ -465,6 +469,7 @@ impl Template {
         let at = |(slot, p): (usize, usize)| -> Option<usize> { Some(offs[slot] + *inst.maps[slot].get(p)?) };
         let mut pinned: HashSet<usize> = HashSet::new();
         let mut delta: HashMap<usize, i32> = HashMap::new();
+        let mut has_solvent_proton = false;
         for e in &self.edits {
             match e {
                 Edit::Break(a, b) => {
@@ -493,6 +498,27 @@ impl Template {
                     let x = at(*a)?;
                     *delta.entry(x).or_insert(0) += *d;
                     pinned.insert(x);
+                }
+                Edit::SolventProton(a) => {
+                    let x = at(*a)?;
+                    *delta.entry(x).or_insert(0) += 1;
+                    pinned.insert(x);
+                    has_solvent_proton = true;
+                }
+            }
+        }
+        if has_solvent_proton {
+            let net_reactant_charge: i32 = inst.mols.iter().map(|m| m.atoms.iter().map(|at| at.charge).sum::<i32>()).sum();
+            if net_reactant_charge >= 0 {
+                // Neutral nucleophile (amine): transfer proton from nucleophile heteroatom with H > 0
+                if let (Some(nuc_map), Some(_)) = (inst.maps.get(1), inst.mols.get(1)) {
+                    if let Some(&nuc_atom) = nuc_map.first() {
+                        let g_nuc = offs[1] + nuc_atom;
+                        if h0[g_nuc] > 0 {
+                            *delta.entry(g_nuc).or_insert(0) -= 1;
+                            pinned.insert(g_nuc);
+                        }
+                    }
                 }
             }
         }
@@ -548,7 +574,17 @@ impl Template {
             }
             out.push(mol);
         }
-        out.extend(self.extra_products.iter().cloned());
+        for extra in &self.extra_products {
+            out.push(extra.clone());
+        }
+        if has_solvent_proton {
+            let net_reactant_charge: i32 = inst.mols.iter().map(|m| m.atoms.iter().map(|at| at.charge).sum::<i32>()).sum();
+            if net_reactant_charge < 0 {
+                if let Some(oh) = crate::smiles::parse("[OH-]") {
+                    out.push(oh);
+                }
+            }
+        }
         Some(out)
     }
 
@@ -581,6 +617,24 @@ impl Template {
     /// The rate every variant gives this instance in a solvent of the given class (variants without a matching rule give
     /// none: a reaction whose rate nothing says is not proposed).
     pub fn rates(&self, inst: &Instance, solvent: &str) -> Vec<Rate> {
+        // Precedence 2: check Mayr relation when both partners have measured parameters
+        if let Some(cfg) = crate::mayr::template_config(&self.id) {
+            if let (Some(nuc_mol), Some(el_mol)) = (inst.mols.get(cfg.nucleophile_slot), inst.mols.get(cfg.electrophile_slot)) {
+                if let Some(mayr_rate) = crate::mayr::evaluate(nuc_mol, el_mol, solvent) {
+                    let base_ea = self.variants.first().and_then(|v| v.rules.first()).and_then(|r| r.ea_j).unwrap_or(25000.0);
+                    let mayr_a = mayr_rate.k_20 * (base_ea / (R_GAS_J * 293.15)).exp();
+                    return vec![Rate {
+                        variant: 0,
+                        a: mayr_a,
+                        ea_j: Some(base_ea),
+                        ep: None,
+                        rule: format!("mayr_{}", self.id),
+                        source: mayr_rate.source,
+                        per_reaction: true,
+                    }];
+                }
+            }
+        }
         let mut out = Vec::new();
         for (vi, v) in self.variants.iter().enumerate() {
             let best = v
@@ -627,7 +681,7 @@ impl Template {
                 continue;
             }
             ea = ea.map(|e| e + ea_add);
-            out.push(Rate { variant: vi, a, ea_j: ea, ep: ep.map(|(e0, al)| (e0 + ea_add, al)), rule: rule.id.clone(), source: rule.source.clone() });
+            out.push(Rate { variant: vi, a, ea_j: ea, ep: ep.map(|(e0, al)| (e0 + ea_add, al)), rule: rule.id.clone(), source: rule.source.clone(), per_reaction: false });
         }
         out
     }

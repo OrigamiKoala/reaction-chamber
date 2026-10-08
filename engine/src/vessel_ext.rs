@@ -415,9 +415,37 @@ impl Vessel {
         }
         // complexation rows whose metal and ligand are both present
         let present = |sp: &str| self.species_mol.get(sp).map_or(false, |m| *m > crate::ion_pairing::MIN_PAIR_AMOUNT_MOL);
+        // (an association row adds a species and an equilibrium to every solve: one that would hold under MIN_PAIRED_FRACTION of
+        // the scarcer partner at the present concentrations, taking the free ligand at its total, is not registered yet and is
+        // looked at again at the next call; the measured rows are cumulative constants beta_n, M + n L = ML_n)
+        let vol_l = (self.solvent_volume_ml() / 1000.0).max(1e-6);
+        let material = |eq: &chem_db::GeneralEquilibrium| -> bool {
+            let conc = |sp: &str| self.species_mol.get(sp).copied().unwrap_or(0.0) / vol_l;
+            let mut f_scarce: f64 = 0.0;
+            // fraction of the metal (all the ligands are taken at their totals) and, for a single ligand, of the ligand
+            let mut free_product = 1.0;
+            let mut n_total = 0.0;
+            let mut metal_conc = f64::INFINITY;
+            for (sp, nu) in &eq.reactants {
+                let c = 0.3 * conc(sp);
+                if *nu == 1.0 && ions::species_charge(sp) > 0 && metal_conc.is_infinite() {
+                    metal_conc = c;
+                } else {
+                    free_product *= c.max(1e-30).powf(*nu);
+                    n_total += nu;
+                }
+            }
+            let beta = 10f64.powf(eq.log_k_298);
+            f_scarce = f_scarce.max(beta * free_product);
+            if n_total == 1.0 && metal_conc.is_finite() {
+                f_scarce = f_scarce.max(beta * metal_conc);
+            }
+            f_scarce >= crate::ion_pairing::MIN_PAIRED_FRACTION
+        };
         let new_rows: Vec<_> = crate::ion_pairing::complex_equilibria(&present)
             .into_iter()
             .filter(|eq| !self.ev.checked_pairs.contains(&("cplx".to_string(), eq.id.clone())))
+            .filter(|eq| material(eq))
             .collect();
         for eq in new_rows {
             self.ev.checked_pairs.insert(("cplx".to_string(), eq.id.clone()));
@@ -722,6 +750,15 @@ impl Vessel {
                 let reac: Vec<&String> = eq.reactants.keys().filter(|k| k.as_str() != crate::db::seed::WATER).collect();
                 let prod: Vec<&String> = eq.products.keys().filter(|k| k.as_str() != crate::db::seed::WATER).collect();
                 if reac.len() >= 2 && prod.len() == 1 && !reac.iter().any(|r| r.as_str() == crate::db::seed::PROTON || r.as_str() == crate::db::seed::HYDROXIDE) {
+                    // a 1:1 association of two ions from the complexation table (NaCO3-, NaSO4-, CaSO4, MgSO4 ...) is an ion pair, which
+                    // is speciation like the generated `pair_` rows: dissolving NaHCO3 must not announce a "complex" or start the
+                    // reaction timer. Multi-ligand and neutral-ligand complexes (Ni(NH3)6 2+) and the curated coloured ones are events.
+                    if eq.id.starts_with("cplx_")
+                        && eq.reactants.iter().filter(|(k, _)| k.as_str() != crate::db::seed::WATER).map(|(_, c)| *c).sum::<f64>() <= 2.0
+                        && reac.iter().all(|r| crate::ions::species_charge(r) != 0)
+                    {
+                        return None;
+                    }
                     Some(prod[0].clone())
                 } else {
                     None

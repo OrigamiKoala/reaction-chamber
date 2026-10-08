@@ -80,10 +80,13 @@ const solid = byId('nahco3_s') ?? pick((e) => e.by_mass, 'a by-mass solid');
 const [sa, sb] = compare(`250 x 10 mg ${solid.id}`, 'solid',
   (h) => { dose(h, { reagent_id: 'water', volume_ml: 50 }); dose(h, { reagent_id: solid.id, mass_g: 2.5 }); },
   (h) => { dose(h, { reagent_id: 'water', volume_ml: 50 }); for (let i = 0; i < 250; i++) dose(h, { reagent_id: solid.id, mass_g: 0.01 }); },
-  // pH is compared too: the engine solves all equilibria jointly, so one 2.5 g dose and 250 x 10 mg both give ~8.2
+  // pH is compared too: the engine solves all equilibria jointly, so one 2.5 g dose and 250 x 10 mg give the same pH
   { minMol: 1e-3, settleS: 600 });
-// 0.6 M NaHCO3 reads ~8.0 on the activity scale (Debye-Hueckel slope now follows the dielectric constant of water at T)
-assert.ok(sa.ph > 7.9 && sa.ph < 8.5, `NaHCO3 pH ${sa.ph}`);
+// 0.6 mol/kgw NaHCO3 in a (nearly) closed solution: PHREEQC gives pH 7.83 with pitzer.dat and 7.79 with phreeqc.dat (phreeqpython,
+// 22 C, charge balance on pH; checked 2026-10-08). The engine includes the NaCO3- ion pair (log K 1.27) and has no time to degas CO2 in
+// 600 s of an open beaker (the ~8.3 of a bench bottle is the CO2-degassed value), so it lands there too, not at the 8.0-8.2 that the
+// earlier activity model gave.
+assert.ok(sa.ph > 7.65 && sa.ph < 7.95, `NaHCO3 pH ${sa.ph}`);
 near('weigh-in mass', sb.contents_mass_g - snap0Water, 2.5, 0.01);
 
 // 5. drops: 60 x 1 drop == 3 mL by drops==volume equivalence (0.05 mL each)

@@ -19,6 +19,16 @@ pub struct MayrParameter {
     pub s_n: f64,  // Nucleophile sensitivity s_N
     pub e: f64,    // Electrophilicity E
     pub solvent: String,
+    /// structure of the compound (the database's SMILES), when it has one
+    #[serde(default)]
+    pub smiles: Option<String>,
+    /// database quality rating (0-5 stars) and the literature reference of the parameters
+    #[serde(default)]
+    pub quality_stars: u8,
+    #[serde(default)]
+    pub reference: String,
+    #[serde(default)]
+    pub doi: Option<String>,
 }
 
 /// Calculate Mayr rate constant at 20 °C (293.15 K) and scale with temperature:

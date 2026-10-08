@@ -23,6 +23,7 @@ pub mod gas_phase;
 pub mod vessel_vle;
 pub mod groups;
 pub mod solubility;
+pub mod solubility_points;
 pub mod compound_model;
 pub mod compound_thermo;
 pub mod vessel_phase;
@@ -58,6 +59,12 @@ pub mod vessel_discovered;
 pub mod vessel_energy;
 pub mod vessel_mixing;
 pub mod ph_electrode;
+pub mod rate_store;
+pub mod rate_data;
+pub mod rate_harness;
+pub mod mayr;
+pub mod substitution;
+pub mod wasm_rates;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
@@ -785,8 +792,8 @@ mod tests {
     #[test]
     fn test_m6_mayr_integration_and_diffusion_cap() {
         let db = templates::get_mayr_database();
-        let nuc = db.get("nuc_piperidine").expect("piperidine in db");
-        let el = db.get("el_benzhydrylium_mpa").expect("benzhydrylium in db");
+        let nuc = db.get("nuc_piperidine_in_mecn").expect("piperidine in db");
+        let el = db.get("el_benzhydrylium_ion_ph2ch").expect("benzhydrylium in db");
 
         let k_mayr = templates::calculate_mayr_rate(nuc, el, 293.15);
         assert!(k_mayr > 1.0e10, "High Mayr rate expected for piperidine + benzhydrylium");

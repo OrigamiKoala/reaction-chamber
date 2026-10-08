@@ -121,7 +121,22 @@ pub struct GeneralEquilibrium {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EquilibriumRate {
     pub terms: Vec<RateTerm>,
+    /// Ligand substitution (Eigen-Wilkins): the row is a complexation `M + n L <=> ML_n` whose first metal-ligand bond is
+    /// rate-limiting, and `terms` hold the rate constant of that bond (M^-1 s^-1) rather than a rate law of the whole row.
+    /// The approach to equilibrium then relaxes with `k_f ([M] + [L]) + k_f / K_step` (`K_step` the geometric-mean
+    /// stepwise constant `K^(1/n)`), which needs no concentration power of the ligand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_step: Option<FirstStep>,
     pub source: String,
+}
+
+/// The metal and the ligand of a first-bond-limited complexation row (see `EquilibriumRate::first_step`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FirstStep {
+    pub metal: String,
+    pub ligand: String,
+    /// Number of ligands the row binds.
+    pub n: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -488,7 +503,18 @@ pub fn record_acid_equilibria() -> Vec<GeneralEquilibrium> {
     rows
 }
 
+/// Every default equilibrium row, with the ligand-substitution kinetics of the complexation rows attached
+/// (`substitution::attach_rate`: inert and slow aqua ions form their complexes over seconds to hours, not at once).
 pub fn get_default_equilibria() -> Vec<GeneralEquilibrium> {
+    let mut list = raw_default_equilibria();
+    for eq in list.iter_mut() {
+        crate::substitution::attach_rate(eq);
+    }
+    list
+}
+
+/// The default rows as the data files and custom registrations give them, without any derived kinetics.
+pub(crate) fn raw_default_equilibria() -> Vec<GeneralEquilibrium> {
     let mut list = core_rows().equilibria.clone();
     // Acid-base sites of the seeded species records (the indicator dyes): the row is generated from the record's pKa.
     for eq in record_acid_equilibria() {

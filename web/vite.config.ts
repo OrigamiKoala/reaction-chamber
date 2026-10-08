@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
+  // relative asset URLs: the same build works at a site root (python3 run.py) and under a GitHub Pages project path
+  base: './',
   publicDir: 'public',
   build: {
     outDir: 'dist',

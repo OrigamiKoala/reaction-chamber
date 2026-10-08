@@ -722,6 +722,15 @@ export interface CompoundModel {
   thermo?: CompoundThermo;
 }
 
+/** A per-pathway rate that replaces the template rule of the reaction with the same key (engine `register_reaction_rates`). */
+export interface RateEntry {
+  key: string;
+  a: number;
+  ea_j_mol: number;
+  tier: string;
+  source: string;
+}
+
 /** A solid the engine formed with only a rule-of-thumb Ksp: the app should look it up (engine `take_mineral_lookups`). */
 export interface MineralLookup {
   /** Species id, e.g. "PbI2(s)". */

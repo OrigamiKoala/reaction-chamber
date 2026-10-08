@@ -2,8 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-# tblite / OpenMP: the molecules in the tests are tiny, and a thread per core only spins (the m7 suite spent ~12 s of
-# system time in 9 s wall; with one thread 4 s). Set before anything imports tblite; an explicit setting still wins.
+# OpenMP (numpy / scipy / RDKit): the test inputs are tiny, and a thread per core only spins. An explicit setting wins.
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 root_dir = Path(__file__).resolve().parent

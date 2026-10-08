@@ -397,6 +397,25 @@ pub fn resolve(key: &str, compound: Option<&CompoundThermo>) -> Option<Molecule>
         let Some(x) = solubility_to_x(v, &unit, mw, mws, rho).filter(|x| *x > 0.0 && *x <= 1.0) else { continue };
         gamma_points.push(GammaPoint { solvent_ik, t_ref_k: t, ln_gamma_inf: ln_a_sat_at(t, &solid) - x.ln(), x_sat: Some(x), h_excess_j_mol: None, tier: p.tier.clone(), source: p.source.clone() });
     }
+    // measured mutual solubilities of water and organic liquids (`data/solubility_points.json`, ThermoML), by InChIKey
+    if let Some(ik_s) = ik.as_deref() {
+        for tp in crate::solubility_points::points_for(ik_s) {
+            if gamma_points.iter().any(|g| g.solvent_ik == tp.solvent) {
+                continue;
+            }
+            let Some((_mws, _rho)) = solvent_info(&tp.solvent) else { continue };
+            gamma_points.push(GammaPoint {
+                solvent_ik: tp.solvent.clone(),
+                t_ref_k: tp.t_k,
+                ln_gamma_inf: ln_a_sat_at(tp.t_k, &solid) - tp.x.ln(),
+                x_sat: Some(tp.x),
+                // d ln gamma / d(1/T) = -(d ln x / d(1/T)); the excess enthalpy that goes with it is -R times that slope
+                h_excess_j_mol: tp.dlnx_d_invt.map(|s| -s * R_GAS),
+                tier: ProvenanceTier::Tabulated,
+                source: format!("measured mutual solubility, NIST/TRC ThermoML ({} data sets)", tp.n_papers),
+            });
+        }
+    }
     // PubChem-style water solubility of an import
     if let (Some(c), Some(wik)) = (compound, water_ik.clone()) {
         if let Some(g_l) = c.solubility_g_per_l.filter(|s| *s > 0.0) {
@@ -595,14 +614,45 @@ impl Mixture {
             }
         }
         if !pairs.is_empty() {
-            let ge: f64 = pairs.iter().map(|&(i, j, a)| a * x[i] * x[j]).sum();
-            for &(i, j, a) in &pairs {
-                out[i] += a * x[j];
-                out[j] += a * x[i];
-            }
-            for k in 0..nc {
-                if n[k] > 0.0 {
-                    out[k] -= ge;
+            // A pair with a datum on each side (i in j and j in i: the mutual solubility of two liquids) has two independent
+            // infinite-dilution corrections, which the one-parameter form cannot hold: it uses the three-suffix Margules form
+            // G^E/RT = x_i x_j (A_ij x_j + A_ji x_i), whose infinite-dilution limits are exactly A_ij and A_ji. For an excess
+            // Gibbs energy that is a homogeneous polynomial of degree d in the mole fractions, ln gamma_k = dG/dx_k - (d-1) G
+            // (d = 2: the one-parameter form A x_i x_j, ln gamma_i = A x_j - G; d = 3: the three-suffix form); both stay
+            // Gibbs-Duhem consistent in a mixture of any number of components.
+            let mut handled = vec![false; pairs.len()];
+            for a in 0..pairs.len() {
+                if handled[a] {
+                    continue;
+                }
+                let (i, j, aij) = pairs[a];
+                handled[a] = true;
+                let reverse = (a + 1..pairs.len()).find(|&b| !handled[b] && pairs[b].0 == j && pairs[b].1 == i);
+                match reverse {
+                    Some(b) => {
+                        let aji = pairs[b].2;
+                        handled[b] = true;
+                        let g = aij * x[i] * x[j] * x[j] + aji * x[i] * x[i] * x[j];
+                        let dgi = aij * x[j] * x[j] + 2.0 * aji * x[i] * x[j];
+                        let dgj = 2.0 * aij * x[i] * x[j] + aji * x[i] * x[i];
+                        for k in 0..nc {
+                            if n[k] > 0.0 {
+                                out[k] -= 2.0 * g;
+                            }
+                        }
+                        out[i] += dgi;
+                        out[j] += dgj;
+                    }
+                    None => {
+                        let g = aij * x[i] * x[j];
+                        for k in 0..nc {
+                            if n[k] > 0.0 {
+                                out[k] -= g;
+                            }
+                        }
+                        out[i] += aij * x[j];
+                        out[j] += aij * x[i];
+                    }
                 }
             }
         }

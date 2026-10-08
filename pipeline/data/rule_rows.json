@@ -1,0 +1,1166 @@
+{
+  "rows": [
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.9457700901366026,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.9597933724252887,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.958607314841775,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OCCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.9457700901366026,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OCCCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -4.221848749616356,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OC(C)C",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.962573502059376,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)OCc1ccccc1",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -4.106793246940152,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "CC(=O)Oc1ccccc1",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -3.632644078973981,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "ClC(Cl)C(=O)OC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -4.481486060122113,
+      "log_k_rule": -4.255683620785247,
+      "reactants": [
+        "CCC(=O)OCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 293.0,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -4.7447274948966935,
+      "log_k_rule": -4.255683620785247,
+      "reactants": [
+        "CCCC(=O)OCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 293.0,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -5.920818753952375,
+      "log_k_rule": -4.255683620785247,
+      "reactants": [
+        "C=CC(=O)OCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 293.0,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -5.200659450546418,
+      "log_k_rule": -4.255683620785247,
+      "reactants": [
+        "CC=CC(=O)OCC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 293.0,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 62.0,
+      "held_out": false,
+      "log_k_meas": -4.070581074285707,
+      "log_k_rule": -4.064765737469489,
+      "reactants": [
+        "ClCC(=O)OC",
+        "O"
+      ],
+      "rule": "ester + water, H+",
+      "t_k": 298.15,
+      "template": "acid_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 83.19,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -2.9871627752948275,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 78.59,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -2.9208187539523753,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CCC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 84.59,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.889410289700751,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(C)CC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 78.19,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.284832642151542,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "NC(=O)Cc1ccccc1",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 81.99,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.0467236633326955,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "COCC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 81.09,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -2.91721462968355,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "ClCC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 80.29,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.319664486585437,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "BrCC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 87.49,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.402304814074488,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "NC(=O)C1CCCCC1",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 89.89,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -3.8210230527068307,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CCC(C)C(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 95.39,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -4.632644078973981,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(=O)NCC",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 84.49,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -4.184422251675732,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(=O)N(C)C",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 84.11,
+      "held_out": false,
+      "log_k_meas": -4.991399828238082,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(=O)N(C)CC",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 81.09,
+      "ea_rule_kj": 84.11,
+      "held_out": true,
+      "log_k_meas": -3.2269453066357374,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CCCCC(N)=O",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 89.89,
+      "ea_rule_kj": 84.11,
+      "held_out": true,
+      "log_k_meas": -4.235077015350112,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(=O)NC",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 84.11,
+      "held_out": true,
+      "log_k_meas": -5.6439741428068775,
+      "log_k_rule": -3.3235632622691598,
+      "reactants": [
+        "CC(=O)N(CC)CC",
+        "O"
+      ],
+      "rule": "amide + water, H+",
+      "t_k": 348.0,
+      "template": "amide_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 40.0,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.5634810853944108,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "O=COC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 37.4,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.4099331233312946,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "O=COCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 35.6,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.3579348470004537,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "O=COCCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.7471469690201068,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.9677842967020184,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.0132282657337552,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OCCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 46.84,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.1870866433571443,
+      "log_k_rule": -0.7041397513228342,
+      "reactants": [
+        "CC(=O)OCCCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 293.2,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.5816987086802545,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 52.25,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.585026652029182,
+      "log_k_rule": -0.679497971089387,
+      "reactants": [
+        "CC(=O)OC1CCCC1",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 294.1,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -2.8239087409443187,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)(C)C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.679853713888946,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OCC=C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.1444808443321999,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)C=C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -2.3979400086720375,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)(CC)C=C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.4377071355435253,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)C#C",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.7055337738384071,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OCc1ccccc1",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 0.1367205671564068,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)Oc1ccccc1",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.9731278535996986,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)Oc1ccc([N+](=O)[O-])cc1[N+](=O)[O-]",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.5646660642520893,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClCC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 3.77232170672292,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClCC(=O)Oc1ccc([N+](=O)[O-])cc1",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 3.45178643552429,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClC(Cl)C(=O)OC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 4.107209969647869,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClCC(=O)Oc1ccccc1",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 3.6532125137753435,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "FC(F)C(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -0.036212172654444715,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CCOC(=O)CSC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 0.6232492903979004,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CCOC(=O)CS(C)=O",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 1.1072099696478683,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CCOC(=O)CS(C)(=O)=O",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 44.85,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.0604807473813815,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CCC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 43.18,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.4202164033831899,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CCCC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 42.55,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.6382721639824072,
+      "log_k_rule": -0.7041397513228342,
+      "reactants": [
+        "CC(C)C(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 293.2,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 50.0,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.1079053973095196,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "C=CC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 53.22,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": -1.8860566476931633,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC=CC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 51.3,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 0.670245853074124,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "C#CC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": false,
+      "log_k_meas": 2.146128035678238,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClCC(=O)OC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 33.5,
+      "ea_rule_kj": 45.2,
+      "held_out": true,
+      "log_k_meas": 1.3384564936046048,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "O=COCCCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": true,
+      "log_k_meas": -1.7599502278873524,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC(=O)OC(C)CC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 45.2,
+      "held_out": true,
+      "log_k_meas": 2.9459607035775686,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "ClC(Cl)C(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 53.16,
+      "ea_rule_kj": 45.2,
+      "held_out": true,
+      "log_k_meas": -0.24565166428898116,
+      "log_k_rule": -0.5704509650856655,
+      "reactants": [
+        "CC#CC(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "ester + hydroxide",
+      "t_k": 298.15,
+      "template": "base_ester_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -7.6252516539898965,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CCl",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 108.36,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -6.388276691992658,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CBr",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 117.02,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -7.137868620686962,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CI",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -6.6777807052660805,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CCCl",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -6.578396073130169,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CCBr",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 105.11,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -6.517126416391246,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CCCBr",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -4.892790030352131,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "ClCc1ccccc1",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -3.0644927341752872,
+      "log_k_rule": -6.483547512071177,
+      "reactants": [
+        "Cc1ccc(CCl)cc1",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 303.0,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -2.852014679316195,
+      "log_k_rule": -7.131680020050256,
+      "reactants": [
+        "Cc1ccc(CBr)cc1",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 293.0,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": false,
+      "log_k_meas": -3.2518119729937998,
+      "log_k_rule": -7.131680020050256,
+      "reactants": [
+        "Cc1ccccc1CBr",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 293.0,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 114.81,
+      "ea_rule_kj": 110.16,
+      "held_out": true,
+      "log_k_meas": -6.790484985457369,
+      "log_k_rule": -6.792462051887937,
+      "reactants": [
+        "CCI",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 298.15,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.16,
+      "held_out": true,
+      "log_k_meas": -3.560667306169737,
+      "log_k_rule": -6.483547512071177,
+      "reactants": [
+        "BrCc1ccccc1",
+        "O"
+      ],
+      "rule": "primary or methyl halide neutral hydrolysis",
+      "t_k": 303.0,
+      "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 110.91,
+      "ea_rule_kj": 112.22,
+      "held_out": false,
+      "log_k_meas": -6.673664139071248,
+      "log_k_rule": -7.076514935617765,
+      "reactants": [
+        "CC(C)Cl",
+        "O"
+      ],
+      "rule": "secondary halide in water",
+      "t_k": 298.15,
+      "template": "sn1_solvolysis"
+    },
+    {
+      "ea_meas_kj": 110.29,
+      "ea_rule_kj": 112.22,
+      "held_out": false,
+      "log_k_meas": -5.413412695328245,
+      "log_k_rule": -5.4854503285912655,
+      "reactants": [
+        "CC(C)Br",
+        "O"
+      ],
+      "rule": "secondary halide in water",
+      "t_k": 298.15,
+      "template": "sn1_solvolysis"
+    },
+    {
+      "ea_meas_kj": 115.47,
+      "ea_rule_kj": 112.22,
+      "held_out": false,
+      "log_k_meas": -5.557520230935552,
+      "log_k_rule": -5.0808797410202144,
+      "reactants": [
+        "CC(C)I",
+        "O"
+      ],
+      "rule": "secondary halide in water",
+      "t_k": 298.15,
+      "template": "sn1_solvolysis"
+    },
+    {
+      "ea_meas_kj": 98.99,
+      "ea_rule_kj": 81.6,
+      "held_out": false,
+      "log_k_meas": -1.5199930570428493,
+      "log_k_rule": -1.5199927724656401,
+      "reactants": [
+        "CC(C)(C)Cl",
+        "O"
+      ],
+      "rule": "tertiary halide in water",
+      "t_k": 298.15,
+      "template": "sn1_solvolysis"
+    },
+    {
+      "ea_meas_kj": 101.7,
+      "ea_rule_kj": 96.97,
+      "held_out": false,
+      "log_k_meas": -5.209011524911184,
+      "log_k_rule": -4.416879511230404,
+      "reactants": [
+        "CCl",
+        "[OH-]"
+      ],
+      "rule": "primary substrate + hydroxide",
+      "t_k": 298.15,
+      "template": "sn2_substitution"
+    },
+    {
+      "ea_meas_kj": 96.3,
+      "ea_rule_kj": 96.97,
+      "held_out": false,
+      "log_k_meas": -3.85078088734462,
+      "log_k_rule": -4.416879511230404,
+      "reactants": [
+        "CBr",
+        "[OH-]"
+      ],
+      "rule": "primary substrate + hydroxide",
+      "t_k": 298.15,
+      "template": "sn2_substitution"
+    },
+    {
+      "ea_meas_kj": 92.9,
+      "ea_rule_kj": 96.97,
+      "held_out": false,
+      "log_k_meas": -4.189095719331299,
+      "log_k_rule": -4.416879511230404,
+      "reactants": [
+        "CI",
+        "[OH-]"
+      ],
+      "rule": "primary substrate + hydroxide",
+      "t_k": 298.15,
+      "template": "sn2_substitution"
+    }
+  ]
+}

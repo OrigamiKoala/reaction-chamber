@@ -30,6 +30,8 @@ import init, {
   register_equilibrium,
   register_mineral,
   take_mineral_lookups,
+  register_reaction_rates,
+  rate_store_size,
   resolve_mineral,
   import_compound,
   m6_get_reaction_templates,
@@ -342,6 +344,12 @@ self.onmessage = async (e: MessageEvent) => {
           payload: JSON.parse(res),
           requestId,
         });
+        break;
+      }
+
+      case 'REGISTER_RATES': {
+        const changed = register_reaction_rates(JSON.stringify(payload ?? []));
+        self.postMessage({ type: 'REGISTER_RATES_RESPONSE', payload: { changed, size: rate_store_size() }, requestId });
         break;
       }
 

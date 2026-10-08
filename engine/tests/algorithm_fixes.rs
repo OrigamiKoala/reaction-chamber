@@ -235,7 +235,9 @@ fn redox_stops_at_its_equilibrium() {
     }
     let fe3 = v.species_mol.get("Fe+3").copied().unwrap_or(0.0);
     assert!(fe3 < 0.0002 + 1e-12, "at most the iodine's worth of Fe3+, got {}", fe3);
-    // (Fe2+ is partly the FeSO4 ion pair: count both)
-    let fe2 = v.species_mol.get("Fe+2").copied().unwrap_or(0.0) + v.species_mol.get("FeSO4").copied().unwrap_or(0.0);
+    // (Fe2+ is partly the FeSO4 and FeHSO4+ ion pairs: count them)
+    let fe2 = v.species_mol.get("Fe+2").copied().unwrap_or(0.0)
+        + v.species_mol.get("FeSO4").copied().unwrap_or(0.0)
+        + v.species_mol.get("FeHSO4+").copied().unwrap_or(0.0);
     assert!(fe2 > 0.0098, "Fe(II) total {}", fe2);
 }

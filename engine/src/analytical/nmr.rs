@@ -479,7 +479,35 @@ fn alkyne_h(g: &Mol, i: usize) -> f64 {
     }
 }
 
+/// Shifts of the protons of carbon `i` by slot: the increment model's values (which carry the spread between diastereotopic /
+/// cis-trans slots), moved by the mean residual the training spectra give for this environment when the environment table knows
+/// it (`hose.rs`).
 fn carbon_h_shifts(g: &Mol, i: usize) -> Vec<(u8, f64)> {
+    let mut v = carbon_h_shifts_increments(g, i);
+    if let Some((residual, ..)) = super::hose::predict(super::hose::Kind::H1, g, i) {
+        for (_, s) in v.iter_mut() {
+            *s += residual;
+        }
+    }
+    v
+}
+
+/// Mean proton shift of carbon `i` from the increment models alone (what the environment table learns the residual of).
+pub fn h1_increment_mean(g: &Mol, i: usize) -> f64 {
+    let v = carbon_h_shifts_increments(g, i);
+    if v.is_empty() {
+        0.0
+    } else {
+        v.iter().map(|(_, s)| s).sum::<f64>() / v.len() as f64
+    }
+}
+
+/// 13C shift of carbon `i` from the increment models alone.
+pub fn c13_increment_shift(g: &Mol, i: usize) -> f64 {
+    c13_shift_increments(g, i).0
+}
+
+fn carbon_h_shifts_increments(g: &Mol, i: usize) -> Vec<(u8, f64)> {
     let a = &g.atoms[i];
     if a.arom {
         return vec![(0, aromatic_h_shift(g, i))];
@@ -725,7 +753,17 @@ fn mol_h1(g: &Mol, species: usize, name: &str, id: &str, conc: f64, solv: Solven
 
 // -------------------------------------------------------------------------------------------------- 13C of one molecule
 
+/// 13C shift of carbon `i`: the increment model plus the mean residual of the carbon's environment in the training spectra
+/// (`hose.rs`) when the table knows it.
 fn c13_shift_of(g: &Mol, i: usize) -> (f64, f64, String) {
+    let (s, q, label) = c13_shift_increments(g, i);
+    match super::hose::predict(super::hose::Kind::C13, g, i) {
+        Some((residual, ..)) => (s + residual, q, label),
+        None => (s, q, label),
+    }
+}
+
+fn c13_shift_increments(g: &Mol, i: usize) -> (f64, f64, String) {
     let a = &g.atoms[i];
     let q_factor = |h: u32| if h > 0 { 1.0 } else { 0.45 };
     if a.arom {

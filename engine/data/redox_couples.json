@@ -1,72 +1,479 @@
 {
  "version": 1,
- "comment": "Self-exchange rate constants (RedoxCouple.k_self, M-1 s-1) of couples that move an oxygen atom. A couple whose two forms differ by electrons only (I2 / I-, Cl2 / Cl-, Hg2+2 / Hg+2) needs no row: the structure says so (gem/redox.rs is_electron_transfer_couple). A couple of an element that is not in redox_lability.json, whose forms differ in composition, is inert on bench time unless a row here (or a registered kinetic row) says otherwise: thermodynamics decides whether a reaction is allowed, never that a kinetically hindered couple reacts. The rows are the oxo-transfer couples whose reduced or oxidised end is kinetically *reactive* (the O-O bond of a peroxide, the weak X-O bond of a hypohalite, the lone pair of sulfite and nitrite), as opposed to the inert ends (sulfate, nitrate, perchlorate, O2, N2). The value is an effective Marcus self-exchange rate: oxo transfer is not outer-sphere electron transfer and has no measurable self-exchange, so each value is fitted once, with the cross relation of gem/rates.rs, to the order of magnitude of one measured rate of the couple with a reference partner (see 'fit'); the cross relation then carries it to every other partner by its driving force. Tier Speculative. Species that the store does not hold are skipped.",
+ "comment": "Self-exchange rate constants (RedoxCouple.k_self, M-1 s-1) of couples that move an oxygen atom. A couple whose two forms differ by electrons only (I2 / I-, Cl2 / Cl-, Hg2+2 / Hg+2) needs no row: the structure says so (gem/redox.rs is_electron_transfer_couple). A couple of an element that is not in redox_lability.json, whose forms differ in composition, is inert on bench time unless a row here (or a registered kinetic row) says otherwise: thermodynamics decides whether a reaction is allowed, never that a kinetically hindered couple reacts. The rows are the oxo-transfer couples whose reduced or oxidised end is kinetically *reactive* (the O-O bond of a peroxide, the weak X-O bond of a hypohalite, the lone pair of sulfite and nitrite), as opposed to the inert ends (sulfate, nitrate, perchlorate, O2, N2). The value is an effective Marcus self-exchange rate: oxo transfer is not outer-sphere electron transfer and has no measurable self-exchange, so each value is fitted once, with the cross relation of gem/rates.rs, to the order of magnitude of one measured rate of the couple with a reference partner (see 'fit'); the cross relation then carries it to every other partner by its driving force. Tier Speculative. Species that the store does not hold are skipped. OUTER-SPHERE ROWS (kind outer_sphere_measured): the self-exchange constants are attributed to the cited papers and to Marcus & Sutin, Biochim. Biophys. Acta 811, 265 (1985), but were written from memory and NOT checked against them (verification recalled, tier Estimated, not Tabulated; none of the cited tables and pages was opened). The couples I2 / I- and Br2 / Br- are not outer-sphere transfers at all and their rows are placeholders of the right order of magnitude.",
  "couples": [
   {
    "id": "peroxide_oxygen",
-   "reduced": ["H2O"],
-   "oxidised": ["H2O2"],
+   "reduced": [
+    "H2O"
+   ],
+   "oxidised": [
+    "H2O2"
+   ],
    "n_electrons": 2,
    "E0_V": 1.776,
    "k_self": 1e-18,
    "tier": "Speculative",
    "source": "effective self-exchange of the O-O bond reduction H2O2 + 2H+ + 2e- -> 2 H2O (E0 1.776 V, NBS / CRC)",
-   "fit": "H2O2 + I- (uncatalysed path): 0.0115 M-1 s-1 at 25 C (Liebhafsky & Mohammad 1933), recalled"
+   "fit": "H2O2 + I- (uncatalysed path): 0.0115 M-1 s-1 at 25 C (Liebhafsky & Mohammad 1933), recalled",
+   "verification": "recalled"
   },
   {
    "id": "peroxodisulfate_oxygen",
-   "reduced": ["SO4-2", "HSO4-"],
-   "oxidised": ["S2O8-2"],
+   "reduced": [
+    "SO4-2",
+    "HSO4-"
+   ],
+   "oxidised": [
+    "S2O8-2"
+   ],
    "n_electrons": 2,
    "E0_V": 2.01,
    "k_self": 1e-21,
    "tier": "Speculative",
    "source": "effective self-exchange of the O-O bond reduction S2O8-2 + 2e- -> 2 SO4-2 (E0 2.01 V)",
-   "fit": "S2O8-2 + I-: 0.03 M-1 s-1 at 25 C (the registered kinetic row of the iodine clock, Indelli & Prue 1958); the cross relation carries it to Fe(II), thiosulfate, sulfite and the rest"
+   "fit": "S2O8-2 + I-: 0.03 M-1 s-1 at 25 C (the registered kinetic row of the iodine clock, Indelli & Prue 1958); the cross relation carries it to Fe(II), thiosulfate, sulfite and the rest",
+   "verification": "recalled"
   },
   {
    "id": "hypohalite_oxygen",
-   "reduced": ["Cl-"],
-   "oxidised": ["ClO-", "HClO"],
+   "reduced": [
+    "Cl-"
+   ],
+   "oxidised": [
+    "ClO-",
+    "HClO"
+   ],
    "n_electrons": 2,
    "E0_V": 1.482,
-   "k_self": 1e-2,
+   "k_self": 0.01,
    "tier": "Speculative",
    "source": "effective self-exchange of the X-O bond reduction HOCl + H+ + 2e- -> Cl- + H2O (E0 1.482 V)",
-   "fit": "OCl- + I- at pH 10: of the order of 1e1-1e3 M-1 s-1 (hypochlorite oxidises iodide at once at bench concentrations; the reaction is a nucleophilic attack of I- on the O-Cl bond, which the electron-transfer cross relation can only mimic with a large effective self-exchange rate), recalled"
+   "fit": "OCl- + I- at pH 10: of the order of 1e1-1e3 M-1 s-1 (hypochlorite oxidises iodide at once at bench concentrations; the reaction is a nucleophilic attack of I- on the O-Cl bond, which the electron-transfer cross relation can only mimic with a large effective self-exchange rate), recalled",
+   "verification": "recalled"
   },
   {
    "id": "hypobromite_oxygen",
-   "reduced": ["Br-"],
-   "oxidised": ["BrO-", "HBrO"],
+   "reduced": [
+    "Br-"
+   ],
+   "oxidised": [
+    "BrO-",
+    "HBrO"
+   ],
    "n_electrons": 2,
    "E0_V": 1.33,
-   "k_self": 1e-2,
+   "k_self": 0.01,
    "tier": "Speculative",
    "source": "effective self-exchange of the X-O bond reduction HOBr + H+ + 2e- -> Br- + H2O (E0 1.33 V); same class as hypochlorite",
-   "fit": "class value of the hypohalites"
+   "fit": "class value of the hypohalites",
+   "verification": "recalled"
   },
   {
    "id": "sulfite_oxidation",
-   "reduced": ["SO3-2", "HSO3-", "H2SO3", "SO2(aq)"],
-   "oxidised": ["SO4-2", "HSO4-", "H2SO4"],
+   "reduced": [
+    "SO3-2",
+    "HSO3-",
+    "H2SO3",
+    "SO2(aq)"
+   ],
+   "oxidised": [
+    "SO4-2",
+    "HSO4-",
+    "H2SO4"
+   ],
    "n_electrons": 2,
    "E0_V": 0.172,
-   "k_self": 1e-8,
+   "k_self": 1e-08,
    "tier": "Speculative",
    "source": "effective self-exchange of the oxidation of sulfur(IV) to sulfur(VI) by oxygen-atom transfer from water (E0 0.172 V, SO4-2 / H2SO3)",
-   "fit": "sulfite with a strong oxidant (permanganate, dichromate, iodine, Fe(III)): fast on the bench, 1e3 M-1 s-1 and more, recalled order of magnitude"
+   "fit": "sulfite with a strong oxidant (permanganate, dichromate, iodine, Fe(III)): fast on the bench, 1e3 M-1 s-1 and more, recalled order of magnitude",
+   "verification": "recalled"
   },
   {
    "id": "nitrite_oxidation",
-   "reduced": ["NO2-", "HNO2"],
-   "oxidised": ["NO3-"],
+   "reduced": [
+    "NO2-",
+    "HNO2"
+   ],
+   "oxidised": [
+    "NO3-"
+   ],
    "n_electrons": 2,
    "E0_V": 0.94,
    "k_self": 1e-10,
    "tier": "Speculative",
    "source": "effective self-exchange of the oxidation of nitrite to nitrate by oxygen-atom transfer from water (E0 0.94 V, NO3- / HNO2)",
-   "fit": "nitrite with permanganate in acid: of the order of 1e1 M-1 s-1, recalled"
+   "fit": "nitrite with permanganate in acid: of the order of 1e1 M-1 s-1, recalled",
+   "verification": "recalled"
+  },
+  {
+   "id": "fe_aqua",
+   "reduced": [
+    "Fe+2"
+   ],
+   "oxidised": [
+    "Fe+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.771,
+   "k_self": 4.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Silverman & Dodson, J. Am. Chem. Soc. 74, 3235 (1952); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "mno4_couple",
+   "reduced": [
+    "MnO4-2"
+   ],
+   "oxidised": [
+    "MnO4-"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.56,
+   "k_self": 3000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Sheppard & Wahl, J. Am. Chem. Soc. 79, 1020 (1957); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "ce_aqua",
+   "reduced": [
+    "Ce+3"
+   ],
+   "oxidised": [
+    "Ce+4"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.72,
+   "k_self": 4.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Gryder & Dodson, J. Am. Chem. Soc. 73, 2890 (1951); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "co_aqua",
+   "reduced": [
+    "Co+2"
+   ],
+   "oxidised": [
+    "Co+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.83,
+   "k_self": 5.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Marcus & Sutin, Biochim. Biophys. Acta 811, 265 (1985) Table 1",
+   "verification": "recalled"
+  },
+  {
+   "id": "v_aqua",
+   "reduced": [
+    "V+2"
+   ],
+   "oxidised": [
+    "V+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": -0.26,
+   "k_self": 0.01,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Krishnamurty & Wahl, J. Am. Chem. Soc. 80, 5921 (1958); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "vo_couple",
+   "reduced": [
+    "VO+2"
+   ],
+   "oxidised": [
+    "VO2+"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.0,
+   "k_self": 0.001,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Julian & Taube, J. Am. Chem. Soc. 88, 4157 (1966); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "eu_aqua",
+   "reduced": [
+    "Eu+2"
+   ],
+   "oxidised": [
+    "Eu+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": -0.36,
+   "k_self": 0.0001,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Meier & Garner, J. Phys. Chem. 56, 853 (1952); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "cu_aqua",
+   "reduced": [
+    "Cu+"
+   ],
+   "oxidised": [
+    "Cu+2"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.153,
+   "k_self": 0.01,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Marcus & Sutin, Biochim. Biophys. Acta 811, 265 (1985) Table 2",
+   "verification": "recalled"
+  },
+  {
+   "id": "cr_aqua",
+   "reduced": [
+    "Cr+2"
+   ],
+   "oxidised": [
+    "Cr+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": -0.407,
+   "k_self": 1e-05,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Anderson & Bonner, J. Am. Chem. Soc. 76, 3826 (1954); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "fe_cyanide",
+   "reduced": [
+    "Fe(CN)6-4"
+   ],
+   "oxidised": [
+    "Fe(CN)6-3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.355,
+   "k_self": 240.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Campanella & Wahl, J. Am. Chem. Soc. 81, 3014 (1959); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "ru_ammine",
+   "reduced": [
+    "Ru(NH3)6+2"
+   ],
+   "oxidised": [
+    "Ru(NH3)6+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.07,
+   "k_self": 820.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Meyer & Taube, Inorg. Chem. 12, 799 (1973); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "co_ammine",
+   "reduced": [
+    "Co(NH3)6+2"
+   ],
+   "oxidised": [
+    "Co(NH3)6+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.11,
+   "k_self": 1e-06,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Stranks, Discuss. Faraday Soc. 29, 73 (1960); Marcus & Sutin, BBA 811, 265 (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "fe_phen",
+   "reduced": [
+    "Fe(phen)3+2"
+   ],
+   "oxidised": [
+    "Fe(phen)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.06,
+   "k_self": 30000000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Ruff & Ziman, Biochem. Biophys. Res. Commun. 41, 1420 (1970); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "fe_bpy",
+   "reduced": [
+    "Fe(bpy)3+2"
+   ],
+   "oxidised": [
+    "Fe(bpy)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.06,
+   "k_self": 400000000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Ruff & Ziman, Biochem. Biophys. Res. Commun. 41, 1420 (1970); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "co_phen",
+   "reduced": [
+    "Co(phen)3+2"
+   ],
+   "oxidised": [
+    "Co(phen)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.37,
+   "k_self": 40.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Endicott & Taube, J. Am. Chem. Soc. 86, 1686 (1964); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "co_bpy",
+   "reduced": [
+    "Co(bpy)3+2"
+   ],
+   "oxidised": [
+    "Co(bpy)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.31,
+   "k_self": 18.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Endicott & Taube, J. Am. Chem. Soc. 86, 1686 (1964); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "os_bpy",
+   "reduced": [
+    "Os(bpy)3+2"
+   ],
+   "oxidised": [
+    "Os(bpy)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.88,
+   "k_self": 470000000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Chan & Wahl, J. Phys. Chem. 82, 2542 (1978); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "ir_chloro",
+   "reduced": [
+    "IrCl6-3"
+   ],
+   "oxidised": [
+    "IrCl6-2"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.892,
+   "k_self": 230000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Hurwitz & Kustin, Inorg. Chem. 5, 2038 (1966); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "ru_bpy",
+   "reduced": [
+    "Ru(bpy)3+2"
+   ],
+   "oxidised": [
+    "Ru(bpy)3+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.26,
+   "k_self": 400000000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Young, Keene & Sutin, J. Am. Chem. Soc. 98, 1077 (1976); Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "mn_aqua",
+   "reduced": [
+    "Mn+2"
+   ],
+   "oxidised": [
+    "Mn+3"
+   ],
+   "n_electrons": 1,
+   "E0_V": 1.54,
+   "k_self": 0.0001,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Rosseinsky, J. Chem. Soc. 1963, 1181; Marcus & Sutin (1985)",
+   "verification": "recalled"
+  },
+  {
+   "id": "ti_aqua",
+   "reduced": [
+    "Ti+3"
+   ],
+   "oxidised": [
+    "Ti+4"
+   ],
+   "n_electrons": 1,
+   "E0_V": 0.1,
+   "k_self": 0.01,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Marcus & Sutin, Biochim. Biophys. Acta 811, 265 (1985) Table 2",
+   "verification": "recalled"
+  },
+  {
+   "id": "i2_iodide",
+   "reduced": [
+    "I-"
+   ],
+   "oxidised": [
+    "I2(aq)"
+   ],
+   "n_electrons": 2,
+   "E0_V": 0.536,
+   "k_self": 100000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Marcus, Annu. Rev. Phys. Chem. 15, 155 (1964); Sutin (1982)",
+   "verification": "recalled"
+  },
+  {
+   "id": "br2_bromide",
+   "reduced": [
+    "Br-"
+   ],
+   "oxidised": [
+    "Br2(aq)"
+   ],
+   "n_electrons": 2,
+   "E0_V": 1.087,
+   "k_self": 10000.0,
+   "kind": "outer_sphere_measured",
+   "tier": "Estimated",
+   "source": "Marcus, Annu. Rev. Phys. Chem. 15, 155 (1964)",
+   "verification": "recalled"
   }
  ]
 }

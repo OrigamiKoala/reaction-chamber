@@ -1,0 +1,128 @@
+{
+  "_comment": "Arrhenius parameters (A in s^-1, Ea in J/mol) and a stated TGA onset temperature of the thermal decomposition of solids. STATUS: every row is `recalled` - written from memory, attributed to the references below, and NOT checked against them (the tables and pages that an earlier version of this file cited were not opened). The stated onsets are not reproduced by the stated Arrhenius parameters for most rows (a first-order model at 10 K/min gives T(5 %) 20-300 K away; see the unit test in engine/src/gem/rates.rs), so treat each row as tier Speculative until it is replaced by a value read from a source. Used by engine/src/gem/rates.rs (Section 13.2 of rates-from-data-plan.md); the engine also stops a decomposition at its thermodynamic equilibrium, so a too-fast rate only matters above that temperature.",
+  "decompositions": [
+    {
+      "solid": "NaHCO3(s)",
+      "aliases": [
+        "NaHCO3",
+        "nahcolite"
+      ],
+      "a": 100000000000.0,
+      "ea_j_mol": 98000.0,
+      "onset_temp_k": 385.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown, Thermal Decomposition of Ionic Solids (1999), Ball et al. (1986) (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "CaCO3(s)",
+      "aliases": [
+        "CaCO3",
+        "calcite"
+      ],
+      "a": 100000000000.0,
+      "ea_j_mol": 195000.0,
+      "onset_temp_k": 1020.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: ICTAC Kinetics Committee 2000 benchmark, Galwey & Brown (1999) (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "CuCO3(s)",
+      "aliases": [
+        "CuCO3",
+        "malachite",
+        "Cu2(OH)2CO3(s)"
+      ],
+      "a": 20000000000.0,
+      "ea_j_mol": 125000.0,
+      "onset_temp_k": 570.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Frost et al., Thermochim. Acta (2002) (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "KClO3(s)",
+      "aliases": [
+        "KClO3"
+      ],
+      "a": 50000000000000.0,
+      "ea_j_mol": 240000.0,
+      "onset_temp_k": 700.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Rudloff & Freeman, J. Phys. Chem. 73 (1969) 1209 (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "KClO3(s)",
+      "aliases": [
+        "KClO3"
+      ],
+      "a": 10000000000.0,
+      "ea_j_mol": 110000.0,
+      "onset_temp_k": 490.0,
+      "catalyst": "MnO2(s)",
+      "source": "recalled; attributed to: Galwey & Brown (1999), Booth et al., J. Chem. Soc. (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "KMnO4(s)",
+      "aliases": [
+        "KMnO4"
+      ],
+      "a": 1500000000000.0,
+      "ea_j_mol": 150000.0,
+      "onset_temp_k": 520.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Herbstein et al., J. Inorg. Nucl. Chem. 33 (1971) 3303 (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "(NH4)2Cr2O7(s)",
+      "aliases": [
+        "(NH4)2Cr2O7"
+      ],
+      "a": 30000000000000.0,
+      "ea_j_mol": 140000.0,
+      "onset_temp_k": 495.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Mahfouz et al., J. Therm. Anal. 40 (1993) 1245 (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "NH4Cl(s)",
+      "aliases": [
+        "NH4Cl"
+      ],
+      "a": 10000000000.0,
+      "ea_j_mol": 135000.0,
+      "onset_temp_k": 585.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Chaiken et al., J. Chem. Phys. 37 (1962) 2311 (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    },
+    {
+      "solid": "CuSO4*5H2O(s)",
+      "aliases": [
+        "CuSO4*5H2O",
+        "CuSO4(H2O)5(s)",
+        "chalcanthite"
+      ],
+      "a": 1000000000.0,
+      "ea_j_mol": 75000.0,
+      "onset_temp_k": 370.0,
+      "catalyst": null,
+      "source": "recalled; attributed to: Galwey & Brown (1999), Frost & Weier, Thermochim. Acta 409 (2004) 79 (table / page not checked)",
+      "verification": "recalled",
+      "tier": "speculative"
+    }
+  ]
+}

@@ -483,8 +483,9 @@ fn e3_unlisted_pairs_get_a_data_fitted_estimate_and_unknown_ions_fall_back_to_th
     assert!(m.source.contains("Pair-additive"));
     assert_eq!(m.tier, ProvenanceTier::Speculative);
     assert!(m.log_ksp_298 < -1.0 && m.log_ksp_298 > -25.0);
-    // an ion the table has never seen: the charge rule
-    let m2 = mineral_for_pair("Eu+3", "CO3-2");
+    // an ion neither the table nor the species store has ever seen (Eu3+ was the example until the OBIGT species were added:
+    // it now has formation data and gets its Ksp from those): the charge rule
+    let m2 = mineral_for_pair("Ir+3", "CO3-2");
     if let Some(m2) = m2 {
         assert!(m2.source.contains("rules"), "{}", m2.source);
     }

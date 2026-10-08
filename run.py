@@ -1,51 +1,44 @@
 #!/usr/bin/env python3
 """
-Reaction Chamber — One-command launch script.
-Starts the local server, opens the browser with the session token,
-or runs the M7 data flywheel to generate training data for the ML model.
+Reaction Chamber: one command to build (when stale) and serve the full local version.
+
+  python3 run.py                       build if needed, start the server, open the browser
 """
-import sys
-import os
 import argparse
+import sys
 from pathlib import Path
 
-# Ensure project root is in sys.path
 root_dir = Path(__file__).resolve().parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
-from server.main import start_server
-from server.flywheel_runner import run_flywheel
-from server.storage import get_flywheel_stats, export_ml_training_data
+
+def check_python_packages() -> None:
+    """Stops with an install hint when this interpreter lacks the server's packages (a common case: `python3` is the
+    system Python rather than the environment the packages were installed into)."""
+    import importlib.util
+    missing = [m for m in ("fastapi", "uvicorn", "pydantic", "numpy", "scipy", "rdkit")
+               if importlib.util.find_spec(m) is None]
+    if missing:
+        print(f"This Python ({sys.executable}) is missing: {', '.join(missing)}.\n"
+              f"Install them with:  {sys.executable} -m pip install -r {root_dir / 'requirements.txt'}\n"
+              "or run run.py with the Python environment that has them.")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Launch Reaction Chamber or Data Flywheel")
+    parser = argparse.ArgumentParser(description="Launch Reaction Chamber (local full version)")
     parser.add_argument("--host", default="127.0.0.1", help="Host (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default 8000)")
-    parser.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
-    parser.add_argument("--flywheel", action="store_true", help="Run the M7 data flywheel to generate ML barrier data")
-    parser.add_argument("--flywheel-count", type=int, default=20, help="Number of barrier jobs to compute in flywheel run (default: 20)")
-    parser.add_argument("--flywheel-workers", type=int, default=1, help="Concurrent worker count for flywheel (default: 1)")
-    parser.add_argument("--flywheel-continuous", action="store_true", help="Run flywheel continuously in background")
-    parser.add_argument("--flywheel-stats", action="store_true", help="Show current flywheel statistics")
-    parser.add_argument("--export-ml", type=str, default="", help="Export ML training dataset to path (e.g. dataset.json)")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open the browser")
+    parser.add_argument("--no-build", action="store_true", help="Serve the existing build even if sources are newer")
+    parser.add_argument("--rebuild", action="store_true", help="Rebuild the engine and the web app before serving")
     args = parser.parse_args()
 
-    if args.flywheel_stats:
-        stats = get_flywheel_stats()
-        print("📊 Reaction Chamber Flywheel Statistics:")
-        for k, v in stats.items():
-            print(f"  {k}: {v}")
-        sys.exit(0)
+    check_python_packages()
 
-    if args.export_ml:
-        out = Path(args.export_ml)
-        data = export_ml_training_data(out)
-        print(f"✅ Exported {len(data)} ML training samples to {out.resolve()}")
-        sys.exit(0)
+    if not args.no_build:
+        from server.build import ensure_built
+        ensure_built(force=args.rebuild)
 
-    if args.flywheel:
-        run_flywheel(count=args.flywheel_count, continuous=args.flywheel_continuous, workers=args.flywheel_workers, verbose=True)
-        sys.exit(0)
-
+    from server.main import start_server
     start_server(host=args.host, port=args.port, open_browser=not args.no_browser)

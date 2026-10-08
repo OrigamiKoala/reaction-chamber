@@ -147,6 +147,76 @@ pub fn electron_transfer_rate(
     }
 }
 
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct SolidDecompEntry {
+    pub solid: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub a: f64,
+    pub ea_j_mol: f64,
+    pub onset_temp_k: f64,
+    pub catalyst: Option<String>,
+    pub source: String,
+    /// `recalled` (written from memory, not checked against its source) or `verified`.
+    #[serde(default)]
+    pub verification: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct SolidDecompFile {
+    decompositions: Vec<SolidDecompEntry>,
+}
+
+pub fn solid_decomp_entries() -> &'static [SolidDecompEntry] {
+    static ENTRIES: std::sync::OnceLock<Vec<SolidDecompEntry>> = std::sync::OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        let f: SolidDecompFile = serde_json::from_str(include_str!("../../data/solid_decomposition.json"))
+            .expect("solid_decomposition.json is valid");
+        f.decompositions
+    })
+}
+
+/// Lookup measured solid decomposition Arrhenius rate constant (1/s) at `t_k`.
+/// `has_mno2` indicates whether MnO2 catalyst is present.
+pub fn solid_decomposition_rate(solid: &str, t_k: f64, has_mno2: bool) -> Option<f64> {
+    let entries = solid_decomp_entries();
+    let matches = |e: &SolidDecompEntry| {
+        e.solid == solid || e.aliases.iter().any(|a| a == solid)
+    };
+
+    if has_mno2 {
+        if let Some(entry) = entries.iter().find(|e| matches(e) && e.catalyst.is_some()) {
+            let k = entry.a * (-entry.ea_j_mol / (R_GAS * t_k.max(1.0))).exp();
+            return Some(k);
+        }
+    }
+
+    let entry = entries.iter().find(|e| matches(e) && e.catalyst.is_none())?;
+    let k = entry.a * (-entry.ea_j_mol / (R_GAS * t_k.max(1.0))).exp();
+    Some(k)
+}
+
+/// Computes decomposition rate for a reactant solid (if known, using measured Arrhenius parameters),
+/// falling back to reaction enthalpy placeholder if unmeasured.
+pub fn decomposition_rate_for<F>(solid: Option<&str>, delta_h_j: f64, t_k: f64, mut has_catalyst: F) -> f64
+where
+    F: FnMut(&str) -> bool,
+{
+    if let Some(s) = solid {
+        let entries = solid_decomp_entries();
+        let matches = |e: &SolidDecompEntry| {
+            e.solid == s || e.aliases.iter().any(|a| a == s)
+        };
+        if let Some(entry) = entries.iter().find(|e| matches(e) && e.catalyst.as_deref().map_or(false, &mut has_catalyst)) {
+            return entry.a * (-entry.ea_j_mol / (R_GAS * t_k.max(1.0))).exp();
+        }
+        if let Some(entry) = entries.iter().find(|e| matches(e) && e.catalyst.is_none()) {
+            return entry.a * (-entry.ea_j_mol / (R_GAS * t_k.max(1.0))).exp();
+        }
+    }
+    decomposition_rate(delta_h_j, t_k)
+}
+
 /// First-order rate constant (1/s) of the thermal decomposition of a solid at `t_k`: `NU exp(-Ea / RT)` with the activation
 /// energy equal to the reaction enthalpy per extent (the barrier of a decomposition is at least its endothermicity; at
 /// least `EA_DECOMPOSITION_MIN`).
@@ -184,5 +254,52 @@ mod tests {
         // 130 kJ per extent: k rises by many orders of magnitude between 330 K and 480 K
         let (lo, hi) = (decomposition_rate(130_000.0, 330.0), decomposition_rate(130_000.0, 480.0));
         assert!(lo < 1e-5 && hi > 1e-2, "k(330 K) {:e}, k(480 K) {:e}", lo, hi);
+    }
+
+    /// Temperature (K) at which a first-order decomposition `k = A exp(-Ea / RT)` reaches conversion `alpha` in a TGA run at
+    /// `beta` K/min.
+    fn tga_temperature_k(a: f64, ea_j_mol: f64, beta_k_min: f64, alpha: f64) -> f64 {
+        let beta = beta_k_min / 60.0;
+        let (mut t, mut integral) = (250.0, 0.0);
+        while t < 2000.0 {
+            integral += a * (-ea_j_mol / (R_GAS * t)).exp() * 0.05 / beta;
+            t += 0.05;
+            if 1.0 - (-integral).exp() >= alpha {
+                return t;
+            }
+        }
+        f64::INFINITY
+    }
+
+    /// The stated onset of a row has to follow from its own Arrhenius parameters (T at 5 % conversion in a 10 K/min TGA run within
+    /// 20 K). A row that does not may not claim to be verified, and says so by its tier: the data of this file were written from
+    /// memory and most of them fail this check (CaCO3: 709 K against 1020 K).
+    #[test]
+    fn a_decomposition_row_that_contradicts_its_own_onset_is_not_labelled_verified() {
+        let mut inconsistent = 0;
+        for e in solid_decomp_entries() {
+            let t5 = tga_temperature_k(e.a, e.ea_j_mol, 10.0, 0.05);
+            let off = (t5 - e.onset_temp_k).abs();
+            println!("{:<16} catalyst {:?}: stated onset {:.0} K, T(5 %) at 10 K/min {:.0} K ({:+.0} K)", e.solid, e.catalyst, e.onset_temp_k, t5, t5 - e.onset_temp_k);
+            if off > 20.0 {
+                inconsistent += 1;
+                assert_ne!(e.verification.as_deref(), Some("verified"), "{}: Arrhenius gives {:.0} K, the row states {:.0} K", e.solid, t5, e.onset_temp_k);
+            }
+        }
+        assert!(solid_decomp_entries().iter().all(|e| e.verification.is_some()), "every row states its verification");
+        println!("{inconsistent} of {} rows are inconsistent with their own onset", solid_decomp_entries().len());
+    }
+
+    #[test]
+    fn kclo3_mno2_catalysis_lowers_decomposition_temperature() {
+        let t = 500.0;
+        let k_uncat = solid_decomposition_rate("KClO3(s)", t, false).unwrap();
+        let k_cat = solid_decomposition_rate("KClO3(s)", t, true).unwrap();
+        assert!(
+            k_cat > 1e5 * k_uncat,
+            "MnO2 should accelerate KClO3 decomposition by >10^5 at 500 K: {:e} vs {:e}",
+            k_cat,
+            k_uncat
+        );
     }
 }

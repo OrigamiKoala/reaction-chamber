@@ -7,9 +7,9 @@
 //! coefficient in water and the pKa cycle of T5) where the engine used to substitute the pure liquid.
 //!
 //! The group contributions are `data/hydration_groups.json`, fitted (ridge-regularised least squares) to experimental
-//! hydration free energies of about 90 compounds by the ignored test `fit_hydration_groups` in `tests/open_items_b.rs`; the
+//! hydration free energies of ~560 compounds (FreeSolv and Cabani) by the ignored test `fit_hydration_groups` in `tests/open_items_b.rs`; the
 //! leave-one-out error is recorded in the file and gated by the same test file. A molecule with an atom or environment
-//! that has no group (charged atoms, silicon, an aromatic heteroatom other than pyridine nitrogen, nitro groups, ...)
+//! that has no group (charged atoms other than a nitro group, silicon, phosphorus, sulfoxides and sulfones, ...)
 //! gets no estimate. Tier Estimated.
 
 use std::collections::BTreeMap;
@@ -40,10 +40,21 @@ fn is_close(a: f64, b: f64) -> bool {
 pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
     let mol = mol_in.aromatized();
     let n = mol.atoms.len();
-    if n == 0 || mol.atoms.iter().any(|a| a.charge != 0) {
+    if n == 0 {
         return None;
     }
     let nbrs: Vec<Vec<(usize, f64)>> = (0..n).map(|i| mol.neighbours(i)).collect();
+    // the only charged atoms allowed are those of a nitro group, [N+](=O)[O-]
+    let is_nitro_n = |i: usize| {
+        mol.atoms[i].element == "N"
+            && mol.atoms[i].charge == 1
+            && nbrs[i].iter().filter(|&&(j, _)| mol.atoms[j].element == "O").count() == 2
+            && nbrs[i].len() == 3
+    };
+    let nitro_o = |i: usize| mol.atoms[i].element == "O" && nbrs[i].len() == 1 && is_nitro_n(nbrs[i][0].0) && mol.atoms[i].charge <= 0;
+    if mol.atoms.iter().enumerate().any(|(i, a)| a.charge != 0 && !(is_nitro_n(i) || (a.element == "O" && nitro_o(i)))) {
+        return None;
+    }
     let h: Vec<u32> = (0..n).map(|i| mol.hydrogens(i)).collect();
     let el = |i: usize| mol.atoms[i].element.as_str();
     let arom = |i: usize| mol.atoms[i].aromatic;
@@ -58,14 +69,29 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
         match el(i) {
             "C" => {
                 if arom(i) {
-                    add(if h[i] == 1 { "Car_H" } else { "Car_sub" }, 1.0);
+                    if h[i] == 1 {
+                        add("Car_H", 1.0);
+                    } else {
+                        // by what the ring carbon carries: carbon, oxygen, nitrogen, halogen, sulfur, or nothing outside the rings (fusion)
+                        let outside: Vec<usize> = nbrs[i].iter().filter(|&&(j, _)| !arom(j)).map(|&(j, _)| j).collect();
+                        match outside.first().map(|&j| el(j)) {
+                            None => add("Car_fused", 1.0),
+                            Some("C") => add("Car_sub_C", 1.0),
+                            Some("O") => add("Car_sub_O", 1.0),
+                            Some("N") => add("Car_sub_N", 1.0),
+                            Some("S") => add("Car_sub_S", 1.0),
+                            Some(e) if hal(e) => add("Car_sub_X", 1.0),
+                            _ => add("Car_sub_C", 1.0),
+                        }
+                    }
                 } else if is_carbonyl(i) {
                     let single_o: Vec<usize> = nbrs[i].iter().filter(|&&(j, b)| is_close(b, 1.0) && el(j) == "O").map(|&(j, _)| j).collect();
                     let has_n = nbrs[i].iter().any(|&(j, b)| is_close(b, 1.0) && el(j) == "N");
                     if let Some(&o) = single_o.first() {
                         add(if h[o] == 1 { "acid" } else { "ester" }, 1.0);
                     } else if has_n {
-                        add("amide", 1.0);
+                        let nh = nbrs[i].iter().find(|&&(j, b)| is_close(b, 1.0) && el(j) == "N").map_or(0, |&(j, _)| h[j]);
+                        add(match nh { 2 => "amide_NH2", 1 => "amide_NH", _ => "amide_N" }, 1.0);
                     } else if h[i] >= 1 {
                         add("aldehyde", 1.0);
                     } else {
@@ -120,6 +146,13 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
                 }
             }
             "O" => {
+                if nitro_o(i) {
+                    continue; // part of the nitro group, counted on its nitrogen
+                }
+                if arom(i) {
+                    add("O_ar", 1.0);
+                    continue;
+                }
                 if dbl_to(i, "C") && nbrs[i].len() == 1 {
                     continue; // carbonyl oxygen: part of its carbon's group
                 }
@@ -136,11 +169,18 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
                 }
             }
             "N" => {
+                if is_nitro_n(i) {
+                    add(if nbrs[i].iter().any(|&(j, _)| arom(j)) { "nitro_ar" } else { "nitro" }, 1.0);
+                    continue;
+                }
                 if nbrs[i].iter().any(|&(j, _)| is_carbonyl(j)) || trip_to(i, "C") {
                     continue; // amide or nitrile nitrogen
                 }
                 if arom(i) {
-                    if h[i] == 0 && nbrs[i].len() == 2 { add("Nar", 1.0); } else { return None; }
+                    if h[i] == 0 && nbrs[i].len() == 2 { add("Nar", 1.0); }
+                    else if h[i] == 1 && nbrs[i].len() == 2 { add("Nar_H", 1.0); }
+                    else if h[i] == 0 && nbrs[i].len() == 3 { add("Nar_sub", 1.0); }
+                    else { return None; }
                 } else if nbrs[i].iter().any(|&(j, _)| arom(j)) {
                     if h[i] == 2 { add("N_ArH2", 1.0); } else { return None; }
                 } else if nbrs[i].iter().any(|&(_, b)| !is_close(b, 1.0)) {
@@ -154,7 +194,33 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
                     }
                 }
             }
-            e if hal(e) => add(match e { "F" => "X_F", "Cl" => "X_Cl", "Br" => "X_Br", _ => "X_I" }, 1.0),
+            e if hal(e) => {
+                let on_arom = nbrs[i].first().map_or(false, |&(j, _)| arom(j));
+                let key = match (e, on_arom) {
+                    ("F", false) => "X_F",
+                    ("Cl", false) => "X_Cl",
+                    ("Br", false) => "X_Br",
+                    ("I", false) => "X_I",
+                    ("F", true) => "X_F_ar",
+                    ("Cl", true) => "X_Cl_ar",
+                    ("Br", true) => "X_Br_ar",
+                    _ => "X_I_ar",
+                };
+                add(key, 1.0)
+            }
+            "S" => {
+                if arom(i) {
+                    add("S_ar", 1.0);
+                } else if nbrs[i].iter().any(|&(_, b)| !is_close(b, 1.0)) {
+                    return None; // sulfoxides, sulfones, thiocarbonyls
+                } else if h[i] == 1 && nbrs[i].len() == 1 {
+                    add("S_SH", 1.0);
+                } else if h[i] == 0 && nbrs[i].len() == 2 {
+                    add("S_thioether", 1.0);
+                } else {
+                    return None;
+                }
+            }
             _ => return None,
         }
     }
@@ -191,6 +257,25 @@ pub fn group_counts(mol_in: &Molecule) -> Option<BTreeMap<String, f64>> {
         *counts.entry("ring_aliph".to_string()).or_insert(0.0) += rank as f64;
     }
     Some(counts)
+}
+
+/// Measured hydration free energy (kJ/mol, 1 M gas -> 1 M solution, 298 K) of the compound with this InChIKey (FreeSolv,
+/// `data/hydration_measured.json`, matched on the connectivity block), if the table has it.
+pub fn measured_kj(inchikey: &str) -> Option<f64> {
+    static T: OnceLock<std::collections::HashMap<String, f64>> = OnceLock::new();
+    let t = T.get_or_init(|| {
+        #[derive(Deserialize)]
+        struct Entry {
+            dg_kcal_mol: f64,
+        }
+        #[derive(Deserialize)]
+        struct F {
+            compounds: std::collections::HashMap<String, Entry>,
+        }
+        let f: F = serde_json::from_str(include_str!("../data/hydration_measured.json")).expect("data/hydration_measured.json");
+        f.compounds.into_iter().map(|(k, e)| (k, e.dg_kcal_mol * 4.184)).collect()
+    });
+    t.get(inchikey.split('-').next()?).copied()
 }
 
 /// Hydration free energy (kJ/mol, 1 M gas -> 1 M solution, 298.15 K), or None when a group has no parameter.

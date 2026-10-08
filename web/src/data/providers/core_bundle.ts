@@ -8,7 +8,7 @@ export class CoreBundleProvider {
   async loadShard(shardName: string): Promise<void> {
     if (this.loadedShards.has(shardName)) return;
     try {
-      const res = await fetch(`/data/core/${shardName}.json`);
+      const res = await fetch(`data/core/${shardName}.json`);
       if (!res.ok) return;
       const records: CompoundRecord[] = await res.json();
       for (const rec of records) {

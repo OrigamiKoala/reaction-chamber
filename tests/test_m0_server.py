@@ -11,7 +11,6 @@ def test_m0_health_endpoint():
     data = response.json()
     assert data["status"] == "online"
     assert data["token_active"] is True
-    assert "xtb_engine" in data
 
 def test_m0_dns_rebinding_protection():
     # Attack request with malicious host header
@@ -21,30 +20,13 @@ def test_m0_dns_rebinding_protection():
 
 def test_m0_session_token_security():
     # Unauthorized call without token
-    response = client.post("/api/xtb/trivial-test", headers={"Host": "localhost"})
+    response = client.get("/api/data/nist-webbook", headers={"Host": "localhost"})
     assert response.status_code == 401
 
-    # Authorized call with session token
+    # Authorized call with session token reaches the route (no identifier: 400, no network request)
     token = get_session_token()
-    response = client.post(
-        "/api/xtb/trivial-test",
+    response = client.get(
+        "/api/data/nist-webbook",
         headers={"Host": "localhost", "Authorization": f"Bearer {token}"}
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "completed"
-    assert data["species"] == "H2O"
-    assert "energy_hartree" in data
-    assert data["energy_hartree"] < 0  # Bound molecule energy
-
-def test_m0_xtb_semiempirical_job():
-    token = get_session_token()
-    response = client.post(
-        "/api/xtb/run",
-        headers={"Host": "localhost", "Authorization": f"Bearer {token}"},
-        json={"smiles": "CCO", "family": "alcohol"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "completed"
-    assert "job_id" in data
+    assert response.status_code == 400

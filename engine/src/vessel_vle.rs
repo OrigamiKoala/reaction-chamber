@@ -371,7 +371,7 @@ impl Vessel {
     /// Partial pressures (Pa) `x_i gamma_i Psat_i(T)` above the liquid phases, one per component, plus their sum.
     pub(crate) fn phase_partials(&self, phases: &[VlePhase], t_k: f64) -> (Vec<Vec<f64>>, f64) {
         let mut all = Vec::with_capacity(phases.len());
-        let mut sum = 0.0;
+        let mut gas_partials: HashMap<String, f64> = HashMap::new();
         for ph in phases {
             let tot: f64 = self.phase_total_mol(ph);
             let lg = self.phase_ln_gamma(ph, t_k);
@@ -381,13 +381,16 @@ impl Vessel {
                 let p = if tc.map_or(false, |tc| t_k >= tc) {
                     0.0 // above its critical temperature a component is not a liquid
                 } else {
-                    c.mol / tot.max(1e-300) * lg[i].exp() * c.vol.psat_pa(t_k)
+                    let act = (c.mol / tot.max(1e-300) * lg[i].exp()).min(1.0);
+                    act * c.vol.psat_pa(t_k)
                 };
-                sum += p;
+                let entry = gas_partials.entry(c.vol.gas_id.clone()).or_insert(0.0);
+                *entry = entry.max(p);
                 row.push(p);
             }
             all.push(row);
         }
+        let sum: f64 = gas_partials.values().sum();
         (all, sum)
     }
 
@@ -442,12 +445,15 @@ impl Vessel {
         }
         let tb = self.bubble_point_of(&phases, p_pa);
         let (parts, sum) = self.phase_partials(&phases, tb);
-        let mut y = Vec::new();
+        let mut y_map: HashMap<String, f64> = HashMap::new();
         for (ph, row) in phases.iter().zip(&parts) {
-            for (c, p) in ph.comps.iter().zip(row) {
-                y.push((c.vol.gas_id.clone(), p / sum.max(1e-300)));
+            for (c, &p) in ph.comps.iter().zip(row) {
+                let entry = y_map.entry(c.vol.gas_id.clone()).or_insert(0.0);
+                *entry = entry.max(p / sum.max(1e-300));
             }
         }
+        let mut y: Vec<(String, f64)> = y_map.into_iter().collect();
+        y.sort_by(|a, b| a.0.cmp(&b.0));
         Some((tb, y))
     }
 

@@ -146,7 +146,7 @@ fn molecules_without_chemistry_are_inert_compounds() {
     let urea = import("t_urea", "Urea", "CH4N2O", Some("C(=O)(N)N"), "solid");
     assert!(urea.modelable && urea.kind == "inert", "urea must not be mistaken for ammonium cyanate: {}", urea.reason);
     let nh3 = import_ik("t_nh3", "Ammonia", "H3N", Some("N"), "liquid", Some("QGZKDVFQNNGYKY-UHFFFAOYSA-N"));
-    assert!(nh3.modelable && nh3.species[0].0 == "NH3", "{:?}", nh3.species);
+    assert!(nh3.modelable && (nh3.species[0].0 == "NH3" || nh3.species[0].0 == "NH3(aq)"), "{:?}", nh3.species);
     let hcl = import("t_hcl", "Hydrochloric acid", "ClH", Some("Cl"), "liquid");
     assert!(hcl.modelable);
     let mut v = beaker();

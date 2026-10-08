@@ -64,21 +64,22 @@ fn assert_dose_size_independent(id: &str, total_g: f64, water_ml: f64, species: 
 
 #[test]
 fn nahco3_ph_is_independent_of_dose_size() {
-    let ph = assert_dose_size_independent("nahco3_s", 2.5, 50.0, &["Na+", "HCO3-", "CO3-2", "CO2(aq)", "H+", "OH-"]);
-    // 0.6 M bicarbonate: ideal pH = (pK1 + pK2)/2 ~ 8.3; with ionic strength I ~ 0.6 M, pH is ~8.0
-    assert!(ph > 7.95 && ph < 8.5, "NaHCO3 pH {:.3}", ph);
+    let ph = assert_dose_size_independent("nahco3_s", 2.5, 50.0, &["Na+", "HCO3-", "CO3-2", "CO2(aq)", "H+", "OH-", "NaCO3-"]);
+    // 0.6 M bicarbonate: ideal pH = (pK1 + pK2)/2 ~ 8.3; with ionic strength I ~ 0.6 M and NaCO3- pairing, pH is ~7.7-8.5
+    assert!(ph > 7.7 && ph < 8.5, "NaHCO3 pH {:.3}", ph);
 }
 
 #[test]
 fn nahco3_conserves_sodium_and_carbon() {
     let v = weigh_in("nahco3_s", 2.5, 1, 50.0);
     let mol = 2.5 / 84.007;
-    assert!((amount(&v, "Na+") - mol).abs() < 1e-9);
-    let carbon = amount(&v, "HCO3-") + amount(&v, "CO3-2") + amount(&v, "CO2(aq)") + amount(&v, "H2CO3(aq)");
+    let na_total = amount(&v, "Na+") + amount(&v, "NaCO3-");
+    assert!((na_total - mol).abs() < 1e-9, "sodium total {} vs {}", na_total, mol);
+    let carbon = amount(&v, "HCO3-") + amount(&v, "CO3-2") + amount(&v, "CO2(aq)") + amount(&v, "H2CO3(aq)") + amount(&v, "NaCO3-");
     // (the open beaker has had 300 s to degas a trace of CO2)
     assert!((carbon - mol).abs() < 1e-4 * mol.max(1.0) && carbon <= mol + 1e-12, "carbon {} vs {}", carbon, mol);
     // charge balance
-    let q = amount(&v, "Na+") + amount(&v, "H+") - amount(&v, "OH-") - amount(&v, "HCO3-") - 2.0 * amount(&v, "CO3-2");
+    let q = amount(&v, "Na+") + amount(&v, "H+") - amount(&v, "OH-") - amount(&v, "HCO3-") - 2.0 * amount(&v, "CO3-2") - amount(&v, "NaCO3-");
     assert!(q.abs() < 1e-9, "charge imbalance {}", q);
 }
 

@@ -297,7 +297,12 @@ pub fn try_thermo_state(species: &str, phase: &str, t_k: f64, p_pa: f64) -> Opti
 fn aqueous_from_hydration(r: &crate::db::SpeciesRecord) -> Option<crate::db::record::PhaseThermo> {
     use crate::db::record::{Datum, PhaseThermo};
     let mol = crate::smiles::parse(r.identity.smiles.as_deref()?)?;
-    let hyd = crate::hydration::hydration_gibbs_kj(&mol)?;
+    // a measured hydration free energy (FreeSolv, by InChIKey) beats the group-additive estimate
+    let measured = r.identity.inchikey.as_deref().and_then(crate::hydration::measured_kj);
+    let hyd = match measured {
+        Some(v) => v,
+        None => crate::hydration::hydration_gibbs_kj(&mol)?,
+    };
     let thermo_of = |ph: &str| r.phases.get(ph).and_then(|p| p.thermo.as_ref());
     let (gas, liq) = (thermo_of("g"), thermo_of("l"));
     let dfg_gas = match (gas.and_then(|g| g.dfG.as_ref()), liq.and_then(|l| l.dfG.as_ref())) {
@@ -311,7 +316,11 @@ fn aqueous_from_hydration(r: &crate::db::SpeciesRecord) -> Option<crate::db::rec
     };
     let dfh = liq.and_then(|l| l.dfH.as_ref()).map(|d| d.value)?;
     let cp = liq.and_then(|l| l.cp.as_ref()).or_else(|| gas.and_then(|g| g.cp.as_ref())).map(|d| d.value);
-    let source = "hydration free energy (group additivity) on the gas-phase formation energy";
+    let source = if measured.is_some() {
+        "measured hydration free energy (FreeSolv) on the gas-phase formation energy"
+    } else {
+        "hydration free energy (group additivity) on the gas-phase formation energy"
+    };
     let datum = |v: f64, unit: &str| Datum::new(v, unit, ProvenanceTier::Estimated, source);
     Some(PhaseThermo {
         model: "point+cp".to_string(),

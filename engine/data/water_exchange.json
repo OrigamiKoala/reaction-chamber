@@ -1,0 +1,255 @@
+{
+  "_comment": "Water-exchange rate constants k_ex (s^-1) at 298.15 K of aqua metal ions, source Helm & Merbach, Chem. Rev. 105, 1923 (2005). Status per row (`verification`): verified_secondary = the k_ex matches a published copy of the review's table (10 rows, checked 2026-10-08, the review itself was not opened); recalled = written from memory and NOT checked. The activation enthalpies and the mechanism labels (Id / Ia / D) of every row are recalled. Used by engine/src/substitution.rs for the Eigen-Wilkins relation k_f = K_os k_ex.",
+  "ions": [
+    {
+      "ion": "Cr+3",
+      "k_ex": 2.4e-06,
+      "delta_h_kj": 109.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "CrOH+2",
+      "k_ex": 0.00018,
+      "delta_h_kj": 110.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Rh+3",
+      "k_ex": 2.2e-09,
+      "delta_h_kj": 131.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ir+3",
+      "k_ex": 1.1e-10,
+      "delta_h_kj": 130.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ru+3",
+      "k_ex": 3.5e-06,
+      "delta_h_kj": 90.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ru+2",
+      "k_ex": 0.018,
+      "delta_h_kj": 88.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Pt+2",
+      "k_ex": 0.00039,
+      "delta_h_kj": 89.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Al+3",
+      "k_ex": 1.3,
+      "delta_h_kj": 85.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ga+3",
+      "k_ex": 400.0,
+      "delta_h_kj": 67.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "In+3",
+      "k_ex": 40000.0,
+      "delta_h_kj": 55.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Fe+3",
+      "k_ex": 160.0,
+      "delta_h_kj": 64.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "FeOH+2",
+      "k_ex": 120000.0,
+      "delta_h_kj": 42.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "V+2",
+      "k_ex": 87.0,
+      "delta_h_kj": 62.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "V+3",
+      "k_ex": 500.0,
+      "delta_h_kj": 49.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "VO+2",
+      "k_ex": 500.0,
+      "delta_h_kj": 56.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ti+3",
+      "k_ex": 180000.0,
+      "delta_h_kj": 43.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Ni+2",
+      "k_ex": 32000.0,
+      "delta_h_kj": 57.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Co+2",
+      "k_ex": 3200000.0,
+      "delta_h_kj": 47.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Fe+2",
+      "k_ex": 4400000.0,
+      "delta_h_kj": 41.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Mn+2",
+      "k_ex": 21000000.0,
+      "delta_h_kj": 33.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Cu+2",
+      "k_ex": 5700000000.0,
+      "delta_h_kj": 13.0,
+      "mechanism": "D",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "verified_secondary",
+      "verification_note": "k_ex equals the value of the table in https://en.wikipedia.org/wiki/Metal_aquo_complex, which cites Helm & Merbach (2005); the review itself is paywalled and was not opened. delta_h_kj and mechanism were not checked."
+    },
+    {
+      "ion": "Zn+2",
+      "k_ex": 20000000.0,
+      "delta_h_kj": 25.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Cd+2",
+      "k_ex": 300000000.0,
+      "delta_h_kj": 20.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Mg+2",
+      "k_ex": 530000.0,
+      "delta_h_kj": 49.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ca+2",
+      "k_ex": 160000000.0,
+      "delta_h_kj": 15.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Sr+2",
+      "k_ex": 400000000.0,
+      "delta_h_kj": 12.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Ba+2",
+      "k_ex": 800000000.0,
+      "delta_h_kj": 10.0,
+      "mechanism": "Id",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "La+3",
+      "k_ex": 100000000.0,
+      "delta_h_kj": 15.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Eu+3",
+      "k_ex": 40000000.0,
+      "delta_h_kj": 16.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    },
+    {
+      "ion": "Yb+3",
+      "k_ex": 10000000.0,
+      "delta_h_kj": 22.0,
+      "mechanism": "Ia",
+      "source": "Helm & Merbach, Chem. Rev. 105, 1923 (2005)",
+      "verification": "recalled"
+    }
+  ]
+}

@@ -1,5 +1,38 @@
 # Data acquisition plan
 
+## Progress, 2026-10-07 (read this first)
+
+Decision of 2026-10-06/07: the user allowed any database that is better or bigger than the ones suggested, and asked to integrate
+first and flag licences for later (`docs/data-licences.md`). Raw downloads sit in `pipeline/raw/` (git-ignored), parsers and
+generators in `pipeline/db/`, committed derived data in `engine/data/` and `pipeline/data/`.
+
+| Item | Done | Source actually used | Result (held-out numbers where the model is fitted) |
+|---|---|---|---|
+| X2 species | 1 200 inorganic species (891 aqueous incl. complexes, 293 solids, gases) with dfH, dfG, Cp, density; 233 more solubility products; ion sizes (285) and partial molar volumes (640); Shannon ionic radii (161); cation charges for the lanthanides | OBIGT (CHNOSZ: SUPCRT92 / SLOP98 / Shock-Helgeson / NEA), PHREEQC `wateq4f / minteq.v4 / phreeqc / llnl` + Thermoddem, `mendeleev` (Shannon) | Fe, Cr, Mn species NOT extended: OBIGT and the seeded NBS ions disagree by 9-13 kJ/mol on Fe2+/Fe3+/Cr3+ (two literature conventions); 138 species skipped for that reason |
+| A1 ion association | 606 data rows (log beta, dH, source, tier) replace the Fuoss estimate where they exist | PHREEQC-format databases (minteq.v4 first) | fraction paired at 0.1 m of 7 sulfates within 4 points of PHREEQC itself (`ion_pairing_calibration.rs`); MgSO4 0.48 (Fuoss gave 0.63) |
+| P3 Pitzer | 54 binary parameter sets with the 6-term temperature function (and beta2 for 2:2 salts); mixing parameters stored, unused | PHREEQC `pitzer.dat` | osmotic coefficients of NaCl, KCl, Na2SO4, MgSO4, CaCl2 at 25/60/100 C, 0.1-2 m: 59 of 60 points within 0.01 of PHREEQC (`pitzer_temperature.rs`) |
+| P3 LLE | 100 measured water-in-organic and 100 organic-in-water mole fractions become activity points, mutual solubility uses a three-suffix Margules form | NIST/TRC ThermoML Archive | hexane in water 2.9e-6 (UNIFAC alone: 45x too high), water in hexane 0.010 wt% (`stage5.rs` s5_5). Modified UNIFAC (Dortmund / UNIFAC 2.0) was NOT implemented: it gives the same wrong hexane/water solubility (x = 7e-5 to 1.5e-4) |
+| H1 enthalpies | 229 binaries fitted (Redlich-Kister, 4028 points); the earlier 9 recalled rows kept where no data | ThermoML | the pure model (UNIFAC derivative, what a pair without a row gets) is right in sign for 44 of 49 held-out pairs and within 15 % for only 7: it is about a factor 2 too small (`excess_enthalpy_heldout.rs`) |
+| other ThermoML | excess volumes of 102 binaries, relative permittivity of 99 liquids (47 with their own temperature slope), Antoine fits of the vapour pressure of 917 liquids (used by `vle.rs` between the measured temperatures) | ThermoML | no gate beyond the existing ones |
+| T1 hydration | refit of the 51 group contributions on 605 values (575 FreeSolv + 30 recalled), new groups (nitro, sulfur, aryl halides, amide classes, aromatic substituents); 639 measured values used directly for the aqueous standard state | FreeSolv v0.52 | held-out rms 1.24 kcal/mol (fit 0.97, leave-one-out 1.15): the plan's < 1.0 is NOT met; group additivity limit |
+| V1 NMR | environment-code tables (HOSE idea) learn the residual of the increment models: 13C 119 000 + 1H 12 000 environments from 26 000 / 10 000 molecules | NMRShiftDB2 (experimental spectra only, 58 000 records read) | held-out test (30 % of connectivity classes, 7 395 / 1 530 molecules): 13C MAE 4.43 -> 2.29 ppm (< 3 met), 1H 0.23 -> 0.17 ppm (< 0.15 NOT met) (`nmr_heldout.rs`) |
+| V1 EI | no model change; 13 500 MassBank EI spectra parsed (7 400 structures, split) | MassBank 2026.03 | base peak right for 25 %, cosine 0.40 (plan: 70 % / 0.6, out of reach); a refit of the 10 constants on 4 400 spectra gives cosine 0.43 and no better base peaks, not shipped (`ms_ei_heldout.rs`) |
+| O1 Mayr | 1 716 compounds (1 347 nucleophiles, 369 electrophiles) with SMILES, solvent, quality, DOI | Mayr database (LMU) | extends the old 26-row table; the polar templates' own rate rules are unchanged |
+
+NOT obtained (the data are behind a paywall, in a book, or in a form no script can read):
+- **X1** self-exchange constants of oxo-transfer couples: needs the printed compilations (Stanbury, Sutin, Buxton). NIST SRD 40 is
+  reachable only through an interactive search form that blocks scripts intermittently and holds mostly radical reactions.
+- **T1 carbonyl hydration constants (Guthrie, Wiberg, Bell)**: paywalled; only 16 values of one open paper (Elrod 2021, Tables 2-3) were found,
+  too few for a Taft correlation; not integrated.
+- **P3 Dortmund / UNIFAC 2.0** parameters were fetched (`pipeline/cache/unifac/`, the `thermo` package) but not wired in (see above).
+- **P4 aggregation** (critical coagulation concentrations, floc fractal dimension and restructuring time): literature values only (Hunter,
+  Sorensen, Gregory), no open table.
+- **E5 ion transfer energies** (Marcus) and **non-aqueous pKa**: the Bordwell DMSO table is drawn structures in a PDF (no machine-readable
+  rows), the Williams table is aqueous; Marcus' book is not online.
+- **X2 optics**: band gaps (Materials Project) need an API key; Fe / Cr / Mn conventions (above).
+
+---
+
 Status: 2026-10-06. Companion to `ALGORITHM-IMPROVEMENT.md` section 3 (the open items).
 
 Every open item that is still open is open because the *model* exists or is a few lines of code, and what is missing is

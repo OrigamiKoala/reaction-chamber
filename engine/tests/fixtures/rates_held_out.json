@@ -1,0 +1,160 @@
+{
+  "_comment": "Held-out organic rows: never loaded by the engine, only compared with the rules' estimates by the harness.",
+  "organic": [
+    {
+      "template": "base_ester_hydrolysis",
+      "reactants": [
+        "O=COCCCC",
+        "[OH-]"
+      ],
+      "products": [
+        "O=C[O-]",
+        "CCCCO"
+      ],
+      "k_m_s": 21.8,
+      "t_k": 298.15,
+      "ea_kj_mol": 33.5,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.8, p. 396)"
+    },
+    {
+      "template": "base_ester_hydrolysis",
+      "reactants": [
+        "CC(=O)OC(C)CC",
+        "[OH-]"
+      ],
+      "products": [
+        "CC(=O)[O-]",
+        "CCC(C)O"
+      ],
+      "k_m_s": 0.01738,
+      "t_k": 298.15,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.8, p. 396)"
+    },
+    {
+      "template": "base_ester_hydrolysis",
+      "reactants": [
+        "ClC(Cl)C(=O)OCC",
+        "[OH-]"
+      ],
+      "products": [
+        "O=C([O-])C(Cl)Cl",
+        "CCO"
+      ],
+      "k_m_s": 883.0,
+      "t_k": 298.15,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.8 (cont.), p. 397)"
+    },
+    {
+      "template": "base_ester_hydrolysis",
+      "reactants": [
+        "CC#CC(=O)OCC",
+        "[OH-]"
+      ],
+      "products": [
+        "CC#CC(=O)[O-]",
+        "CCO"
+      ],
+      "k_m_s": 0.568,
+      "t_k": 298.15,
+      "ea_kj_mol": 53.16,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.8 (cont.), p. 397)"
+    },
+    {
+      "template": "amide_hydrolysis_acid",
+      "reactants": [
+        "CCCCC(N)=O",
+        "O"
+      ],
+      "products": [
+        "CCCCC(=O)O",
+        "N"
+      ],
+      "k_m_s": 0.000593,
+      "t_k": 348.0,
+      "ea_kj_mol": 81.09,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.10, p. 401)"
+    },
+    {
+      "template": "amide_hydrolysis_acid",
+      "reactants": [
+        "CC(=O)NC",
+        "O"
+      ],
+      "products": [
+        "CC(=O)O",
+        "CN"
+      ],
+      "k_m_s": 5.82e-05,
+      "t_k": 348.0,
+      "ea_kj_mol": 89.89,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.10, p. 401)"
+    },
+    {
+      "template": "amide_hydrolysis_acid",
+      "reactants": [
+        "CC(=O)N(CC)CC",
+        "O"
+      ],
+      "products": [
+        "CC(=O)O",
+        "CCNCC"
+      ],
+      "k_m_s": 2.27e-06,
+      "t_k": 348.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.10, p. 401)"
+    },
+    {
+      "template": "halide_neutral_hydrolysis",
+      "reactants": [
+        "CCI",
+        "O"
+      ],
+      "products": [
+        "CCO",
+        "[H+]",
+        "[I-]"
+      ],
+      "k_m_s": 1.62e-07,
+      "t_k": 298.15,
+      "ea_kj_mol": 114.81,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 5.2, p. 408)"
+    },
+    {
+      "template": "halide_neutral_hydrolysis",
+      "reactants": [
+        "BrCc1ccccc1",
+        "O"
+      ],
+      "products": [
+        "OCc1ccccc1",
+        "[H+]",
+        "[Br-]"
+      ],
+      "k_m_s": 0.000275,
+      "t_k": 303.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.6, p. 392)"
+    }
+  ]
+}

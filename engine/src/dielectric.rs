@@ -51,7 +51,8 @@ mod tests {
 
     #[test]
     fn table_and_estimate_are_sane() {
-        assert_eq!(tabulated_298("LFQSCWFLJHTTHZ-UHFFFAOYSA-N"), Some(24.3));
+        // ethanol: the ThermoML median (24.37) agrees with the CRC value recalled earlier (24.3)
+        assert!((tabulated_298("LFQSCWFLJHTTHZ-UHFFFAOYSA-N").unwrap() - 24.3).abs() < 0.8);
         let hexane: HashMap<String, f64> = [("C".to_string(), 6.0), ("H".to_string(), 14.0)].into_iter().collect();
         assert!((estimate_298(&hexane) - 1.9).abs() < 1e-9);
         let nitro: HashMap<String, f64> = [("C".to_string(), 1.0), ("N".to_string(), 1.0), ("O".to_string(), 2.0)].into_iter().collect();

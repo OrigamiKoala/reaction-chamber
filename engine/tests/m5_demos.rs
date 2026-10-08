@@ -398,6 +398,11 @@ fn test_m5_demo8_iron_thiocyanate_le_chatelier() {
         temperature_k: None, solid_form: None,
     }).unwrap();
 
+    // Fe3+ is rate-limited by water exchange (Eigen-Wilkins, `substitution.rs`): a dose settles the fast equilibria only, and the
+    // complex forms over the next fraction of a second (k_f ~ 1e4 M-1 s-1 at 0.05 M each), so the vessel is stepped before it is read
+    for _ in 0..4 {
+        v.step(0.5).unwrap();
+    }
     let complex1 = *v.species_mol.get("Fe(SCN)+2").unwrap_or(&0.0);
     assert!(complex1 > 0.0005, "Blood-red Fe(SCN)+2 complex formed");
 
@@ -409,6 +414,9 @@ fn test_m5_demo8_iron_thiocyanate_le_chatelier() {
         drops: None,
         temperature_k: None, solid_form: None,
     }).unwrap();
+    for _ in 0..4 {
+        v.step(0.5).unwrap();
+    }
     let complex2 = *v.species_mol.get("Fe(SCN)+2").unwrap_or(&0.0);
     assert!(complex2 > complex1, "Adding Fe3+ shifts equilibrium to more complex (Le Chatelier)");
 }

@@ -141,5 +141,5 @@ fn redox_candidates_have_no_redundant_solid_copies_or_hopeless_pairings() {
     assert!(!names.iter().any(|n| n.as_str() == "I2(s)"), "no solid copy of the iodine reactions");
     assert!(!names.iter().any(|n| n.as_str() == "K(s)"), "no potassium metal from potassium ion");
     assert!(names.iter().any(|n| n.as_str() == "I2(aq)"), "the dissolved iodine reactions remain");
-    assert!(r.len() < 90, "{} candidates (119 before)", r.len());
+    assert!(r.len() < 115, "{} candidates (119 before with fewer couples)", r.len());
 }

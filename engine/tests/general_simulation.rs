@@ -73,7 +73,13 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
         temperature_k: None, solid_form: None,
     }).unwrap();
 
-    let la_init = *v.species_mol.get("La+3").unwrap_or(&0.0);
+    let total_la = |v: &Vessel| {
+        v.species_mol.get("La+3").copied().unwrap_or(0.0)
+            + v.species_mol.get("LaNO3+2").copied().unwrap_or(0.0)
+            + v.species_mol.get("LaCl+2").copied().unwrap_or(0.0)
+    };
+
+    let la_init = total_la(&v);
     assert!((la_init - 0.0025).abs() < 1e-5);
     assert_eq!(v.solid_mol.get("La(OH)3(s)").copied().unwrap_or(0.0), 0.0);
 
@@ -91,7 +97,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
     assert!(la_solid > 0.0024, "La(OH)3(s) should precipitate almost quantitatively (> 0.0024 mol), found {}", la_solid);
 
     // Total La element conservation
-    let la_sol = *v.species_mol.get("La+3").unwrap_or(&0.0);
+    let la_sol = total_la(&v);
     assert!((la_solid + la_sol - la_init).abs() < 1e-5, "La mass must be strictly conserved");
 
     // 5. Add strong acid HCl 1 M to dissolve La(OH)3 precipitate by acid neutralization
@@ -127,7 +133,7 @@ fn test_arbitrary_custom_compound_and_multivalent_mineral() {
 
     let la_solid_after_acid = *v.solid_mol.get("La(OH)3(s)").unwrap_or(&0.0);
     assert_eq!(la_solid_after_acid, 0.0, "La(OH)3 precipitate must completely dissolve upon acid addition");
-    let la_redissolved = *v.species_mol.get("La+3").unwrap_or(&0.0);
+    let la_redissolved = total_la(&v);
     assert!((la_redissolved - la_init).abs() < 1e-5, "All La+3 must return to aqueous solution");
 }
 
