@@ -21,7 +21,7 @@ pub fn is_acid_template(template: &str) -> bool {
 pub fn ph_for(template: &str) -> f64 {
     if is_acid_template(template) {
         1.0
-    } else if matches!(template, "base_ester_hydrolysis" | "amide_base_hydrolysis" | "carbamate_base_hydrolysis" | "sn2_substitution" | "e2_elimination") {
+    } else if matches!(template, "base_ester_hydrolysis" | "amide_base_hydrolysis" | "carbamate_base_hydrolysis" | "phosphoryl_ester_base_hydrolysis" | "alkyl_sulfate_base_hydrolysis" | "sn2_substitution" | "e2_elimination") {
         13.0
     } else {
         7.0

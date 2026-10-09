@@ -345,6 +345,91 @@ for name, s_, k298 in [("allyl chloride", "C=CCCl", 1.157e-7), ("allyl bromide",
 add("acyl_halide_substitution", ["COC(=O)Cl", "O"], ["COC(=O)O", "[H+]", "[Cl-]"], 5.642e-4, "s^-1", 298.15, None, "", "Table 4.18, p. 407",
     "methyl chloroformate, kN at 298 K (5.642 +- 0.002e-4)")
 
+# ------------------------------------------------------------------------------------------ Tables 4.12-4.14: phosphonate and phosphate esters
+# Table 4.12 (acid, kA x 1e5 M-1 s-1) and Table 4.13 (base, kB x 1e4 M-1 s-1) list dialkyl alkylphosphonates R1P(O)(OR2)2 at the
+# temperature shown (322-393 K, not 298 K: the row carries its T), with E (kJ/mol; the paper's R' = 2.303 R makes E the activation energy
+# itself) where a line is given; the tabulated lines were checked against the tabulated k (all within 10 %). Table 4.14 (kB) lists
+# phosphate triesters; only rows in water are used (acetone / water and dioxane / water rows, (EtS)3PO, paraoxon, the mixed
+# (MeO)2P(O)OEt whose leaving group is not stated, and every kN, whose C-O mechanism has no template here, are not).
+P405, P404 = "Table 4.13, p. 405", "Table 4.12, p. 404"
+NP = "c1ccc([N+](=O)[O-])cc1"
+# (R1, R2 name, SMILES of the diester, leaving alcohol, hydroxide: T, 1e4 kB, E) / (acid: T, 1e5 kA, E)
+PHOS = [
+    ("Me", "Me", "COP(C)(=O)OC", "CO", (322.8, 146.0, 56.5), (372.8, 1.14, 111.6)),
+    ("Me", "Et", "CCOP(C)(=O)OCC", "CCO", (333.0, 26.0, 58.6), (382.0, 2.05, 111.6)),
+    ("Me", "i-Pr", "CC(C)OP(C)(=O)OC(C)C", "CC(C)O", (353.0, 0.153, 62.3), (366.6, 12.86, 107.0)),
+    ("Me", "t-BuCH2", "CC(C)(C)COP(C)(=O)OCC(C)(C)C", "CC(C)(C)CO", (361.0, 0.958, None), (376.0, 0.944, None)),
+    ("Et", "Et", "CCOP(=O)(CC)OCC", "CCO", (342.5, 17.8, 59.4), None),
+    ("Et", "i-Pr", "CCP(=O)(OC(C)C)OC(C)C", "CC(C)O", (377.9, 1.06, 67.8), (365.5, 3.4, 108.7)),
+    ("n-Pr", "n-Pr", "CCCOP(=O)(CCC)OCCC", "CCCO", (368.0, 3.58, None), None),
+    ("n-Pr", "i-Pr", "CCCP(=O)(OC(C)C)OC(C)C", "CC(C)O", (382.9, 0.516, 66.5), (369.0, 4.9, 108.7)),
+    ("C6H5", "Et", "CCOP(=O)(OCC)c1ccccc1", "CCO", (332.8, 44.7, None), (374.0, 1.05, 111.5)),
+    ("n-Bu", "Et", "CCCCP(=O)(OCC)OCC", "CCO", None, (383.0, 1.05, None)),
+    ("n-Bu", "i-Pr", "CCCCP(=O)(OC(C)C)OC(C)C", "CC(C)O", None, (369.0, 6.47, None)),
+    ("t-Bu", "Me", "COP(=O)(OC)C(C)(C)C", "CO", None, (393.0, 2.25, None)),
+    ("t-Bu", "i-Pr", "CC(C)OP(=O)(OC(C)C)C(C)(C)C", "CC(C)O", None, (388.2, 32.8, None)),
+    ("Me", "C6H5", "CP(=O)(Oc1ccccc1)Oc1ccccc1", "Oc1ccccc1", None, (383.0, 0.50, None)),
+]
+for r1, r2, sm, alc, base, acid in PHOS:
+    name = f"dialkyl {r1}-phosphonate, OR = {r2}"
+    # monoester: replace one OR2 by O- (or OH): done on the SMILES string, all OR2 groups being equal
+    rx_a = AllChem.ReactionFromSmarts("[P:1][O:2][#6:3]>>[P:1][O-:2].[#6:3][O]")
+    rx_h = AllChem.ReactionFromSmarts("[P:1][O:2][#6:3]>>[P:1][OH:2].[#6:3][O]")
+    mol = Chem.MolFromSmiles(sm)
+    if base is not None:
+        ps = rx_a.RunReactants((mol,))[0]
+        out = []
+        for q in ps:
+            Chem.SanitizeMol(q)
+            out.append(smi(q))
+        t, k4, e = base
+        add("phosphoryl_ester_base_hydrolysis", [sm, "[OH-]"], out, k4 * 1e-4, "M^-1 s^-1", t, e, "E of the tabulated line" if e else "", P405,
+            f"{name}, kB at {t} K (rate = kB [OH-] [ester]; the table does not state the medium, no co-solvent is flagged)")
+    if acid is not None:
+        ps = rx_h.RunReactants((mol,))[0]
+        out = []
+        for q in ps:
+            Chem.SanitizeMol(q)
+            out.append(smi(q))
+        t, k5, e = acid
+        add("phosphoryl_ester_acid_hydrolysis_acid", [sm, "O"], out, k5 * 1e-5, "M^-1 s^-1", t, e, "E of the tabulated line" if e else "", P404,
+            f"{name}, kA at {t} K (rate = kA [H+] [ester])", orders="{}")
+# p-nitrophenyl ethyl methylphosphonate: base releases p-nitrophenol (Table 4.13 footnote c), acid releases ethanol (Table 4.12 footnote c)
+NPE = "CCOP(C)(=O)Oc1ccc([N+](=O)[O-])cc1"
+add("phosphoryl_ester_base_hydrolysis", [NPE, "[OH-]"], ["CCOP(C)(=O)[O-]", "Oc1ccc([N+](=O)[O-])cc1"], 400e-4, "M^-1 s^-1", 298.0, 50.2, "E of the tabulated line",
+    P405, "ethyl p-nitrophenyl methylphosphonate, kB at 298 K (the product is p-nitrophenol, footnote c)")
+add("phosphoryl_ester_acid_hydrolysis_acid", [NPE, "O"], ["CP(=O)(O)Oc1ccc([N+](=O)[O-])cc1", "CCO"], 1.53e-5, "M^-1 s^-1", 383.4, None, "", P404,
+    "ethyl p-nitrophenyl methylphosphonate, kA at 383.4 K (the product is ethanol, footnote c)")
+# Table 4.14, p. 405: kB of the phosphate triesters in water (log kB = 8.1 - 67.8/RT for trimethyl phosphate)
+P405b = "Table 4.14, p. 405"
+add("phosphoryl_ester_base_hydrolysis", ["COP(=O)(OC)OC", "[OH-]"], ["COP(=O)([O-])OC", "CO"], 1.3e-4, "M^-1 s^-1", 298.0, 67.8, "E of the tabulated line", P405b,
+    "trimethyl phosphate, kB at 298 K")
+add("phosphoryl_ester_base_hydrolysis", ["CCOP(=O)(OCC)OCC", "[OH-]"], ["CCOP(=O)([O-])OCC", "CCO"], 4.49e-2, "M^-1 s^-1", 374.0, None, "", P405b,
+    "triethyl phosphate, kB at 374 K (the 298 K value of the table is in dioxane / water and is not used)")
+add("phosphoryl_ester_base_hydrolysis", ["O=P(Oc1ccccc1)(Oc1ccccc1)Oc1ccccc1", "[OH-]"], ["O=P([O-])(Oc1ccccc1)Oc1ccccc1", "Oc1ccccc1"], 1.06e-2, "M^-1 s^-1",
+    298.0, 45.9, "E of the tabulated line (the table notes the original reference miscalculated A and E)", P405b, "triphenyl phosphate, kB at 298 K")
+
+# ------------------------------------------------------------------------------------------ Table 4.18, p. 407: alkylating agents
+# Beta-propiolactone: kN 3.3e-3 s-1 at 298 K. The tabulated line (log kN = 10.04 - 81.59/RT) gives 5.5e-5 s-1 at 298 K, 60 times below the
+# tabulated k, so A is taken from k and only E = 81.59 kJ/mol is kept. 1,3-propane sultone: kN 2.15e-5 s-1. Dimethyl sulfate: kN 1.66e-4
+# s-1 and kB 1.48e-2 M-1 s-1. Bis(chloromethyl) ether (kN 1.8e-2 s-1 at 293 K, log kN = 9.80 - 64.78/RT, no acid / base term) has no template
+# (it is an alpha-halo ether, SN1-like through the oxocarbenium ion). Aziridine, azobenzene-type, captan, methoxychlor, atrazine: see
+# docs/plans/rates-from-data-plan.md 14.2 (atrazine's tabulated 7.6e-5 s-1 would be a 2.5 h half-life against a year in the literature: not used).
+P407 = "Table 4.18, p. 407"
+add("sn1_ionisation", ["ClCOCCl"], ["ClCO[CH2+]", "[Cl-]"], 1.8e-2, "s^-1", 293.0, 64.78,
+    "E of the tabulated line (footnote d: its log A, 9.80, was calculated from k and E)", P407,
+    "bis(chloromethyl) ether, kN at 293 K; no acid or base term was observed. The print shows 1.8( 2) with the sign of the exponent lost: "
+    "the tabulated line, whose A was calculated from this k, gives 1.8e-2 s-1 at 293 K, so that is the value")
+add("lactone_neutral_hydrolysis", ["O=C1CCO1", "O"], ["OCCC(=O)[O-]", "[H+]"], 3.3e-3, "s^-1", 298.15, 81.59,
+    "E of the tabulated line (its log A, 10.04, does not reproduce the tabulated k, so A is fitted to k)", P407,
+    "beta-propiolactone, kN at 298 K (no acid or base term tabulated)")
+add("alkyl_sulfate_neutral_hydrolysis", ["O=S1(=O)CCCO1", "O"], ["OCCCS(=O)(=O)[O-]", "[H+]"], 2.15e-5, "s^-1", 298.15, None, "", P407,
+    "1,3-propane sultone, kN at 298 K")
+add("alkyl_sulfate_neutral_hydrolysis", ["COS(=O)(=O)OC", "O"], ["CO", "COS(=O)(=O)[O-]", "[H+]"], 1.66e-4, "s^-1", 298.15, None, "", P407,
+    "dimethyl sulfate, kN at 298 K")
+add("alkyl_sulfate_base_hydrolysis", ["COS(=O)(=O)OC", "[OH-]"], ["CO", "COS(=O)(=O)[O-]"], 1.48e-2, "M^-1 s^-1", 298.15, None, "", P407,
+    "dimethyl sulfate, kB at 298 K")
+
 # ------------------------------------------------------------------------------------------ held out: every 4th row of a rule class, by hash
 ESTER_SIGNATURE = [Chem.MolFromSmarts(x) for x in ("[CX3;H1](=O)O", "[CX3]([CX4][F,Cl,Br])", "[CX3][OX2]c", "[CX3][OX2][CX4;H1]", "[CX3][OX2][CX4;H0]", "[CX3][CX3]=[CX3]", "[CX3][CX4][CX4]", "[CX3][CX4][SX3,SX4]=O")]
 
@@ -360,6 +445,14 @@ def rule_class(r):
         c = [a for a in m.GetAtoms() if a.GetSymbol() in ("Cl", "Br", "I")][0].GetNeighbors()[0]
         kind = "benzylic" if any(n.GetIsAromatic() for n in c.GetNeighbors()) else "allylic" if any(any(b.GetBondTypeAsDouble() == 2 for b in n.GetBonds()) for n in c.GetNeighbors()) else "alkyl"
         return f"{t}/{c.GetTotalNumHs()}H/{kind}"
+    if t.startswith("phosphoryl_ester"):
+        # the leaving-group classes the rule distinguishes (secondary: ~1000 x slower in base; neopentyl; methoxy: ~10 x faster than
+        # ethoxy): a class with a single row is never held out, so the alkoxy effects stay in training where they can be fitted
+        m = Chem.MolFromSmiles(r["reactants"].split(";")[0])
+        has = lambda sma: m.HasSubstructMatch(Chem.MolFromSmarts(sma))
+        kind = ("aryl" if has("P(=O)Oc") else "triester" if not has("P[#6]") else "secondary" if has("P(=O)O[CX4;H1]") else
+                "neopentyl" if has("P(=O)O[CX4][CX4;D4]") else "methoxy" if has("P(=O)O[CH3]") else "primary")
+        return f"{t}/{kind}"
     if t == "carbamate_base_hydrolysis":
         m = Chem.MolFromSmiles(r["reactants"].split(";")[0])
         # N,N-disubstituted (4 rows) and N-H aryl esters (4 rows spanning six orders of magnitude, an interpolation set in the
@@ -376,7 +469,8 @@ def rule_class(r):
 # Textbook reactions of the bench are never held out: they must run on their measured values, not on the rule's estimate.
 PINNED = {("base_ester_hydrolysis", "CC(=O)OCC"), ("base_ester_hydrolysis", "CC(=O)OC"),
           ("acid_ester_hydrolysis_acid", "CC(=O)OC"), ("acid_ester_hydrolysis_acid", "CC(=O)OCC"),
-          ("sn1_ionisation", "CC(C)(C)Cl"), ("sn2_substitution", "CBr")}
+          ("sn1_ionisation", "CC(C)(C)Cl"), ("sn2_substitution", "CBr"),
+          ("phosphoryl_ester_base_hydrolysis", "COP(=O)(OC)OC")}
 by_t = {}
 for r in rows:
     r["held_out"] = "False"

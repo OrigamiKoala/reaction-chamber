@@ -2,7 +2,7 @@
   "_comment": "Parameters of the structure-based pKa estimator (src/pka_structure.rs): Perrin-Dempsey-Serjeant style linear free-energy relations over the SMILES graph. pKa = pKa0(class) - rho(class) * sum_w w_k sigma_k att(d_k): sigma_I (inductive constants, Charton / Taft) of the substituent groups on the saturated skeleton attenuated by f per bond beyond the first shell; Hammett sigma (m, p, p-) for ring substituents. Constants recalled from the literature (tier Estimated) and checked in tests/open_items.rs against 80 measured pKa values.",
   "sigma_I": {
     "F": 0.52, "Cl": 0.47, "Br": 0.47, "I": 0.40, "OH": 0.25, "OR": 0.27, "OAr": 0.38, "OCOR": 0.38, "SH": 0.25, "SR": 0.25,
-    "NH2": 0.12, "NR2": 0.10, "NHCOR": 0.28, "NH3+": 0.60, "nitro": 0.65, "CN": 0.57, "CF3": 0.40, "CCl3": 0.38,
+    "NH2": 0.12, "NR2": 0.10, "NHCOR": 0.28, "NH3+": 0.60, "NR3+": 0.88, "nitro": 0.65, "CN": 0.57, "CF3": 0.40, "CCl3": 0.38,
     "COOH": 0.35, "COO-": 0.05, "COOR": 0.30, "COR": 0.30, "CONH2": 0.28, "Ph": 0.12, "vinyl": 0.11, "ethynyl": 0.21
   },
   "hammett": {
@@ -10,11 +10,11 @@
     "F": [0.34, 0.06, 0.06], "Cl": [0.37, 0.23, 0.19], "Br": [0.39, 0.23, 0.25], "I": [0.35, 0.18, 0.27],
     "OH": [0.12, -0.37, -0.37], "OR": [0.12, -0.27, -0.27], "OAr": [0.25, -0.03, -0.03], "OCOR": [0.39, 0.31, 0.31],
     "SH": [0.25, 0.15, 0.15], "SR": [0.15, 0.00, 0.00],
-    "NH2": [-0.16, -0.66, -0.66], "NR2": [-0.16, -0.83, -0.83], "NHCOR": [0.21, 0.00, 0.00], "NH3+": [0.86, 0.60, 0.60],
+    "NH2": [-0.16, -0.66, -0.66], "NR2": [-0.16, -0.83, -0.83], "NHCOR": [0.21, 0.00, 0.00], "NH3+": [0.86, 0.60, 0.60], "NR3+": [0.88, 0.82, 0.82],
     "nitro": [0.71, 0.78, 1.27], "CN": [0.56, 0.66, 0.88], "CF3": [0.43, 0.54, 0.65], "CCl3": [0.40, 0.46, 0.46],
     "COOH": [0.37, 0.45, 0.77], "COO-": [0.10, 0.00, 0.00], "COOR": [0.37, 0.45, 0.64], "COR": [0.38, 0.50, 0.84],
     "CONH2": [0.28, 0.36, 0.61], "Ph": [0.06, -0.01, -0.01], "vinyl": [0.06, -0.04, -0.04], "ethynyl": [0.21, 0.23, 0.53],
-    "alkyl": [-0.07, -0.17, -0.17]
+    "alkyl": [-0.07, -0.17, -0.17], "O-": [-0.47, -0.81, -0.81]
   },
   "ortho": {
     "_comment": "ortho substituent constant = k_polar sigma_I + k_alkyl for alkyl groups (steric acid strengthening)",

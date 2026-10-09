@@ -3,10 +3,19 @@
 import { VesselSnapshot, VesselEvent } from '../types/sim';
 import { Lab, glasswareSpec } from '../app/lab';
 import { formatCapacity } from '../app/glassware_catalog';
-import { h, setText, prettyFormula, fmtConc, fmtAmountMol, fmtClock } from './dom';
+import { h, setText, prettyFormula, prettyEquation, fmtConc, fmtAmountMol, fmtClock } from './dom';
 import { icon } from './icons';
 import { toast } from './toast';
 import { GasSection } from './gas_section';
+
+interface TrackedReaction {
+  id: string;
+  equation: string;
+  kind: string;
+  rate: number;
+  active: boolean;
+  lastSimTime: number;
+}
 
 export interface Readouts {
   temperature: string;
@@ -74,9 +83,13 @@ export class VesselPanel {
   private igniteBtn!: HTMLButtonElement;
   private contentRows: Array<{ li: HTMLElement; f: HTMLElement; n: HTMLElement; a: HTMLElement }> = [];
   private contentEmpty!: HTMLElement;
+  private rxnList!: HTMLElement;
   private eventsList!: HTMLElement;
   private eventsSec!: HTMLElement;
   private lastEventsLen = -1;
+  private lastRxnKey = '';
+  private lastRxnAt = 0;
+  private vesselReactions = new Map<string, Map<string, TrackedReaction>>();
   // Contents list stability: persistent row order (hysteresis), row-count high-water mark, 4 Hz throttle.
   private contentOrder: string[] = [];
   private contentSlots = 0;
@@ -109,6 +122,8 @@ export class VesselPanel {
   public show(id: string | null) {
     this.id = id;
     this.lastEventsLen = -1;
+    this.lastRxnKey = '';
+    this.lastRxnAt = 0;
     this.contentOrder = [];
     this.contentSlots = 0;
     this.lastContentsAt = 0;
@@ -176,10 +191,12 @@ export class VesselPanel {
     cell('mass', 'Balance');
     cell('press', 'Pressure');
 
-    // Events (generic, from snapshot.events)
-    this.eventsSec = h('section', { class: 'vp-sec vp-events', hidden: true, 'aria-label': 'Events' });
+    // Reactions (equations & events, right above species)
+    this.eventsSec = h('section', { class: 'vp-sec vp-reactions', hidden: true, 'aria-label': 'Reactions' });
+    const rxnHead = h('div', { class: 'sec-head' }, h('h3', { class: 'eyebrow', text: 'Reactions' }));
+    this.rxnList = h('ul', { class: 'rxn-list', role: 'list' });
     this.eventsList = h('ol', { class: 'events', 'aria-live': 'polite' });
-    this.eventsSec.append(h('h3', { class: 'eyebrow', text: 'Reaction log' }), this.eventsList);
+    this.eventsSec.append(rxnHead, this.rxnList, this.eventsList);
 
     // Controls
     const ctlSec = h('section', { class: 'vp-sec', 'aria-label': 'Controls' });
@@ -281,7 +298,7 @@ export class VesselPanel {
     this.r.pourEmptyBtn = emptyBtn;
 
     this.gasSec = new GasSection(lab, v.id);
-    this.content.append(head, this.brokenBanner, ro, this.eventsSec, ctlSec, conSec, this.pourSec, this.gasSec.el);
+    this.content.append(head, this.brokenBanner, ro, ctlSec, this.eventsSec, conSec, this.pourSec, this.gasSec.el);
     this.renderPourTargets();
     this.updateSub();
   }
@@ -370,8 +387,8 @@ export class VesselPanel {
 
     this.igniteBtn.hidden = !(lab.hasFlammable(this.id) && !snap.flame && !snap.burst);
 
+    this.updateReactions(snap);
     this.updateContents(snap);
-    this.updateEvents(snap);
     this.refreshPour();
   }
 
@@ -430,45 +447,125 @@ export class VesselPanel {
     });
   }
 
-  private updateEvents(snap: VesselSnapshot) {
+  private updateReactions(snap: VesselSnapshot) {
+    if (!this.id) return;
+    let tracked = this.vesselReactions.get(this.id);
+    if (!tracked) {
+      tracked = new Map();
+      this.vesselReactions.set(this.id, tracked);
+    }
+    // Emptied vessel: clear history
+    if (snap.total_liquid_ml < 0.001 && snap.solids.length === 0 && (snap.events ?? []).length === 0) {
+      tracked.clear();
+    }
+
+    const rxns = snap.reactions ?? [];
+    for (const tr of tracked.values()) {
+      tr.active = false;
+    }
+
+    for (const r of rxns) {
+      let isOccurring = false;
+      let kind: string = r.kind;
+      let eq = r.equation;
+
+      if (r.role === 'autoprotolysis') {
+        if (r.rate < -2e-3) {
+          isOccurring = true;
+          kind = 'neutralisation';
+          eq = 'H+ + OH- -> H2O';
+        }
+      } else if (r.kind === 'equilibrium') {
+        if (Math.abs(r.rate) > 1e-5) {
+          isOccurring = true;
+        }
+      } else if (Math.abs(r.rate) > 1e-7) {
+        isOccurring = true;
+      }
+
+      if (isOccurring) {
+        const key = r.id || eq;
+        const ex = tracked.get(key);
+        if (ex) {
+          ex.active = true;
+          ex.rate = r.rate;
+          ex.lastSimTime = snap.t_sim_s;
+        } else {
+          tracked.set(key, {
+            id: r.id,
+            equation: eq,
+            kind,
+            rate: r.rate,
+            active: true,
+            lastSimTime: snap.t_sim_s,
+          });
+        }
+      }
+    }
+
+    const rxnItems = [...tracked.values()]
+      .sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return Math.abs(b.rate) - Math.abs(a.rate) || b.lastSimTime - a.lastSimTime;
+      })
+      .slice(0, 5);
+
+    const rxnKey = rxnItems.map((r) => `${r.id}:${r.active}`).join('|');
+    const now = performance.now();
+    if (rxnKey !== this.lastRxnKey || now - this.lastRxnAt > 250) {
+      this.lastRxnKey = rxnKey;
+      this.lastRxnAt = now;
+      this.rxnList.innerHTML = '';
+      for (const rx of rxnItems) {
+        const li = h('li', { class: `rxn-item${rx.active ? ' is-active' : ''}` });
+        const dot = h('span', { class: 'rxn-indicator', 'aria-hidden': 'true' });
+        const eqSpan = h('span', { class: 'rxn-eq mono', title: rx.equation, text: prettyEquation(rx.equation) });
+        li.append(dot, eqSpan);
+        this.rxnList.append(li);
+      }
+    }
+    this.rxnList.hidden = rxnItems.length === 0;
+
+    // Events log
     const evs = snap.events ?? [];
     const last = evs.length ? (evs[evs.length - 1].seq ?? evs.length) : 0;
-    if (last === this.lastEventsLen) return;
-    this.lastEventsLen = last;
-    // Collapse repeats of the same message within 5 s of sim time; keep the newest few.
-    const out: VesselEvent[] = [];
-    for (const e of evs) {
-      const prev = out[out.length - 1];
-      if (prev && prev.kind === e.kind && prev.detail === e.detail && e.t_sim_s - prev.t_sim_s < 5) continue;
-      // Running readings (temperature steps, solids vanishing one by one, a colour drifting) replace the last entry of
-      // their kind and species instead of burying the one-off events (precipitate, gas, complex) in a flood.
-      if (SUPERSEDING.has(e.kind)) {
-        const j = out.findLastIndex((o) => o.kind === e.kind && o.species === e.species && e.t_sim_s - o.t_sim_s < 30);
-        if (j >= 0) {
-          out.splice(j, 1);
+    if (last !== this.lastEventsLen) {
+      this.lastEventsLen = last;
+      const out: VesselEvent[] = [];
+      for (const e of evs) {
+        const prev = out[out.length - 1];
+        if (prev && prev.kind === e.kind && prev.detail === e.detail && e.t_sim_s - prev.t_sim_s < 5) continue;
+        if (SUPERSEDING.has(e.kind)) {
+          const j = out.findLastIndex((o) => o.kind === e.kind && o.species === e.species && e.t_sim_s - o.t_sim_s < 30);
+          if (j >= 0) {
+            out.splice(j, 1);
+          }
         }
+        out.push(e);
       }
-      out.push(e);
-    }
-    const recent = out.slice(-LOG_ROWS).reverse();
-    this.eventsSec.hidden = recent.length === 0;
-    this.eventsList.innerHTML = '';
-    for (const e of recent) {
-      const li = h('li', { class: `ev ev-${e.kind}` });
-      if (LOG_KINDS.has(e.kind)) {
-        if (e.rgb) {
-          const dot = h('span', { class: 'ev-dot', 'aria-hidden': 'true' });
-          dot.style.background = linearToCss(e.rgb);
-          li.append(dot);
+      const recent = out.slice(-LOG_ROWS).reverse();
+      this.eventsList.innerHTML = '';
+      for (const e of recent) {
+        const li = h('li', { class: `ev ev-${e.kind}` });
+        if (LOG_KINDS.has(e.kind)) {
+          if (e.rgb) {
+            const dot = h('span', { class: 'ev-dot', 'aria-hidden': 'true' });
+            dot.style.background = linearToCss(e.rgb);
+            li.append(dot);
+          }
+          li.append(h('span', { class: 'ev-detail ev-sentence', text: e.detail ?? EVENT_LABELS[e.kind] }));
+        } else {
+          li.append(h('span', { class: 'ev-kind', text: EVENT_LABELS[e.kind] ?? e.kind }));
+          if (e.detail) li.append(h('span', { class: 'ev-detail', text: e.detail }));
         }
-        li.append(h('span', { class: 'ev-detail ev-sentence', text: e.detail ?? EVENT_LABELS[e.kind] }));
-      } else {
-        li.append(h('span', { class: 'ev-kind', text: EVENT_LABELS[e.kind] ?? e.kind }));
-        if (e.detail) li.append(h('span', { class: 'ev-detail', text: e.detail }));
+        li.append(h('time', { class: 'ev-t', text: fmtClock(e.t_sim_s) }));
+        this.eventsList.append(li);
       }
-      li.append(h('time', { class: 'ev-t', text: fmtClock(e.t_sim_s) }));
-      this.eventsList.append(li);
+      this.eventsList.hidden = recent.length === 0;
     }
+
+    const hasContent = rxnItems.length > 0 || this.eventsList.children.length > 0;
+    this.eventsSec.hidden = !hasContent;
   }
 
   // ------------------------------------------------------------------ pour

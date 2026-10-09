@@ -393,7 +393,8 @@
    "kind": "outer_sphere_measured",
    "tier": "Estimated",
    "source": "Hurwitz & Kustin, Inorg. Chem. 5, 2038 (1966); Marcus & Sutin (1985)",
-   "verification": "recalled"
+   "verification": "verified_secondary",
+   "secondary_source": "H. Bataineh, O. Pestovsky, A. Bakac, Electron transfer reactivity of aqueous iron(IV)-oxo complex. Outer-sphere vs proton-coupled electron transfer (accepted manuscript, OSTI 1259478, https://www.osti.gov/servlets/purl/1259478), Table 1: IrCl6(3-) k11 = 2.3e5 M-1 s-1, E0 0.89 V vs NHE; that table cites its own reference list, which was not opened"
   },
   {
    "id": "ru_bpy",

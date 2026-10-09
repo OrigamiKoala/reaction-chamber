@@ -1863,6 +1863,499 @@
       "solvent_class": "water",
       "terms": [],
       "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "COP(C)(=O)OC",
+        "[OH-]"
+      ],
+      "products": [
+        "COP(C)(=O)[O-]",
+        "CO"
+      ],
+      "k_m_s": 0.0146,
+      "t_k": 322.8,
+      "ea_kj_mol": 56.5,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "COP(C)(=O)OC",
+        "O"
+      ],
+      "products": [
+        "COP(C)(=O)O",
+        "CO"
+      ],
+      "k_m_s": 1.14e-05,
+      "t_k": 372.8,
+      "ea_kj_mol": 111.6,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCOP(C)(=O)OCC",
+        "[OH-]"
+      ],
+      "products": [
+        "CCOP(C)(=O)[O-]",
+        "CCO"
+      ],
+      "k_m_s": 0.0026,
+      "t_k": 333.0,
+      "ea_kj_mol": 58.6,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCOP(C)(=O)OCC",
+        "O"
+      ],
+      "products": [
+        "CCOP(C)(=O)O",
+        "CCO"
+      ],
+      "k_m_s": 2.05e-05,
+      "t_k": 382.0,
+      "ea_kj_mol": 111.6,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CC(C)OP(C)(=O)OC(C)C",
+        "[OH-]"
+      ],
+      "products": [
+        "CC(C)OP(C)(=O)[O-]",
+        "CC(C)O"
+      ],
+      "k_m_s": 1.53e-05,
+      "t_k": 353.0,
+      "ea_kj_mol": 62.3,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CC(C)OP(C)(=O)OC(C)C",
+        "O"
+      ],
+      "products": [
+        "CC(C)OP(C)(=O)O",
+        "CC(C)O"
+      ],
+      "k_m_s": 0.0001286,
+      "t_k": 366.6,
+      "ea_kj_mol": 107.0,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CC(C)(C)COP(C)(=O)OCC(C)(C)C",
+        "[OH-]"
+      ],
+      "products": [
+        "CC(C)(C)COP(C)(=O)[O-]",
+        "CC(C)(C)CO"
+      ],
+      "k_m_s": 9.58e-05,
+      "t_k": 361.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CC(C)(C)COP(C)(=O)OCC(C)(C)C",
+        "O"
+      ],
+      "products": [
+        "CC(C)(C)COP(C)(=O)O",
+        "CC(C)(C)CO"
+      ],
+      "k_m_s": 9.44e-06,
+      "t_k": 376.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCOP(=O)(CC)OCC",
+        "[OH-]"
+      ],
+      "products": [
+        "CCOP(=O)([O-])CC",
+        "CCO"
+      ],
+      "k_m_s": 0.00178,
+      "t_k": 342.5,
+      "ea_kj_mol": 59.4,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCP(=O)(OC(C)C)OC(C)C",
+        "[OH-]"
+      ],
+      "products": [
+        "CCP(=O)([O-])OC(C)C",
+        "CC(C)O"
+      ],
+      "k_m_s": 0.000106,
+      "t_k": 377.9,
+      "ea_kj_mol": 67.8,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCCOP(=O)(CCC)OCCC",
+        "[OH-]"
+      ],
+      "products": [
+        "CCCOP(=O)([O-])CCC",
+        "CCCO"
+      ],
+      "k_m_s": 0.000358,
+      "t_k": 368.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCCP(=O)(OC(C)C)OC(C)C",
+        "[OH-]"
+      ],
+      "products": [
+        "CCCP(=O)([O-])OC(C)C",
+        "CC(C)O"
+      ],
+      "k_m_s": 5.16e-05,
+      "t_k": 382.9,
+      "ea_kj_mol": 66.5,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCCP(=O)(OC(C)C)OC(C)C",
+        "O"
+      ],
+      "products": [
+        "CCCP(=O)(O)OC(C)C",
+        "CC(C)O"
+      ],
+      "k_m_s": 4.9e-05,
+      "t_k": 369.0,
+      "ea_kj_mol": 108.7,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCOP(=O)(OCC)c1ccccc1",
+        "O"
+      ],
+      "products": [
+        "CCOP(=O)(O)c1ccccc1",
+        "CCO"
+      ],
+      "k_m_s": 1.05e-05,
+      "t_k": 374.0,
+      "ea_kj_mol": 111.5,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCCCP(=O)(OCC)OCC",
+        "O"
+      ],
+      "products": [
+        "CCCCP(=O)(O)OCC",
+        "CCO"
+      ],
+      "k_m_s": 1.05e-05,
+      "t_k": 383.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCCCP(=O)(OC(C)C)OC(C)C",
+        "O"
+      ],
+      "products": [
+        "CCCCP(=O)(O)OC(C)C",
+        "CC(C)O"
+      ],
+      "k_m_s": 6.47e-05,
+      "t_k": 369.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "COP(=O)(OC)C(C)(C)C",
+        "O"
+      ],
+      "products": [
+        "COP(=O)(O)C(C)(C)C",
+        "CO"
+      ],
+      "k_m_s": 2.25e-05,
+      "t_k": 393.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CC(C)OP(=O)(OC(C)C)C(C)(C)C",
+        "O"
+      ],
+      "products": [
+        "CC(C)OP(=O)(O)C(C)(C)C",
+        "CC(C)O"
+      ],
+      "k_m_s": 0.000328,
+      "t_k": 388.2,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CP(=O)(Oc1ccccc1)Oc1ccccc1",
+        "O"
+      ],
+      "products": [
+        "CP(=O)(O)Oc1ccccc1",
+        "Oc1ccccc1"
+      ],
+      "k_m_s": 5e-06,
+      "t_k": 383.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCOP(C)(=O)Oc1ccc([N+](=O)[O-])cc1",
+        "[OH-]"
+      ],
+      "products": [
+        "CCOP(C)(=O)[O-]",
+        "Oc1ccc([N+](=O)[O-])cc1"
+      ],
+      "k_m_s": 0.04,
+      "t_k": 298.0,
+      "ea_kj_mol": 50.2,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.13, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_acid_hydrolysis_acid",
+      "reactants": [
+        "CCOP(C)(=O)Oc1ccc([N+](=O)[O-])cc1",
+        "O"
+      ],
+      "products": [
+        "CP(=O)(O)Oc1ccc([N+](=O)[O-])cc1",
+        "CCO"
+      ],
+      "k_m_s": 1.53e-05,
+      "t_k": 383.4,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.12, p. 404)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "COP(=O)(OC)OC",
+        "[OH-]"
+      ],
+      "products": [
+        "COP(=O)([O-])OC",
+        "CO"
+      ],
+      "k_m_s": 0.00013,
+      "t_k": 298.0,
+      "ea_kj_mol": 67.8,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.14, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "CCOP(=O)(OCC)OCC",
+        "[OH-]"
+      ],
+      "products": [
+        "CCOP(=O)([O-])OCC",
+        "CCO"
+      ],
+      "k_m_s": 0.0449,
+      "t_k": 374.0,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.14, p. 405)"
+    },
+    {
+      "template": "phosphoryl_ester_base_hydrolysis",
+      "reactants": [
+        "O=P(Oc1ccccc1)(Oc1ccccc1)Oc1ccccc1",
+        "[OH-]"
+      ],
+      "products": [
+        "O=P([O-])(Oc1ccccc1)Oc1ccccc1",
+        "Oc1ccccc1"
+      ],
+      "k_m_s": 0.0106,
+      "t_k": 298.0,
+      "ea_kj_mol": 45.9,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.14, p. 405)"
+    },
+    {
+      "template": "sn1_ionisation",
+      "reactants": [
+        "ClCOCCl"
+      ],
+      "products": [
+        "ClCO[CH2+]",
+        "[Cl-]"
+      ],
+      "k_m_s": 0.018,
+      "t_k": 293.0,
+      "ea_kj_mol": 64.78,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
+    },
+    {
+      "template": "lactone_neutral_hydrolysis",
+      "reactants": [
+        "O=C1CCO1",
+        "O"
+      ],
+      "products": [
+        "OCCC(=O)[O-]",
+        "[H+]"
+      ],
+      "k_m_s": 0.0033,
+      "t_k": 298.15,
+      "ea_kj_mol": 81.59,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
+    },
+    {
+      "template": "alkyl_sulfate_neutral_hydrolysis",
+      "reactants": [
+        "O=S1(=O)CCCO1",
+        "O"
+      ],
+      "products": [
+        "OCCCS(=O)(=O)[O-]",
+        "[H+]"
+      ],
+      "k_m_s": 2.15e-05,
+      "t_k": 298.15,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
+    },
+    {
+      "template": "alkyl_sulfate_neutral_hydrolysis",
+      "reactants": [
+        "COS(=O)(=O)OC",
+        "O"
+      ],
+      "products": [
+        "CO",
+        "COS(=O)(=O)[O-]",
+        "[H+]"
+      ],
+      "k_m_s": 0.000166,
+      "t_k": 298.15,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
+    },
+    {
+      "template": "alkyl_sulfate_base_hydrolysis",
+      "reactants": [
+        "COS(=O)(=O)OC",
+        "[OH-]"
+      ],
+      "products": [
+        "CO",
+        "COS(=O)(=O)[O-]"
+      ],
+      "k_m_s": 0.0148,
+      "t_k": 298.15,
+      "ea_kj_mol": null,
+      "solvent_class": "water",
+      "terms": [],
+      "source": "Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978) (Table 4.18, p. 407)"
     }
   ],
   "redox": [

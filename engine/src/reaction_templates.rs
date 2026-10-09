@@ -171,6 +171,10 @@ struct RawHammett {
     /// charge the ortho steric cost of `pka_structure::ortho_steric_kj` per substituent beside the attacked atom
     #[serde(default)]
     ortho_steric: bool,
+    /// constants of the relation: "plus" (sigma+, electrophilic attack on the ring; the default) or "minus" (sigma-, a developing
+    /// negative charge on the ring: phenoxide leaving groups)
+    #[serde(default)]
+    sigma: String,
 }
 
 fn one() -> f64 {
@@ -215,6 +219,7 @@ pub struct Hammett {
     reactant: usize,
     center: usize,
     ortho_steric: bool,
+    minus: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -330,7 +335,7 @@ fn compile_modifier(m: &RawModifier, template: &str) -> Modifier {
         a_factor: m.a_factor,
         ea_add_j: m.ea_add_kj * 1000.0,
         per_match: m.per_match,
-        hammett: m.hammett.as_ref().map(|h| Hammett { rho: h.rho, reactant: h.reactant, center: h.center, ortho_steric: h.ortho_steric }),
+        hammett: m.hammett.as_ref().map(|h| Hammett { rho: h.rho, reactant: h.reactant, center: h.center, ortho_steric: h.ortho_steric, minus: h.sigma == "minus" }),
     }
 }
 
@@ -635,6 +640,24 @@ impl Template {
                 }
             }
         }
+        // Precedence 2: the nucleofugality relation of a benzhydryl halide (first-order ionisation)
+        if let Some(cfg) = crate::nucleofugality::template_config(&self.id) {
+            if let (Some(mol), Some(map)) = (inst.mols.get(cfg.substrate_slot), inst.maps.get(cfg.substrate_slot)) {
+                if let Some(lg_atom) = map.get(cfg.leaving_atom).and_then(|&a| mol.atoms.get(a)) {
+                    if let Some(r) = crate::nucleofugality::evaluate(mol, &lg_atom.element, solvent) {
+                        return vec![Rate {
+                            variant: 0,
+                            a: r.k_298 * (r.ea_j / (R_GAS_J * 298.15)).exp(),
+                            ea_j: Some(r.ea_j),
+                            ep: None,
+                            rule: format!("nucleofugality_{}", self.id),
+                            source: r.source,
+                            per_reaction: true,
+                        }];
+                    }
+                }
+            }
+        }
         let mut out = Vec::new();
         for (vi, v) in self.variants.iter().enumerate() {
             let best = v
@@ -687,12 +710,12 @@ impl Template {
     }
 
     /// Change of the activation energy (J/mol) the substituents of an aromatic ring make, from the Hammett-Brown relation
-    /// `log10(k/k0) = rho sum sigma+` at 298.15 K (an enthalpic shift, so rho falls with temperature like 1/T), plus the
+    /// `log10(k/k0) = rho sum sigma` (sigma+, or sigma- when `minus`) at 298.15 K (an enthalpic shift, so rho falls with temperature like 1/T), plus the
     /// steric cost of the ortho substituents. None when the ring cannot be assessed.
     fn hammett_shift_j(&self, h: &Hammett, inst: &Instance) -> Option<f64> {
         let mol = inst.mols.get(h.reactant)?;
         let atom = *inst.maps.get(h.reactant)?.get(h.center)?;
-        let r = crate::pka_structure::ring_sigma_plus(mol, atom)?;
+        let r = crate::pka_structure::ring_sigma(mol, atom, h.minus)?;
         let mut shift = -h.rho * r.sum * std::f64::consts::LN_10 * R_GAS_J * 298.15;
         if h.ortho_steric {
             shift += r.n_ortho as f64 * crate::pka_structure::ortho_steric_kj() * 1000.0;
@@ -846,6 +869,29 @@ mod tests {
         assert!(has(&amd, "CC(N)=O"), "{:?}", amd);
         let anh = run("anhydride_substitution", &["CC(=O)OC(C)=O", "O"]);
         assert!(anh.len() == 2 && anh.iter().all(|p| mol(p).is_isomorphic(&mol("CC(=O)O"))), "{:?}", anh);
+    }
+
+    /// A phenoxide leaving group carries the charge into the ring: its ortho / para substituents act with sigma-, and a
+    /// quaternary ammonium substituent is electron-withdrawing (it was once read as an amine, sigma_m -0.16).
+    #[test]
+    fn leaving_group_ring_uses_sigma_minus_and_quaternary_ammonium_withdraws() {
+        let k = |carbamate: &str| -> f64 {
+            let t = find("carbamate_base_hydrolysis");
+            let m = mol(carbamate);
+            let oh = mol("[OH-]");
+            let maps = t.slot_matches(0, &m);
+            let hm = t.slot_matches(1, &oh);
+            let r = t.rates(&Instance { template: t, mols: vec![&m, &oh], maps: vec![&maps[0], &hm[0]] }, "water");
+            assert!(!r.is_empty(), "{carbamate} must be assessable");
+            r[0].a * (-r[0].ea_j.unwrap() / (8.314462618 * 298.15)).exp()
+        };
+        let (phenyl, nitro, ammonium, cl) = (k("CNC(=O)Oc1ccccc1"), k("CNC(=O)Oc1ccc([N+](=O)[O-])cc1"), k("CNC(=O)Oc1cccc([N+](C)(C)C)c1"), k("CNC(=O)Oc1cccc(Cl)c1"));
+        let rho = 2.457;
+        // para nitro with sigma- = 1.27 (sigma+ 0.79 would give a factor 10^1.9 = 90 instead of 10^3.1 = 1300)
+        assert!((nitro / phenyl / 10f64.powf(rho * 1.27) - 1.0).abs() < 0.02, "para-nitro factor {}", nitro / phenyl);
+        // meta trimethylammonio sigma_m = 0.88, meta chloro 0.37: the ammonium makes the leaving group better by 10^(rho 0.51)
+        assert!((ammonium / phenyl / 10f64.powf(rho * 0.88) - 1.0).abs() < 0.02, "meta-NMe3+ factor {}", ammonium / phenyl);
+        assert!(ammonium > cl);
     }
 
     #[test]

@@ -128,6 +128,10 @@ fn group_at(mol: &Mol, a: usize, from: usize) -> Option<(&'static str, Vec<usize
             if mol.atoms[a].charge == 1 && mol.atoms[a].h >= 1 {
                 return Some(("NH3+", vec![a]));
             }
+            // quaternary ammonium (no H, four carbon substituents): an electron-withdrawing group, not an amine
+            if mol.atoms[a].charge == 1 && mol.atoms[a].h == 0 && !others.iter().any(|&j| mol.double_to(a, "O", None) && mol.is(j, "O")) {
+                return Some(("NR3+", vec![a]));
+            }
             if others.iter().any(|&j| is_carbonyl_c(mol, j)) {
                 return Some(("NHCOR", vec![a]));
             }
@@ -302,6 +306,13 @@ pub struct RingSigma {
 /// (ortho and para count with sigma+, meta with sigma_m). None when `r0` is not in a six-membered aromatic ring or a
 /// substituent has no constant: a rate nothing can estimate is not invented.
 pub fn ring_sigma_plus(molecule: &crate::smiles::Molecule, r0: usize) -> Option<RingSigma> {
+    ring_sigma(molecule, r0, false)
+}
+
+/// Same walk with sigma_p- for the ortho / para substituents (`minus`): the constants of a reaction in which the ring carries
+/// a developing negative charge by resonance (a phenoxide leaving group, E1cB elimination of an aryl carbamate). `None` for a
+/// ring heteroatom (no sigma_p- in the table) or a substituent the table does not know.
+pub fn ring_sigma(molecule: &crate::smiles::Molecule, r0: usize, minus: bool) -> Option<RingSigma> {
     let mol = Mol::from_molecule(molecule);
     if r0 >= mol.n() || !mol.atoms[r0].arom {
         return None;
@@ -322,6 +333,9 @@ pub fn ring_sigma_plus(molecule: &crate::smiles::Molecule, r0: usize) -> Option<
         let rd = k.min(6 - k); // 1 ortho, 2 meta, 3 para
         let pick = |row: [f64; 2]| if rd == 2 { row[0] } else { row[1] };
         if !mol.is(a, "C") {
+            if minus {
+                return None;
+            }
             sum += pick(p.aza);
             continue;
         }
@@ -335,7 +349,12 @@ pub fn ring_sigma_plus(molecule: &crate::smiles::Molecule, r0: usize) -> Option<
                 None if mol.is(s, "C") && !mol.atoms[s].arom => "alkyl",
                 None => return None,
             };
-            sum += pick(*p.sigma.get(name)?);
+            sum += if minus {
+                let row = hammett_row(name)?;
+                if rd == 2 { row[0] } else { row[2] }
+            } else {
+                pick(*p.sigma.get(name)?)
+            };
             if rd == 1 {
                 n_ortho += 1;
             }

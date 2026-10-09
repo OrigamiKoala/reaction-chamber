@@ -63,6 +63,7 @@ pub mod rate_store;
 pub mod rate_data;
 pub mod rate_harness;
 pub mod mayr;
+pub mod nucleofugality;
 pub mod substitution;
 pub mod wasm_rates;
 

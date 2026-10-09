@@ -67,6 +67,30 @@ export function prettyFormula(f: string): string {
   return core + charge + phase;
 }
 
+/**
+ * Reaction equation prettifier: "2 H2O2 -> 2 H2O + O2(g)" → "2 H₂O₂ → 2 H₂O + O₂(g)".
+ * Replaces arrows and prettifies each formula term.
+ */
+export function prettyEquation(eq: string): string {
+  if (!eq) return '';
+  const s = eq.replace(/<=>|<->/g, ' ⇌ ').replace(/->/g, ' → ');
+  return s
+    .split(/\s+/)
+    .map((tok) => {
+      if (tok === '⇌' || tok === '→' || tok === '+' || tok === '=') return tok;
+      const m = tok.match(/^(\d+)(.*)$/);
+      if (m) {
+        const coeff = m[1];
+        const formula = m[2];
+        if (!formula) return coeff;
+        const c = coeff === '1' ? '' : coeff + ' ';
+        return c + prettyFormula(formula);
+      }
+      return prettyFormula(tok);
+    })
+    .join(' ');
+}
+
 export function fmtNumber(v: number, digits = 2): string {
   if (!isFinite(v)) return '—';
   return v.toFixed(digits);

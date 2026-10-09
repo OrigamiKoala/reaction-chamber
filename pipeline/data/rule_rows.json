@@ -187,7 +187,7 @@
       "ea_rule_kj": 45.0,
       "held_out": false,
       "log_k_meas": -3.2485669181806527,
-      "log_k_rule": -0.3015955519590987,
+      "log_k_rule": -3.248567416546432,
       "reactants": [
         "COC(=O)Cl",
         "O"
@@ -195,6 +195,48 @@
       "rule": "chloroformate, water",
       "t_k": 298.15,
       "template": "acyl_halide_substitution"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 70.0,
+      "held_out": false,
+      "log_k_meas": -1.8297382846050425,
+      "log_k_rule": -1.8297379815768593,
+      "reactants": [
+        "COS(=O)(=O)OC",
+        "[OH-]"
+      ],
+      "rule": "dialkyl sulfate + hydroxide",
+      "t_k": 298.15,
+      "template": "alkyl_sulfate_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 80.0,
+      "held_out": false,
+      "log_k_meas": -3.779891911959945,
+      "log_k_rule": -3.7798929550647187,
+      "reactants": [
+        "COS(=O)(=O)OC",
+        "O"
+      ],
+      "rule": "dialkyl sulfate + water",
+      "t_k": 298.15,
+      "template": "alkyl_sulfate_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 80.0,
+      "held_out": false,
+      "log_k_meas": -4.667561540084395,
+      "log_k_rule": -4.66756226608001,
+      "reactants": [
+        "O=S1(=O)CCCO1",
+        "O"
+      ],
+      "rule": "sultone (cyclic sulfonate ester) + water",
+      "t_k": 298.15,
+      "template": "alkyl_sulfate_neutral_hydrolysis"
     },
     {
       "ea_meas_kj": 58.2,
@@ -1279,7 +1321,7 @@
       "ea_rule_kj": 70.0,
       "held_out": false,
       "log_k_meas": -0.17392519729917355,
-      "log_k_rule": -0.17392460774820132,
+      "log_k_rule": -2.3357475573195323,
       "reactants": [
         "C[N+](C)(C)c1cccc(OC(=O)NC)c1",
         "[OH-]"
@@ -1405,7 +1447,7 @@
       "ea_rule_kj": 70.0,
       "held_out": false,
       "log_k_meas": 1.4014005407815442,
-      "log_k_rule": 3.1942369044601726,
+      "log_k_rule": 2.325639804072606,
       "reactants": [
         "COc1ccc(OC(=O)Nc2ccccc2)cc1",
         "[OH-]"
@@ -1419,7 +1461,7 @@
       "ea_rule_kj": 70.0,
       "held_out": false,
       "log_k_meas": 3.2624510897304293,
-      "log_k_rule": 3.1942369044601726,
+      "log_k_rule": 2.325639804072606,
       "reactants": [
         "O=C(Nc1ccccc1)Oc1cccc(Cl)c1",
         "[OH-]"
@@ -1433,7 +1475,7 @@
       "ea_rule_kj": 70.0,
       "held_out": false,
       "log_k_meas": 5.432969290874405,
-      "log_k_rule": 3.1942369044601726,
+      "log_k_rule": 2.325639804072606,
       "reactants": [
         "O=C(Nc1ccccc1)Oc1ccc([N+](=O)[O-])cc1",
         "[OH-]"
@@ -1651,6 +1693,397 @@
       "rule": "primary or methyl halide neutral hydrolysis",
       "t_k": 303.0,
       "template": "halide_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 81.59,
+      "ea_rule_kj": 81.59,
+      "held_out": false,
+      "log_k_meas": -2.4814860601221125,
+      "log_k_rule": -2.481486112891952,
+      "reactants": [
+        "O=C1CCO1",
+        "O"
+      ],
+      "rule": "beta-lactone + water",
+      "t_k": 298.15,
+      "template": "lactone_neutral_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 65.0,
+      "held_out": false,
+      "log_k_meas": -5.301029995663981,
+      "log_k_rule": -5.301029651562123,
+      "reactants": [
+        "CP(=O)(Oc1ccccc1)Oc1ccccc1",
+        "O"
+      ],
+      "rule": "aryl phosphoryl ester + water, H+",
+      "t_k": 383.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 111.6,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.943095148663527,
+      "log_k_rule": -5.171467078675311,
+      "reactants": [
+        "COP(C)(=O)OC",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 372.8,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 111.6,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.688246138944246,
+      "log_k_rule": -4.800011309489842,
+      "reactants": [
+        "CCOP(C)(=O)OCC",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 382.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 107.0,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -3.890759031411797,
+      "log_k_rule": -5.432311691847728,
+      "reactants": [
+        "CC(C)OP(C)(=O)OC(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 366.6,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -5.025028005701931,
+      "log_k_rule": -5.040203337853065,
+      "reactants": [
+        "CC(C)(C)COP(C)(=O)OCC(C)(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 376.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 108.7,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.309803919971486,
+      "log_k_rule": -5.330299762353179,
+      "reactants": [
+        "CCCP(=O)(OC(C)C)OC(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 369.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 111.5,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.978810700930062,
+      "log_k_rule": -5.121979946440189,
+      "reactants": [
+        "CCOP(=O)(OCC)c1ccccc1",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 374.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.978810700930062,
+      "log_k_rule": -4.760710960201517,
+      "reactants": [
+        "CCCCP(=O)(OCC)OCC",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 383.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.189095719331299,
+      "log_k_rule": -5.330299762353179,
+      "reactants": [
+        "CCCCP(=O)(OC(C)C)OC(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 369.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.647817481888637,
+      "log_k_rule": -4.378707565083444,
+      "reactants": [
+        "COP(=O)(OC)C(C)(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 393.0,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -3.484126156288321,
+      "log_k_rule": -4.559613036898247,
+      "reactants": [
+        "CC(C)OP(=O)(OC(C)C)C(C)(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 388.2,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 110.08,
+      "held_out": false,
+      "log_k_meas": -4.815308569182402,
+      "log_k_rule": -4.745048223187285,
+      "reactants": [
+        "CCOP(C)(=O)Oc1ccc([N+](=O)[O-])cc1",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 383.4,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 108.7,
+      "ea_rule_kj": 110.08,
+      "held_out": true,
+      "log_k_meas": -4.468521082957745,
+      "log_k_rule": -5.1784848906454855,
+      "reactants": [
+        "CCP(=O)(OC(C)C)OC(C)C",
+        "O"
+      ],
+      "rule": "phosphonate dialkyl ester + water, H+",
+      "t_k": 365.5,
+      "template": "phosphoryl_ester_acid_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 50.2,
+      "ea_rule_kj": 65.0,
+      "held_out": false,
+      "log_k_meas": -1.3979400086720375,
+      "log_k_rule": -1.686316778783572,
+      "reactants": [
+        "CCOP(C)(=O)Oc1ccc([N+](=O)[O-])cc1",
+        "[OH-]"
+      ],
+      "rule": "aryl phosphoryl ester + hydroxide",
+      "t_k": 298.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 45.9,
+      "ea_rule_kj": 65.0,
+      "held_out": false,
+      "log_k_meas": -1.9746941347352298,
+      "log_k_rule": -1.686316778783572,
+      "reactants": [
+        "O=P(Oc1ccccc1)(Oc1ccccc1)Oc1ccccc1",
+        "[OH-]"
+      ],
+      "rule": "aryl phosphoryl ester + hydroxide",
+      "t_k": 298.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 56.5,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -1.8356471442155629,
+      "log_k_rule": -3.581496289311447,
+      "reactants": [
+        "COP(C)(=O)OC",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 322.8,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 58.6,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -2.5850266520291822,
+      "log_k_rule": -3.274938579872753,
+      "reactants": [
+        "CCOP(C)(=O)OCC",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 333.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 62.3,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -4.815308569182402,
+      "log_k_rule": -2.7252700323706116,
+      "reactants": [
+        "CC(C)OP(C)(=O)OC(C)C",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 353.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -4.018634490921456,
+      "log_k_rule": -2.5224560419903197,
+      "reactants": [
+        "CC(C)(C)COP(C)(=O)OCC(C)(C)C",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 361.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 59.4,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -2.749579997691106,
+      "log_k_rule": -3.0058417223474336,
+      "reactants": [
+        "CCOP(=O)(CC)OCC",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 342.5,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 67.8,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -3.9746941347352296,
+      "log_k_rule": -2.122241890623653,
+      "reactants": [
+        "CCP(=O)(OC(C)C)OC(C)C",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 377.9,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -3.446116973356126,
+      "log_k_rule": -2.3522273156894684,
+      "reactants": [
+        "CCCOP(=O)(CCC)OCCC",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 368.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 66.5,
+      "ea_rule_kj": 61.85,
+      "held_out": false,
+      "log_k_meas": -4.287350298372789,
+      "log_k_rule": -2.0106076104700383,
+      "reactants": [
+        "CCCP(=O)(OC(C)C)OC(C)C",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 382.9,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 61.85,
+      "held_out": true,
+      "log_k_meas": -2.3496924768680634,
+      "log_k_rule": -2.9797389026363037,
+      "reactants": [
+        "CCOP(=O)(OCC)c1ccccc1",
+        "[OH-]"
+      ],
+      "rule": "phosphonate dialkyl ester + hydroxide",
+      "t_k": 332.8,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 67.8,
+      "ea_rule_kj": 65.0,
+      "held_out": false,
+      "log_k_meas": -3.886056647693163,
+      "log_k_rule": -3.7745073240099862,
+      "reactants": [
+        "COP(=O)(OC)OC",
+        "[OH-]"
+      ],
+      "rule": "trialkyl phosphate + hydroxide",
+      "t_k": 298.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": null,
+      "ea_rule_kj": 65.0,
+      "held_out": false,
+      "log_k_meas": -1.3477536589966768,
+      "log_k_rule": -1.4593036183757653,
+      "reactants": [
+        "CCOP(=O)(OCC)OCC",
+        "[OH-]"
+      ],
+      "rule": "trialkyl phosphate + hydroxide",
+      "t_k": 374.0,
+      "template": "phosphoryl_ester_base_hydrolysis"
+    },
+    {
+      "ea_meas_kj": 64.78,
+      "ea_rule_kj": 64.78,
+      "held_out": false,
+      "log_k_meas": -1.744727494896694,
+      "log_k_rule": -2.5484433838653313,
+      "reactants": [
+        "ClCOCCl"
+      ],
+      "rule": "alpha-halo ether",
+      "t_k": 293.0,
+      "template": "sn1_ionisation"
     },
     {
       "ea_meas_kj": 110.91,

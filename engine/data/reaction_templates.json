@@ -661,7 +661,8 @@
           "role": "substrate",
           "any_of": [
             "[CX4;!H3][Cl,Br,I]"
-          ]
+          ],
+          "net_charge_max": 0
         }
       ],
       "edits": [
@@ -725,6 +726,22 @@
           "n_points": 3,
           "rms_log10": 0.363,
           "tier": "estimated"
+        },
+        {
+          "id": "alpha-halo ether",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4][OX2][#6]"
+            }
+          ],
+          "a": 6363790000.0,
+          "ea_kj": 64.78,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
         }
       ],
       "modifiers": [
@@ -1415,12 +1432,12 @@
               "smarts": "[CX3]([NX3;H1]c)[OX2]c"
             }
           ],
-          "a": 2868840000000000.0,
+          "a": 388248000000000.0,
           "ea_kj": 70.0,
-          "source": "Fit to 3 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.53 log10, no held-out rows; activation energy from the earlier rule",
+          "source": "Fit to 3 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.02 log10, no held-out rows; activation energy from the earlier rule",
           "tier": "estimated",
           "n_points": 3,
-          "rms_log10": 0.534
+          "rms_log10": 0.02
         },
         {
           "id": "N-alkyl carbamate, aryl-O + hydroxide",
@@ -1431,7 +1448,7 @@
               "smarts": "[CX3]([NX3;H1][CX4])[OX2]c"
             }
           ],
-          "a": 1228980000000.0,
+          "a": 8466850000.0,
           "ea_kj": 70.0,
           "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
           "tier": "estimated",
@@ -1479,12 +1496,31 @@
             }
           ],
           "hammett": {
-            "rho": 2.142,
+            "rho": 2.457,
             "reactant": 0,
             "center": 3,
-            "ortho_steric": false
+            "ortho_steric": false,
+            "sigma": "minus"
           },
-          "source": "rho from least squares on 3 verified Mabey & Mill (1978) rows of carbamate_base_hydrolysis (N-aryl carbamate, aryl-O + hydroxide); substituent constants of engine/data/hammett_plus.json (recalled, tier Estimated)"
+          "source": "rho from least squares on 3 verified Mabey & Mill (1978) rows of carbamate_base_hydrolysis (N-aryl carbamate, aryl-O + hydroxide); sigma- constants of engine/data/pka_structure.json (recalled, tier Estimated)"
+        },
+        {
+          "id": "fit: Hammett-Brown relation of the leaving-group ring (rho transferred)",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX3]([NX3;H1][CX4])[OX2]c"
+            }
+          ],
+          "hammett": {
+            "rho": 2.457,
+            "reactant": 0,
+            "center": 3,
+            "ortho_steric": false,
+            "sigma": "minus"
+          },
+          "source": "rho transferred from the rule 'N-aryl carbamate, aryl-O + hydroxide' of carbamate_base_hydrolysis (same E1cB mechanism through the isocyanate); the 1 verified Mabey & Mill (1978) rows of this rule set only the intercept: the transfer is an assumption that no row tests"
         }
       ]
     },
@@ -4228,6 +4264,498 @@
           "ea_kj": 40.0,
           "source": "Mayr diazonium electrophile coupling (log k ~ 1 to 4 at 20 C) (uncited tier Speculative fallback)",
           "tier": "speculative"
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "phosphoryl_ester_base_hydrolysis",
+      "name": "Base hydrolysis of a phosphonate / phosphate ester (P-O cleavage by hydroxide)",
+      "category": "phosphoryl substitution",
+      "reactants": [
+        {
+          "role": "phosphoryl ester",
+          "any_of": [
+            "[PX4;A](=[OX1])[OX2;H0][#6]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[PX4]-[OX1-,OX2H1]"
+            },
+            {
+              "center": 0,
+              "smarts": "[PX4]-[N,F,Cl,Br,I,S]"
+            }
+          ]
+        },
+        {
+          "role": "hydroxide",
+          "any_of": [
+            "[OX1H1-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "phosphonate dialkyl ester + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[PX4][#6]"
+            }
+          ],
+          "a": 2671230.0,
+          "ea_kj": 61.85,
+          "source": "Fit to 8 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.94 log10, held-out rms 0.63 (1 rows); activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 8,
+          "rms_log10": 0.943,
+          "held_out_rms_log10": 0.63,
+          "n_held_out": 1
+        },
+        {
+          "id": "aryl phosphoryl ester + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 2,
+              "smarts": "[OX2]([PX4])c"
+            }
+          ],
+          "a": 5092400000.0,
+          "ea_kj": 65.0,
+          "source": "Fit to 2 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.29 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 2,
+          "rms_log10": 0.288
+        },
+        {
+          "id": "trialkyl phosphate + hydroxide",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[PX4]([OX2][CX4])([OX2][CX4])[OX2][CX4]"
+            }
+          ],
+          "a": 41565400.0,
+          "ea_kj": 65.0,
+          "source": "Fit to 2 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.11 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 2,
+          "rms_log10": 0.112
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: secondary alkoxy on phosphorus",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[PX4][OX2][CX4;H1]"
+            }
+          ],
+          "a_factor": 0.009139,
+          "per_match": false,
+          "source": "least-squares factor on 8 verified Mabey & Mill (1978) rows of phosphoryl_ester_base_hydrolysis (phosphonate dialkyl ester + hydroxide); 3 of them show the feature"
+        }
+      ]
+    },
+    {
+      "id": "phosphoryl_ester_acid_hydrolysis",
+      "name": "Acid-catalysed hydrolysis of a phosphonate ester (water at phosphorus, [H+] catalysis)",
+      "category": "phosphoryl substitution",
+      "reactants": [
+        {
+          "role": "phosphoryl ester",
+          "any_of": [
+            "[PX4;A](=[OX1])[OX2;H0][#6]"
+          ],
+          "forbid": [
+            {
+              "center": 0,
+              "smarts": "[PX4]-[OX1-,OX2H1]"
+            },
+            {
+              "center": 0,
+              "smarts": "[PX4]-[N,F,Cl,Br,I,S]"
+            }
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            2
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        }
+      ],
+      "variants": [
+        {
+          "tag": "acid",
+          "catalysts": [
+            {
+              "species": "H+",
+              "order": 1
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "id": "phosphonate dialkyl ester + water, H+",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[PX4][#6]"
+            }
+          ],
+          "a": 17865800000.0,
+          "ea_kj": 110.08,
+          "source": "Fit to 11 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.19 log10, held-out rms 0.47 (1 rows); activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 11,
+          "rms_log10": 0.186,
+          "held_out_rms_log10": 0.47,
+          "n_held_out": 1
+        },
+        {
+          "id": "aryl phosphoryl ester + water, H+",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 2,
+              "smarts": "[OX2]([PX4])c"
+            }
+          ],
+          "a": 3661.71,
+          "ea_kj": 65.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "fit: secondary alkoxy on phosphorus",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[PX4][OX2][CX4;H1]"
+            }
+          ],
+          "a_factor": 15.13,
+          "per_match": false,
+          "source": "least-squares factor on 11 verified Mabey & Mill (1978) rows of phosphoryl_ester_acid_hydrolysis (phosphonate dialkyl ester + water, H+); 4 of them show the feature"
+        }
+      ]
+    },
+    {
+      "id": "alkyl_sulfate_neutral_hydrolysis",
+      "name": "Neutral hydrolysis of a dialkyl sulfate or sultone (SN2 at carbon by water)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "alkyl sulfonate or sulfate ester",
+          "any_of": [
+            "[CX4;H2,H3][OX2][SX4]"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2;H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "dialkyl sulfate + water",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4][OX2][SX4][OX2][CX4]"
+            }
+          ],
+          "a": 17198900000.0,
+          "ea_kj": 80.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
+        },
+        {
+          "id": "sultone (cyclic sulfonate ester) + water",
+          "when": [
+            {
+              "reactant": 0,
+              "center": 0,
+              "smarts": "[CX4]1[CX4][CX4][SX4][OX2]1"
+            }
+          ],
+          "a": 2227570000.0,
+          "ea_kj": 80.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "alkyl_sulfate_base_hydrolysis",
+      "name": "Base hydrolysis of a dialkyl sulfate (SN2 at carbon by hydroxide)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "dialkyl sulfate",
+          "any_of": [
+            "[CX4;H2,H3][OX2][SX4][OX2][CX4]"
+          ]
+        },
+        {
+          "role": "hydroxide",
+          "any_of": [
+            "[OX1H1-]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            1,
+            0
+          ],
+          "value": 0
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            1
+          ],
+          "value": -1
+        }
+      ],
+      "rules": [
+        {
+          "id": "dialkyl sulfate + hydroxide",
+          "when": [],
+          "a": 27147600000.0,
+          "ea_kj": 70.0,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
+        }
+      ],
+      "modifiers": []
+    },
+    {
+      "id": "lactone_neutral_hydrolysis",
+      "name": "Neutral hydrolysis of a beta-lactone (SN2 at the ring carbon by water, ring opening)",
+      "category": "substitution",
+      "reactants": [
+        {
+          "role": "beta-lactone",
+          "any_of": [
+            "[CX4;H2]1[CX4][CX3](=[OX1])[OX2]1"
+          ]
+        },
+        {
+          "role": "water",
+          "any_of": [
+            "[OX2;H2]"
+          ]
+        }
+      ],
+      "edits": [
+        {
+          "op": "break",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            4
+          ]
+        },
+        {
+          "op": "bond",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "order": 1
+        },
+        {
+          "op": "charge",
+          "atom": [
+            0,
+            4
+          ],
+          "value": -1
+        },
+        {
+          "op": "h_delta",
+          "atom": [
+            1,
+            0
+          ],
+          "delta": -1
+        }
+      ],
+      "extra_products": [
+        "[H+]"
+      ],
+      "rules": [
+        {
+          "id": "beta-lactone + water",
+          "when": [],
+          "a": 649327000000.0,
+          "ea_kj": 81.59,
+          "source": "Fit to 1 verified rows read from Mabey & Mill, J. Phys. Chem. Ref. Data 7, 383 (1978), rms 0.00 log10, no held-out rows; activation energy from the earlier rule",
+          "tier": "estimated",
+          "n_points": 1,
+          "rms_log10": 0.0
         }
       ],
       "modifiers": []

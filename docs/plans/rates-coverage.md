@@ -5,12 +5,15 @@ Plan: `docs/plans/rates-from-data-plan.md` (sections 3.2, 6, 13.5). Re-run after
 
 ## 1. Measured organic rows and the rules they fit
 
-109 rows are used by the engine (read from their source), 16 are held out (never loaded). Rows of the earlier table that were written from memory are not compiled (`pipeline/data/rates_unverified.csv`).
+138 rows are used by the engine (read from their source), 18 are held out (never loaded). Rows of the earlier table that were written from memory are not compiled (`pipeline/data/rates_unverified.csv`).
 
 | Template / rule | used rows | held-out rows | held-out rms (log10) | gate (rms <= 0.7) |
 |---|---|---|---|---|
 | acid_ester_hydrolysis / ester + water, H+ | 13 | 0 | n/a | no held-out row |
 | acyl_halide_substitution / chloroformate, water | 1 | 0 | n/a | no held-out row |
+| alkyl_sulfate_base_hydrolysis / dialkyl sulfate + hydroxide | 1 | 0 | n/a | no held-out row |
+| alkyl_sulfate_neutral_hydrolysis / dialkyl sulfate + water | 1 | 0 | n/a | no held-out row |
+| alkyl_sulfate_neutral_hydrolysis / sultone (cyclic sulfonate ester) + water | 1 | 0 | n/a | no held-out row |
 | amide_base_hydrolysis / amide + hydroxide | 15 | 4 | 0.54 | met |
 | amide_hydrolysis / amide + water, H+ | 14 | 4 | 0.51 | met |
 | base_ester_hydrolysis / ester + hydroxide | 32 | 4 | 0.56 | met |
@@ -19,6 +22,13 @@ Plan: `docs/plans/rates-from-data-plan.md` (sections 3.2, 6, 13.5). Re-run after
 | carbamate_base_hydrolysis / N-aryl carbamate, alkyl-O + hydroxide | 6 | 2 | 0.57 | met |
 | carbamate_base_hydrolysis / N-aryl carbamate, aryl-O + hydroxide | 3 | 0 | n/a | no held-out row |
 | halide_neutral_hydrolysis / primary or methyl halide neutral hydrolysis | 13 | 2 | 0.29 | met |
+| lactone_neutral_hydrolysis / beta-lactone + water | 1 | 0 | n/a | no held-out row |
+| phosphoryl_ester_acid_hydrolysis / aryl phosphoryl ester + water, H+ | 1 | 0 | n/a | no held-out row |
+| phosphoryl_ester_acid_hydrolysis / phosphonate dialkyl ester + water, H+ | 11 | 1 | 0.47 | met |
+| phosphoryl_ester_base_hydrolysis / aryl phosphoryl ester + hydroxide | 2 | 0 | n/a | no held-out row |
+| phosphoryl_ester_base_hydrolysis / phosphonate dialkyl ester + hydroxide | 8 | 1 | 0.63 | met |
+| phosphoryl_ester_base_hydrolysis / trialkyl phosphate + hydroxide | 2 | 0 | n/a | no held-out row |
+| sn1_ionisation / alpha-halo ether | 1 | 0 | n/a | no held-out row |
 | sn1_ionisation / secondary halide in water | 3 | 0 | n/a | no held-out row |
 | sn1_ionisation / tertiary halide in water | 1 | 0 | n/a | no held-out row |
 | sn2_substitution / primary substrate + hydroxide | 3 | 0 | n/a | no held-out row |
@@ -82,7 +92,7 @@ Organic rate evaluations in the list: 44; at precedence 1-2: 11 (25 %); on an un
 
 **Measured electron-transfer laws** (`rates_measured.json`, `redox`): 6 rows, 0 read from their source, 6 recalled (Speculative; they replace only the Marcus estimate).
 
-**Self-exchange constants** (`redox_couples.json`): 23 couples labelled outer-sphere, 0 of them checked against a source (the Marcus cross relation is therefore run on recalled constants).
+**Self-exchange constants** (`redox_couples.json`): 23 couples labelled outer-sphere, 1 of them checked against a source (the Marcus cross relation is therefore run on recalled constants).
 
 **Water-exchange rates** (`water_exchange.json`, Eigen-Wilkins): 30 ions, 12 with k_ex matching a published copy of the Helm & Merbach table, 18 recalled. Activation enthalpies and mechanism labels are recalled for all.
 

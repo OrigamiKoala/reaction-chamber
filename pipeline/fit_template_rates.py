@@ -61,6 +61,15 @@ FEATURES = {
         ("para-nitro on the aryloxy ring", "[CX3][OX2]c1ccc(cc1)[N+](=O)[O-]", False, 0),
     ],
     "acyl_halide_substitution": [],
+    "phosphoryl_ester_base_hydrolysis": [
+        ("secondary alkoxy on phosphorus", "[PX4][OX2][CX4;H1]", False, 0),
+    ],
+    "phosphoryl_ester_acid_hydrolysis": [
+        ("secondary alkoxy on phosphorus", "[PX4][OX2][CX4;H1]", False, 0),
+    ],
+    "alkyl_sulfate_neutral_hydrolysis": [],
+    "alkyl_sulfate_base_hydrolysis": [],
+    "lactone_neutral_hydrolysis": [],
     "halide_neutral_hydrolysis": [
         ("benzylic carbon (aryl on the halide carbon)", "[CX4]c", False, 0),
         ("allylic carbon (vinyl on the halide carbon)", "[CX4][CX3]=[CX3]", False, 0),
@@ -79,6 +88,11 @@ ANCHORS = {
     "amide_base_hydrolysis": "[CX3;A](=[OX1])[NX3]",
     "carbamate_base_hydrolysis": "[CX3;A](=[OX1])([OX2;H0][#6])[NX3]",
     "acyl_halide_substitution": "[CX3;A](=[OX1])[Cl,Br,I]",
+    "phosphoryl_ester_base_hydrolysis": "[PX4;A](=[OX1])[OX2;H0][#6]",
+    "phosphoryl_ester_acid_hydrolysis": "[PX4;A](=[OX1])[OX2;H0][#6]",
+    "alkyl_sulfate_neutral_hydrolysis": "[CX4;H2,H3][OX2][SX4]",
+    "alkyl_sulfate_base_hydrolysis": "[CX4;H2,H3][OX2][SX4]",
+    "lactone_neutral_hydrolysis": "[CX4;H2]1[CX4][CX3](=[OX1])[OX2]1",
     "halide_neutral_hydrolysis": "[CX4;H2,H3][Cl,Br,I]",
     "sn1_ionisation": "[CX4;!H3][Cl,Br,I]",
     "sn2_substitution": "[CX4][Cl,Br,I]",
@@ -88,12 +102,20 @@ ANCHORS = {
 # Hammett-Brown regression on the leaving-group ring of a rule (the engine's `hammett` modifier, constants of
 # engine/data/hammett_plus.json): rule id -> (reactant slot, pattern atom of the ring carbon bound to the leaving O).
 HAMMETT = {("carbamate_base_hydrolysis", "N-aryl carbamate, aryl-O + hydroxide"): (0, 3)}
-SIGMA = json.loads((ROOT / "engine" / "data" / "hammett_plus.json").read_text())["sigma"]
+# A rule with too few rows for its own rho takes the rho of a rule with the same mechanism (labelled as transferred in the
+# modifier): the N-alkyl N-H aryl carbamates eliminate through the isocyanate like the N-aryl ones (E1cB), so the leaving-group
+# dependence is carried over and the rows only set the intercept.
+HAMMETT_TRANSFER = {("carbamate_base_hydrolysis", "N-alkyl carbamate, aryl-O + hydroxide"):
+                    ((0, 3), "N-aryl carbamate, aryl-O + hydroxide")}
+# sigma_m and sigma_p- of engine/data/pka_structure.json (a phenoxide leaving group carries the negative charge into the ring by
+# resonance, so the ortho / para substituents act with sigma-, as `pka_structure::ring_sigma(.., minus = true)`)
+_HAM = json.loads((ROOT / "engine" / "data" / "pka_structure.json").read_text())["hammett"]
+SIGMA = {k: [v[0], v[2]] for k, v in _HAM.items() if isinstance(v, list)}
 
 
 def ring_sigma_sum(smiles, ipso_smarts="[CX3](=O)([OX2]c)N"):
-    """Sum of the substituent constants of the aryl ring bound to the ester oxygen: meta with sigma_m, ortho / para with sigma+
-    (as `pka_structure::ring_sigma_plus`). None when a substituent has no constant."""
+    """Sum of the substituent constants of the aryl ring bound to the ester oxygen: meta with sigma_m, ortho / para with sigma-
+    (as `pka_structure::ring_sigma(.., true)`). None when a substituent has no constant."""
     m = Chem.MolFromSmiles(smiles)
     hit = m.GetSubstructMatch(Chem.MolFromSmarts(ipso_smarts))
     ipso = hit[3]
@@ -115,6 +137,8 @@ def ring_sigma_sum(smiles, ipso_smarts="[CX3](=O)([OX2]c)N"):
                     return None
             elif sym == "N" and nb.GetFormalCharge() == 1 and sum(1 for x in nb.GetNeighbors() if x.GetSymbol() == "O") >= 2:
                 name = "nitro"
+            elif sym == "N" and nb.GetFormalCharge() == 1 and nb.GetTotalNumHs() == 0:
+                name = "NR3+"
             elif sym == "C" and not nb.GetIsAromatic():
                 name = "alkyl"
             else:
@@ -170,7 +194,8 @@ def main():
     fitted_templates = set()
     fitted_rules = set()
     summary = []
-    for (tid, rid), rs in sorted(by_rule.items()):
+    rho_fitted = {}
+    for (tid, rid), rs in sorted(by_rule.items(), key=lambda kv: ((kv[0][0], kv[0][1]) in HAMMETT_TRANSFER, kv[0])):
         template = next(t for t in templates if t["id"] == tid)
         rule = next(x for x in rules_of(template) if x["id"] == rid)
         train = [r for r in rs if not r["held_out"]]
@@ -191,10 +216,18 @@ def main():
         y = np.array([r["log_k_meas"] - r["log_k_rule"] + d_ea * 1000.0 / (R * 1000.0 * r["t_k"] * math.log(10)) for r in rs])
         ham = HAMMETT.get((tid, rid))
         sig = None
+        transferred = None
         if ham is not None:
             sig = np.array([ring_sigma_sum(r["reactants"][0]) for r in rs], float).reshape(-1, 1)
             if np.isnan(sig).any():
                 sig = None
+        elif (tid, rid) in HAMMETT_TRANSFER and (tid, HAMMETT_TRANSFER[(tid, rid)][1]) in rho_fitted:
+            ham, src_rule = HAMMETT_TRANSFER[(tid, rid)]
+            rho = rho_fitted[(tid, src_rule)]
+            sg = np.array([ring_sigma_sum(r["reactants"][0]) for r in rs], float)
+            if not np.isnan(sg).any():
+                y = y - rho * sg
+                transferred = (rho, src_rule)
         X = np.hstack([np.ones((len(rs), 1)), F[:, use]] + ([sig] if sig is not None else []))
         Xt, yt = X[tr_idx], y[tr_idx]
         lam = np.diag([0.0] + [0.05] * len(use) + ([0.0] if sig is not None else []))
@@ -203,6 +236,8 @@ def main():
         rms_tr = float(np.sqrt(np.mean(res[tr_idx] ** 2)))
         rms_ho = float(np.sqrt(np.mean(res[ho_idx] ** 2))) if ho_idx else None
         # the change of A: the intercept, applied to the rule; features become modifiers
+        if sig is not None:
+            rho_fitted[(tid, rid)] = float(w[-1])
         rule["a"] = float(rule["a"]) * 10 ** w[0]
         if abs(d_ea) > 1e-9:
             rule["ea_kj"] = round(float(rule["ea_kj"]) + d_ea, 2)
@@ -224,8 +259,15 @@ def main():
             mods.append({
                 "id": "fit: Hammett-Brown relation of the leaving-group ring",
                 "when": list(rule["when"]),
-                "hammett": {"rho": float(f"{w[-1]:.4g}"), "reactant": ham[0], "center": ham[1], "ortho_steric": False},
-                "source": f"rho from least squares on {len(train)} verified Mabey & Mill (1978) rows of {tid} ({rid}); substituent constants of engine/data/hammett_plus.json (recalled, tier Estimated)",
+                "hammett": {"rho": float(f"{w[-1]:.4g}"), "reactant": ham[0], "center": ham[1], "ortho_steric": False, "sigma": "minus"},
+                "source": f"rho from least squares on {len(train)} verified Mabey & Mill (1978) rows of {tid} ({rid}); sigma- constants of engine/data/pka_structure.json (recalled, tier Estimated)",
+            })
+        if transferred is not None:
+            mods.append({
+                "id": "fit: Hammett-Brown relation of the leaving-group ring (rho transferred)",
+                "when": list(rule["when"]),
+                "hammett": {"rho": float(f"{transferred[0]:.4g}"), "reactant": ham[0], "center": ham[1], "ortho_steric": False, "sigma": "minus"},
+                "source": f"rho transferred from the rule '{transferred[1]}' of {tid} (same E1cB mechanism through the isocyanate); the {len(train)} verified Mabey & Mill (1978) rows of this rule set only the intercept: the transfer is an assumption that no row tests",
             })
         for k, j in enumerate(use):
             fid, sma, per_match, slot = feats[j]
