@@ -98,9 +98,9 @@ async function initApp() {
   const bottleCard = new BottleCard();
 
   const topBar = new TopBar([
-    { label: 'Import from PubChem', hint: 'Search box', icon: 'cloud', action: () => { reagentPanel.showTab('reagents'); reagentPanel.focusSearch(); } },
-    { label: 'Custom chemistry…', icon: 'plus', action: () => customModal.show() },
-    { label: 'Run self-test', icon: 'test', action: () => runSelfTest(simWorker, sim) },
+    { label: 'Import compound', icon: 'cloud', action: () => { reagentPanel.showTab('reagents'); reagentPanel.focusSearch(); } },
+    { label: 'Custom reaction…', icon: 'plus', action: () => customModal.show() },
+    { label: 'Self-test', icon: 'test', action: () => runSelfTest(simWorker, sim) },
   ]);
   topBar.onToggleDetails = () => advanced.toggle();
   advanced.onVisibilityChange = (open) => topBar.setDetailsOpen(open);
@@ -197,7 +197,7 @@ async function initApp() {
   const setInstrument = (id: InstrumentId | null, focus = true) => {
     if (id === instrumentPanel.instrumentId) return;
     instrumentPanel.show(id);
-    vesselPanel.el.hidden = !!id;
+    vesselPanel.setHidden(!!id);
     if (id && focus) {
       bench.focusStation(id);
     }

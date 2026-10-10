@@ -3,7 +3,7 @@
 import type { BenchScene } from '../bench/scene';
 import type { SimController } from '../sim/sim_controller';
 import { VesselState } from '../types';
-import { VesselConfig, VesselSnapshot, ReagentCatalogEntry, Portion, ElectrolysisSpec, DoseRequest } from '../types/sim';
+import { MicroReactionData, MicroPhase, MicroLatticeData, Structure3dData, VesselConfig, VesselSnapshot, ReagentCatalogEntry, Portion, ElectrolysisSpec, DoseRequest } from '../types/sim';
 import { ElectrodeMaterial } from '../equipment/electrochem';
 import { ReagentItem, amountMode, streamColour } from './reagent_library';
 import type { FlowForm } from '../bench/handling';
@@ -92,6 +92,19 @@ export class Lab {
 
   public snapshot(id: string): VesselSnapshot | undefined {
     return this.latest.get(id);
+  }
+
+  /** 3D structures of species of a vessel for the molecular viewer. */
+  public microStructures(id: string, speciesIds: string[]): Promise<Structure3dData[]> {
+    return this.sim.microStructures(id, speciesIds);
+  }
+
+  public microReactions(id: string, phase: MicroPhase = 'aqueous'): Promise<MicroReactionData[]> {
+    return this.sim.microReactions(id, phase);
+  }
+
+  public microLattice(id: string, solid: string): Promise<MicroLatticeData | null> {
+    return this.sim.microLattice(id, solid);
   }
 
   /** Vessel standing on the hot plate right now (null when the plate is empty). */

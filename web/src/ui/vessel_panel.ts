@@ -7,6 +7,7 @@ import { h, setText, prettyFormula, prettyEquation, fmtConc, fmtAmountMol, fmtCl
 import { icon } from './icons';
 import { toast } from './toast';
 import { GasSection } from './gas_section';
+import { MoleculeView } from './molecule_view';
 
 interface TrackedReaction {
   id: string;
@@ -104,9 +105,19 @@ export class VesselPanel {
   private pourSec!: HTMLElement;
   private brokenBanner!: HTMLElement;
   private gasSec?: GasSection;
+  private readonly mol: MoleculeView;
+  private tab: 'vessel' | 'molecules' = 'vessel';
+  private tabBtns: Record<'vessel' | 'molecules', HTMLButtonElement> | null = null;
+  private vesselTab!: HTMLElement;
 
   constructor(private deps: VesselPanelDeps) {
     this.el = h('aside', { class: 'panel panel-right', id: 'vessel-panel', 'aria-label': 'Selected vessel' });
+    this.mol = new MoleculeView({
+      structures: (id, ids) => deps.lab.microStructures(id, ids),
+      reactions: (id, phase) => deps.lab.microReactions(id, phase),
+      lattice: (id, solid) => deps.lab.microLattice(id, solid),
+      snapshot: (id) => deps.lab.snapshot(id),
+    });
     this.empty = h('div', { class: 'panel-empty' });
     this.empty.innerHTML = `${icon('beaker', 36)}<p class="empty-title">Click a vessel or instrument on the bench</p><p class="muted">Its readings, contents and controls appear here.</p>`;
     this.content = h('div', { class: 'vp' });
@@ -127,6 +138,8 @@ export class VesselPanel {
     this.contentOrder = [];
     this.contentSlots = 0;
     this.lastContentsAt = 0;
+    this.mol.show(id);
+    this.tab = 'vessel';
     const v = id ? this.deps.lab.get(id) : undefined;
     this.empty.hidden = !!v;
     this.content.hidden = !v;
@@ -136,6 +149,12 @@ export class VesselPanel {
     this.syncControls();
     const snap = this.deps.lab.snapshot(v.id);
     if (snap) this.update(snap);
+  }
+
+  /** The panel is covered by the instrument panel: the molecular view stops animating while hidden. */
+  public setHidden(hidden: boolean) {
+    this.el.hidden = hidden;
+    this.mol.setActive(!hidden && this.tab === 'molecules' && !!this.id);
   }
 
   /** Vessel list changed: rename chips etc. without touching the rest. */
@@ -298,9 +317,35 @@ export class VesselPanel {
     this.r.pourEmptyBtn = emptyBtn;
 
     this.gasSec = new GasSection(lab, v.id);
-    this.content.append(head, this.brokenBanner, ro, ctlSec, this.eventsSec, conSec, this.pourSec, this.gasSec.el);
+    this.vesselTab = h('div', { class: 'vp-tab', id: 'vp-tab-vessel', role: 'tabpanel' }, ro, ctlSec, this.eventsSec, conSec, this.pourSec, this.gasSec.el);
+    this.mol.el.id = 'vp-tab-molecules';
+    this.content.append(head, this.brokenBanner, this.buildTabs(), this.vesselTab, this.mol.el);
+    this.showTab('vessel');
     this.renderPourTargets();
     this.updateSub();
+  }
+
+  /** `Vessel | Molecules` switch under the header. */
+  private buildTabs(): HTMLElement {
+    const tabs = h('div', { class: 'seg vp-tabs', role: 'tablist', 'aria-label': 'Vessel view' });
+    const mk = (id: 'vessel' | 'molecules', label: string) => {
+      const b = h('button', { class: 'seg-btn', type: 'button', role: 'tab', 'aria-controls': `vp-tab-${id}`, 'aria-selected': String(id === this.tab), text: label });
+      b.addEventListener('click', () => this.showTab(id));
+      tabs.append(b);
+      return b;
+    };
+    this.tabBtns = { vessel: mk('vessel', 'Vessel'), molecules: mk('molecules', 'Molecules') };
+    return tabs;
+  }
+
+  private showTab(tab: 'vessel' | 'molecules') {
+    this.tab = tab;
+    this.vesselTab.hidden = tab !== 'vessel';
+    for (const [k, b] of Object.entries(this.tabBtns ?? {}) as Array<['vessel' | 'molecules', HTMLButtonElement]>) {
+      b.setAttribute('aria-selected', String(k === tab));
+      b.tabIndex = k === tab ? 0 : -1;
+    }
+    this.mol.setActive(tab === 'molecules' && !!this.id);
   }
 
   /** Two-step destructive buttons: first press arms, second press within 4 s confirms. */
@@ -362,6 +407,7 @@ export class VesselPanel {
     const v = lab.get(this.id);
     if (!v) return;
     this.gasSec?.update(snap);
+    if (this.tab === 'molecules') this.mol.update(snap);
     const ro = this.deps.readouts();
 
     setText(this.r.temp, ro.temperature);

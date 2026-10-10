@@ -243,6 +243,42 @@ impl KineticExtentSystem {
         (rates, dense)
     }
 
+    /// Forward rate F = k_f prod c^order (mol/(L s)) of a reaction (orders may name catalysts the reaction does not consume).
+    fn forward_rate(rxn: &KineticExtentReaction, concs: &[f64], k_fwd: f64) -> f64 {
+        let mut f_fwd = k_fwd;
+        if f_fwd > 0.0 {
+            for &(idx, order) in &rxn.orders_reactants {
+                let c = concs[idx].max(0.0);
+                if order.abs() < 1e-12 {
+                    // zero order
+                } else if (order - 1.0).abs() < 1e-6 {
+                    f_fwd *= c;
+                } else if (order - 2.0).abs() < 1e-6 {
+                    f_fwd *= c * c;
+                } else if c > 0.0 {
+                    f_fwd *= c.powf(order);
+                } else {
+                    f_fwd = 0.0;
+                }
+            }
+        }
+        f_fwd
+    }
+
+    /// Gross forward and reverse rates (mol/(L s)) of every reaction at the concentrations `concs`: the net rate is
+    /// forward - reverse, and the molecular viewer shows both (a reaction at equilibrium still runs in both directions).
+    pub fn gross_rates(&self, concs: &[f64], temp_k: f64, pressure_pa: f64, ionic_strength: f64, catalyst_area_m2: &HashMap<String, f64>) -> Vec<(f64, f64)> {
+        let consts = self.rate_constants(temp_k, pressure_pa, ionic_strength, 1.0, catalyst_area_m2);
+        let (net, _) = self.rates_sparse(concs, &consts);
+        (0..self.reactions.len())
+            .map(|r| {
+                let depleted = self.reactions[r].reactants.iter().any(|&(idx, _)| concs[idx] <= 1e-15);
+                let f = if depleted { 0.0 } else { Self::forward_rate(&self.reactions[r], concs, consts[r].0) };
+                (f, (f - net[r]).max(0.0))
+            })
+            .collect()
+    }
+
     /// Rates (mol/(L s)) and, per reaction, the non-zero derivatives dr/dc_i, for the step's rate constants `consts`.
     fn rates_sparse(&self, concs: &[f64], consts: &[(f64, f64)]) -> (Vec<f64>, Vec<Vec<(usize, f64)>>) {
         let num_rxns = self.reactions.len();
@@ -265,23 +301,7 @@ impl KineticExtentSystem {
             let reactant_depleted = rxn.reactants.iter().any(|&(idx, _)| concs[idx] <= 1e-15);
 
             // Forward rate F = k_f prod c^order (orders may name catalysts that the reaction does not consume) and dF/dc
-            let mut f_fwd = if reactant_depleted { 0.0 } else { k_fwd };
-            if f_fwd > 0.0 {
-                for &(idx, order) in &rxn.orders_reactants {
-                    let c = concs[idx].max(0.0);
-                    if order.abs() < 1e-12 {
-                        // zero order
-                    } else if (order - 1.0).abs() < 1e-6 {
-                        f_fwd *= c;
-                    } else if (order - 2.0).abs() < 1e-6 {
-                        f_fwd *= c * c;
-                    } else if c > 0.0 {
-                        f_fwd *= c.powf(order);
-                    } else {
-                        f_fwd = 0.0;
-                    }
-                }
-            }
+            let f_fwd = if reactant_depleted { 0.0 } else { Self::forward_rate(rxn, concs, k_fwd) };
             if f_fwd > 0.0 {
                 for &(k_idx, k_order) in &rxn.orders_reactants {
                     if k_order.abs() < 1e-12 {

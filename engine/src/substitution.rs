@@ -141,7 +141,7 @@ pub fn eigen_wilkins_rate(
 
 /// True when `eq` is a complexation `M + n L <=> ML_n` of an aqua ion of the table (one product, one metal, one ligand that
 /// is neither H+ nor OH-): the metal, the ligand and the number of ligands.
-fn complexation_parts(eq: &GeneralEquilibrium) -> Option<(String, String, f64)> {
+pub(crate) fn complexation_parts(eq: &GeneralEquilibrium) -> Option<(String, String, f64)> {
     let solvent = |k: &str| k == crate::db::seed::WATER;
     let reactants: Vec<(&String, &f64)> = eq.reactants.iter().filter(|(k, _)| !solvent(k)).collect();
     let products: Vec<(&String, &f64)> = eq.products.iter().filter(|(k, _)| !solvent(k)).collect();

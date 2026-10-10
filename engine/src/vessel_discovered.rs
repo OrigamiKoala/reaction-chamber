@@ -712,6 +712,18 @@ impl Vessel {
     fn push_discovered_row(&mut self, rxn: &DiscoveredReaction, kind: &str, rate: f64, source: &str) {
         let eq_str = rxn.nu.iter().map(|&(i, c)| format!("{} {}", c, rxn.species_names[i])).collect::<Vec<_>>().join(" + ");
         let lead = rxn.nu.iter().find(|&&(_, c)| c < 0.0).map(|&(i, _)| rxn.species_names[i].clone()).unwrap_or_default();
+        if let (Some(p), DiscoveredRxnKind::Redox { z_electrons }) = (&rxn.partners, &rxn.kind) {
+            if self.redox_partners.len() > 400 {
+                self.redox_partners.clear();
+            }
+            // a disproportionation (2 Cu+ -> Cu + Cu2+) counts the electron once for each of its two roles
+            let mut z = z_electrons.round().max(1.0) as u32;
+            if p.donor == p.acceptor {
+                z = (z / 2).max(1);
+            }
+            let n = |i: usize| rxn.species_names[i].clone();
+            self.redox_partners.insert(eq_str.clone(), crate::vessel::RedoxRowInfo { donor: n(p.donor), donor_product: n(p.donor_product), acceptor: n(p.acceptor), acceptor_product: n(p.acceptor_product), electrons: z });
+        }
         self.active_reactions.push(ReactionRow {
             id: format!("{}_{}", if kind == "redox" { "redox" } else { "decomp" }, lead),
             equation: eq_str,

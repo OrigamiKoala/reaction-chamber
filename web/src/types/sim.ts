@@ -234,6 +234,143 @@ export interface MsComponentData {
   base_mz: number;
   notes: string[];
 }
+/** One atom of a 3D structure (engine `structure3d`), coordinates in angstrom. */
+export interface Atom3dData {
+  el: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Formal charge (metals: oxidation state in the ionic picture of the formula rule). */
+  charge: number;
+  /** Oxidation state of a metal atom when known. */
+  ox?: number;
+}
+export interface Bond3dData {
+  a: number;
+  b: number;
+  order: number;
+  aromatic: boolean;
+  /** Dative / ionic bond to a metal centre. */
+  coordinate: boolean;
+}
+/** 3D structure of a species for the molecular viewer (engine `vessel_micro_structures`). */
+export interface Structure3dData {
+  species: string;
+  formula: string;
+  charge: number;
+  /** Where the structure came from: a SMILES, a PubChem structure row, the schematic formula rule, or a placeholder sphere. */
+  source: 'smiles' | 'structure_data' | 'formula-rule' | 'atom' | 'placeholder';
+  source_detail?: string;
+  /** The first `n_heavy` atoms are the species graph's atoms in SMILES order; explicit hydrogens follow. */
+  n_heavy: number;
+  /** Radius of a single-sphere structure (monatomic ion, placeholder), angstrom. */
+  radius_a?: number;
+  atoms: Atom3dData[];
+  bonds: Bond3dData[];
+}
+
+/** [molecule index, atom index] in the structure of that molecule (`Structure3dData.atoms`). */
+export type MicroAtomRef = [number, number];
+
+/** One hydrogen that changes its owner in a reaction (engine `micro_view::MovingH`). */
+export interface MicroMovingH {
+  /** The hydrogen atom among the reactants and among the products. */
+  from: MicroAtomRef;
+  to: MicroAtomRef;
+  /** The atom it leaves / arrives at; null for a free proton (`H+`). */
+  donor: MicroAtomRef | null;
+  acceptor: MicroAtomRef | null;
+}
+
+export interface MicroElectronHop {
+  from: MicroAtomRef;
+  to: MicroAtomRef;
+  count: number;
+}
+
+/** The phase whose reactions the viewer asks for. */
+export type MicroPhase = 'aqueous' | 'organic' | 'gas';
+
+/** A slab occupant that leaves the lattice and the dissolved / gas species it becomes (engine `micro_view::SurfaceLeave`). */
+export interface MicroSurfaceLeave {
+  occupant: string;
+  becomes: string[];
+}
+/** Dissolved species that dock at the lattice and the occupant they become. */
+export interface MicroSurfaceJoin {
+  takes: string[];
+  occupant: string;
+}
+/** What a reaction does at a solid surface, read forward (engine `micro_view::SurfaceDesc`). */
+export interface MicroSurfaceData {
+  /** The solid whose lattice the slab is. */
+  slab: string;
+  slab_kind: 'mineral' | 'salt' | 'metal' | 'electrode' | 'none';
+  electrode?: 'anode' | 'cathode' | null;
+  /** The half-reaction gives electrons to the electrode (an oxidation); usually the anode's, but a film on an anode can be reduced. */
+  oxidation?: boolean;
+  leaves: MicroSurfaceLeave[];
+  joins: MicroSurfaceJoin[];
+  /** Solid products that stay on the surface in place of a reactant solid. */
+  residue: string[];
+  /** The dissolved and gas species that react at the surface, mapped atom by atom (its own reactants / products / atom_map). */
+  morph?: MicroMorphData | null;
+}
+/** The description of the morph part of a surface reaction (engine `MicroDescription`). */
+export interface MicroMorphData {
+  kind: string;
+  reactants: string[];
+  products: string[];
+  atom_map: MicroAtomRef[][];
+  moving_h: MicroMovingH[];
+  schematic_mapping: boolean;
+  electrons: number;
+  electron_hops: MicroElectronHop[];
+  note?: string | null;
+}
+/** What a solid is made of, for the viewer's schematic lattice (engine `vessel_micro_lattice`). */
+export interface MicroLatticeData {
+  species: string;
+  kind: 'mineral' | 'salt' | 'metal';
+  ions: Array<{ species: string; count: number; radius_a: number; charge: number }>;
+  source: string;
+}
+
+/** A reaction row of a vessel phase described for the molecular viewer (engine `vessel_micro_reactions`). */
+export interface MicroReactionData {
+  id: string;
+  equation: string;
+  /**
+   * "dissolution" is a solid <=> its ions (precipitation is the reverse event), "electrode" a half-reaction at an electrode,
+   * "phase_transfer" a molecule crossing the free surface, "decomposition" / "combustion" a solid or a fuel that breaks down;
+   * "other" rows are active in the vessel but have no atom map: drawn as a generic swap or only listed.
+   */
+  kind: 'template' | 'proton_transfer' | 'complexation' | 'ion_pair' | 'electron_transfer' | 'dissolution' | 'electrode' | 'phase_transfer' | 'decomposition' | 'combustion' | 'other';
+  family?: string | null;
+  layer: number;
+  /** Species of the reactant / product molecules, one entry per molecule (a coefficient of 2 is two entries). */
+  reactants: string[];
+  products: string[];
+  /** `atom_map[p][j]`: the reactant atom that atom `j` of product molecule `p` was (hydrogens included). */
+  atom_map: MicroAtomRef[][];
+  moving_h: MicroMovingH[];
+  schematic_mapping: boolean;
+  /** Electrons the event moves (an electron transfer; 1 for the one-electron step of a larger reaction), 0 otherwise. */
+  electrons: number;
+  /** Where the electrons hop from and to: atoms of the reactant molecules (the redox centres). */
+  electron_hops: MicroElectronHop[];
+  /** What the event shows when it is not the whole reaction ("one-electron step of a 5-electron reaction ..."). */
+  note?: string | null;
+  /** What the reaction does at a solid surface (precipitation, an electrode, a decomposing or corroding solid); null in solution. */
+  surface?: MicroSurfaceData | null;
+  /** mol/s of the whole phase */
+  net_rate_mol_s: number;
+  gross_forward_mol_s: number;
+  gross_reverse_mol_s: number;
+  rate_source: string;
+  reversible: boolean;
+}
+
 export interface MsSpectrumData {
   mode: string;
   components: MsComponentData[];
@@ -628,6 +765,9 @@ export type SimRequest =
   | { type: 'NMR_SPECTRUM'; payload: { handle: number; layer?: number; nucleus: string; solvent: string; scans: number; seed: number }; requestId: string }
   | { type: 'MS_SPECTRUM'; payload: { handle: number; layer?: number; mode: string; seed: number }; requestId: string }
   | { type: 'FLAME_TEST'; payload: { handle: number; t_flame_k: number }; requestId: string }
+  | { type: 'MICRO_STRUCTURES'; payload: { handle: number; ids: string[] }; requestId: string }
+  | { type: 'MICRO_REACTIONS'; payload: { handle: number; phase?: MicroPhase }; requestId: string }
+  | { type: 'MICRO_LATTICE'; payload: { handle: number; solid: string }; requestId: string }
   | { type: 'COLOUR_TO_ABSORBANCE'; payload: { r: number; g: number; b: number; path_cm: number }; requestId: string }
   | { type: 'REAGENT_CATALOG'; payload: {}; requestId: string }
   | { type: 'TAKE_MINERAL_LOOKUPS'; payload: {}; requestId: string }

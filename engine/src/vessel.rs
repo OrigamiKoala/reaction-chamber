@@ -247,6 +247,18 @@ pub struct SpeciesRow {
     pub tier: ProvenanceTier,
 }
 
+/// The partners of a discovered redox reaction (by the equation of its row), kept for the molecular viewer
+/// (`micro_view.rs`): the reaction is found anew at every step from the composition, and by the time the viewer asks the
+/// reactant may be used up.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RedoxRowInfo {
+    pub donor: String,
+    pub donor_product: String,
+    pub acceptor: String,
+    pub acceptor_product: String,
+    pub electrons: u32,
+}
+
 /// What a vessel keeps of a generated kinetic row to find its stored rate later (`Vessel::apply_stored_rates`).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GeneratedRateRef {
@@ -492,6 +504,11 @@ pub struct Vessel {
     /// Vapour that left the liquid by evaporation or sublimation this step (gas id, mol); drained by `step_plume`.
     pub(crate) vapour_sources: Vec<(String, f64)>,
     pub active_reactions: Vec<ReactionRow>,
+    /// Gas-liquid exchanges of the last step with their gross rates (Henry exchange, evaporation, boiling) and the fuels that
+    /// burned: what the molecular viewer shows as phase transfers and combustion (`micro_view`). Cleared at every step.
+    pub micro_transfers: Vec<crate::micro_view::MicroTransfer>,
+    pub micro_burns: Vec<(String, f64)>,
+    pub micro_electrodes: Vec<crate::micro_view::MicroElectrode>,
     pub catalog: HashMap<String, ReagentCatalogEntry>,
     /// Physical data of every imported compound, keyed by base species id (see `compound_thermo`).
     pub compounds: HashMap<String, CompoundThermo>,
@@ -514,6 +531,8 @@ pub struct Vessel {
     /// Generated kinetic rows (by row id) -> what the rate store needs to find their rate, so a rate that arrives in the
     /// store later replaces the template rule of a row already in the vessel.
     pub generated_rate_keys: HashMap<String, GeneratedRateRef>,
+    /// Partners of the discovered redox reactions that ran (by row equation), for the molecular viewer.
+    pub redox_partners: HashMap<String, RedoxRowInfo>,
     /// `rate_store::generation()` when the stored rates were last applied.
     pub last_rate_generation: u64,
     pub network_cap_reached: bool,
@@ -587,6 +606,9 @@ impl Vessel {
             plume_aerosol: HashMap::new(),
             vapour_sources: Vec::new(),
             active_reactions: Vec::new(),
+            micro_transfers: Vec::new(),
+            micro_burns: Vec::new(),
+            micro_electrodes: Vec::new(),
             catalog,
             compounds: chem_db::get_compound_registry().into_iter().map(|c| (c.species.clone(), c)).collect(),
             equilibria: chem_db::get_default_equilibria(),
@@ -599,6 +621,7 @@ impl Vessel {
             last_smiles_species: HashSet::new(),
             last_network_env: (i32::MIN, i32::MIN),
             generated_rate_keys: HashMap::new(),
+            redox_partners: HashMap::new(),
             last_rate_generation: 0,
             network_cap_reached: false,
             network_edge: Vec::new(),
@@ -1229,6 +1252,9 @@ impl Vessel {
         self.boil_vapour_ml_s = 0.0;
         self.boil_mass_g_s = 0.0;
         self.active_reactions.clear();
+        self.micro_transfers.clear();
+        self.micro_burns.clear();
+        self.micro_electrodes.clear();
         self.recent_reaction_heat_w = 0.0;
 
         let mut reaction_heat_joules = 0.0;

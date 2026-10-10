@@ -178,6 +178,9 @@ impl Vessel {
                 lead = Some((share, k));
             }
             burn.push((f.id.clone(), n));
+            if dt_s > 0.0 {
+                self.micro_burns.push((f.id.clone(), n / dt_s));
+            }
         }
         let mut products: HashMap<String, f64> = HashMap::new();
         let mut o2_used = 0.0;

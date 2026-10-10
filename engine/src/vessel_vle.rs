@@ -547,6 +547,10 @@ impl Vessel {
         keys.sort();
         for key in keys {
             let (mol, vol) = boiled[&key].clone();
+            if dt_s > 0.0 {
+                let phase = self.phase_of_key(&key);
+                self.micro_transfers.push(crate::micro_view::MicroTransfer { liquid: key.clone(), gas: vol.gas_id.clone(), phase, forward: mol / dt_s, reverse: 0.0, origin: "boiling" });
+            }
             self.book_vapour_out(&vol, mol);
             let vol_ml = mol * R_GAS * t_boil_last / p_ext * 1e6;
             total_vol_ml += vol_ml;
@@ -630,6 +634,11 @@ impl Vessel {
             for (c, p_surface) in ph.comps.iter().zip(row) {
                 let p_inf = atm.iter().find(|(k, _)| *k == c.vol.gas_id).map(|(_, p)| *p).unwrap_or(0.0);
                 let flux = self.vapour_flux_mol_s(&c.vol.id, c.vol.mw, *p_surface, p_inf, area, t);
+                // gross exchange of the molecular viewer: the mass-transfer coefficient is linear in the pressure difference
+                if dt_s > 0.0 && area > 1e-10 {
+                    let unit = self.vapour_flux_mol_s(&c.vol.id, c.vol.mw, *p_surface + 1.0, *p_surface, area, t);
+                    self.micro_transfers.push(crate::micro_view::MicroTransfer { liquid: c.key.clone(), gas: c.vol.gas_id.clone(), phase: c.phase, forward: (unit * *p_surface).max(0.0), reverse: (unit * p_inf).max(0.0), origin: "evaporation" });
+                }
                 let mut dn = flux * dt_s;
                 if dn > 0.0 {
                     dn = dn.min(c.mol);
@@ -816,6 +825,16 @@ impl Vessel {
                 }
             }
             let delta = n_new - it.n_aq; // + dissolving, - degassing
+            if dt_s > 0.0 {
+                // gross exchange of the molecular viewer: the surface rate constant times what each side holds; the net is what
+                // actually moved (bubbles and the available gas included)
+                let rev = (lam_surface * n_target).max(0.0);
+                let net = -delta / dt_s;
+                let (fwd, rev) = if net + rev >= 0.0 { (net + rev, rev) } else { (0.0, -net) };
+                if fwd + rev > 1e-18 {
+                    self.micro_transfers.push(crate::micro_view::MicroTransfer { liquid: it.h.aq_id.clone(), gas: gas_id.clone(), phase: 0, forward: fwd, reverse: rev, origin: "henry" });
+                }
+            }
             if delta.abs() < 1e-18 {
                 continue;
             }

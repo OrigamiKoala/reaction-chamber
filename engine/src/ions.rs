@@ -479,12 +479,18 @@ pub fn decompose_ionic(formula: &str) -> Option<IonicSplit> {
 }
 
 pub fn decompose_elems(elems: &Elems) -> Option<IonicSplit> {
+    decompose_elems_with_charge(elems, 0)
+}
+
+/// `decompose_elems` for a species of net charge `charge` (a complex or ion pair such as "CeH2PO4+2" = Ce+3 + H2PO4-):
+/// the cations then carry the anions' charge plus `charge`.
+pub fn decompose_elems_with_charge(elems: &Elems, charge: i32) -> Option<IonicSplit> {
     // A compound of a single element has no ionic split (metals, O2, ...)
     if elems.len() < 2 || element_key(elems) == "H2O1" {
         return None;
     }
     let mut cands: Vec<IonicSplit> = Vec::new();
-    search_anions(elems, 0, Vec::new(), 0, &mut cands, 0);
+    search_anions(elems, 0, Vec::new(), 0, &mut cands, 0, charge);
     // Prefer the simplest explanation: fewest distinct anions, then fewest distinct cations; ties keep table order
     // (so more protonated anions such as HSO4- win over SO4-2 + H+).
     let mut best: Option<(usize, usize, IonicSplit)> = None;
@@ -516,6 +522,7 @@ fn search_anions(
     anion_charge: i32,
     out: &mut Vec<IonicSplit>,
     depth: usize,
+    extra: i32,
 ) {
     if depth > 2 || out.len() > 64 {
         return;
@@ -540,11 +547,11 @@ fn search_anions(
             chosen2.push(IonCount { id: a.id.to_string(), charge: a.charge, n: n as f64 });
             let ac2 = anion_charge + (-a.charge) * n as i32;
             if !w2.is_empty() {
-                if let Some(cats) = cation_solutions(&w2, ac2) {
+                if let Some(cats) = cation_solutions(&w2, ac2 + extra) {
                     out.push(IonicSplit { cations: cats, anions: chosen2.clone() });
                 }
             }
-            search_anions(&w2, idx + 1, chosen2, ac2, out, depth + 1);
+            search_anions(&w2, idx + 1, chosen2, ac2, out, depth + 1, extra);
         }
     }
 }

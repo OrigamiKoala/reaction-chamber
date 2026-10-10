@@ -11,6 +11,8 @@ pub mod acid_estimate;
 pub mod pka_structure;
 pub mod ion_pairing;
 pub mod smiles;
+pub mod structure3d;
+pub mod micro_view;
 pub mod smarts;
 pub mod joback;
 pub mod benson;
@@ -286,6 +288,40 @@ pub fn vessel_nmr_spectrum(handle: u32, layer: u32, nucleus: &str, solvent: &str
         let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
         let s = v.nmr_spectrum(layer as usize, nucleus, solvent, scans, seed as u64).map_err(|e| JsValue::from_str(&e))?;
         serde_wasm_bindgen_to_val(&s)
+    })
+}
+
+/// 3D structures for the molecular viewer (`structure3d`): explicit-hydrogen coordinates (A), bonds, charges and where each
+/// structure came from (SMILES, PubChem structure row, formula rule, placeholder). `species_ids_json` is a JSON array of
+/// species ids; the vessel supplies the SMILES of its imports. Cached per species and store generation.
+#[wasm_bindgen]
+pub fn vessel_micro_structures(handle: u32, species_ids_json: &str) -> Result<JsValue, JsValue> {
+    let ids: Vec<String> = serde_json::from_str(species_ids_json).map_err(|e| JsValue::from_str(&format!("species ids: {}", e)))?;
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        let out: Vec<structure3d::Structure3d> = ids.iter().map(|id| (*structure3d::for_species(id, v.smiles_of(Some(id)).as_deref())).clone()).collect();
+        serde_wasm_bindgen_to_val(&out)
+    })
+}
+
+/// Reactions of a phase ("aqueous", "organic" or "gas") for the molecular viewer (`micro_view`): template and proton-transfer rows with their atom
+/// map (every product atom, hydrogens included, to the reactant atom it was), the hydrogens that move, and gross forward /
+/// reverse / net rates in mol/s of the phase. Active rows the viewer cannot map yet come as kind "other" without a map.
+#[wasm_bindgen]
+pub fn vessel_micro_reactions(handle: u32, phase: &str) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        serde_wasm_bindgen_to_val(&v.micro_reactions_in(phase))
+    })
+}
+
+/// The composition of the lattice of a solid (`BaSO4(s)`, `Zn(s)`) for the molecular viewer's schematic packing: its ions or atoms
+/// with their radii. Null for a solid the engine cannot say what it is made of (a molecular solid).
+#[wasm_bindgen]
+pub fn vessel_micro_lattice(handle: u32, solid: &str) -> Result<JsValue, JsValue> {
+    with_vessels(|map| {
+        let v = map.get(&handle).ok_or_else(|| JsValue::from_str(&format!("Unknown vessel handle: {}", handle)))?;
+        serde_wasm_bindgen_to_val(&v.micro_lattice(solid))
     })
 }
 

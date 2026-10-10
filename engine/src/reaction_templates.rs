@@ -282,6 +282,14 @@ pub struct Template {
     pub redox: Option<Redox>,
 }
 
+/// A product of a template instance and where its atoms came from (`Template::products_mapped`).
+#[derive(Clone, Debug)]
+pub struct MappedProduct {
+    pub mol: Molecule,
+    /// Per atom of `mol`: (reactant slot, atom of that slot's molecule), None for atoms the template creates (extra products).
+    pub origin: Vec<Option<(usize, usize)>>,
+}
+
 /// One matching of a template: the molecule of each slot and the molecule atom matched by every pattern atom.
 pub struct Instance<'a> {
     pub template: &'a Template,
@@ -456,6 +464,13 @@ impl Template {
     /// The products of the transformation: the connected pieces of the rewritten reactant graphs, then the template's extra
     /// products. None when an edit cannot be applied (a bond that is not there).
     pub fn products(&self, inst: &Instance) -> Option<Vec<Molecule>> {
+        self.products_mapped(inst).map(|v| v.into_iter().map(|p| p.mol).collect())
+    }
+
+    /// `products` with the atom mapping the molecular viewer needs: for every atom of every product, the reactant atom it
+    /// was (reactant slot, atom of that slot's molecule); None for the atoms of the template's extra products and of the
+    /// hydroxide the solvent proton leaves behind.
+    pub fn products_mapped(&self, inst: &Instance) -> Option<Vec<MappedProduct>> {
         let mut atoms = Vec::new();
         let mut bonds: Vec<(usize, usize, f64)> = Vec::new();
         let mut h0: Vec<u32> = Vec::new();
@@ -577,16 +592,21 @@ impl Template {
                     }
                 }
             }
-            out.push(mol);
+            let slot_of = |g: usize| -> (usize, usize) {
+                let slot = (0..offs.len()).rev().find(|&s| offs[s] <= g).unwrap_or(0);
+                (slot, g - offs[slot])
+            };
+            let origin = members.iter().map(|&g| Some(slot_of(g))).collect();
+            out.push(MappedProduct { mol, origin });
         }
         for extra in &self.extra_products {
-            out.push(extra.clone());
+            out.push(MappedProduct { origin: vec![None; extra.atoms.len()], mol: extra.clone() });
         }
         if has_solvent_proton {
             let net_reactant_charge: i32 = inst.mols.iter().map(|m| m.atoms.iter().map(|at| at.charge).sum::<i32>()).sum();
             if net_reactant_charge < 0 {
                 if let Some(oh) = crate::smiles::parse("[OH-]") {
-                    out.push(oh);
+                    out.push(MappedProduct { origin: vec![None; oh.atoms.len()], mol: oh });
                 }
             }
         }

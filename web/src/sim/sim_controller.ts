@@ -17,6 +17,10 @@ import {
   MsSpectrumData,
   FlameTestResult,
   ElectrodeMaterialInfo,
+  Structure3dData,
+  MicroReactionData,
+  MicroPhase,
+  MicroLatticeData,
 } from '../types/sim';
 
 export class SimController {
@@ -85,6 +89,30 @@ export class SimController {
     const handle = this.vesselHandles.get(id);
     if (handle === undefined) throw new Error(`Vessel ${id} not found`);
     return this.sendRequest<MsSpectrumData>('MS_SPECTRUM', { handle, layer: opts.layer ?? 0, mode: opts.mode, seed: Math.floor(Math.random() * 2 ** 31) });
+  }
+
+  /** 3D structures (explicit hydrogens, angstrom) of species of a vessel for the molecular viewer (engine `vessel_micro_structures`). */
+  public async microStructures(id: string, speciesIds: string[]): Promise<Structure3dData[]> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<Structure3dData[]>('MICRO_STRUCTURES', { handle, ids: speciesIds });
+  }
+
+  /**
+   * Reactions of a phase ("aqueous", "organic" or "gas") for the molecular viewer (engine `vessel_micro_reactions`): template and
+   * proton-transfer rows with their atom map and gross forward / reverse rates in mol/s of the phase.
+   */
+  public async microReactions(id: string, phase: MicroPhase = 'aqueous'): Promise<MicroReactionData[]> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<MicroReactionData[]>('MICRO_REACTIONS', { handle, phase });
+  }
+
+  /** What a solid is made of (its ions or atoms and their radii) for the viewer's schematic lattice; null for a molecular solid (engine `vessel_micro_lattice`). */
+  public async microLattice(id: string, solid: string): Promise<MicroLatticeData | null> {
+    const handle = this.vesselHandles.get(id);
+    if (handle === undefined) throw new Error(`Vessel ${id} not found`);
+    return this.sendRequest<MicroLatticeData | null>('MICRO_LATTICE', { handle, solid });
   }
 
   /** Flame-test colour of a vessel's liquid held in a gas flame at `tFlameK` (engine `vessel_flame_test`). */

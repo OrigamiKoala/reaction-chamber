@@ -625,6 +625,14 @@ impl Vessel {
                 if ext_e.abs() < 1e-30 {
                     continue;
                 }
+                if dt_s > 0.0 {
+                    // what this electrode does, for the molecular viewer (the half-reaction rows below are the net of both electrodes)
+                    self.micro_electrodes.push(crate::micro_view::MicroElectrode {
+                        electrode: if f.electrode == 0 { "anode" } else { "cathode" },
+                        equation: if ext_e > 0.0 { h.equation() } else { reverse_equation(h) },
+                        rate_mol_s: ext_e.abs() / dt_s,
+                    });
+                }
                 // the solids of both sides of the half-reaction: a reduction plates its product (red side, d_mol > 0), an
                 // oxidation deposits its own (iodine, lead dioxide, sulfur on the anode: ox side, d_mol > 0); an electrode's
                 // own material also dissolves (d_mol < 0). `apply_species_change` leaves exactly these to this bookkeeping, so

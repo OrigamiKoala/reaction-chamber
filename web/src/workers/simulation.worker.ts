@@ -20,6 +20,9 @@ import init, {
   vessel_uvvis_scan,
   vessel_nmr_spectrum,
   vessel_ms_spectrum,
+  vessel_micro_structures,
+  vessel_micro_reactions,
+  vessel_micro_lattice,
   vessel_flame_test,
   colour_to_absorbance,
   reagent_catalog_json,
@@ -252,6 +255,24 @@ self.onmessage = async (e: MessageEvent) => {
       case 'MS_SPECTRUM': {
         const res = vessel_ms_spectrum(payload.handle, payload.layer ?? 0, payload.mode, payload.seed >>> 0);
         self.postMessage({ type: 'MS_SPECTRUM_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'MICRO_STRUCTURES': {
+        const res = vessel_micro_structures(payload.handle, JSON.stringify(payload.ids));
+        self.postMessage({ type: 'MICRO_STRUCTURES_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'MICRO_REACTIONS': {
+        const res = vessel_micro_reactions(payload.handle, payload.phase ?? 'aqueous');
+        self.postMessage({ type: 'MICRO_REACTIONS_RESPONSE', payload: JSON.parse(res), requestId });
+        break;
+      }
+
+      case 'MICRO_LATTICE': {
+        const res = vessel_micro_lattice(payload.handle, payload.solid);
+        self.postMessage({ type: 'MICRO_LATTICE_RESPONSE', payload: JSON.parse(res), requestId });
         break;
       }
 
