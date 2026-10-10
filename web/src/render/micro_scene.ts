@@ -406,7 +406,7 @@ export class MicroScene {
   private follow: THREE.Vector3 | null = null;
   private pxW = 1;
   private pxH = 1;
-  private readonly frame = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x7fa3b3, transparent: true, opacity: 0.55 }));
+  private readonly frame = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x4a5d6e, transparent: true, opacity: 0.35 }));
   private readonly surface = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ color: 0x5ec4d6, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }),
@@ -416,8 +416,8 @@ export class MicroScene {
   private size = new THREE.Vector3(1, 1, 1);
 
   constructor(canvas: HTMLCanvasElement | null) {
-    this.scene.background = new THREE.Color(0x0f171d);
-    const hemi = new THREE.HemisphereLight(0xdfeefa, 0x1d2a33, 1.15);
+    this.scene.background = new THREE.Color(0xf5f7f8);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xcfd6dc, 1.2);
     const key = new THREE.DirectionalLight(0xffffff, 2.1);
     key.position.set(1.2, 2, 1.4);
     this.scene.add(hemi, key, this.waters.group, this.solutes.group, this.slabLayer.group, this.bedrock, this.events.group, this.labels.group, this.frame, this.surface);

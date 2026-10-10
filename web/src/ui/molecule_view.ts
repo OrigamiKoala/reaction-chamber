@@ -229,12 +229,7 @@ export class MoleculeView {
 
     this.status = h('p', { class: 'hint-line mv-status', role: 'status' });
     this.legend = h('div', { class: 'mv-legend' });
-    const note = h('p', {
-      class: 'hint-line mv-note',
-      text:
-        'Illustration. Which molecules are present comes from the simulation; their numbers are compressed so that rare species show (every species present has at least one molecule). The motion is schematic and slowed far below real speed. Reactions play as a single-step morph, ranked as in the simulation (the fastest about once a second, the slowest shown once per 20 s) and enriched: the table gives the true rates, and ▶ plays one again with the camera on it. Solid surfaces (pick one in the list) are a schematic packing chosen by the formula, not a measured crystal structure; ions there do not shed their hydration shell. A reaction without an atom map is drawn as a swap (the reactants shrink away, the products grow in).',
-    });
-    this.el.append(stage, bar, this.status, this.legend, note);
+    this.el.append(stage, bar, this.status, this.legend);
     // the legend's replay buttons
     this.legend.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('button.mv-replay');
@@ -1197,12 +1192,11 @@ export class MoleculeView {
         );
       }
       rt.append(rb);
-      const more = this.rows.length - rx.length;
-      parts.push(h('p', { class: 'hint-line mv-rx-title', text: `Reactions in this phase (true rates; the box plays them enriched)${more > 0 ? `, the ${rx.length} fastest of ${this.rows.length}` : ''}` }), rt);
+      parts.push(h('p', { class: 'hint-line mv-rx-title', text: 'Reactions in this phase' }), rt);
     }
     const nonSurface = this.phaseSet.solids.filter((s) => !this.lattices.get(s.id));
     if (nonSurface.length > 0) {
-      parts.push(h('p', { class: 'hint-line', text: `Solids without a lattice the engine can describe (molecular solids): ${nonSurface.map((s) => prettyFormula(s.formula || s.id)).join(', ')}.` }));
+      parts.push(h('p', { class: 'hint-line', text: `Non-lattice solids: ${nonSurface.map((s) => prettyFormula(s.formula || s.id)).join(', ')}.` }));
     }
     this.legend.replaceChildren(...parts);
   }

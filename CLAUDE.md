@@ -311,3 +311,8 @@ first, resolve before the site is announced).
   - UI fix: added `.vp-tab { padding-top: 10px; }` in `web/src/style.css` so gap under tab bar matches `.mv`.
 
 
+- **Text cleanup, unrounded corners & light theme overhaul (2026-10-10)**:
+  - Text strip-down: removed non-essential descriptions, puffery, marketing copy, and feature advertisements across index.html and UI components.
+  - Light theme styling: converted dark readouts (.readouts), spectral canvases (UV-Vis, NMR, MS, chromatograms), molecular stage (.mv-stage, MicroScene background to #f5f7f8), HUD readouts, and toasts to porcelain/white backgrounds with subtle hairlines, dark ink typography, and high contrast traces.
+  - Unrounded corners: reset all --r-* tokens to 0px and set *, *::before, *::after { border-radius: 0 !important; } for crisp, unrounded, minimalist aesthetic.
+  - Verified: npm --prefix web run build passed cleanly. Never tested in browser.

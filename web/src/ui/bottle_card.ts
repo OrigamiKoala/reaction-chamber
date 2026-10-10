@@ -61,7 +61,6 @@ export class BottleCard {
 
     this.modal.body.innerHTML = `
       <p class="bc-sub"><span class="mono">${esc(prettyFormula(b.formula))}</span> · ${b.mw ? b.mw.toFixed(2) + ' g/mol' : ''}${b.cid ? ` · CID ${b.cid}` : ''}</p>
-      <p class="add-note">Imported from PubChem. The engine derives melting, boiling and dissolving from these values; blank means PubChem had none.</p>
       ${hz.length ? `<p class="add-hazard is-warning"><span class="hz-dot" aria-hidden="true"></span>${esc(hz.join(', '))}</p>` : ''}
       <form class="form" novalidate>
         <div class="form-grid">

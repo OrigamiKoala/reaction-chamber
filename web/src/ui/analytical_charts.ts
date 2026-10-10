@@ -23,7 +23,7 @@ export function drawUvVisChart(cv: HTMLCanvasElement, scan: SpectrumScanResult |
   ctx.clearRect(0, 0, cssW, H);
 
   // Background
-  ctx.fillStyle = '#0f141a';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssW, H);
 
   const padL = 36;
@@ -34,7 +34,7 @@ export function drawUvVisChart(cv: HTMLCanvasElement, scan: SpectrumScanResult |
   const plotH = H - padT - padB;
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = 'rgba(27,37,45,0.08)';
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = padT + (plotH / 4) * i;
@@ -49,20 +49,20 @@ export function drawUvVisChart(cv: HTMLCanvasElement, scan: SpectrumScanResult |
     ctx.moveTo(x, padT);
     ctx.lineTo(x, padT + plotH);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(27,37,45,0.55)';
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`${nm}`, x, H - 8);
   }
 
   // Y-axis label
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillStyle = 'rgba(27,37,45,0.6)';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('Abs', padL - 6, padT + 4);
 
   if (!scan || scan.points.length === 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(27,37,45,0.45)';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Insert sample cuvette & press "Scan Spectrum"', padL + plotW / 2, padT + plotH / 2);
@@ -291,21 +291,21 @@ export class NmrChart {
     if (!pc) return;
     const { ctx, W } = pc;
     const H = this.H;
-    ctx.fillStyle = '#0a1016';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
     const plotW = W - this.padL - this.padR;
     const plotH = H - this.padT - this.padB;
     const spec = this.spec;
     const getX = (ppm: number) => this.padL + ((this.hi - ppm) / (this.hi - this.lo)) * plotW;
     // axis
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = 'rgba(27,37,45,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(this.padL, this.padT + plotH + 0.5);
     ctx.lineTo(W - this.padR, this.padT + plotH + 0.5);
     ctx.stroke();
     const step = niceStep(this.hi - this.lo, 8);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = 'rgba(27,37,45,0.55)';
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     for (let t = Math.ceil(this.lo / step) * step; t <= this.hi + 1e-9; t += step) {
@@ -319,7 +319,7 @@ export class NmrChart {
     ctx.textAlign = 'right';
     ctx.fillText('δ (ppm)', W - this.padR, this.padT + 8);
     if (!spec || spec.intensity.length === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillStyle = 'rgba(27,37,45,0.45)';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Load a tube with LIFT, then press ACQUIRE on the console', this.padL + plotW / 2, this.padT + plotH / 2);
@@ -331,7 +331,7 @@ export class NmrChart {
     if (this.hl) {
       const x0 = getX(this.hl.ppm_hi + 0.02);
       const x1 = getX(this.hl.ppm_lo - 0.02);
-      ctx.fillStyle = 'rgba(255, 210, 74, 0.16)';
+      ctx.fillStyle = 'rgba(13, 118, 128, 0.12)';
       ctx.fillRect(Math.min(x0, x1), this.padT, Math.max(3, Math.abs(x1 - x0)), plotH);
     }
     // envelope per pixel column (high ppm on the left)
@@ -353,7 +353,7 @@ export class NmrChart {
     const floor = Math.max(spec.noise_sigma * 8, 0.003);
     const yMax = Math.max(top, floor) * 1.12;
     const getY = (v: number) => this.padT + plotH - (Math.max(0, v) / yMax) * plotH;
-    ctx.strokeStyle = '#20e880';
+    ctx.strokeStyle = '#0d7680';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     for (let c = 0; c < cols; c++) {
@@ -380,14 +380,14 @@ export class NmrChart {
       const x = getX(q.ppm);
       if (placed.some((px) => Math.abs(px - x) < 30)) continue;
       placed.push(x);
-      ctx.fillStyle = q.solvent ? 'rgba(143,183,168,0.9)' : '#66ffcc';
+      ctx.fillStyle = q.solvent ? 'rgba(90,103,114,0.85)' : '#08565d';
       ctx.fillText(q.ppm.toFixed(spec.nucleus === '1H' ? 2 : 1), x, Math.max(this.padT + 8, getY(h) - 4));
     }
     // reading
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = 'rgba(27,37,45,0.5)';
     ctx.textAlign = 'left';
     ctx.font = '9px sans-serif';
-    ctx.fillText(`${spec.frequency_mhz.toFixed(0)} MHz · ${spec.solvent} · ${spec.scans} scans — scroll to zoom, drag to pan, double-click to fit / reset`, this.padL, this.padT + 8);
+    ctx.fillText(`${spec.frequency_mhz.toFixed(0)} MHz · ${spec.solvent} · ${spec.scans} scans`, this.padL, this.padT + 8);
   }
 }
 
@@ -397,7 +397,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
   const pc = prepCanvas(cv, H);
   if (!pc) return;
   const { ctx, W } = pc;
-  ctx.fillStyle = '#10141a';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   const padL = 34;
   const padR = 16;
@@ -405,7 +405,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
   const padB = 24;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = 'rgba(27,37,45,0.08)';
   ctx.lineWidth = 1;
   for (const pct of [0, 50, 100]) {
     const y = padT + plotH - (pct / 100) * plotH;
@@ -413,16 +413,16 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
     ctx.moveTo(padL, y);
     ctx.lineTo(W - padR, y);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(27,37,45,0.55)';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(`${pct}%`, padL - 4, y + 3);
   }
   if (!peaks || peaks.length === 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(27,37,45,0.45)';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Load a vial and press INJECT on the instrument', padL + plotW / 2, padT + plotH / 2);
+    ctx.fillText('No spectrum', padL + plotW / 2, padT + plotH / 2);
     return;
   }
   const maxPk = Math.max(...peaks.map((p) => p.mz));
@@ -430,7 +430,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
   const maxMz = Math.max(minMz + 40, Math.ceil((maxPk + 8) / 10) * 10);
   const getX = (mz: number) => padL + ((mz - minMz) / (maxMz - minMz)) * plotW;
   const step = niceStep(maxMz - minMz, 8);
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillStyle = 'rgba(27,37,45,0.55)';
   ctx.font = '10px monospace';
   ctx.textAlign = 'center';
   for (let t = Math.ceil(minMz / step) * step; t <= maxMz; t += step) {
@@ -444,7 +444,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
   ctx.textAlign = 'right';
   ctx.fillText('m/z', W - padR, H - 8);
   if (title) {
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillStyle = 'rgba(27,37,45,0.7)';
     ctx.textAlign = 'left';
     ctx.font = '10px sans-serif';
     ctx.fillText(title, padL, 12);
@@ -454,7 +454,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
   for (const pk of peaks) {
     const x = Math.round(getX(pk.mz)) + 0.5;
     const y = Math.round(padT + plotH - (pk.intensity / 100) * plotH);
-    ctx.strokeStyle = pk.intensity >= 95 ? '#ff5533' : pk.molecular ? '#00e5ff' : '#44aaff';
+    ctx.strokeStyle = pk.intensity >= 95 ? '#b93826' : pk.molecular ? '#0d7680' : '#2b5278';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, padT + plotH);
@@ -467,7 +467,7 @@ export function drawMsSpectrum(cv: HTMLCanvasElement, peaks: MsPeakData[] | null
     if (labelled.some((lx) => Math.abs(lx - x) < 20)) continue;
     labelled.push(x);
     const y = Math.round(padT + plotH - (pk.intensity / 100) * plotH);
-    ctx.fillStyle = pk.molecular ? '#00e5ff' : '#ffffff';
+    ctx.fillStyle = pk.molecular ? '#0d7680' : '#1b252d';
     ctx.font = '9px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(Number.isInteger(pk.mz) ? `${pk.mz}` : pk.mz.toFixed(1), x, Math.max(padT + 8, y - 4));
@@ -484,7 +484,7 @@ export function drawChromatogram(
   const pc = prepCanvas(cv, H);
   if (!pc) return [];
   const { ctx, W } = pc;
-  ctx.fillStyle = '#0f1410';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   const padL = 30;
   const padR = 12;
@@ -502,7 +502,7 @@ export function drawChromatogram(
   // oven temperature (faint)
   if (res.oven.length === n) {
     const tmax = Math.max(...res.oven);
-    ctx.strokeStyle = 'rgba(255,170,60,0.35)';
+    ctx.strokeStyle = 'rgba(183,106,12,0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < n; i += 4) {
@@ -513,7 +513,7 @@ export function drawChromatogram(
     }
     ctx.stroke();
   }
-  ctx.strokeStyle = '#7be0a0';
+  ctx.strokeStyle = '#0d7680';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
@@ -523,7 +523,7 @@ export function drawChromatogram(
     else ctx.lineTo(x, y);
   }
   ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillStyle = 'rgba(27,37,45,0.55)';
   ctx.font = '10px monospace';
   ctx.textAlign = 'center';
   const step = niceStep(tEnd, 8);
@@ -539,7 +539,7 @@ export function drawChromatogram(
     const x = getX(c.rt_min);
     const idx = Math.min(n - 1, Math.round(c.rt_min / res.chrom_dt));
     const y = getY(res.tic[idx]);
-    ctx.fillStyle = i === selected ? '#ffd34a' : '#cfe8d8';
+    ctx.fillStyle = i === selected ? '#b93826' : '#1b252d';
     ctx.font = i === selected ? '700 9px monospace' : '9px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`${c.name.slice(0, 12)} ${c.rt_min.toFixed(2)}`, x, Math.max(padT + 8, y - 5));

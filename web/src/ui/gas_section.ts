@@ -65,14 +65,14 @@ export class GasSection {
     this.lastKey = key;
     this.chips.innerHTML = '';
     if (cur) {
-      setText(this.status, `Sitting on ${this.lab.get(cur)?.name ?? 'a flask'}. Pour the mixture into the funnel: the liquid runs through, the solid stays on the paper.`);
+      setText(this.status, `Mounted on ${this.lab.get(cur)?.name ?? 'a flask'}.`);
       const off = h('button', { class: 'chip', type: 'button', text: 'Lift off the flask' });
       off.addEventListener('click', () => this.lab.disconnectFilter(this.id));
       this.chips.append(off);
     } else if (recs.length === 0) {
-      setText(this.status, 'Set out a flask to filter into (a Büchner funnel on a Büchner flask filters under vacuum).');
+      setText(this.status, 'No receiver flask available.');
     } else {
-      setText(this.status, 'Set the funnel on:');
+      setText(this.status, 'Mount on:');
       for (const c of recs) {
         const b = h('button', { class: 'chip', type: 'button', text: c.name });
         b.addEventListener('click', () => {
@@ -96,7 +96,7 @@ export class GasSection {
   public refresh() {
     if (this.mode === 'collector') {
       const src = this.lab.gasSourceOf(this.id);
-      setText(this.status, src ? `Fed by ${this.lab.get(src)?.name ?? 'a flask'}. Drag the tube end to move it.` : 'Not connected. Pick this collector on a stoppered flask, or drag a tube end onto it.');
+      setText(this.status, src ? `Fed by ${this.lab.get(src)?.name ?? 'a flask'}.` : 'Not connected.');
       return;
     }
     if (this.mode === 'funnel') {
@@ -111,16 +111,16 @@ export class GasSection {
     this.lastKey = key;
     this.chips.innerHTML = '';
     if (cur) {
-      setText(this.status, `Stoppered, gas flows to ${this.lab.get(cur)?.name ?? 'the collector'}. Drag the tube end to move it.`);
+      setText(this.status, `Gas flows to ${this.lab.get(cur)?.name ?? 'collector'}.`);
       const off = h('button', { class: 'chip', type: 'button', text: 'Disconnect tube' });
       off.addEventListener('click', () => {
         this.lab.disconnectGas(this.id).catch((err) => toast(errMsg(err), 'warning'));
       });
       this.chips.append(off);
     } else if (cols.length === 0) {
-      setText(this.status, 'Set out a gas syringe, gas collection tube or gas jar (Glassware, Gas) to collect the gas this flask gives off.');
+      setText(this.status, 'No gas collector on bench.');
     } else {
-      setText(this.status, 'Fit a stopper and a delivery tube that leads the gas into:');
+      setText(this.status, 'Lead gas into:');
       for (const c of cols) {
         const b = h('button', { class: 'chip', type: 'button', text: c.name });
         b.addEventListener('click', () => {

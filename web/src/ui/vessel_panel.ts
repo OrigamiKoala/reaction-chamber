@@ -119,7 +119,7 @@ export class VesselPanel {
       snapshot: (id) => deps.lab.snapshot(id),
     });
     this.empty = h('div', { class: 'panel-empty' });
-    this.empty.innerHTML = `${icon('beaker', 36)}<p class="empty-title">Click a vessel or instrument on the bench</p><p class="muted">Its readings, contents and controls appear here.</p>`;
+    this.empty.innerHTML = `${icon('beaker', 36)}<p class="empty-title">Select a vessel or instrument</p>`;
     this.content = h('div', { class: 'vp' });
     this.el.append(this.empty, this.content);
     this.show(null);
@@ -187,7 +187,7 @@ export class VesselPanel {
     head.append(titles, h('div', { class: 'vp-actions' }, focusBtn, removeBtn));
 
     this.brokenBanner = h('div', { class: 'vp-banner', role: 'alert', hidden: true });
-    this.brokenBanner.innerHTML = `${icon('warning', 16)}<span>The glass shattered from over-pressure. Remove it and start again.</span>`;
+    this.brokenBanner.innerHTML = `${icon('warning', 16)}<span>Vessel shattered from excess pressure.</span>`;
 
     // Readouts: the instrument window
     const ro = h('div', { class: 'readouts', role: 'group', 'aria-label': 'Live readings' });
@@ -248,7 +248,7 @@ export class VesselPanel {
     // Contents
     const conSec = h('section', { class: 'vp-sec', 'aria-label': 'Contents' });
     const conHead = h('div', { class: 'sec-head' }, h('h3', { class: 'eyebrow', text: 'Contents' }));
-    const all = h('button', { class: 'link-btn', type: 'button', text: 'Show all in Details' });
+    const all = h('button', { class: 'link-btn', type: 'button', text: 'Details' });
     all.addEventListener('click', () => this.deps.openDetails());
     conHead.append(all);
     const ul = h('ul', { class: 'contents', role: 'list' });
@@ -261,20 +261,12 @@ export class VesselPanel {
       ul.append(li);
       this.contentRows.push({ li, f, n, a });
     }
-    this.contentEmpty = h('p', { class: 'muted', text: 'Empty. Pick a reagent on the left to add it.' });
+    this.contentEmpty = h('p', { class: 'muted', text: 'Empty' });
     conSec.append(conHead, ul, this.contentEmpty);
 
     // Pour
     this.pourSec = h('section', { class: 'vp-sec', 'aria-label': 'Pour into another vessel' });
-    this.pourSec.append(
-      h('h3', { class: 'eyebrow', text: 'Pour' }),
-      h('p', {
-        class: 'hint-line',
-        text: v.type.startsWith('pipette')
-          ? 'Carry the tip into a liquid. Drag up to draw, drag down to dispense; hold Shift for fine control (set the meniscus on the mark).'
-          : 'Drag this vessel over another and drag up to tilt it. Release to stop.',
-      }),
-    );
+    this.pourSec.append(h('h3', { class: 'eyebrow', text: 'Pour' }));
     this.pourTargets = h('div', { class: 'chip-row', role: 'radiogroup', 'aria-label': 'Pour target' });
     const pourAmt = h('div', { class: 'pour-amt' });
     const pourId = `pour-${v.id}`;
@@ -307,13 +299,11 @@ export class VesselPanel {
     this.pourBtn.append(this.pourLabel);
     this.pourBtn.addEventListener('click', () => this.doPour());
     const emptyBtn = h('button', { class: 'btn btn-ghost btn-block', type: 'button' });
-    emptyBtn.innerHTML = `${icon('bucket', 16)}<span>Empty into waste</span>`;
-    this.confirmable(emptyBtn, 'Tap again to empty', () =>
+    emptyBtn.innerHTML = `${icon('bucket', 16)}<span>Empty</span>`;
+    this.confirmable(emptyBtn, 'Confirm empty', () =>
       run(lab.empty(v.id).then(() => toast(`Emptied ${v.name}.`, 'success')), 'empty the vessel'),
     );
-    const assistPour = h('details', { class: 'assist' }, h('summary', { text: 'Assisted pour' }));
-    assistPour.append(h('div', { class: 'assist-body' }, this.pourTargets, pourAmt, quick, this.pourBtn));
-    this.pourSec.append(assistPour, emptyBtn);
+    this.pourSec.append(this.pourTargets, pourAmt, quick, this.pourBtn, emptyBtn);
     this.r.pourEmptyBtn = emptyBtn;
 
     this.gasSec = new GasSection(lab, v.id);

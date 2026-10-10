@@ -61,10 +61,10 @@ export class TopBar {
 
     const center = h('div', { class: 'topbar-center' });
     const stations = [
-      { id: 'bench', label: 'Wet Bench' },
-      { id: 'electrochem', label: 'Electrochem' },
+      { id: 'bench', label: 'Bench' },
+      { id: 'electrochem', label: 'Electrochemistry' },
       { id: 'spectrophotometer', label: 'UV-Vis' },
-      { id: 'nmr', label: 'NMR 400 MHz' },
+      { id: 'nmr', label: 'NMR' },
       { id: 'mass_spec', label: 'Mass Spec' },
     ] as const;
     for (const s of stations) {
@@ -143,11 +143,11 @@ export class TopBar {
       el.innerHTML = '';
       el.append(h('span', { class: `status-dot is-${st.s}`, 'aria-hidden': 'true' }), h('span', { class: 'ms-name', text: name }), h('span', { class: 'ms-val', text: st.text }));
     };
-    row(this.engineRow, 'Chemistry engine', this.engine);
-    row(this.serverRow, 'Local server', this.server);
+    row(this.engineRow, 'Engine', this.engine);
+    row(this.serverRow, 'Server', this.server);
     // Bar dot reflects the engine only: the local server is optional.
     this.statusDot.className = `status-dot is-${this.engine.s}`;
-    this.statusDot.setAttribute('aria-label', `Chemistry engine: ${this.engine.text}`);
-    this.statusDot.title = `Chemistry engine: ${this.engine.text} · Local server: ${this.server.text}`;
+    this.statusDot.setAttribute('aria-label', `Engine: ${this.engine.text}`);
+    this.statusDot.title = `Engine: ${this.engine.text} · Server: ${this.server.text}`;
   }
 }

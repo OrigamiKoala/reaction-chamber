@@ -8,7 +8,7 @@ let modal: Modal | null = null;
 let running = false;
 
 export async function runSelfTest(simWorker: Worker, simController: SimController): Promise<void> {
-  if (!modal) modal = new Modal('Self-test · M0–M5 validation gates', { wide: true, className: 'modal-test' });
+  if (!modal) modal = new Modal('Self-test', { wide: true, className: 'modal-test' });
   modal.open();
   if (running) return;
   running = true;
@@ -22,8 +22,8 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
   };
 
   try {
-    // M0: worker → WASM roundtrip
-    append('[M0] Worker & WASM roundtrip');
+    // Worker & WASM roundtrip
+    append('Worker & WASM communication');
     try {
       const res = await new Promise<{ wasmResponse: string; latency: number }>((resolve, reject) => {
         const timer = window.setTimeout(() => {
@@ -45,26 +45,26 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
       append(`Fail — WASM roundtrip: ${(err as Error).message}`, 'fail');
     }
 
-    // Local server (optional: the static build runs without it)
-    append('[M0] Local server (optional)');
+    // Local server
+    append('Server health');
     try {
       const r = await fetch('/api/health');
-      append(r.ok ? 'Pass — local server online (NIST data for imports)' : 'Info — no local server (static build)', r.ok ? 'pass' : 'info');
+      append(r.ok ? 'Pass — server online' : 'Info — static mode', r.ok ? 'pass' : 'info');
     } catch {
-      append('Info — no local server (static build)', 'info');
+      append('Info — static mode', 'info');
     }
 
-    // M1: data bundle import
-    append('[M1] Chemical import database');
+    // Chemical database import
+    append('Chemical database');
     try {
       const bundle = await initDataBundle();
-      append(`Pass — import database active with ${Object.keys(bundle).length} species`, 'pass');
+      append(`Pass — database active with ${Object.keys(bundle).length} species`, 'pass');
     } catch (err) {
       append(`Fail — ${(err as Error).message}`, 'fail');
     }
 
-    // M2: conflict report
-    append('[M2] Data bundle v1 & conflict report');
+    // Conflict report
+    append('Data conflict validation');
     try {
       const r = await fetch('data/conflict_report.json');
       if (r.ok) {
@@ -78,8 +78,8 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
       append(`Fail — ${(err as Error).message}`, 'fail');
     }
 
-    // M5: engine, optics, titration, conservation
-    append('[M5] Optics, catalog, speciation & conservation');
+    // Speciation & conservation
+    append('Optics, speciation & conservation');
     try {
       const tables = await simController.getOpticsTables();
       append(`Pass — optics tables: ${tables.n_bins} wavelength bins (400–710 nm)`, 'pass');
@@ -106,7 +106,7 @@ export async function runSelfTest(simWorker: Worker, simController: SimControlle
     }
 
     const fails = log.querySelectorAll('.is-fail').length;
-    append(fails === 0 ? 'All gates passed.' : `${fails} check(s) failed.`, fails === 0 ? 'pass' : 'fail');
+    append(fails === 0 ? 'All checks passed.' : `${fails} check(s) failed.`, fails === 0 ? 'pass' : 'fail');
   } finally {
     running = false;
   }

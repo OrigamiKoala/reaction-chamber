@@ -64,7 +64,7 @@ export class AdvancedView {
           <section class="d-card"><h3 class="eyebrow">Heat &amp; mass</h3><dl class="kv" data-k="energy"></dl></section>
         </div>
         <section class="d-sec">
-          <h3 class="eyebrow">Appearance (what the engine tells the renderer)</h3>
+          <h3 class="eyebrow">Appearance</h3>
           <div class="table-wrap"><table class="dtable">
             <thead><tr><th>Liquid layer</th><th class="num">mL</th><th class="num">ρ g/mL</th><th class="num">n</th><th class="num">pH</th><th>Solvent</th><th>Colour from</th><th>Data</th></tr></thead>
             <tbody data-k="layers"></tbody></table></div>
@@ -163,7 +163,7 @@ export class AdvancedView {
       <dt>Status</dt><dd class="${c.ok ? 'ok' : 'bad'}">${c.ok ? 'Balanced' : 'Check failed'}</dd>
       <dt>Charge error</dt><dd>${c.charge_err_mol.toExponential(2)} mol</dd>
       <dt>Element error</dt><dd>${(c.max_element_rel_err * 100).toFixed(4)} % (max ${c.max_element_abs_err_mol.toExponential(1)} mol)</dd>
-      ${c.unverified_species.length > 0 ? `<dt>Not covered</dt><dd title="Formula cannot be parsed, so its atoms are not checked">${esc(c.unverified_species.join(', '))}</dd>` : ''}`;
+      ${c.unverified_species.length > 0 ? `<dt>Unverified</dt><dd title="Unparsed formula">${esc(c.unverified_species.join(', '))}</dd>` : ''}`;
     q('energy').innerHTML = `
       <dt>Temperature</dt><dd>${s.temperature_k.toFixed(2)} K · ${(s.temperature_k - 273.15).toFixed(2)} °C</dd>
       <dt>Contents</dt><dd>${s.contents_mass_g.toFixed(2)} g</dd>
@@ -268,7 +268,7 @@ export class AdvancedView {
     const rows = [
       `<dt>${g.kind === 'sealed' ? 'Sealed: closed gas' : 'Open: room atmosphere'}</dt><dd>${g.pressure_atm.toFixed(3)} atm · ${(g.temperature_k - 273.15).toFixed(1)} °C · ${esc(g.eos === 'peng-robinson' ? 'Peng–Robinson' : 'ideal gas')}</dd>`,
     ];
-    if (g.supercritical) rows.push('<dt>Supercritical</dt><dd>a component is above its critical temperature: liquid and gas are one fluid</dd>');
+    if (g.supercritical) rows.push('<dt>Supercritical</dt><dd>Above critical point</dd>');
     const comp = g.species
       .filter((x) => x.mole_fraction > 1e-4)
       .sort((a, b) => b.mole_fraction - a.mole_fraction)

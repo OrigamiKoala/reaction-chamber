@@ -18,7 +18,7 @@ export class TitrationHud {
 
   constructor(private host: TitrationHudHost) {
     this.text = h('span', { class: 'sh-text' });
-    this.btn = h('button', { class: 'sh-close', type: 'button', title: 'Close the stopcock (Esc)', text: 'Close stopcock' });
+    this.btn = h('button', { class: 'sh-close', type: 'button', title: 'Close (Esc)', text: 'Close' });
     this.btn.addEventListener('click', () => this.host.close());
     this.el = h('div', { class: 'stopcock-hud', role: 'status', 'aria-live': 'off' }, this.text, this.btn);
   }
@@ -46,7 +46,7 @@ export class TitrationHud {
       .map((s) => {
         const what = s.kind === 'burette' ? 'Burette' : 'Funnel';
         const rate = s.flow >= 0.995 ? s.flow.toFixed(1) : s.flow.toFixed(2);
-        return s.flowing ? `${what} stopcock: ${s.word} · ${rate} mL/s` : `${what} stopcock: ${s.word}`;
+        return s.flowing ? `${what}: ${s.word} · ${rate} mL/s` : `${what}: ${s.word}`;
       })
       .join('   |   ');
     setText(this.text, line);

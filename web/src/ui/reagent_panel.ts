@@ -174,8 +174,8 @@ export class ReagentPanel {
     this.search = h('input', {
       type: 'search',
       class: 'search-input',
-      placeholder: 'Search reagents or PubChem',
-      'aria-label': 'Search reagents or PubChem',
+      placeholder: 'Search reagents…',
+      'aria-label': 'Search reagents',
       autocomplete: 'off',
       spellcheck: 'false',
     });
@@ -250,16 +250,16 @@ export class ReagentPanel {
     if (list.length) {
       this.results.append(this.section(title, list));
       if (total > RESULT_CAP) {
-        this.results.append(h('p', { class: 'more-hint', text: `${total - RESULT_CAP} more — type to narrow the list` }));
+        this.results.append(h('p', { class: 'more-hint', text: `${total - RESULT_CAP} more` }));
       }
     } else if (!recent.length) {
       const msg = this.lib.size === 0
         ? 'Loading reagents…'
         : this.filter === 'imported' && !q
-          ? 'Nothing imported yet. Search above to import any compound from PubChem, NIST or CAS.'
+          ? 'No imported reagents.'
           : q
-            ? `No reagent matches “${q}”.`
-            : 'Nothing here.';
+            ? `No reagents match “${q}”.`
+            : 'No reagents.';
       this.results.append(h('p', { class: 'empty-hint', text: msg }));
     }
     this.renderDatabases();
@@ -319,18 +319,17 @@ export class ReagentPanel {
     const q = this.search.value.trim();
     this.pubchemSection.innerHTML = '';
     if (q.length < 2) return;
-    this.pubchemSection.append(h('div', { class: 'eyebrow', text: 'Chemical databases' }));
+    this.pubchemSection.append(h('div', { class: 'eyebrow', text: 'Databases' }));
     const snap = this.dbSnap && this.dbSnap.query === q ? this.dbSnap : null;
     if (!snap) {
-      this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Searching PubChem, NIST WebBook and CAS Common Chemistry…' }));
+      this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Searching databases…' }));
       return;
     }
     for (const m of snap.hits.slice(0, 12)) this.pubchemSection.append(this.dbRow(m));
     if (snap.hits.length === 0 && snap.done) {
-      this.pubchemSection.append(h('p', { class: 'pc-status', text: `No database knows “${q}”. Try a different spelling, the formula, or the CAS number.` }));
+      this.pubchemSection.append(h('p', { class: 'pc-status', text: `No matches found for “${q}”.` }));
     }
     this.pubchemSection.append(h('p', { class: 'pc-status', text: this.statusLine(snap) }));
-    this.pubchemSection.append(h('p', { class: 'pc-status', text: 'Imported compounds react when the engine can derive their ions from the formula (salts, acids, bases).' }));
   }
 
   private statusLine(snap: SearchSnapshot): string {

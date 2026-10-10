@@ -5,7 +5,7 @@
 :root {
   /* Palette */
   --porcelain: #f5f7f8;
-  --porcelain-glass: rgba(245, 247, 248, 0.9);
+  --porcelain-glass: rgba(245, 247, 248, 0.95);
   --porcelain-deep: #e9eef0;
   --ink: #1b252d;
   --slate: #5a6772;
@@ -15,10 +15,10 @@
   --teal: #0d7680;            /* borosilicate edge — the accent */
   --teal-ink: #08565d;
   --teal-wash: #e1f0f1;
-  --window: #0f1b22;          /* instrument display glass */
-  --window-ink: #e6f3f4;
-  --window-dim: #7b959e;
-  --window-line: rgba(230, 243, 244, 0.09);
+  --window: #ffffff;          /* clean white instrument display */
+  --window-ink: #1b252d;
+  --window-dim: #5a6772;
+  --window-line: rgba(27, 37, 45, 0.08);
   --heat: #d2521c;
   --amber: #b76a0c;
   --amber-wash: #fbf0de;
@@ -29,12 +29,12 @@
   --sans: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* Shape & depth */
-  --r-lg: 14px;
-  --r-md: 10px;
-  --r-sm: 7px;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -12px rgba(15, 27, 34, 0.35), 0 2px 6px rgba(15, 27, 34, 0.08);
-  --shadow-pop: 0 18px 50px -14px rgba(15, 27, 34, 0.45), 0 2px 8px rgba(15, 27, 34, 0.1);
+  /* Shape & depth — unrounded, minimalistic, clean */
+  --r-lg: 0px;
+  --r-md: 0px;
+  --r-sm: 0px;
+  --shadow: 0 1px 3px rgba(15, 27, 34, 0.06), 0 1px 2px rgba(15, 27, 34, 0.04);
+  --shadow-pop: 0 4px 14px -2px rgba(15, 27, 34, 0.1), 0 1px 3px rgba(15, 27, 34, 0.05);
   --gutter: 12px;
   --top: 68px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -44,6 +44,7 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  border-radius: 0 !important;
 }
 
 html,
@@ -1320,19 +1321,15 @@ kbd {
   pointer-events: none;
 }
 
-/* The instrument window — signature element */
+/* The instrument window — light minimal display */
 .readouts {
   margin: 0 16px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  border-radius: var(--r-md);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 40%),
-    var(--window);
-  box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 1px 0 rgba(255, 255, 255, 0.9);
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
+  background: var(--window);
+  box-shadow: var(--shadow);
   color: var(--window-ink);
   overflow: hidden;
 }
@@ -1380,11 +1377,11 @@ kbd {
 }
 
 .ro-temp .ro-val {
-  color: #ffd9b8;
+  color: var(--heat);
 }
 
 .ro-ph .ro-val {
-  color: #bdf0e9;
+  color: var(--teal-ink);
 }
 
 .ro-press {
@@ -1402,17 +1399,17 @@ kbd {
   top: 11px;
   bottom: 11px;
   width: 7px;
-  border-radius: 2px;
+  border-radius: 0;
   background:
-    repeating-linear-gradient(to top, rgba(230, 243, 244, 0.22) 0 1px, transparent 1px 20%),
-    rgba(230, 243, 244, 0.06);
+    repeating-linear-gradient(to top, rgba(27, 37, 45, 0.18) 0 1px, transparent 1px 20%),
+    rgba(27, 37, 45, 0.05);
   overflow: hidden;
 }
 
 .ro-gauge-fill {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, #4fc3cf, #8fe3ea);
+  background: var(--teal);
   transform-origin: bottom;
   transform: scaleY(0);
   transition: transform 0.3s var(--ease);
@@ -1516,10 +1513,10 @@ kbd {
 
 .plot-spec {
   width: 100%;
-  border-radius: var(--r-sm);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
   display: block;
-  background: #0f141a;
+  background: #ffffff;
 }
 
 .peak-list {
@@ -1891,15 +1888,19 @@ kbd {
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 5px;
-  border-radius: 999px;
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
+  background: var(--porcelain-glass);
+  box-shadow: var(--shadow);
 }
 
 .time-play {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--ink);
   color: #fff;
+  border: 1px solid transparent;
 }
 
 .time-play:hover {
@@ -2021,9 +2022,10 @@ kbd {
   align-items: flex-start;
   gap: 9px;
   padding: 9px 6px 9px 12px;
-  border-radius: var(--r-md);
-  background: var(--ink);
-  color: #f1f5f6;
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
+  background: #ffffff;
+  color: var(--ink);
   font-size: 13px;
   box-shadow: var(--shadow-pop);
   animation: drop-in 0.22s var(--ease);
@@ -2040,32 +2042,32 @@ kbd {
 }
 
 .toast-success .ic {
-  color: #7fdcb1;
+  color: #1f7a52;
 }
 
 .toast-error {
-  background: #4a1710;
+  border-left: 3px solid var(--red);
 }
 
 .toast-error .ic,
 .toast-warning .ic {
-  color: #ffb199;
+  color: var(--red);
 }
 
 .toast-info .ic {
-  color: #8fe3ea;
+  color: var(--teal);
 }
 
 .toast-close {
   border: 0;
   background: transparent;
-  color: rgba(241, 245, 246, 0.6);
+  color: var(--mute);
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .toast-close:hover {
-  color: #fff;
+  color: var(--ink);
 }
 
 .toast.leaving {
@@ -2742,16 +2744,17 @@ dialog.modal::backdrop {
   flex-direction: column;
   gap: 1px;
   padding: 3px 8px 3px 9px;
-  border-radius: 6px;
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
   border-left: 3px solid var(--teal);
-  background: rgba(15, 27, 34, 0.86);
-  color: var(--window-ink);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.25;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 4px 14px -6px rgba(15, 27, 34, 0.6);
+  box-shadow: var(--shadow);
   will-change: transform;
   transition: opacity 0.12s linear;
 }
@@ -2766,7 +2769,7 @@ dialog.modal::backdrop {
 }
 
 .level-tag .lt-sub {
-  color: var(--window-dim);
+  color: var(--slate);
   font-size: 10.5px;
 }
 
@@ -2790,9 +2793,10 @@ dialog.modal::backdrop {
   align-items: baseline;
   gap: 10px;
   padding: 8px 16px;
-  border-radius: 12px;
-  background: rgba(15, 27, 34, 0.9);
-  color: var(--window-ink);
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   box-shadow: var(--shadow-pop);
@@ -2808,21 +2812,21 @@ dialog.modal::backdrop {
 }
 
 .pour-readout.is-idle .pr-rate {
-  color: var(--window-dim);
+  color: var(--slate);
 }
 
 .pour-readout.is-blocked .pr-rate {
-  color: #ffb07a;
+  color: var(--heat);
 }
 
 .pour-readout .pr-total {
   font-size: 13px;
-  color: var(--window-dim);
+  color: var(--slate);
 }
 
 .pour-readout .pr-to {
   font-size: 11.5px;
-  color: var(--window-dim);
+  color: var(--slate);
   font-family: var(--sans);
 }
 
@@ -2935,9 +2939,10 @@ dialog.modal::backdrop {
   align-items: center;
   gap: 12px;
   padding: 8px 10px 8px 16px;
-  border-radius: 12px;
-  background: rgba(15, 27, 34, 0.9);
-  color: var(--window-ink);
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   font-size: 13px;
   box-shadow: var(--shadow-pop);
 }
@@ -2952,18 +2957,18 @@ dialog.modal::backdrop {
 }
 
 .stopcock-hud .sh-close {
-  border: 0;
-  border-radius: 8px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 0;
   padding: 6px 12px;
-  background: #ffb07a;
-  color: #231305;
+  background: var(--amber-wash);
+  color: var(--ink);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
 .stopcock-hud .sh-close:hover {
-  background: #ffc79b;
+  background: #f5debc;
 }
 
 /* Details drawer: appearance tables and legend */
@@ -3001,9 +3006,10 @@ dialog.modal::backdrop {
   position: relative;
   width: 100%;
   height: 340px;
-  border-radius: 10px;
+  border-radius: 0;
+  border: 1px solid var(--hair-strong);
   overflow: hidden;
-  background: #0f171d;
+  background: var(--porcelain);
 }
 
 .mv-canvas {

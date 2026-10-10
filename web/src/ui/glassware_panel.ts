@@ -64,7 +64,7 @@ export class GlasswarePanel {
     this.search = h('input', {
       type: 'search',
       class: 'search-input',
-      placeholder: 'Search glassware… e.g. 50 mL burette',
+      placeholder: 'Search glassware…',
       'aria-label': 'Search glassware',
       autocomplete: 'off',
       spellcheck: 'false',
@@ -183,7 +183,7 @@ export class GlasswarePanel {
     setText(this.benchHead, this.bench.length ? `On the bench · ${this.bench.length}` : 'On the bench');
     this.benchList.innerHTML = '';
     if (this.bench.length === 0) {
-      this.benchList.append(h('li', { class: 'gw-bench-empty', text: 'Nothing yet — click a piece above to set it out.' }));
+      this.benchList.append(h('li', { class: 'gw-bench-empty', text: 'No glassware on bench' }));
       return;
     }
     for (const v of this.bench) {

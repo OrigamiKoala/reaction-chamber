@@ -25,7 +25,6 @@ export class CustomReactionModal {
       </div>
 
       <form class="form" id="cc-pane-comp" role="tabpanel" aria-labelledby="cc-tab-comp" novalidate>
-        <p class="form-desc">Adds a reagent the engine can react with. The formula is parsed into elements automatically.</p>
         <div class="form-grid">
           <label class="f">Name<input name="id" type="text" placeholder="e.g. potassium permanganate" required /></label>
           <label class="f">Formula<input name="formula" type="text" placeholder="e.g. KMnO4" required spellcheck="false" /></label>
@@ -51,7 +50,6 @@ export class CustomReactionModal {
       </form>
 
       <form class="form" id="cc-pane-rxn" role="tabpanel" aria-labelledby="cc-tab-rxn" hidden novalidate>
-        <p class="form-desc">A reversible equilibrium or an irreversible (Arrhenius) reaction between registered species.</p>
         <div class="form-grid">
           <label class="f f-wide">Reaction ID<input name="id" type="text" placeholder="e.g. esterification" required /></label>
           <label class="f f-wide">Equation<input name="equation" type="text" placeholder="A + B <=> C + D   or   A + B -> C + D(g)" required spellcheck="false" /></label>

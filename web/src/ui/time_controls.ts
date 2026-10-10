@@ -30,7 +30,7 @@ export class TimeControls {
     this.playBtn.addEventListener('click', () => this.togglePause());
 
     this.clock = h('span', { class: 'time-clock', 'aria-label': 'Reaction time', text: '00:00.0' });
-    this.label = h('span', { class: 'time-label', text: 'waiting for reaction' });
+    this.label = h('span', { class: 'time-label', text: 'idle' });
     this.timer = h('div', { class: 'time-timer is-waiting', role: 'timer', 'aria-live': 'off' }, this.clock, this.label);
 
     this.startStopBtn = h('button', { class: 'time-act', type: 'button', text: 'Start', title: 'Start the reaction timer by hand' });
@@ -72,7 +72,7 @@ export class TimeControls {
     if (!ci) {
       this.phase = 'none';
       setText(this.clock, fmtClock(0));
-      setText(this.label, 'no vessel selected');
+      setText(this.label, 'idle');
       this.timer.dataset.phase = 'none';
       this.startStopBtn.disabled = true;
       this.resetBtn.disabled = true;
@@ -87,7 +87,7 @@ export class TimeControls {
       setText(this.startStopBtn, ci.phase === 'running' ? 'Stop' : ci.phase === 'stopped' ? 'Resume' : 'Start');
       this.resetBtn.disabled = ci.phase === 'waiting';
     }
-    const label = ci.phase === 'waiting' ? 'waiting for reaction' : ci.phase === 'stopped' ? 'stopped' : ci.auto ? 'since reaction began' : 'timing by hand';
+    const label = ci.phase === 'waiting' ? 'idle' : ci.phase === 'stopped' ? 'paused' : ci.auto ? 'reaction timer' : 'timer';
     if (this.label.textContent !== label) setText(this.label, label);
     const title = ci.reason ? `Started by: ${ci.reason}` : '';
     if (this.timer.title !== title) this.timer.title = title;
